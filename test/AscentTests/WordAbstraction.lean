@@ -31,6 +31,25 @@ example (a b : UInt64) (h : a.toNat + b.toNat < 2 ^ 64) :
   simp only [wordγV, UInt64.toNat_add, Nat.mod_eq_of_lt h]
   omega
 
+/-- Multiplication abstracts to integer multiplication when it does not overflow. -/
+example (a b : UInt64) (h : a.toNat * b.toNat < 2 ^ 64) :
+    Corres wordAbstraction wordγV
+      (pure (wordγV a * wordγV b) : Id Int) (pure (a * b) : Id UInt64) := by
+  apply corres_pure
+  show wordγV (a * b) = wordγV a * wordγV b
+  simp only [wordγV, UInt64.toNat_mul, Nat.mod_eq_of_lt h]
+  rfl
+
+/-- Subtraction abstracts to integer subtraction when it does not underflow (`b ≤ a`). -/
+example (a b : UInt64) (h : b ≤ a) :
+    Corres wordAbstraction wordγV
+      (pure (wordγV a - wordγV b) : Id Int) (pure (a - b) : Id UInt64) := by
+  apply corres_pure
+  show wordγV (a - b) = wordγV a - wordγV b
+  have hle : b.toNat ≤ a.toNat := h
+  simp only [wordγV, UInt64.toNat_sub_of_le _ _ h]
+  omega
+
 /-- A genuinely overflowing addition has no word abstraction: the no-overflow equation that
 `corres_pure` would demand is false, since `2^63 + 2^63` wraps to `0`. -/
 example : wordγV (2 ^ 63) + wordγV (2 ^ 63) ≠ wordγV ((2 ^ 63) + (2 ^ 63) : UInt64) := by

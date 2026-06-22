@@ -77,3 +77,40 @@ example : ¬ Corres (typeStrengthen Nat) (id : Nat → Nat)
   rw [hthrow, hpure] at H
   have hfalse := H 0 trivial
   simp at hfalse
+
+/-! ## Option-monad strengthening: `OptionT (StateT σ Id) ↝ StateT σ Id`
+
+The same phase for the canonical AutoCorres failure monad, where failure carries no payload, so
+the forbidden barrel is a single `⊥` (rather than a function of the error value). -/
+
+/-- Concrete option failure monad. -/
+abbrev OptS (σ : Type) := OptionT (StateT σ Id)
+
+/-- The option-strengthening refinement: identity on state assertions, failure (`none`) forbidden. -/
+def optionStrengthen (σ : Type) :
+    Refinement (σ → Prop) (σ → Prop) (EPost.Cons (σ → Prop) EPost.Nil) EPost.Nil where
+  γP := id
+  γE := fun _ => epost⟨(⊥ : σ → Prop)⟩
+  γP_mono h := h
+  γE_mono _ := PartialOrder.rel_refl
+
+instance : LawfulRefinement (optionStrengthen Nat) (OptS Nat) (StateT Nat Id) :=
+  .ofWPMorphism stPureLe stBindLe
+
+/-- A total state computation abstracts its lift into the option monad. -/
+theorem corres_liftOption {σ α : Type} (x : StateT σ Id α) :
+    Corres (optionStrengthen σ) (id : α → α) x (MonadLift.monadLift x : OptS σ α) := by
+  intro Q E
+  exact WPMonad.le_wp_monadLift_OptionT_apply x
+
+/-- The same total increment, now strengthened out of the option monad. -/
+def concIncOpt : OptS Nat Nat := do
+  let x ← MonadLift.monadLift (get : StateT Nat Id Nat)
+  MonadLift.monadLift (set (x + 1) : StateT Nat Id PUnit)
+  pure x
+
+example : Corres (optionStrengthen Nat) (id : Nat → Nat) absInc concIncOpt := by
+  unfold absInc concIncOpt
+  refine corres_bind id id (corres_liftOption _) (fun x => ?_)
+  refine corres_bind id id (corres_liftOption _) (fun _ => ?_)
+  exact corres_pure id rfl
