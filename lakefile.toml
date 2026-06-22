@@ -1,0 +1,10 @@
+name = "ascent"
+defaultTargets = ["Ascent"]
+testDriver = "AscentTests"
+
+[[lean_lib]]
+name = "Ascent"
+
+[[lean_lib]]
+name = "AscentTests"
+srcDir = "test"
