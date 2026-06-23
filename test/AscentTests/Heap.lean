@@ -7,7 +7,7 @@ import AscentTests.Guard
 A pointer swap implemented by read-both/write-both abstracts to the atomic swap specification,
 *provided the pointers do not alias*. Aliasing surfaces as the `p ≠ q` guard on the abstract
 spec: without it the two heap transformers differ (writing `q` would clobber the value just
-written to `p`). The guard lives in the demonic `Dem` effect, so when `p = q` the spec fails and
+written to `p`). The guard lives in the `UB` effect, so when `p = q` the spec fails and
 the correspondence is discharged trivially. This is the split-heap picture in miniature: one heap,
 pointer (in)equality carrying the aliasing, no separation logic.
 -/
@@ -32,14 +32,14 @@ theorem swapImpl_eq_spec {p q : Nat} (hpq : p ≠ q) : swapImpl p q = swapSpec p
   simp only [swapImpl, swapSpec, upd]
   by_cases hap : a = p <;> by_cases haq : a = q <;> simp_all
 
-/-- Abstract spec: atomic swap, guarded by non-aliasing. As a `StateT Heap Dem` program this is
-the denotation of `do guardS (p ≠ q); modify (swapSpec p q)`; failure (`none`) is the demonic
-`Dem.fail`. -/
-def swapA (p q : Nat) : StateT Heap Dem PUnit :=
+/-- Abstract spec: atomic swap, guarded by non-aliasing. As a `StateT Heap UB` program this is
+the denotation of `do guardS (p ≠ q); modify (swapSpec p q)`; failure (`none`) is
+`UB.fail`. -/
+def swapA (p q : Nat) : StateT Heap UB PUnit :=
   fun h => if p ≠ q then some (⟨⟩, swapSpec p q h) else none
 
 /-- Concrete implementation: the denotation of `modify (swapImpl p q)`. -/
-def swapC (p q : Nat) : StateT Heap Dem PUnit :=
+def swapC (p q : Nat) : StateT Heap UB PUnit :=
   fun h => some (⟨⟩, swapImpl p q h)
 
 theorem wp_swapC (p q : Nat) (Q : PUnit → Heap → Prop) (E : EPost.Nil) :
