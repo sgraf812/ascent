@@ -4,5 +4,6 @@ import AscentTests.Pipeline
 import AscentTests.Guard
 import AscentTests.Loop
 import AscentTests.Zip
+import AscentTests.ZipL2
 import AscentTests.Heap
 import AscentTests.HeapValid
