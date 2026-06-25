@@ -1,11 +1,11 @@
-import AscentTests.Guard
+import Ascent.UB
 
 /-!
 # A `while` loop in the `UB` monad
 
 Defined as a least fixpoint via `partial_fixpoint`: a non-terminating loop denotes `none`
-(undefined / no guarantee), which is consistent with `wp none = ⊥` — so the weakest precondition
-of a loop is sound for total correctness (you must prove termination to prove anything).
+(undefined / no guarantee), which is consistent with `wp none = ⊥`, so the weakest precondition of
+a loop is sound for total correctness (you must prove termination to prove anything).
 -/
 
 open Std.Internal.Do Lean.Order Ascent

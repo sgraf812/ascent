@@ -1,4 +1,4 @@
-import AscentTests.LoopCorres
+import Ascent.Corres.Loop
 import Std.Tactic.Do
 
 /-!
@@ -218,13 +218,6 @@ local macro "aomega" : tactic => `(tactic| (unfold Addr at *; omega))
   refine Triple.intro ?_
   intro s hp
   simpa [StateT.wp_apply_eq, StateT.run, setSize] using hp
-
-/-- `StateT State UB` has conjunctive `wp` (the demonic `UB` base is deterministic). -/
-instance : ConjWP (StateT State UB) (State → Prop) EPost.Nil where
-  wp_meet x A B E := by
-    intro s
-    simp only [meet_apply, StateT.wp_apply_eq]
-    exact UB.wp_meet (x s) (fun p => A p.1 p.2) (fun p => B p.1 p.2) E
 
 /-- The abstract body's `wp`, as a function of the state (so it rewrites under the `∃` in the
 relational precondition). -/
@@ -545,13 +538,6 @@ theorem corres_L3L4 (a b out : Addr) (n : USize) (a_arr b_arr : Array I)
   rw [hlc.1, ← hac.2.1]
   exact hQ
 
-/-- Any `ofStateRepr` into `StateT _ UB` is lawful: the abstract `wp` is a monad morphism. -/
-instance instLawfulOfStateRepr {Cσ Aσ : Type} (st : Cσ → Aσ) :
-    LawfulRefinement (Refinement.ofStateRepr st) (StateT Cσ UB) (StateT Aσ UB) where
-  wp_pure_le := fun _ _ _ => PartialOrder.rel_refl
-  wp_bind_le := fun x f post E => by
-    intro h; exact UB.wp_bind_le (x h) (fun p => f p.1 p.2) (fun p => post p.1 p.2) E
-
 /-- Reading a coupled `size_t` local extracts its value; the heap-determined abstract state is
 untouched. -/
 theorem corres_getSizeVal_st {X : Type} (f : Heap → X) (P : State → Prop) (x : Ident) (v : USize)
@@ -708,21 +694,28 @@ theorem zipWith_comm (a b : Array I) : Array.zipWith (· + ·) a b = Array.zipWi
   · simp [Nat.min_comm]
   · intro i h1 h2; simp only [Array.getElem_zipWith]; exact Int32.add_comm _ _
 
-/-- **Transport from the pure spec.** Any property `φ` of `zipL5`'s result `(n, Array.zipWith (· + ·)
-a_arr b_arr)` transports to `zipL1`: after the C program runs, the return value `cv` and the output
-region `slice out n s'.heap` satisfy `φ`. Proving `φ` against the pure `zipL5` discharges it for the
-heap-manipulating denotation, with no reasoning about the loop, the heap, or aliasing. -/
+/-- The function-entry precondition of `zip_with_add`: the C arguments are in the locals, the input
+regions hold `a_arr`/`b_arr`, and every access in `[0, min la lb)` is valid. -/
+def zipPre (a b out : Addr) (la lb : USize) (a_arr b_arr : Array I) : State → Prop := fun s =>
+  entryP a b out la lb s ∧ slice a la.toNat s.heap = a_arr ∧ slice b lb.toNat s.heap = b_arr ∧
+  AllValid a b out (min la lb).toNat s.heap
+
+/-- **Transport from the pure spec, as a Hoare triple.** Any property `φ` of `zipL5`'s result
+`(min la lb, Array.zipWith (· + ·) a_arr b_arr)` transports to a triple on `zipL1`: from the entry
+precondition, the return value `cv` and the output region `slice out _ s'.heap` satisfy `φ`. Proving
+`φ` against the pure `zipL5` discharges it for the heap-manipulating denotation, with no reasoning
+about the loop, the heap, or aliasing. -/
 theorem zipL1_spec (a b out : Addr) (la lb : USize) (a_arr b_arr : Array I)
-    (hd : NoAlias a b out (min la lb).toNat)
-    (φ : USize × Array I → Prop) (E : EPost.Nil) (s : State)
-    (hs : entryP a b out la lb s ∧ slice a la.toNat s.heap = a_arr ∧
-          slice b lb.toNat s.heap = b_arr ∧
-          AllValid a b out (min la lb).toNat s.heap)
+    (hd : NoAlias a b out (min la lb).toNat) (φ : USize × Array I → Prop)
     (hφ : φ (min la lb, Array.zipWith (· + ·) a_arr b_arr)) :
-    wp zipL1 (fun cv s' => φ (cv, slice out (min la lb).toNat s'.heap)) E s := by
+    ⦃ zipPre a b out la lb a_arr b_arr ⦄
+    zipL1
+    ⦃ fun cv s' => φ (cv, slice out (min la lb).toNat s'.heap) ⦄ := by
+  refine Triple.intro ?_
+  intro s hs
   obtain ⟨hentry, hsa, hsb, hav⟩ := hs
   have key := corres_zip5 a b out la lb (slice a (min la lb).toNat s.heap)
-    (slice b (min la lb).toNat s.heap) (by simp) (by simp) hd φ E s
+    (slice b (min la lb).toNat s.heap) (by simp) (by simp) hd φ ⊥ s
   rw [zip5_γQ out (min la lb) φ] at key
   refine key ?_
   simp only [meet_apply, meet_prop_eq_and, Refinement.comp, Function.comp,
@@ -733,75 +726,59 @@ theorem zipL1_spec (a b out : Addr) (la lb : USize) (a_arr b_arr : Array I)
   rw [← zipWith_slice_min a b la lb s.heap, hsa, hsb]
   exact hφ
 
-/-- **Functional correctness, transported.** Each cell of the output region holds the sum of the
-corresponding input cells. Proving it on `zipL5` is one `Array.getElem_zipWith`; `zipL1_spec` carries
-it to the C denotation, where proving it directly would need the loop invariant. -/
+/-- **Functional correctness.** Each cell of the output region holds the sum of the corresponding
+input cells. Proving it on `zipL5` is one `Array.getElem_zipWith`; `zipL1_spec` carries it to the C
+denotation, where proving it directly would need the loop invariant. -/
 theorem zipL1_correct (a b out : Addr) (la lb : USize) (a_arr b_arr : Array I)
-    (hd : NoAlias a b out (min la lb).toNat)
-    (E : EPost.Nil) (s : State)
-    (hs : entryP a b out la lb s ∧ slice a la.toNat s.heap = a_arr ∧
-          slice b lb.toNat s.heap = b_arr ∧
-          AllValid a b out (min la lb).toNat s.heap) :
-    wp zipL1 (fun _ s' => ∀ i, i < (min la lb).toNat →
-        (slice out (min la lb).toNat s'.heap)[i]! = a_arr[i]! + b_arr[i]!) E s :=
+    (hd : NoAlias a b out (min la lb).toNat) :
+    ⦃ zipPre a b out la lb a_arr b_arr ⦄
+    zipL1
+    ⦃ fun _ s' => ∀ i, i < (slice out (min la lb).toNat s'.heap).size →
+        (slice out (min la lb).toNat s'.heap)[i]! = a_arr[i]! + b_arr[i]! ⦄ :=
   zipL1_spec a b out la lb a_arr b_arr hd
-    (fun p => ∀ i, i < (min la lb).toNat → p.2[i]! = a_arr[i]! + b_arr[i]!)
-    E s hs (by
-      have ha : a_arr.size = la.toNat := by rw [← hs.2.1]; exact slice_size _ _ _
-      have hb : b_arr.size = lb.toNat := by rw [← hs.2.2.1]; exact slice_size _ _ _
+    (fun p => ∀ i, i < p.2.size → p.2[i]! = a_arr[i]! + b_arr[i]!)
+    (by
       intro i hi
-      have hmin := usize_toNat_min la lb
-      have hia : i < a_arr.size := by rw [ha]; omega
-      have hib : i < b_arr.size := by rw [hb]; omega
-      have hiz : i < (Array.zipWith (· + ·) a_arr b_arr).size := by
-        rw [Array.size_zipWith, ha, hb]; omega
-      rw [getElem!_pos (Array.zipWith (· + ·) a_arr b_arr) i hiz, getElem!_pos a_arr i hia,
+      have hia : i < a_arr.size := Nat.lt_of_lt_of_le (Array.size_zipWith ▸ hi) (Nat.min_le_left _ _)
+      have hib : i < b_arr.size := Nat.lt_of_lt_of_le (Array.size_zipWith ▸ hi) (Nat.min_le_right _ _)
+      rw [getElem!_pos (Array.zipWith (· + ·) a_arr b_arr) i hi, getElem!_pos a_arr i hia,
         getElem!_pos b_arr i hib, Array.getElem_zipWith])
 
-/-- **Symmetry, transported (from `zipL5`).** The output region holds the pointwise sum in the swapped
-argument order (hence, with `zipL1_correct`, in either order). Sourced through the pure `zipL5`. -/
+/-- **Symmetry.** The output region holds the pointwise sum in the swapped argument order (hence,
+with `zipL1_correct`, in either order). Sourced through the pure `zipL5`. -/
 theorem zipL1_commuted (a b out : Addr) (la lb : USize) (a_arr b_arr : Array I)
-    (hd : NoAlias a b out (min la lb).toNat)
-    (E : EPost.Nil) (s : State)
-    (hs : entryP a b out la lb s ∧ slice a la.toNat s.heap = a_arr ∧
-          slice b lb.toNat s.heap = b_arr ∧
-          AllValid a b out (min la lb).toNat s.heap) :
-    wp zipL1 (fun _ s' => slice out (min la lb).toNat s'.heap
-        = Array.zipWith (· + ·) b_arr a_arr) E s :=
+    (hd : NoAlias a b out (min la lb).toNat) :
+    ⦃ zipPre a b out la lb a_arr b_arr ⦄
+    zipL1
+    ⦃ fun _ s' => slice out (min la lb).toNat s'.heap = Array.zipWith (· + ·) b_arr a_arr ⦄ :=
   zipL1_spec a b out la lb a_arr b_arr hd
-    (fun p => p.2 = Array.zipWith (· + ·) b_arr a_arr) E s hs (zipWith_comm a_arr b_arr)
+    (fun p => p.2 = Array.zipWith (· + ·) b_arr a_arr) (zipWith_comm a_arr b_arr)
 
-/-- **Concatenation distributivity, transported.** However the input regions split at an aligned
-boundary (`a1.size = b1.size`), the output region is the concatenation of the two sub-zips. The pure
-fact is `Array.zipWith_append`; `zipL1_spec` carries it across the loop and heap to `zipL1`. -/
+/-- **Concatenation distributivity.** However the input regions split at an aligned boundary
+(`a1.size = b1.size`), the output region is the concatenation of the two sub-zips. The pure fact is
+`Array.zipWith_append`; `zipL1_spec` carries it across the loop and heap to `zipL1`. -/
 theorem zipL1_distrib (a b out : Addr) (la lb : USize) (a_arr b_arr : Array I)
-    (hd : NoAlias a b out (min la lb).toNat)
-    (E : EPost.Nil) (s : State)
-    (hs : entryP a b out la lb s ∧ slice a la.toNat s.heap = a_arr ∧
-          slice b lb.toNat s.heap = b_arr ∧
-          AllValid a b out (min la lb).toNat s.heap) :
-    wp zipL1 (fun _ s' => ∀ (a1 a2 b1 b2 : Array I), a_arr = a1 ++ a2 → b_arr = b1 ++ b2 →
-        a1.size = b1.size →
+    (hd : NoAlias a b out (min la lb).toNat) :
+    ⦃ zipPre a b out la lb a_arr b_arr ⦄
+    zipL1
+    ⦃ fun _ s' => ∀ (a1 a2 b1 b2 : Array I), a_arr = a1 ++ a2 → b_arr = b1 ++ b2 → a1.size = b1.size →
         slice out (min la lb).toNat s'.heap
-          = Array.zipWith (· + ·) a1 b1 ++ Array.zipWith (· + ·) a2 b2) E s :=
+          = Array.zipWith (· + ·) a1 b1 ++ Array.zipWith (· + ·) a2 b2 ⦄ :=
   zipL1_spec a b out la lb a_arr b_arr hd
     (fun p => ∀ (a1 a2 b1 b2 : Array I), a_arr = a1 ++ a2 → b_arr = b1 ++ b2 → a1.size = b1.size →
         p.2 = Array.zipWith (· + ·) a1 b1 ++ Array.zipWith (· + ·) a2 b2)
-    E s hs (by rintro a1 a2 b1 b2 rfl rfl hsz; exact Array.zipWith_append hsz)
+    (by rintro a1 a2 b1 b2 rfl rfl hsz; exact Array.zipWith_append hsz)
 
-/-- **The return value is the output length, transported.** `zip_with_add` returns `n`, and `n` is
-exactly the length of the output `Array.zipWith (· + ·) a_arr b_arr` (`= min la lb`). -/
+/-- **The return value is the output length.** `zip_with_add` returns `n`, and `n` is exactly the
+length of the output region (`= min la lb`). -/
 theorem zipL1_returns_size (a b out : Addr) (la lb : USize) (a_arr b_arr : Array I)
-    (hd : NoAlias a b out (min la lb).toNat)
-    (E : EPost.Nil) (s : State)
-    (hs : entryP a b out la lb s ∧ slice a la.toNat s.heap = a_arr ∧
-          slice b lb.toNat s.heap = b_arr ∧
-          AllValid a b out (min la lb).toNat s.heap) :
-    wp zipL1 (fun cv _ => cv.toNat = (Array.zipWith (· + ·) a_arr b_arr).size) E s :=
+    (ha : a_arr.size = la.toNat) (hb : b_arr.size = lb.toNat)
+    (hd : NoAlias a b out (min la lb).toNat) :
+    ⦃ zipPre a b out la lb a_arr b_arr ⦄
+    zipL1
+    ⦃ fun cv s' => cv.toNat = (slice out (min la lb).toNat s'.heap).size ⦄ :=
   zipL1_spec a b out la lb a_arr b_arr hd
-    (fun p => p.1.toNat = (Array.zipWith (· + ·) a_arr b_arr).size) E s hs (by
-      have ha : a_arr.size = la.toNat := by rw [← hs.2.1]; exact slice_size _ _ _
-      have hb : b_arr.size = lb.toNat := by rw [← hs.2.2.1]; exact slice_size _ _ _
-      rw [Array.size_zipWith, ha, hb]; exact usize_toNat_min la lb)
+    (fun p => p.1.toNat = p.2.size)
+    (by rw [Array.size_zipWith, ha, hb]; exact usize_toNat_min la lb)
 
 end Zip

@@ -1,5 +1,5 @@
 import Ascent.Corres.Basic
-import AscentTests.Guard
+import Ascent.UB
 
 /-!
 # `is_valid`-guarded heap access
