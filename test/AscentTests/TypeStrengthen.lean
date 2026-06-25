@@ -23,20 +23,6 @@ def typeStrengthen (σ : Type) :
   γP_mono h := h
   γE_mono _ := PartialOrder.rel_refl
 
-/-- `StateT Nat Id` interprets `pure` exactly (one direction; the other is `pure_le_wp_pure`). -/
-theorem stPureLe {α} (a : α) (post : α → Nat → Prop) (epost : EPost.Nil) :
-    wp (pure a : StateT Nat Id α) post epost ⊑ post a := by intro s; exact PartialOrder.rel_refl
-
-/-- `StateT Nat Id` interprets `bind` exactly (one direction). -/
-theorem stBindLe {α β} (x : StateT Nat Id α) (f : α → StateT Nat Id β)
-    (post : β → Nat → Prop) (epost : EPost.Nil) :
-    wp (x >>= f) post epost ⊑ wp x (fun a => wp (f a) post epost) epost := by
-  intro s; exact PartialOrder.rel_refl
-
-instance : WPMonadExact (StateT Nat Id) (Nat → Prop) EPost.Nil where
-  wp_pure_le := stPureLe
-  wp_bind_le := stBindLe
-
 /-- A total state computation abstracts its lift into the failure monad: the never-fails
 obligation is discharged by the `⊥` failure barrel in `typeStrengthen`. -/
 theorem corres_lift {σ α : Type} (x : StateT σ Id α) :

@@ -3,9 +3,9 @@ import Ascent.UB
 /-!
 # `Corres` over `StateT σ UB`
 
-The generic facts that make `StateT σ UB` a usable concrete monad for `Corres`: its `wp` reduces
-`bind` pointwise and is conjunctive, the functional state abstraction `ofStateRepr` is lawful, and
-the conjunctivity class `ConjWP` is inhabited (needed by the precondition-threading `corres_bind`).
+The facts that make `StateT σ UB` a usable concrete monad for `Corres`: its `wp` reduces `bind`
+pointwise, and the conjunctivity class `ConjWP` is inhabited (needed by the precondition-threading
+`corres_bind`).
 -/
 
 open Std.Internal.Do Lean.Order Ascent
@@ -29,9 +29,3 @@ instance {σ} : ConjWP (StateT σ UB) (σ → Prop) EPost.Nil where
     simp only [meet_apply, StateT.wp_apply_eq]
     exact UB.wp_meet (x s) (fun p => A p.1 p.2) (fun p => B p.1 p.2) E
 
-/-- `StateT σ UB`'s `wp` is exact: it pins `pure`/`bind` from both sides. -/
-instance instWPMonadExactStateTUB {σ : Type} :
-    WPMonadExact (StateT σ UB) (σ → Prop) EPost.Nil where
-  wp_pure_le := fun _ _ _ => PartialOrder.rel_refl
-  wp_bind_le := fun x f post E => by
-    intro s; exact UB.wp_bind_le (x s) (fun p => f p.1 p.2) (fun p => post p.1 p.2) E

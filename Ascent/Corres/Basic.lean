@@ -1,4 +1,5 @@
 import Std.Internal.Do
+import Ascent.WPMonadExact
 
 /-!
 # `Corres`: soundness of monadic abstraction
@@ -20,33 +21,6 @@ open Std.Internal.Do Lean.Order
 namespace Ascent
 
 universe u v w w'
-
-/-- The weakest-precondition interpretation is exact: beyond `WPMonad` soundness it also upper-bounds
-`pure`/`bind`, so the two together compute them. The abstract side of `Corres` needs this, since its
-`wp` is decomposed out of the precondition. -/
-class WPMonadExact (m : Type u → Type v) (Pred : Type w) (EPred : Type w')
-    [Monad m] [Assertion Pred] [Assertion EPred] extends WPMonad m Pred EPred where
-  /-- `wp` upper-bounds the postcondition on `pure`. -/
-  wp_pure_le {α : Type u} (a : α) (post : α → Pred) (epost : EPred) :
-    wp (pure a : m α) post epost ⊑ post a
-  /-- `wp` upper-bounds the `bind` decomposition. -/
-  wp_bind_le {α β : Type u} (x : m α) (f : α → m β) (post : β → Pred) (epost : EPred) :
-    wp (x >>= f) post epost ⊑ wp x (fun a => wp (f a) post epost) epost
-
-/-- Exact `wp` computes `pure`. -/
-theorem WPMonadExact.wp_pure_eq {m : Type u → Type v} {Pred : Type w} {EPred : Type w'}
-    [Monad m] [Assertion Pred] [Assertion EPred] [WPMonadExact m Pred EPred]
-    {α} (a : α) (post : α → Pred) (epost : EPred) :
-    wp (pure a : m α) post epost = post a :=
-  PartialOrder.rel_antisymm (WPMonadExact.wp_pure_le a post epost) (WPMonad.pure_le_wp_pure a post epost)
-
-/-- Exact `wp` computes `bind`. -/
-theorem WPMonadExact.wp_bind_eq {m : Type u → Type v} {Pred : Type w} {EPred : Type w'}
-    [Monad m] [Assertion Pred] [Assertion EPred] [WPMonadExact m Pred EPred]
-    {α β} (x : m α) (f : α → m β) (post : β → Pred) (epost : EPred) :
-    wp (x >>= f) post epost = wp x (fun a => wp (f a) post epost) epost :=
-  PartialOrder.rel_antisymm (WPMonadExact.wp_bind_le x f post epost)
-    (WPMonad.bind_le_wp_bind x f post epost)
 
 /-- Monad-level concretizations of normal and exceptional assertions, mapping an abstract `WP`
 setup's predicates into a concrete one's. The value-level coupling is supplied per `Corres`
@@ -135,7 +109,7 @@ section Structural
 variable {CM AM : Type w → Type v} {CPred APred : Type w} {CEPred AEPred : Type w'}
   [Monad CM] [Monad AM]
   [Assertion CPred] [Assertion APred] [Assertion CEPred] [Assertion AEPred]
-  [WPMonad CM CPred CEPred] [WPMonadExact AM APred AEPred]
+  [WPMonad CM CPred CEPred] [WPMonad AM APred AEPred] [WPMonadExact AM APred AEPred]
 
 /-- The concrete `wp` is conjunctive. Needed only by the precondition-threading `corres_bind` (not
 `corres_bind_top`); every deterministic / demonic monad satisfies it. -/
@@ -211,6 +185,7 @@ theorem corres_bind_top {CV AV CV₂ AV₂ : Type w} (αV : CV → AV) (αV₂ :
     exact PartialOrder.rel_trans (le_meet _ _ _ (le_top _) PartialOrder.rel_refl) hfcv
   · exact WPMonad.bind_le_wp_bind c₁ c₂ (r.γQ (αVeq αV₂) Q) (r.γE E)
 
+omit [WPMonadExact AM APred AEPred] in
 /-- Branch congruence on a shared condition. -/
 theorem corres_ite (r : Concretization CPred APred CEPred AEPred) {CVal AVal : Type w}
     (P : CPred) (αV : AVal → CVal → CPred) {cond : Prop} [Decidable cond]

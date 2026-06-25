@@ -19,9 +19,6 @@ def wordαV : UInt64 → Int := fun w => (w.toNat : Int)
 def wordAbstraction : Concretization Prop Prop EPost.Nil EPost.Nil :=
   Concretization.id Prop EPost.Nil
 
-instance : WPMonadExact Id Prop EPost.Nil where
-  wp_pure_le := fun _ _ _ => PartialOrder.rel_refl
-  wp_bind_le := fun _ _ _ _ => PartialOrder.rel_refl
 
 /-- Addition abstracts to integer addition when it does not overflow. -/
 example (a b : UInt64) (h : a.toNat + b.toNat < 2 ^ 64) :
