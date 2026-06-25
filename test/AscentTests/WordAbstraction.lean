@@ -4,7 +4,7 @@ import Ascent.Corres.Basic
 # Word abstraction: `UInt64 ↝ Int`
 
 Machine-word values are abstracted to mathematical integers. The assertion lattice is
-unchanged, so the refinement is `idRefinement`; the abstraction lives entirely in the value
+unchanged, so the concretization is `Concretization.id`; the abstraction lives entirely in the value
 map `wordαV`, supplied per `Corres`. Each arithmetic correspondence is an instance of
 `corres_pure` whose value-equality hypothesis is the no-overflow side-condition, discharged by
 `omega`. A genuinely overflowing program admits no correspondence.
@@ -15,11 +15,11 @@ open Std.Internal.Do Lean.Order Ascent
 /-- The value abstraction underlying word abstraction. -/
 def wordαV : UInt64 → Int := fun w => (w.toNat : Int)
 
-/-- The word-abstraction refinement on pure computations: identity on assertions. -/
-def wordAbstraction : Refinement Prop Prop EPost.Nil EPost.Nil :=
-  idRefinement Prop EPost.Nil
+/-- The word-abstraction concretization on pure computations: identity on assertions. -/
+def wordAbstraction : Concretization Prop Prop EPost.Nil EPost.Nil :=
+  Concretization.id Prop EPost.Nil
 
-instance : LawfulRefinement wordAbstraction Id Id where
+instance : WPMonadExact Id Prop EPost.Nil where
   wp_pure_le := fun _ _ _ => PartialOrder.rel_refl
   wp_bind_le := fun _ _ _ _ => PartialOrder.rel_refl
 
@@ -59,6 +59,6 @@ example : wordαV (2 ^ 63) + wordαV (2 ^ 63) ≠ wordαV ((2 ^ 63) + (2 ^ 63) :
 /-- Correspondence chains through the `Trans` instance: `corres_id` is the identity and
 composition is transitivity. -/
 example {Prog Val : Type} [WP Prog Val Prop EPost.Nil] (x : Prog) :
-    Corres ((idRefinement Prop EPost.Nil).comp (idRefinement Prop EPost.Nil))
+    Corres ((Concretization.id Prop EPost.Nil).comp (Concretization.id Prop EPost.Nil))
       ⊤ (αVeq (id ∘ id : Val → Val)) x x :=
   Trans.trans (corres_id ⊤ x) (corres_id ⊤ x)

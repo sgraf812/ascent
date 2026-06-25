@@ -15,9 +15,9 @@ open Std.Internal.Do Lean.Order Ascent
 /-- Concrete failure monad of the type-strengthening phase. -/
 abbrev TS (σ : Type) := ExceptT Unit (StateT σ Id)
 
-/-- The type-strengthening refinement: identity on state assertions, failure forbidden. -/
+/-- The type-strengthening concretization: identity on state assertions, failure forbidden. -/
 def typeStrengthen (σ : Type) :
-    Refinement (σ → Prop) (σ → Prop) (EPost.Cons (Unit → σ → Prop) EPost.Nil) EPost.Nil where
+    Concretization (σ → Prop) (σ → Prop) (EPost.Cons (Unit → σ → Prop) EPost.Nil) EPost.Nil where
   γP := id
   γE := fun _ => epost⟨fun _ => (⊥ : σ → Prop)⟩
   γP_mono h := h
@@ -33,7 +33,7 @@ theorem stBindLe {α β} (x : StateT Nat Id α) (f : α → StateT Nat Id β)
     wp (x >>= f) post epost ⊑ wp x (fun a => wp (f a) post epost) epost := by
   intro s; exact PartialOrder.rel_refl
 
-instance : LawfulRefinement (typeStrengthen Nat) (TS Nat) (StateT Nat Id) where
+instance : WPMonadExact (StateT Nat Id) (Nat → Prop) EPost.Nil where
   wp_pure_le := stPureLe
   wp_bind_le := stBindLe
 
@@ -43,7 +43,7 @@ theorem corres_lift {σ α : Type} (x : StateT σ Id α) :
     Corres (typeStrengthen σ) ⊤ (αVeq (id : α → α)) x (MonadLift.monadLift x : TS σ α) := by
   intro Q E
   have hQ : (typeStrengthen σ).γQ (αVeq id) Q = Q := by
-    funext cv; simp only [Refinement.γQ_αVeq, typeStrengthen, id_eq]
+    funext cv; simp only [Concretization.γQ_αVeq, typeStrengthen, id_eq]
   rw [hQ]
   refine PartialOrder.rel_trans (meet_le_right _ _) ?_
   exact WPMonad.le_wp_monadLift_ExceptT_apply x Q (epost⟨fun _ => (⊥ : σ → Prop)⟩)
@@ -75,10 +75,10 @@ example : ¬ Corres (typeStrengthen Nat) ⊤ (αVeq (id : Nat → Nat))
   have H := hcorres (fun _ _ => True) EPost.Nil.mk
   have hthrow : wp (throw () : TS Nat Nat) ((typeStrengthen Nat).γQ (αVeq id) (fun _ _ => True))
       ((typeStrengthen Nat).γE EPost.Nil.mk) = (⊥ : Nat → Prop) := by
-    simp [typeStrengthen, ExceptT.wp_apply_eq, wp_pure_eq stPureLe]
+    simp [typeStrengthen, ExceptT.wp_apply_eq, WPMonadExact.wp_pure_eq]
   have hpure : (typeStrengthen Nat).γP
       (wp (pure 0 : StateT Nat Id Nat) (fun _ _ => True) EPost.Nil.mk) = (fun _ => True) := by
-    simp [typeStrengthen, wp_pure_eq stPureLe]
+    simp [typeStrengthen, WPMonadExact.wp_pure_eq]
   rw [hthrow, hpure] at H
   have hfalse := H 0
   simp at hfalse
@@ -91,24 +91,20 @@ the forbidden barrel is a single `⊥` (rather than a function of the error valu
 /-- Concrete option failure monad. -/
 abbrev OptS (σ : Type) := OptionT (StateT σ Id)
 
-/-- The option-strengthening refinement: identity on state assertions, failure (`none`) forbidden. -/
+/-- The option-strengthening concretization: identity on state assertions, failure (`none`) forbidden. -/
 def optionStrengthen (σ : Type) :
-    Refinement (σ → Prop) (σ → Prop) (EPost.Cons (σ → Prop) EPost.Nil) EPost.Nil where
+    Concretization (σ → Prop) (σ → Prop) (EPost.Cons (σ → Prop) EPost.Nil) EPost.Nil where
   γP := id
   γE := fun _ => epost⟨(⊥ : σ → Prop)⟩
   γP_mono h := h
   γE_mono _ := PartialOrder.rel_refl
-
-instance : LawfulRefinement (optionStrengthen Nat) (OptS Nat) (StateT Nat Id) where
-  wp_pure_le := stPureLe
-  wp_bind_le := stBindLe
 
 /-- A total state computation abstracts its lift into the option monad. -/
 theorem corres_liftOption {σ α : Type} (x : StateT σ Id α) :
     Corres (optionStrengthen σ) ⊤ (αVeq (id : α → α)) x (MonadLift.monadLift x : OptS σ α) := by
   intro Q E
   have hQ : (optionStrengthen σ).γQ (αVeq id) Q = Q := by
-    funext cv; simp only [Refinement.γQ_αVeq, optionStrengthen, id_eq]
+    funext cv; simp only [Concretization.γQ_αVeq, optionStrengthen, id_eq]
   rw [hQ]
   refine PartialOrder.rel_trans (meet_le_right _ _) ?_
   exact WPMonad.le_wp_monadLift_OptionT_apply x

@@ -29,9 +29,9 @@ instance {σ} : ConjWP (StateT σ UB) (σ → Prop) EPost.Nil where
     simp only [meet_apply, StateT.wp_apply_eq]
     exact UB.wp_meet (x s) (fun p => A p.1 p.2) (fun p => B p.1 p.2) E
 
-/-- Any `ofStateRepr` into `StateT _ UB` is lawful: the abstract `wp` is a monad morphism. -/
-instance instLawfulOfStateRepr {Cσ Aσ : Type} (st : Cσ → Aσ) :
-    LawfulRefinement (Refinement.ofStateRepr st) (StateT Cσ UB) (StateT Aσ UB) where
+/-- `StateT σ UB`'s `wp` is exact: it pins `pure`/`bind` from both sides. -/
+instance instWPMonadExactStateTUB {σ : Type} :
+    WPMonadExact (StateT σ UB) (σ → Prop) EPost.Nil where
   wp_pure_le := fun _ _ _ => PartialOrder.rel_refl
   wp_bind_le := fun x f post E => by
-    intro h; exact UB.wp_bind_le (x h) (fun p => f p.1 p.2) (fun p => post p.1 p.2) E
+    intro s; exact UB.wp_bind_le (x s) (fun p => f p.1 p.2) (fun p => post p.1 p.2) E

@@ -5,7 +5,7 @@ import Ascent.Corres.StateT
 # A general while-loop correspondence
 
 The loop body mutates the loop counter, so a *fixed* state coupling cannot span the loop. The
-correspondence is therefore stated against a **relational** refinement `relRef J`, where
+correspondence is therefore stated against a **relational** concretization `relRef J`, where
 `J : Aσ → Cσ → Prop` couples an abstract and a concrete state. The relation is invariant across
 iterations even though the coupled *values* change.
 
@@ -16,10 +16,10 @@ by strong induction on `μ`, unfolding both loops one step at a time.
 
 open Std.Internal.Do Lean.Order Ascent
 
-/-- A refinement from a state relation `J`: an abstract assertion `P` concretizes to "there is a
+/-- A concretization from a state relation `J`: an abstract assertion `P` concretizes to "there is a
 `J`-related abstract state on which `P` holds". -/
 def relRef {Aσ Cσ : Type} (J : Aσ → Cσ → Prop) :
-    Refinement (Cσ → Prop) (Aσ → Prop) EPost.Nil EPost.Nil where
+    Concretization (Cσ → Prop) (Aσ → Prop) EPost.Nil EPost.Nil where
   γP P := fun cs => ∃ as, J as cs ∧ P as
   γE := id
   γP_mono h := fun _ ⟨as, hJ, hP⟩ => ⟨as, hJ, h as hP⟩
@@ -30,15 +30,7 @@ def relRef {Aσ Cσ : Type} (J : Aσ → Cσ → Prop) :
 
 @[simp] theorem relRef_γQ {Aσ Cσ CV AV} (J : Aσ → Cσ → Prop) (f : CV → AV) (Q : AV → Aσ → Prop) :
     (relRef J).γQ (αVeq f) Q = fun cv cs => ∃ as, J as cs ∧ Q (f cv) as := by
-  simp only [Refinement.γQ_αVeq, relRef_γP]
-
-/-- A relational refinement transports `pure`/`bind`: it needs only the abstract monad's
-(`StateT Aσ UB`) `wp` facts, which hold regardless of `J`. -/
-instance {Aσ Cσ : Type} (J : Aσ → Cσ → Prop) :
-    LawfulRefinement (relRef J) (StateT Cσ UB) (StateT Aσ UB) where
-  wp_pure_le := fun _ _ _ => PartialOrder.rel_refl
-  wp_bind_le := fun x f post E => by
-    intro s; exact UB.wp_bind_le (x s) (fun p => f p.1 p.2) (fun p => post p.1 p.2) E
+  simp only [Concretization.γQ_αVeq, relRef_γP]
 
 /-- One-step unfolding of `whileLoop`'s `wp`. -/
 theorem wp_whileLoop {σ} (cond : σ → Bool) (body : StateT σ UB Unit)

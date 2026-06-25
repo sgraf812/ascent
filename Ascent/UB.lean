@@ -85,9 +85,8 @@ because the `ite` is a nested argument of `wp` rather than its sole argument. -/
     wp (if c then a else b) post epost = if c then wp a post epost else wp b post epost := by
   split <;> rfl
 
-/-- The structural laws for an abstraction into `UB` (`UB`'s `wp` is a monad morphism; the concrete
-`Id` is conjunctive). -/
-instance : LawfulRefinement (idRefinement Prop EPost.Nil) Id UB where
+/-- `UB`'s `wp` is exact: it pins `pure`/`bind` from both sides. -/
+instance : WPMonadExact UB Prop EPost.Nil where
   wp_pure_le := UB.wp_pure_le
   wp_bind_le := UB.wp_bind_le
 
@@ -95,10 +94,10 @@ instance : LawfulRefinement (idRefinement Prop EPost.Nil) Id UB where
 no-overflow obligation lives in the guard `g`, threaded by `wp`, not in a precondition. -/
 theorem corres_guardRet {CVal AVal} {g : Prop} [Decidable g] (P : Prop) (αV : CVal → AVal)
     {a : AVal} {c : CVal} (h : g → αV c = a) :
-    Corres (idRefinement Prop EPost.Nil) P (αVeq αV) (UB.guardRet g a) (pure c : Id CVal) := by
+    Corres (Concretization.id Prop EPost.Nil) P (αVeq αV) (UB.guardRet g a) (pure c : Id CVal) := by
   intro Q E
-  have hQ : (idRefinement Prop EPost.Nil).γQ (αVeq αV) Q = fun cv => Q (αV cv) := by
-    funext cv; simp only [Refinement.γQ_αVeq, idRefinement, id_eq]
+  have hQ : (Concretization.id Prop EPost.Nil).γQ (αVeq αV) Q = fun cv => Q (αV cv) := by
+    funext cv; simp only [Concretization.γQ_αVeq, Concretization.id, id_eq]
   rw [hQ]
   refine PartialOrder.rel_trans (meet_le_right _ _) ?_
   by_cases hg : g

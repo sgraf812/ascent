@@ -28,7 +28,7 @@ namespace Zip
 /-! ## Programs
 
 All definitions: the memory model and primitives, the L1 denotation, the three loops, the closed
-form, the spec, and the refinement couplings. -/
+form, the spec, and the concretization couplings. -/
 
 abbrev Addr := Nat
 
@@ -505,7 +505,7 @@ non-aliasing), the concrete loop+`return n` abstracts to `zipL4`. The counter is
 `i = 0` and projected away; `wp_realizeL3` computes the `zipWith`. -/
 theorem corres_L3L4 (a b out : Addr) (n : USize) (a_arr b_arr : Array I)
     (ha : a_arr.size = n.toNat) (hb : b_arr.size = n.toNat) (hd : NoAlias a b out n.toNat) :
-    Corres (Refinement.ofStateRepr (fun s : State => slice out n.toNat s.heap))
+    Corres (Concretization.ofStateRepr (fun s : State => slice out n.toNat s.heap))
       (fun s => (s.locals "i" = some (.size 0) ∧ s.locals "n" = some (.size n) ∧
                 s.locals "a" = some (.ptr a) ∧ s.locals "b" = some (.ptr b) ∧
                 s.locals "out" = some (.ptr out)) ∧
@@ -515,10 +515,10 @@ theorem corres_L3L4 (a b out : Addr) (n : USize) (a_arr b_arr : Array I)
       (zipL4 a_arr b_arr n)
       (whileLoop guardL1 stepL1 >>= fun _ => getSize "n") := by
   intro Q E s hs
-  simp only [Refinement.ofStateRepr_γP, meet_apply, meet_prop_eq_and, zipL4, StateT.wp_apply_eq,
+  simp only [Concretization.ofStateRepr_γP, meet_apply, meet_prop_eq_and, zipL4, StateT.wp_apply_eq,
     StateT.run] at hs
   obtain ⟨⟨hloc, hsa, hsb, hav⟩, hQspec⟩ := hs
-  simp only [Refinement.ofStateRepr_γQ, id]
+  simp only [Concretization.ofStateRepr_γQ, id]
   have hwp : wp (whileLoop (guardL3 n) (stepL3 a_arr b_arr) >>= fun _ => pure n)
       (fun v p => Q v p.2) E (0, slice out n.toNat s.heap) := by
     rw [wp_bind_StateT]
@@ -529,11 +529,11 @@ theorem corres_L3L4 (a b out : Addr) (n : USize) (a_arr b_arr : Array I)
     simp only [StateT.wp_apply_eq, StateT.run_pure, UB.wp_pure_eq]
     simpa using hsp
   have hcl := corres_L1L3 a b out n a_arr b_arr hd (fun v p => Q v p.2) E s (by
-    simp only [top_meet, Refinement.comp, Function.comp, relRef_γP]
+    simp only [top_meet, Concretization.comp, Function.comp, relRef_γP]
     exact ⟨(0, s.heap), ⟨rfl, hloc⟩, (0, slice out n.toNat s.heap), ⟨rfl, rfl, hsa, hsb, hav⟩, hwp⟩)
   refine WP.wp_consequence (whileLoop guardL1 stepL1 >>= fun _ => getSize "n") _ _ E ?_ s hcl
   intro cv s' hpost'
-  simp only [Refinement.γQ_αVeq, Refinement.comp, Function.comp, relRef_γP, id] at hpost'
+  simp only [Concretization.γQ_αVeq, Concretization.comp, Function.comp, relRef_γP, id] at hpost'
   obtain ⟨⟨ic, heap⟩, hlc, ⟨counter, oa⟩, hac, hQ⟩ := hpost'
   rw [hlc.1, ← hac.2.1]
   exact hQ
@@ -542,36 +542,36 @@ theorem corres_L3L4 (a b out : Addr) (n : USize) (a_arr b_arr : Array I)
 untouched. -/
 theorem corres_getSizeVal_st {X : Type} (f : Heap → X) (P : State → Prop) (x : Ident) (v : USize)
     (hP : ∀ s, P s → s.locals x = some (.size v)) :
-    Corres (Refinement.ofStateRepr (fun s => f s.heap)) P (αVeq (id : USize → USize))
+    Corres (Concretization.ofStateRepr (fun s => f s.heap)) P (αVeq (id : USize → USize))
       (pure v : StateT X UB USize) (getSize x) := by
   intro Q E s hs
-  simp only [Refinement.ofStateRepr_γP, meet_apply, meet_prop_eq_and, Refinement.ofStateRepr_γQ,
+  simp only [Concretization.ofStateRepr_γP, meet_apply, meet_prop_eq_and, Concretization.ofStateRepr_γQ,
     StateT.wp_apply_eq, StateT.run, getSize, id] at hs ⊢
   rw [hP s hs.1]; exact hs.2
 
 /-- Writing a `size_t` local is invisible to the heap-determined abstract state. -/
 theorem corres_setSize_st {X : Type} (f : Heap → X) (P : State → Prop) (x : Ident) (v : USize) :
-    Corres (Refinement.ofStateRepr (fun s => f s.heap)) P (αVeq (id : Unit → Unit))
+    Corres (Concretization.ofStateRepr (fun s => f s.heap)) P (αVeq (id : Unit → Unit))
       (pure () : StateT X UB Unit) (setSize x v) := by
   intro Q E s hs
-  simp only [Refinement.ofStateRepr_γP, meet_apply, meet_prop_eq_and, Refinement.ofStateRepr_γQ,
+  simp only [Concretization.ofStateRepr_γP, meet_apply, meet_prop_eq_and, Concretization.ofStateRepr_γQ,
     StateT.wp_apply_eq, StateT.run, setSize, UB.wp_pure_eq, id] at hs ⊢
   exact hs.2
 
 /-- **End to end: `zipL1` is `Array.zipWith`.** Under the function-entry coupling, validity, and
 non-aliasing, the denotation `zipL1` abstracts to the pure array program `zipL4`: the output
 region becomes `Array.zipWith (· + ·)` of the input regions. The entry `getSize`/`setSize` are threaded
-through the out-array refinement; `corres_L3L4` discharges the loop and `return n`. -/
+through the out-array concretization; `corres_L3L4` discharges the loop and `return n`. -/
 theorem corres_zip (a b out : Addr) (la lb : USize) (a_arr b_arr : Array I)
     (ha : a_arr.size = (min la lb).toNat)
     (hb : b_arr.size = (min la lb).toNat)
     (hd : NoAlias a b out (min la lb).toNat) :
-    Corres (Refinement.ofStateRepr (fun s : State => slice out (min la lb).toNat s.heap))
+    Corres (Concretization.ofStateRepr (fun s : State => slice out (min la lb).toNat s.heap))
       (fun s => entryP a b out la lb s ∧ slice a (min la lb).toNat s.heap = a_arr ∧
                 slice b (min la lb).toNat s.heap = b_arr ∧
                 AllValid a b out (min la lb).toNat s.heap)
       (αVeq (id : USize → USize)) (zipL4 a_arr b_arr (min la lb)) zipL1 := by
-  have key : Corres (Refinement.ofStateRepr (fun s : State => slice out (min la lb).toNat s.heap))
+  have key : Corres (Concretization.ofStateRepr (fun s : State => slice out (min la lb).toNat s.heap))
       (fun s => entryP a b out la lb s ∧ slice a (min la lb).toNat s.heap = a_arr ∧
                 slice b (min la lb).toNat s.heap = b_arr ∧
                 AllValid a b out (min la lb).toNat s.heap)
@@ -635,7 +635,7 @@ theorem wp_zipL4 (a_arr b_arr : Array I) (n : USize) (Q : USize → Array I → 
 buffer) is abstracted by the pure `zipL5`, which returns the output array as a value. The terminal
 `corres_purify` reads the final state into the result. -/
 theorem corres_purifyL4 (a_arr b_arr : Array I) (n : USize) :
-    Corres (purifyRef (Array I)) ⊤ purifyαV (zipL5 a_arr b_arr n) (zipL4 a_arr b_arr n) := by
+    Corres (purify (Array I)) ⊤ purifyαV (zipL5 a_arr b_arr n) (zipL4 a_arr b_arr n) := by
   apply corres_purify (zipL4 a_arr b_arr n) n (Array.zipWith (· + ·) a_arr b_arr)
   intro Q E
   apply le_of_forall_le
@@ -646,12 +646,12 @@ theorem corres_purifyL4 (a_arr b_arr : Array I) (n : USize) :
 the second component of the abstract pair: a postcondition on the pure result `(cv, arr)` becomes one
 on the concrete return `cv` and the out-region `slice out m s'.heap`. -/
 theorem zip5_γQ (out : Addr) (m : USize) (Q : USize × Array I → Prop) :
-    ((Refinement.ofStateRepr (fun s : State => slice out m.toNat s.heap)).comp
-        (purifyRef (Array I))).γQ
+    ((Concretization.ofStateRepr (fun s : State => slice out m.toNat s.heap)).comp
+        (purify (Array I))).γQ
       (fun av cv s' => av = (cv, slice out m.toNat s'.heap)) Q
     = fun cv s' => Q (cv, slice out m.toNat s'.heap) := by
   funext cv s'
-  simp only [Refinement.γQ, Refinement.comp, Function.comp, Refinement.ofStateRepr_γP, purifyRef,
+  simp only [Concretization.γQ, Concretization.comp, Function.comp, Concretization.ofStateRepr_γP, purify,
     iSup_apply, meet_apply, iSup_prop_eq_exists, meet_prop_eq_and]
   apply propext
   constructor
@@ -665,26 +665,26 @@ theorem corres_zip5 (a b out : Addr) (la lb : USize) (a_arr b_arr : Array I)
     (ha : a_arr.size = (min la lb).toNat)
     (hb : b_arr.size = (min la lb).toNat)
     (hd : NoAlias a b out (min la lb).toNat) :
-    Corres ((Refinement.ofStateRepr (fun s : State => slice out (min la lb).toNat s.heap)).comp
-        (purifyRef (Array I)))
+    Corres ((Concretization.ofStateRepr (fun s : State => slice out (min la lb).toNat s.heap)).comp
+        (purify (Array I)))
       (fun s => entryP a b out la lb s ∧ slice a (min la lb).toNat s.heap = a_arr ∧
                 slice b (min la lb).toNat s.heap = b_arr ∧
                 AllValid a b out (min la lb).toNat s.heap)
       (fun av cv s' => av = (cv, slice out (min la lb).toNat s'.heap))
       (zipL5 a_arr b_arr (min la lb)) zipL1 := by
   intro Q E
-  have hRHS : (Refinement.ofStateRepr (fun s : State => slice out (min la lb).toNat s.heap)).γQ
-        (αVeq id) ((purifyRef (Array I)).γQ purifyαV Q)
+  have hRHS : (Concretization.ofStateRepr (fun s : State => slice out (min la lb).toNat s.heap)).γQ
+        (αVeq id) ((purify (Array I)).γQ purifyαV Q)
       = fun cv s' => Q (cv, slice out (min la lb).toNat s'.heap) := by
-    simp only [purifyRef_γQ, Refinement.γQ_αVeq, Refinement.ofStateRepr_γP, id_eq]
+    simp only [purify_γQ, Concretization.γQ_αVeq, Concretization.ofStateRepr_γP, id_eq]
   rw [zip5_γQ out (min la lb) Q]
   have hb' := corres_purifyL4 a_arr b_arr (min la lb) Q E
   have hc' := corres_zip a b out la lb a_arr b_arr ha hb hd
-    ((purifyRef (Array I)).γQ purifyαV Q) ((purifyRef (Array I)).γE E)
+    ((purify (Array I)).γQ purifyαV Q) ((purify (Array I)).γE E)
   rw [hRHS] at hc'
   refine PartialOrder.rel_trans (le_meet _ _ _ (meet_le_left _ _)
     (PartialOrder.rel_trans (meet_le_right _ _)
-      ((Refinement.ofStateRepr (fun s : State => slice out (min la lb).toNat s.heap)).γP_mono
+      ((Concretization.ofStateRepr (fun s : State => slice out (min la lb).toNat s.heap)).γP_mono
         (PartialOrder.rel_trans (le_meet _ _ _ (le_top _) PartialOrder.rel_refl) hb')))) hc'
 
 /-- `zip_with_add` is symmetric in its inputs: the pointwise sum does not depend on argument order. A
@@ -718,8 +718,8 @@ theorem zipL1_spec (a b out : Addr) (la lb : USize) (a_arr b_arr : Array I)
     (slice b (min la lb).toNat s.heap) (by simp) (by simp) hd φ ⊥ s
   rw [zip5_γQ out (min la lb) φ] at key
   refine key ?_
-  simp only [meet_apply, meet_prop_eq_and, Refinement.comp, Function.comp,
-    Refinement.ofStateRepr_γP, purifyRef]
+  simp only [meet_apply, meet_prop_eq_and, Concretization.comp, Function.comp,
+    Concretization.ofStateRepr_γP, purify]
   refine ⟨⟨hentry, trivial, trivial, hav⟩, ?_⟩
   show φ (min la lb, Array.zipWith (· + ·) (slice a (min la lb).toNat s.heap)
     (slice b (min la lb).toNat s.heap))

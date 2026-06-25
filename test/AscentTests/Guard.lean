@@ -16,7 +16,7 @@ open Std.Internal.Do Lean.Order Ascent
 depends on the first operation's *result*. The continuation guards on no-overflow, so the
 correspondence holds for every intermediate value. -/
 example (a b c : UInt64) (h1 : a.toNat + b.toNat < 2 ^ 64) :
-    Corres (idRefinement Prop EPost.Nil) ⊤ (αVeq wordαV)
+    Corres (Concretization.id Prop EPost.Nil) ⊤ (αVeq wordαV)
       (do let r ← pure (wordαV a + wordαV b)
           UB.guardRet (r * wordαV c < 2 ^ 64) (r * wordαV c) : UB Int)
       (do let r ← pure (a + b); pure (r * c) : Id UInt64) := by
