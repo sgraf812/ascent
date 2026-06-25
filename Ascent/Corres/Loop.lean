@@ -20,17 +20,17 @@ open Std.Internal.Do Lean.Order Ascent
 `J`-related abstract state on which `P` holds". -/
 def relRef {Aσ Cσ : Type} (J : Aσ → Cσ → Prop) :
     Concretization (Cσ → Prop) (Aσ → Prop) EPost.Nil EPost.Nil where
-  γP P := fun cs => ∃ as, J as cs ∧ P as
-  γE := id
-  γP_mono h := fun _ ⟨as, hJ, hP⟩ => ⟨as, hJ, h as hP⟩
-  γE_mono h := h
+  pred P := fun cs => ∃ as, J as cs ∧ P as
+  ePred := id
+  pred_mono h := fun _ ⟨as, hJ, hP⟩ => ⟨as, hJ, h as hP⟩
+  ePred_mono h := h
 
-@[simp] theorem relRef_γP {Aσ Cσ} (J : Aσ → Cσ → Prop) (P : Aσ → Prop) :
-    (relRef J).γP P = fun cs => ∃ as, J as cs ∧ P as := rfl
+@[simp] theorem relRef_pred {Aσ Cσ} (J : Aσ → Cσ → Prop) (P : Aσ → Prop) :
+    (relRef J).pred P = fun cs => ∃ as, J as cs ∧ P as := rfl
 
-@[simp] theorem relRef_γQ {Aσ Cσ CV AV} (J : Aσ → Cσ → Prop) (f : CV → AV) (Q : AV → Aσ → Prop) :
-    (relRef J).γQ (αVeq f) Q = fun cv cs => ∃ as, J as cs ∧ Q (f cv) as := by
-  simp only [Concretization.γQ_αVeq, relRef_γP]
+@[simp] theorem relRef_post {Aσ Cσ CV AV} (J : Aσ → Cσ → Prop) (f : CV → AV) (Q : AV → Aσ → Prop) :
+    (relRef J).post (coupleEq f) Q = fun cv cs => ∃ as, J as cs ∧ Q (f cv) as := by
+  simp only [Concretization.post_coupleEq, relRef_pred]
 
 /-- One-step unfolding of `whileLoop`'s `wp`. -/
 theorem wp_whileLoop {σ} (cond : σ → Bool) (body : StateT σ UB Unit)
@@ -48,15 +48,15 @@ theorem corres_whileLoop {Aσ Cσ : Type} (J : Aσ → Cσ → Prop)
     (ccond : Cσ → Bool) (cbody : StateT Cσ UB Unit)
     (μ : Aσ → Nat)
     (hcond : ∀ as cs, J as cs → acond as = ccond cs)
-    (hbody : Corres (relRef J) ⊤ (αVeq (id : Unit → Unit)) abody cbody)
+    (hbody : Corres (relRef J) ⊤ (coupleEq (id : Unit → Unit)) abody cbody)
     (hμ : ∀ (E : EPost.Nil) as, acond as = true → wp abody (fun _ _ => True) E as →
         wp abody (fun _ as' => μ as' < μ as) E as) :
-    Corres (relRef J) ⊤ (αVeq (id : Unit → Unit)) (whileLoop acond abody) (whileLoop ccond cbody) := by
+    Corres (relRef J) ⊤ (coupleEq (id : Unit → Unit)) (whileLoop acond abody) (whileLoop ccond cbody) := by
   intro Q E cs hcs
   simp only [top_meet] at hcs
   obtain ⟨as, hJ, hwp⟩ := hcs
   suffices H : ∀ n as cs, μ as < n → J as cs → wp (whileLoop acond abody) Q E as →
-      wp (whileLoop ccond cbody) ((relRef J).γQ (αVeq id) Q) E cs by
+      wp (whileLoop ccond cbody) ((relRef J).post (coupleEq id) Q) E cs by
     exact H (μ as + 1) as cs (Nat.lt_succ_self _) hJ hwp
   intro n
   induction n with
@@ -75,7 +75,7 @@ theorem corres_whileLoop {Aσ Cσ : Type} (J : Aσ → Cσ → Prop)
       have hcomb := wp_and_StateT abody _ _ E as hwp (hμ E as hc hsucc)
       have hcb := hbody (fun _ as' => wp (whileLoop acond abody) Q E as' ∧ μ as' < μ as) E cs
         (by simp only [top_meet]; exact ⟨as, hJ, hcomb⟩)
-      simp only [relRef_γQ] at hcb
+      simp only [relRef_post] at hcb
       refine WP.wp_consequence cbody _ _ E ?_ cs hcb
       intro _ cs' hpost'
       obtain ⟨as', hJ', hwp', hlt'⟩ := hpost'
@@ -84,18 +84,18 @@ theorem corres_whileLoop {Aσ Cσ : Type} (J : Aσ → Cσ → Prop)
       rw [if_neg (by rw [hcf]; simp)] at hwp
       have hccf : ccond cs = false := by rw [← hcc]; exact hcf
       rw [if_neg (by rw [hccf]; simp)]
-      simp only [relRef_γQ]
+      simp only [relRef_post]
       exact ⟨as, hJ, hwp⟩
 
 /-- Any program corresponds to itself under the identity (`Eq`) relation: `relRef Eq` recovers the
-ordinary `wp`, since `γQ id Q` is `Q` up to the existential witness. -/
+ordinary `wp`, since `post id Q` is `Q` up to the existential witness. -/
 theorem corres_relEq_self {σ α} (a : StateT σ UB α) :
-    Corres (relRef (Eq : σ → σ → Prop)) ⊤ (αVeq (id : α → α)) a a := by
+    Corres (relRef (Eq : σ → σ → Prop)) ⊤ (coupleEq (id : α → α)) a a := by
   intro Q E cs hcs
   simp only [top_meet] at hcs
   obtain ⟨as, hJ, hwp⟩ := hcs
   subst hJ
   refine WP.wp_consequence a Q _ E ?_ as hwp
   intro cv cs' hq
-  simp only [relRef_γQ]
+  simp only [relRef_post]
   exact ⟨cs', rfl, hq⟩

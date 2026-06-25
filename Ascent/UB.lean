@@ -92,19 +92,19 @@ instance : WPMonadExact UB Prop EPost.Nil where
 
 /-- A guarded pure value abstracts a pure value, when the guard implies the value relation. The
 no-overflow obligation lives in the guard `g`, threaded by `wp`, not in a precondition. -/
-theorem corres_guardRet {CVal AVal} {g : Prop} [Decidable g] (P : Prop) (αV : CVal → AVal)
-    {a : AVal} {c : CVal} (h : g → αV c = a) :
-    Corres (Concretization.id Prop EPost.Nil) P (αVeq αV) (UB.guardRet g a) (pure c : Id CVal) := by
+theorem corres_guardRet {CVal AVal} {g : Prop} [Decidable g] (pre : Prop) (couple : CVal → AVal)
+    {a : AVal} {c : CVal} (h : g → couple c = a) :
+    Corres (Concretization.id Prop EPost.Nil) pre (coupleEq couple) (UB.guardRet g a) (pure c : Id CVal) := by
   intro Q E
-  have hQ : (Concretization.id Prop EPost.Nil).γQ (αVeq αV) Q = fun cv => Q (αV cv) := by
-    funext cv; simp only [Concretization.γQ_αVeq, Concretization.id, id_eq]
+  have hQ : (Concretization.id Prop EPost.Nil).post (coupleEq couple) Q = fun cv => Q (couple cv) := by
+    funext cv; simp only [Concretization.post_coupleEq, Concretization.id, id_eq]
   rw [hQ]
   refine PartialOrder.rel_trans (meet_le_right _ _) ?_
   by_cases hg : g
-  · have hh : αV c = a := h hg
+  · have hh : couple c = a := h hg
     subst hh
-    rw [show UB.guardRet g (αV c) = pure (αV c) from by simp [UB.guardRet, hg]]
+    rw [show UB.guardRet g (couple c) = pure (couple c) from by simp [UB.guardRet, hg]]
     exact PartialOrder.rel_refl
   · rw [show UB.guardRet g a = UB.fail from by simp [UB.guardRet, hg]]
-    show (⊥ : Prop) ⊑ Q (αV c)
+    show (⊥ : Prop) ⊑ Q (couple c)
     exact bot_le _

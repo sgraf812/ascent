@@ -4,15 +4,15 @@ import Ascent.WPMonadExact
 /-!
 # `Corres`: soundness of monadic abstraction
 
-`Corres r P αV a c` states that, under the concrete-state precondition `P`, the abstract program
+`Corres r pre couple a c` states that, under the concrete-state precondition `pre`, the abstract program
 `a` soundly abstracts the concrete program `c`: any property proved of `a` transports to `c` where
-`P` holds. It is read as abstract interpretation,
-`(P ⊓ r.γP (wp a Q E)) ⊑ wp c (r.γQ αV Q) (r.γE E)`.
+`pre` holds. It is read as abstract interpretation,
+`(pre ⊓ r.pred (wp a Q E)) ⊑ wp c (r.post couple Q) (r.ePred E)`.
 
-`Concretization` carries the monad-level concretizations `γP`/`γE` (the AutoCorres state/exception
+`Concretization` carries the monad-level concretizations `pred`/`ePred` (the AutoCorres state/exception
 abstraction; `Concretization.ofStateRepr` builds the common functional case as a pullback). The value
-abstraction `αV` is per-`Corres` (`bind` relates programs at different value types). The precondition
-`P` is threaded by `corres_bind` (the AutoCorres `corresXF_split`), so a coupling that is *established*
+abstraction `couple` is per-`Corres` (`bind` relates programs at different value types). The precondition
+`pre` is threaded by `corres_bind` (the AutoCorres `corresXF_split`), so a coupling that is *established*
 mid-program (e.g. a loop counter) need not hold from the start.
 -/
 
@@ -28,32 +28,32 @@ statement. -/
 structure Concretization (CPred : Type w) (APred : Type w) (CEPred : Type w') (AEPred : Type w')
     [Assertion CPred] [Assertion APred] [Assertion CEPred] [Assertion AEPred] where
   /-- Concretization of normal assertions. -/
-  γP : APred → CPred
+  pred : APred → CPred
   /-- Concretization of exceptional assertions. -/
-  γE : AEPred → CEPred
-  /-- `γP` is monotone. -/
-  γP_mono : ∀ {p q : APred}, p ⊑ q → γP p ⊑ γP q
-  /-- `γE` is monotone. -/
-  γE_mono : ∀ {p q : AEPred}, p ⊑ q → γE p ⊑ γE q
+  ePred : AEPred → CEPred
+  /-- `pred` is monotone. -/
+  pred_mono : ∀ {p q : APred}, p ⊑ q → pred p ⊑ pred q
+  /-- `ePred` is monotone. -/
+  ePred_mono : ∀ {p q : AEPred}, p ⊑ q → ePred p ⊑ ePred q
 
 namespace Concretization
 
 variable {CPred APred : Type w} {CEPred AEPred : Type w'}
   [Assertion CPred] [Assertion APred] [Assertion CEPred] [Assertion AEPred]
 
-/-- Postcondition concretization. The value coupling `αV av cv : CPred` relates an abstract value
+/-- Postcondition concretization. The value coupling `couple av cv : CPred` relates an abstract value
 `av` to a concrete value `cv`; being a `CPred`, it may depend on the concrete state, which is what
 lets an out-parameter's final value be read off the exit state. For each concrete value the abstract
 postcondition is reified against the coupling and concretized. -/
-noncomputable def γQ (r : Concretization CPred APred CEPred AEPred) {CVal AVal : Type _}
-    (αV : AVal → CVal → CPred) (Q : AVal → APred) : CVal → CPred :=
-  fun cv => iSup fun av => αV av cv ⊓ r.γP (Q av)
+noncomputable def post (r : Concretization CPred APred CEPred AEPred) {CVal AVal : Type _}
+    (couple : AVal → CVal → CPred) (Q : AVal → APred) : CVal → CPred :=
+  fun cv => iSup fun av => couple av cv ⊓ r.pred (Q av)
 
 end Concretization
 
 /-- The functional value coupling: the abstract value is exactly `f cv`. Recovers the
 state-independent value abstraction. -/
-noncomputable def αVeq {CVal AVal : Type _} {CPred : Type w} [Assertion CPred] (f : CVal → AVal) :
+noncomputable def coupleEq {CVal AVal : Type _} {CPred : Type w} [Assertion CPred] (f : CVal → AVal) :
     AVal → CVal → CPred := fun av cv => ⌜av = f cv⌝
 
 namespace Concretization
@@ -62,45 +62,45 @@ variable {CPred APred : Type w} {CEPred AEPred : Type w'}
   [Assertion CPred] [Assertion APred] [Assertion CEPred] [Assertion AEPred]
 
 /-- One-point rule: under the functional coupling the reified `iSup` collapses to the pullback. -/
-@[simp] theorem γQ_αVeq (r : Concretization CPred APred CEPred AEPred) {CVal AVal : Type _}
+@[simp] theorem post_coupleEq (r : Concretization CPred APred CEPred AEPred) {CVal AVal : Type _}
     (f : CVal → AVal) (Q : AVal → APred) :
-    r.γQ (αVeq f) Q = fun cv => r.γP (Q (f cv)) := by
+    r.post (coupleEq f) Q = fun cv => r.pred (Q (f cv)) := by
   funext cv
   refine PartialOrder.rel_antisymm (iSup_le _ _ fun av => ?_) ?_
-  · show (⌜av = f cv⌝ : CPred) ⊓ r.γP (Q av) ⊑ r.γP (Q (f cv))
+  · show (⌜av = f cv⌝ : CPred) ⊓ r.pred (Q av) ⊑ r.pred (Q (f cv))
     exact CompleteLattice.ofProp_meet_le_left (by rintro rfl; exact PartialOrder.rel_refl)
-  · refine PartialOrder.rel_trans ?_ (le_iSup (fun av => αVeq f av cv ⊓ r.γP (Q av)) (f cv))
+  · refine PartialOrder.rel_trans ?_ (le_iSup (fun av => coupleEq f av cv ⊓ r.pred (Q av)) (f cv))
     exact le_meet _ _ _ (le_ofProp _ _ rfl) PartialOrder.rel_refl
 
 /-- The functional concretization from a state representation function `st : Cσ → Aσ`: the
-concretization is the pullback `st^*` (`γP P = P ∘ st`). Exception-free (`EPost.Nil`). This is
+concretization is the pullback `st^*` (`pred P = P ∘ st`). Exception-free (`EPost.Nil`). This is
 AutoCorres' functional state abstraction; the coupling side-condition lives in the `Corres`
-precondition `P`, not here. -/
+precondition `pre`, not here. -/
 def ofStateRepr {Cσ Aσ : Type w} (st : Cσ → Aσ) :
     Concretization (Cσ → Prop) (Aσ → Prop) EPost.Nil EPost.Nil where
-  γP P := fun cs => P (st cs)
-  γE := id
-  γP_mono h := fun cs => h (st cs)
-  γE_mono h := h
+  pred P := fun cs => P (st cs)
+  ePred := id
+  pred_mono h := fun cs => h (st cs)
+  ePred_mono h := h
 
-@[simp] theorem ofStateRepr_γP {Cσ Aσ : Type w} (st : Cσ → Aσ) (P : Aσ → Prop) :
-    (ofStateRepr st).γP P = fun cs => P (st cs) := rfl
+@[simp] theorem ofStateRepr_pred {Cσ Aσ : Type w} (st : Cσ → Aσ) (P : Aσ → Prop) :
+    (ofStateRepr st).pred P = fun cs => P (st cs) := rfl
 
-@[simp] theorem ofStateRepr_γQ {Cσ Aσ CV AV : Type w} (st : Cσ → Aσ) (f : CV → AV)
-    (Q : AV → Aσ → Prop) : (ofStateRepr st).γQ (αVeq f) Q = fun cv cs => Q (f cv) (st cs) := by
-  simp only [γQ_αVeq, ofStateRepr_γP]
+@[simp] theorem ofStateRepr_post {Cσ Aσ CV AV : Type w} (st : Cσ → Aσ) (f : CV → AV)
+    (Q : AV → Aσ → Prop) : (ofStateRepr st).post (coupleEq f) Q = fun cv cs => Q (f cv) (st cs) := by
+  simp only [post_coupleEq, ofStateRepr_pred]
 
 end Concretization
 
 /-- The abstract program `a` soundly abstracts the concrete program `c` under concretization `r`,
-value abstraction `αV`, and concrete-state precondition `P`. -/
+value coupling `couple`, and concrete-state precondition `pre`. -/
 def Corres {CProg AProg : Type _} {CVal AVal : Type _}
     {CPred APred : Type w} {CEPred AEPred : Type w'}
     [Assertion CPred] [Assertion APred] [Assertion CEPred] [Assertion AEPred]
     [WP CProg CVal CPred CEPred] [WP AProg AVal APred AEPred]
-    (r : Concretization CPred APred CEPred AEPred) (P : CPred) (αV : AVal → CVal → CPred)
+    (r : Concretization CPred APred CEPred AEPred) (pre : CPred) (couple : AVal → CVal → CPred)
     (a : AProg) (c : CProg) : Prop :=
-  ∀ Q E, (P ⊓ r.γP (wp a Q E)) ⊑ wp c (r.γQ αV Q) (r.γE E)
+  ∀ Q E, (pre ⊓ r.pred (wp a Q E)) ⊑ wp c (r.post couple Q) (r.ePred E)
 
 /-! ## Structural laws -/
 
@@ -122,76 +122,76 @@ class ConjWP (CM : Type w → Type v) (CPred : Type w) (CEPred : Type w')
 variable {r : Concretization CPred APred CEPred AEPred}
 
 /-- `pure` abstracts `pure` when the returned values correspond (precondition-agnostic). -/
-theorem corres_pure {CVal AVal : Type w} (P : CPred) (αV : CVal → AVal) {a : AVal} {c : CVal}
-    (h : αV c = a) : Corres r P (αVeq αV) (pure a : AM AVal) (pure c : CM CVal) := by
+theorem corres_pure {CVal AVal : Type w} (pre : CPred) (couple : CVal → AVal) {a : AVal} {c : CVal}
+    (h : couple c = a) : Corres r pre (coupleEq couple) (pure a : AM AVal) (pure c : CM CVal) := by
   intro Q E
   refine PartialOrder.rel_trans (meet_le_right _ _) ?_
-  refine PartialOrder.rel_trans (r.γP_mono ((‹WPMonadExact AM APred AEPred›).wp_pure_le a Q E)) ?_
-  have hQ : r.γQ (αVeq αV) Q c = r.γP (Q a) := by simp [Concretization.γQ_αVeq, h]
+  refine PartialOrder.rel_trans (r.pred_mono ((‹WPMonadExact AM APred AEPred›).wp_pure_le a Q E)) ?_
+  have hQ : r.post (coupleEq couple) Q c = r.pred (Q a) := by simp [Concretization.post_coupleEq, h]
   rw [← hQ]
-  exact WPMonad.pure_le_wp_pure c (r.γQ (αVeq αV) Q) (r.γE E)
+  exact WPMonad.pure_le_wp_pure c (r.post (coupleEq couple) Q) (r.ePred E)
 
 /-- `bind` abstracts `bind`, threading the precondition (`corresXF_split`): the heads correspond
-under `P`, the concrete head establishes the mid-coupling `R`, and the continuations correspond
+under `pre`, the concrete head establishes the mid-coupling `R`, and the continuations correspond
 under `R`. -/
-theorem corres_bind [ConjWP CM CPred CEPred] {CV AV CV₂ AV₂ : Type w} (P : CPred) (R : CV → CPred)
-    (αV : CV → AV) (αV₂ : CV₂ → AV₂)
+theorem corres_bind [ConjWP CM CPred CEPred] {CV AV CV₂ AV₂ : Type w} (pre : CPred) (R : CV → CPred)
+    (couple : CV → AV) (couple₂ : CV₂ → AV₂)
     {a₁ : AM AV} {c₁ : CM CV} {a₂ : AV → AM AV₂} {c₂ : CV → CM CV₂}
-    (hc : Corres r P (αVeq αV) a₁ c₁)
-    (hmid : ∀ E, P ⊑ wp c₁ (fun cv => R cv) E)
-    (hf : ∀ cv, Corres r (R cv) (αVeq αV₂) (a₂ (αV cv)) (c₂ cv)) :
-    Corres r P (αVeq αV₂) (a₁ >>= a₂) (c₁ >>= c₂) := by
+    (hc : Corres r pre (coupleEq couple) a₁ c₁)
+    (hmid : ∀ E, pre ⊑ wp c₁ (fun cv => R cv) E)
+    (hf : ∀ cv, Corres r (R cv) (coupleEq couple₂) (a₂ (couple cv)) (c₂ cv)) :
+    Corres r pre (coupleEq couple₂) (a₁ >>= a₂) (c₁ >>= c₂) := by
   intro Q E
-  have step1 : (P ⊓ r.γP (wp (a₁ >>= a₂) Q E)) ⊑ (P ⊓ r.γP (wp a₁ (fun av => wp (a₂ av) Q E) E)) :=
+  have step1 : (pre ⊓ r.pred (wp (a₁ >>= a₂) Q E)) ⊑ (pre ⊓ r.pred (wp a₁ (fun av => wp (a₂ av) Q E) E)) :=
     le_meet _ _ _ (meet_le_left _ _)
-      (PartialOrder.rel_trans (meet_le_right _ _) (r.γP_mono ((‹WPMonadExact AM APred AEPred›).wp_bind_le a₁ a₂ Q E)))
+      (PartialOrder.rel_trans (meet_le_right _ _) (r.pred_mono ((‹WPMonadExact AM APred AEPred›).wp_bind_le a₁ a₂ Q E)))
   refine PartialOrder.rel_trans step1 ?_
   have hi := hc (fun av => wp (a₂ av) Q E) E
-  have hii : (P ⊓ r.γP (wp a₁ (fun av => wp (a₂ av) Q E) E)) ⊑ wp c₁ (fun cv => R cv) (r.γE E) :=
-    PartialOrder.rel_trans (meet_le_left _ _) (hmid (r.γE E))
+  have hii : (pre ⊓ r.pred (wp a₁ (fun av => wp (a₂ av) Q E) E)) ⊑ wp c₁ (fun cv => R cv) (r.ePred E) :=
+    PartialOrder.rel_trans (meet_le_left _ _) (hmid (r.ePred E))
   refine PartialOrder.rel_trans (le_meet _ _ _ hi hii) ?_
-  refine PartialOrder.rel_trans ((‹ConjWP CM CPred CEPred›).wp_meet c₁ (r.γQ (αVeq αV) (fun av => wp (a₂ av) Q E))
-    (fun cv => R cv) (r.γE E)) ?_
+  refine PartialOrder.rel_trans ((‹ConjWP CM CPred CEPred›).wp_meet c₁ (r.post (coupleEq couple) (fun av => wp (a₂ av) Q E))
+    (fun cv => R cv) (r.ePred E)) ?_
   refine PartialOrder.rel_trans
-    (WP.wp_consequence c₁ _ (fun cv => wp (c₂ cv) (r.γQ (αVeq αV₂) Q) (r.γE E)) (r.γE E) ?_) ?_
+    (WP.wp_consequence c₁ _ (fun cv => wp (c₂ cv) (r.post (coupleEq couple₂) Q) (r.ePred E)) (r.ePred E) ?_) ?_
   · intro cv
-    simp only [Concretization.γQ_αVeq]
+    simp only [Concretization.post_coupleEq]
     have hfcv := hf cv Q E
-    simp only [Concretization.γQ_αVeq] at hfcv
+    simp only [Concretization.post_coupleEq] at hfcv
     refine PartialOrder.rel_trans ?_ hfcv
     exact le_meet _ _ _ (meet_le_right _ _) (meet_le_left _ _)
-  · exact WPMonad.bind_le_wp_bind c₁ c₂ (r.γQ (αVeq αV₂) Q) (r.γE E)
+  · exact WPMonad.bind_le_wp_bind c₁ c₂ (r.post (coupleEq couple₂) Q) (r.ePred E)
 
-/-- The precondition-free `bind`: when no mid-coupling is needed (`P = ⊤`, `R = ⊤`), neither `hmid`
+/-- The precondition-free `bind`: when no mid-coupling is needed (`pre = ⊤`, `R = ⊤`), neither `hmid`
 nor conjunctivity is used. -/
-theorem corres_bind_top {CV AV CV₂ AV₂ : Type w} (αV : CV → AV) (αV₂ : CV₂ → AV₂)
+theorem corres_bind_top {CV AV CV₂ AV₂ : Type w} (couple : CV → AV) (couple₂ : CV₂ → AV₂)
     {a₁ : AM AV} {c₁ : CM CV} {a₂ : AV → AM AV₂} {c₂ : CV → CM CV₂}
-    (hc : Corres r ⊤ (αVeq αV) a₁ c₁) (hf : ∀ cv, Corres r ⊤ (αVeq αV₂) (a₂ (αV cv)) (c₂ cv)) :
-    Corres r ⊤ (αVeq αV₂) (a₁ >>= a₂) (c₁ >>= c₂) := by
+    (hc : Corres r ⊤ (coupleEq couple) a₁ c₁) (hf : ∀ cv, Corres r ⊤ (coupleEq couple₂) (a₂ (couple cv)) (c₂ cv)) :
+    Corres r ⊤ (coupleEq couple₂) (a₁ >>= a₂) (c₁ >>= c₂) := by
   intro Q E
   refine PartialOrder.rel_trans (meet_le_right _ _) ?_
-  refine PartialOrder.rel_trans (r.γP_mono ((‹WPMonadExact AM APred AEPred›).wp_bind_le a₁ a₂ Q E)) ?_
-  have hi : r.γP (wp a₁ (fun av => wp (a₂ av) Q E) E) ⊑
-      wp c₁ (r.γQ (αVeq αV) (fun av => wp (a₂ av) Q E)) (r.γE E) :=
+  refine PartialOrder.rel_trans (r.pred_mono ((‹WPMonadExact AM APred AEPred›).wp_bind_le a₁ a₂ Q E)) ?_
+  have hi : r.pred (wp a₁ (fun av => wp (a₂ av) Q E) E) ⊑
+      wp c₁ (r.post (coupleEq couple) (fun av => wp (a₂ av) Q E)) (r.ePred E) :=
     PartialOrder.rel_trans (le_meet _ _ _ (le_top _) PartialOrder.rel_refl)
       (hc (fun av => wp (a₂ av) Q E) E)
   refine PartialOrder.rel_trans hi ?_
   refine PartialOrder.rel_trans
-    (WP.wp_consequence c₁ _ (fun cv => wp (c₂ cv) (r.γQ (αVeq αV₂) Q) (r.γE E)) (r.γE E) ?_) ?_
+    (WP.wp_consequence c₁ _ (fun cv => wp (c₂ cv) (r.post (coupleEq couple₂) Q) (r.ePred E)) (r.ePred E) ?_) ?_
   · intro cv
-    simp only [Concretization.γQ_αVeq]
+    simp only [Concretization.post_coupleEq]
     have hfcv := hf cv Q E
-    simp only [Concretization.γQ_αVeq] at hfcv
+    simp only [Concretization.post_coupleEq] at hfcv
     exact PartialOrder.rel_trans (le_meet _ _ _ (le_top _) PartialOrder.rel_refl) hfcv
-  · exact WPMonad.bind_le_wp_bind c₁ c₂ (r.γQ (αVeq αV₂) Q) (r.γE E)
+  · exact WPMonad.bind_le_wp_bind c₁ c₂ (r.post (coupleEq couple₂) Q) (r.ePred E)
 
 omit [WPMonadExact AM APred AEPred] in
 /-- Branch congruence on a shared condition. -/
 theorem corres_ite (r : Concretization CPred APred CEPred AEPred) {CVal AVal : Type w}
-    (P : CPred) (αV : AVal → CVal → CPred) {cond : Prop} [Decidable cond]
+    (pre : CPred) (couple : AVal → CVal → CPred) {cond : Prop} [Decidable cond]
     {a₁ a₂ : AM AVal} {c₁ c₂ : CM CVal}
-    (h₁ : Corres r P αV a₁ c₁) (h₂ : Corres r P αV a₂ c₂) :
-    Corres r P αV (if cond then a₁ else a₂) (if cond then c₁ else c₂) := by
+    (h₁ : Corres r pre couple a₁ c₁) (h₂ : Corres r pre couple a₂ c₂) :
+    Corres r pre couple (if cond then a₁ else a₂) (if cond then c₁ else c₂) := by
   by_cases hc : cond <;> simp only [hc, if_true, if_false] <;> assumption
 
 end Structural
@@ -207,37 +207,37 @@ variable {CPred BPred APred : Type w} {CEPred BEPred AEPred : Type w'}
 /-- Compose refinements `C ← B` and `B ← A` into `C ← A`. -/
 def Concretization.comp (r₁ : Concretization CPred BPred CEPred BEPred)
     (r₂ : Concretization BPred APred BEPred AEPred) : Concretization CPred APred CEPred AEPred where
-  γP := r₁.γP ∘ r₂.γP
-  γE := r₁.γE ∘ r₂.γE
-  γP_mono h := r₁.γP_mono (r₂.γP_mono h)
-  γE_mono h := r₁.γE_mono (r₂.γE_mono h)
+  pred := r₁.pred ∘ r₂.pred
+  ePred := r₁.ePred ∘ r₂.ePred
+  pred_mono h := r₁.pred_mono (r₂.pred_mono h)
+  ePred_mono h := r₁.ePred_mono (r₂.ePred_mono h)
 
-/-- Correspondence composes (preconditions `⊤`): composing the refinements and value abstractions. -/
+/-- Correspondence composes (preconditions `⊤`): composing the refinements and value couplings. -/
 theorem corres_comp {CProg BProg AProg : Type _} {CVal BVal AVal : Type _}
     [WP CProg CVal CPred CEPred] [WP BProg BVal BPred BEPred] [WP AProg AVal APred AEPred]
     {r₁ : Concretization CPred BPred CEPred BEPred} {r₂ : Concretization BPred APred BEPred AEPred}
-    {αV₁ : CVal → BVal} {αV₂ : BVal → AVal} {a : AProg} {b : BProg} {c : CProg}
-    (hc : Corres r₁ ⊤ (αVeq αV₁) b c) (hb : Corres r₂ ⊤ (αVeq αV₂) a b) :
-    Corres (r₁.comp r₂) ⊤ (αVeq (αV₂ ∘ αV₁)) a c := by
+    {couple₁ : CVal → BVal} {couple₂ : BVal → AVal} {a : AProg} {b : BProg} {c : CProg}
+    (hc : Corres r₁ ⊤ (coupleEq couple₁) b c) (hb : Corres r₂ ⊤ (coupleEq couple₂) a b) :
+    Corres (r₁.comp r₂) ⊤ (coupleEq (couple₂ ∘ couple₁)) a c := by
   intro Q E
-  have hpost : (r₁.comp r₂).γQ (αVeq (αV₂ ∘ αV₁)) Q = r₁.γQ (αVeq αV₁) (r₂.γQ (αVeq αV₂) Q) := by
-    simp only [Concretization.γQ_αVeq, Concretization.comp, Function.comp]
+  have hpost : (r₁.comp r₂).post (coupleEq (couple₂ ∘ couple₁)) Q = r₁.post (coupleEq couple₁) (r₂.post (coupleEq couple₂) Q) := by
+    simp only [Concretization.post_coupleEq, Concretization.comp, Function.comp]
   rw [hpost]
   refine PartialOrder.rel_trans (meet_le_right _ _) ?_
-  have hb' : r₂.γP (wp a Q E) ⊑ wp b (r₂.γQ (αVeq αV₂) Q) (r₂.γE E) :=
+  have hb' : r₂.pred (wp a Q E) ⊑ wp b (r₂.post (coupleEq couple₂) Q) (r₂.ePred E) :=
     PartialOrder.rel_trans (le_meet _ _ _ (le_top _) PartialOrder.rel_refl) (hb Q E)
-  have hc' := hc (r₂.γQ (αVeq αV₂) Q) (r₂.γE E)
-  exact PartialOrder.rel_trans (r₁.γP_mono hb')
+  have hc' := hc (r₂.post (coupleEq couple₂) Q) (r₂.ePred E)
+  exact PartialOrder.rel_trans (r₁.pred_mono hb')
     (PartialOrder.rel_trans (le_meet _ _ _ (le_top _) PartialOrder.rel_refl) hc')
 
 /-- Correspondence (precondition `⊤`) chains in `calc`/`Trans`. -/
 instance {CProg BProg AProg : Type _} {CVal BVal AVal : Type _}
     [WP CProg CVal CPred CEPred] [WP BProg BVal BPred BEPred] [WP AProg AVal APred AEPred]
     {r₁ : Concretization CPred BPred CEPred BEPred} {r₂ : Concretization BPred APred BEPred AEPred}
-    {αV₁ : CVal → BVal} {αV₂ : BVal → AVal} :
-    Trans (Corres r₂ ⊤ (αVeq αV₂) : AProg → BProg → Prop)
-      (Corres r₁ ⊤ (αVeq αV₁) : BProg → CProg → Prop)
-      (Corres (r₁.comp r₂) ⊤ (αVeq (αV₂ ∘ αV₁)) : AProg → CProg → Prop) where
+    {couple₁ : CVal → BVal} {couple₂ : BVal → AVal} :
+    Trans (Corres r₂ ⊤ (coupleEq couple₂) : AProg → BProg → Prop)
+      (Corres r₁ ⊤ (coupleEq couple₁) : BProg → CProg → Prop)
+      (Corres (r₁.comp r₂) ⊤ (coupleEq (couple₂ ∘ couple₁)) : AProg → CProg → Prop) where
   trans hab hbc := corres_comp hbc hab
 
 end Comp
@@ -251,17 +251,17 @@ variable {Pred : Type w} {EPred : Type w'} [Assertion Pred] [Assertion EPred]
 /-- The concretization that is the identity on both assertion lattices. -/
 def Concretization.id (Pred : Type w) (EPred : Type w') [Assertion Pred] [Assertion EPred] :
     Concretization Pred Pred EPred EPred where
-  γP := _root_.id
-  γE := _root_.id
-  γP_mono h := h
-  γE_mono h := h
+  pred := _root_.id
+  ePred := _root_.id
+  pred_mono h := h
+  ePred_mono h := h
 
 /-- Every program abstracts itself under the identity concretization, for any precondition. -/
-theorem corres_id {Prog Val : Type _} [WP Prog Val Pred EPred] (P : Pred) (x : Prog) :
-    Corres (Concretization.id Pred EPred) P (αVeq (id : Val → Val)) x x := by
+theorem corres_id {Prog Val : Type _} [WP Prog Val Pred EPred] (pre : Pred) (x : Prog) :
+    Corres (Concretization.id Pred EPred) pre (coupleEq (id : Val → Val)) x x := by
   intro Q E
-  have hpost : (Concretization.id Pred EPred).γQ (αVeq id) Q = Q := by
-    funext cv; simp only [Concretization.γQ_αVeq, Concretization.id, id_eq]
+  have hpost : (Concretization.id Pred EPred).post (coupleEq id) Q = Q := by
+    funext cv; simp only [Concretization.post_coupleEq, Concretization.id, id_eq]
   rw [hpost]
   exact meet_le_right _ _
 
@@ -272,29 +272,29 @@ end Id
 An out-parameter is modelled as concrete *state*. When the concrete program is write-once (its
 result and final state do not depend on the initial state), that state can be read off the exit and
 returned as a pure *value*, eliminating the state monad. This is the terminal value coupling that
-the state-aware `αV` was introduced for: `purifyαV av cv s := ⌜av = (cv, s)⌝` reads the entire
+the state-aware `couple` was introduced for: `purifyCouple av cv s := ⌜av = (cv, s)⌝` reads the entire
 final state into the second component of the abstract result. It is sound only here, at the end of
 the program, where there is no continuation whose control flow could depend on the read. -/
 
 section Purify
 
 /-- Drops an abstract `Id` assertion (a `Prop`) to a constant concrete-state predicate. The exit
-read lives entirely in the value coupling `purifyαV`. -/
+read lives entirely in the value coupling `purifyCouple`. -/
 noncomputable def purify (σ : Type) : Concretization (σ → Prop) Prop EPost.Nil EPost.Nil where
-  γP φ := fun _ => φ
-  γE := id
-  γP_mono h := fun _ => h
-  γE_mono h := h
+  pred φ := fun _ => φ
+  ePred := id
+  pred_mono h := fun _ => h
+  ePred_mono h := h
 
 /-- The terminal value coupling: `(cv, s)` abstracts a concrete return `cv` ending in state `s`. -/
-def purifyαV {σ α : Type} : (α × σ) → α → (σ → Prop) :=
+def purifyCouple {σ α : Type} : (α × σ) → α → (σ → Prop) :=
   fun av cv s => av = (cv, s)
 
-/-- Under `purifyαV`, the postcondition concretization reads the final state into the result. -/
-@[simp] theorem purify_γQ {σ α : Type} (Q : (α × σ) → Prop) :
-    (purify σ).γQ purifyαV Q = fun cv s => Q (cv, s) := by
+/-- Under `purifyCouple`, the postcondition concretization reads the final state into the result. -/
+@[simp] theorem purify_post {σ α : Type} (Q : (α × σ) → Prop) :
+    (purify σ).post purifyCouple Q = fun cv s => Q (cv, s) := by
   funext cv s
-  simp only [Concretization.γQ, purify, purifyαV, iSup_apply, meet_apply, iSup_prop_eq_exists,
+  simp only [Concretization.post, purify, purifyCouple, iSup_apply, meet_apply, iSup_prop_eq_exists,
     meet_prop_eq_and]
   apply propext
   constructor
@@ -306,9 +306,9 @@ state) is abstracted by the pure return of its result-and-final-state, with no s
 theorem corres_purify {CProg σ α : Type} [WP CProg α (σ → Prop) EPost.Nil]
     (c : CProg) (v : α) (w : σ)
     (hc : ∀ (Q : α → σ → Prop) (E : EPost.Nil), (fun _ => Q v w) ⊑ wp c Q E) :
-    Corres (purify σ) ⊤ purifyαV (pure (v, w) : Id (α × σ)) c := by
+    Corres (purify σ) ⊤ purifyCouple (pure (v, w) : Id (α × σ)) c := by
   intro Q E
-  rw [purify_γQ]
+  rw [purify_post]
   refine PartialOrder.rel_trans (PartialOrder.rel_trans (meet_le_right _ _) ?_)
     (hc (fun cv s => Q (cv, s)) E)
   apply le_of_forall_le

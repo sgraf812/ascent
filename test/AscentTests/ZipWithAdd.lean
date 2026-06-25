@@ -232,13 +232,13 @@ theorem wp_stepL2 (a b out : Addr) (Q : Unit → USize × Heap → Prop) (E : EP
 /-- The loop body corresponds: each concrete local read extracts the coupled value, the heap
 operations act on the coupled heap, and the counter update evolves the coupling. -/
 theorem corres_stepL2 (a b out : Addr) (n : USize) :
-    Corres (relRef (invL2 a b out n)) ⊤ (αVeq (id : Unit → Unit)) (stepL2 a b out) stepL1 := by
+    Corres (relRef (invL2 a b out n)) ⊤ (coupleEq (id : Unit → Unit)) (stepL2 a b out) stepL1 := by
   intro Q E cs hpre
   simp only [top_meet] at hpre
   obtain ⟨⟨i, h⟩, ⟨hh, hi, hn, ha, hb, hout⟩, habs⟩ := hpre
   subst hh
   rw [wp_stepL2] at habs
-  simp only [relRef_γQ, id, invL2, stepL1, wp_bind_StateT]
+  simp only [relRef_post, id, invL2, stepL1, wp_bind_StateT]
   simp only [StateT.wp_apply_eq, StateT.run, getSize, getPtr, cguard, load, store, setSize,
     hi, ha, hb, hout, UB.wp_pure_eq, wp_ite, UB.wp_fail_eq]
   simp only [Heap.upd] at habs
@@ -250,7 +250,7 @@ theorem corres_stepL2 (a b out : Addr) (n : USize) :
   exact ⟨(i + 1, _), ⟨rfl, by simp, by simpa using hn, by simp, by simp, by simp⟩, habs⟩
 
 theorem corres_L1L2 (a b out : Addr) (n : USize) :
-    Corres (relRef (invL2 a b out n)) ⊤ (αVeq (id : Unit → Unit))
+    Corres (relRef (invL2 a b out n)) ⊤ (coupleEq (id : Unit → Unit))
       (whileLoop (guardL2 n) (stepL2 a b out)) (whileLoop guardL1 stepL1) := by
   apply corres_whileLoop (μ := fun p => n.toNat - p.1.toNat)
   · -- guards agree under the coupling
@@ -274,19 +274,19 @@ theorem corres_L1L2 (a b out : Addr) (n : USize) :
 
 /-- `getSize "n"` (the `return n`) reads the coupled bound, abstracting to `pure n`. -/
 theorem corres_getSizeN (a b out : Addr) (n : USize) :
-    Corres (relRef (invL2 a b out n)) ⊤ (αVeq (id : USize → USize))
+    Corres (relRef (invL2 a b out n)) ⊤ (coupleEq (id : USize → USize))
       (pure n : StateT (USize × Heap) UB USize) (getSize "n") := by
   intro Q E cs hpre
   simp only [top_meet] at hpre
   obtain ⟨⟨i, h⟩, hJ, habs⟩ := hpre
   simp only [StateT.wp_apply_eq, StateT.run_pure, UB.wp_pure_eq] at habs
   obtain ⟨hh, hi, hn, ha, hb, hout⟩ := hJ
-  simp only [relRef_γQ, id, getSize, StateT.wp_apply_eq, StateT.run, hn, UB.wp_pure_eq]
+  simp only [relRef_post, id, getSize, StateT.wp_apply_eq, StateT.run, hn, UB.wp_pure_eq]
   exact ⟨(i, h), ⟨hh, hi, hn, ha, hb, hout⟩, habs⟩
 
 /-- The loop together with the trailing `return n`, composed with `corres_bind`. -/
 theorem corres_L1L2_tail (a b out : Addr) (n : USize) :
-    Corres (relRef (invL2 a b out n)) ⊤ (αVeq (id : USize → USize))
+    Corres (relRef (invL2 a b out n)) ⊤ (coupleEq (id : USize → USize))
       (whileLoop (guardL2 n) (stepL2 a b out) >>= fun _ => pure n)
       (whileLoop guardL1 stepL1 >>= fun _ => getSize "n") :=
   corres_bind_top id id (corres_L1L2 a b out n) (fun _ => corres_getSizeN a b out n)
@@ -426,7 +426,7 @@ theorem slice_upd_eq (out : Addr) (n : Nat) (h : Heap) (i : Nat) (v : I) :
 slices fixed under the output write. -/
 theorem corres_stepL3 (a b out : Addr) (n : USize) (a_arr b_arr : Array I)
     (hd : NoAlias a b out n.toNat) :
-    Corres (relRef (invL3 a b out n a_arr b_arr)) ⊤ (αVeq (id : Unit → Unit))
+    Corres (relRef (invL3 a b out n a_arr b_arr)) ⊤ (coupleEq (id : Unit → Unit))
       (stepL3 a_arr b_arr) (stepL2 a b out) := by
   intro Q E ch hpre
   simp only [top_meet] at hpre
@@ -438,7 +438,7 @@ theorem corres_stepL3 (a b out : Addr) (n : USize) (a_arr b_arr : Array I)
   have ha_sz : a_arr.size = n.toNat := by rw [← hsa, slice_size]
   have hb_sz : b_arr.size = n.toNat := by rw [← hsb, slice_size]
   rw [wp_stepL2]
-  simp only [relRef_γQ, id]
+  simp only [relRef_post, id]
   by_cases hlt : i.toNat < n.toNat
   · rw [if_pos (by rw [ha_sz, hb_sz, slice_size]; exact ⟨hlt, hlt, hlt⟩)] at habs
     have hv := hav i.toNat hlt
@@ -460,7 +460,7 @@ theorem corres_stepL3 (a b out : Addr) (n : USize) (a_arr b_arr : Array I)
 
 theorem corres_L2L3 (a b out : Addr) (n : USize) (a_arr b_arr : Array I)
     (hd : NoAlias a b out n.toNat) :
-    Corres (relRef (invL3 a b out n a_arr b_arr)) ⊤ (αVeq (id : Unit → Unit))
+    Corres (relRef (invL3 a b out n a_arr b_arr)) ⊤ (coupleEq (id : Unit → Unit))
       (whileLoop (guardL3 n) (stepL3 a_arr b_arr)) (whileLoop (guardL2 n) (stepL2 a b out)) := by
   apply corres_whileLoop (μ := fun p => n.toNat - p.1.toNat)
   · rintro ⟨i, oa⟩ ⟨ic, heap⟩ ⟨hc, _, _, _, _⟩
@@ -483,7 +483,7 @@ theorem corres_L2L3 (a b out : Addr) (n : USize) (a_arr b_arr : Array I)
 /-- The loop together with `return n`. -/
 theorem corres_L2L3_tail (a b out : Addr) (n : USize) (a_arr b_arr : Array I)
     (hd : NoAlias a b out n.toNat) :
-    Corres (relRef (invL3 a b out n a_arr b_arr)) ⊤ (αVeq (id : USize → USize))
+    Corres (relRef (invL3 a b out n a_arr b_arr)) ⊤ (coupleEq (id : USize → USize))
       (whileLoop (guardL3 n) (stepL3 a_arr b_arr) >>= fun _ => pure n)
       (whileLoop (guardL2 n) (stepL2 a b out) >>= fun _ => pure n) :=
   corres_bind_top id id (corres_L2L3 a b out n a_arr b_arr hd)
@@ -495,7 +495,7 @@ loop+`return` to the out-param array loop over `USize × Array`, the counter sti
 theorem corres_L1L3 (a b out : Addr) (n : USize) (a_arr b_arr : Array I)
     (hd : NoAlias a b out n.toNat) :
     Corres ((relRef (invL2 a b out n)).comp (relRef (invL3 a b out n a_arr b_arr))) ⊤
-      (αVeq (id ∘ id : USize → USize))
+      (coupleEq (id ∘ id : USize → USize))
       (whileLoop (guardL3 n) (stepL3 a_arr b_arr) >>= fun _ => pure n)
       (whileLoop guardL1 stepL1 >>= fun _ => getSize "n") :=
   corres_comp (corres_L1L2_tail a b out n) (corres_L2L3_tail a b out n a_arr b_arr hd)
@@ -511,14 +511,14 @@ theorem corres_L3L4 (a b out : Addr) (n : USize) (a_arr b_arr : Array I)
                 s.locals "out" = some (.ptr out)) ∧
                 slice a n.toNat s.heap = a_arr ∧ slice b n.toNat s.heap = b_arr ∧
                 AllValid a b out n.toNat s.heap)
-      (αVeq (id : USize → USize))
+      (coupleEq (id : USize → USize))
       (zipL4 a_arr b_arr n)
       (whileLoop guardL1 stepL1 >>= fun _ => getSize "n") := by
   intro Q E s hs
-  simp only [Concretization.ofStateRepr_γP, meet_apply, meet_prop_eq_and, zipL4, StateT.wp_apply_eq,
+  simp only [Concretization.ofStateRepr_pred, meet_apply, meet_prop_eq_and, zipL4, StateT.wp_apply_eq,
     StateT.run] at hs
   obtain ⟨⟨hloc, hsa, hsb, hav⟩, hQspec⟩ := hs
-  simp only [Concretization.ofStateRepr_γQ, id]
+  simp only [Concretization.ofStateRepr_post, id]
   have hwp : wp (whileLoop (guardL3 n) (stepL3 a_arr b_arr) >>= fun _ => pure n)
       (fun v p => Q v p.2) E (0, slice out n.toNat s.heap) := by
     rw [wp_bind_StateT]
@@ -529,32 +529,32 @@ theorem corres_L3L4 (a b out : Addr) (n : USize) (a_arr b_arr : Array I)
     simp only [StateT.wp_apply_eq, StateT.run_pure, UB.wp_pure_eq]
     simpa using hsp
   have hcl := corres_L1L3 a b out n a_arr b_arr hd (fun v p => Q v p.2) E s (by
-    simp only [top_meet, Concretization.comp, Function.comp, relRef_γP]
+    simp only [top_meet, Concretization.comp, Function.comp, relRef_pred]
     exact ⟨(0, s.heap), ⟨rfl, hloc⟩, (0, slice out n.toNat s.heap), ⟨rfl, rfl, hsa, hsb, hav⟩, hwp⟩)
   refine WP.wp_consequence (whileLoop guardL1 stepL1 >>= fun _ => getSize "n") _ _ E ?_ s hcl
   intro cv s' hpost'
-  simp only [Concretization.γQ_αVeq, Concretization.comp, Function.comp, relRef_γP, id] at hpost'
+  simp only [Concretization.post_coupleEq, Concretization.comp, Function.comp, relRef_pred, id] at hpost'
   obtain ⟨⟨ic, heap⟩, hlc, ⟨counter, oa⟩, hac, hQ⟩ := hpost'
   rw [hlc.1, ← hac.2.1]
   exact hQ
 
 /-- Reading a coupled `size_t` local extracts its value; the heap-determined abstract state is
 untouched. -/
-theorem corres_getSizeVal_st {X : Type} (f : Heap → X) (P : State → Prop) (x : Ident) (v : USize)
-    (hP : ∀ s, P s → s.locals x = some (.size v)) :
-    Corres (Concretization.ofStateRepr (fun s => f s.heap)) P (αVeq (id : USize → USize))
+theorem corres_getSizeVal_st {X : Type} (f : Heap → X) (pre : State → Prop) (x : Ident) (v : USize)
+    (hpre : ∀ s, pre s → s.locals x = some (.size v)) :
+    Corres (Concretization.ofStateRepr (fun s => f s.heap)) pre (coupleEq (id : USize → USize))
       (pure v : StateT X UB USize) (getSize x) := by
   intro Q E s hs
-  simp only [Concretization.ofStateRepr_γP, meet_apply, meet_prop_eq_and, Concretization.ofStateRepr_γQ,
+  simp only [Concretization.ofStateRepr_pred, meet_apply, meet_prop_eq_and, Concretization.ofStateRepr_post,
     StateT.wp_apply_eq, StateT.run, getSize, id] at hs ⊢
-  rw [hP s hs.1]; exact hs.2
+  rw [hpre s hs.1]; exact hs.2
 
 /-- Writing a `size_t` local is invisible to the heap-determined abstract state. -/
-theorem corres_setSize_st {X : Type} (f : Heap → X) (P : State → Prop) (x : Ident) (v : USize) :
-    Corres (Concretization.ofStateRepr (fun s => f s.heap)) P (αVeq (id : Unit → Unit))
+theorem corres_setSize_st {X : Type} (f : Heap → X) (pre : State → Prop) (x : Ident) (v : USize) :
+    Corres (Concretization.ofStateRepr (fun s => f s.heap)) pre (coupleEq (id : Unit → Unit))
       (pure () : StateT X UB Unit) (setSize x v) := by
   intro Q E s hs
-  simp only [Concretization.ofStateRepr_γP, meet_apply, meet_prop_eq_and, Concretization.ofStateRepr_γQ,
+  simp only [Concretization.ofStateRepr_pred, meet_apply, meet_prop_eq_and, Concretization.ofStateRepr_post,
     StateT.wp_apply_eq, StateT.run, setSize, UB.wp_pure_eq, id] at hs ⊢
   exact hs.2
 
@@ -570,12 +570,12 @@ theorem corres_zip (a b out : Addr) (la lb : USize) (a_arr b_arr : Array I)
       (fun s => entryP a b out la lb s ∧ slice a (min la lb).toNat s.heap = a_arr ∧
                 slice b (min la lb).toNat s.heap = b_arr ∧
                 AllValid a b out (min la lb).toNat s.heap)
-      (αVeq (id : USize → USize)) (zipL4 a_arr b_arr (min la lb)) zipL1 := by
+      (coupleEq (id : USize → USize)) (zipL4 a_arr b_arr (min la lb)) zipL1 := by
   have key : Corres (Concretization.ofStateRepr (fun s : State => slice out (min la lb).toNat s.heap))
       (fun s => entryP a b out la lb s ∧ slice a (min la lb).toNat s.heap = a_arr ∧
                 slice b (min la lb).toNat s.heap = b_arr ∧
                 AllValid a b out (min la lb).toNat s.heap)
-      (αVeq (id : USize → USize))
+      (coupleEq (id : USize → USize))
       (pure la >>= fun _ => pure lb >>= fun _ => pure () >>= fun _ => pure () >>= fun _ =>
         zipL4 a_arr b_arr (min la lb)) zipL1 := by
     unfold zipL1
@@ -635,7 +635,7 @@ theorem wp_zipL4 (a_arr b_arr : Array I) (n : USize) (Q : USize → Array I → 
 buffer) is abstracted by the pure `zipL5`, which returns the output array as a value. The terminal
 `corres_purify` reads the final state into the result. -/
 theorem corres_purifyL4 (a_arr b_arr : Array I) (n : USize) :
-    Corres (purify (Array I)) ⊤ purifyαV (zipL5 a_arr b_arr n) (zipL4 a_arr b_arr n) := by
+    Corres (purify (Array I)) ⊤ purifyCouple (zipL5 a_arr b_arr n) (zipL4 a_arr b_arr n) := by
   apply corres_purify (zipL4 a_arr b_arr n) n (Array.zipWith (· + ·) a_arr b_arr)
   intro Q E
   apply le_of_forall_le
@@ -645,13 +645,13 @@ theorem corres_purifyL4 (a_arr b_arr : Array I) (n : USize) :
 /-- The composite (`purify` over `ofStateRepr`) postcondition coupling reads the final out-region into
 the second component of the abstract pair: a postcondition on the pure result `(cv, arr)` becomes one
 on the concrete return `cv` and the out-region `slice out m s'.heap`. -/
-theorem zip5_γQ (out : Addr) (m : USize) (Q : USize × Array I → Prop) :
+theorem zip5_post (out : Addr) (m : USize) (Q : USize × Array I → Prop) :
     ((Concretization.ofStateRepr (fun s : State => slice out m.toNat s.heap)).comp
-        (purify (Array I))).γQ
+        (purify (Array I))).post
       (fun av cv s' => av = (cv, slice out m.toNat s'.heap)) Q
     = fun cv s' => Q (cv, slice out m.toNat s'.heap) := by
   funext cv s'
-  simp only [Concretization.γQ, Concretization.comp, Function.comp, Concretization.ofStateRepr_γP, purify,
+  simp only [Concretization.post, Concretization.comp, Function.comp, Concretization.ofStateRepr_pred, purify,
     iSup_apply, meet_apply, iSup_prop_eq_exists, meet_prop_eq_and]
   apply propext
   constructor
@@ -673,18 +673,18 @@ theorem corres_zip5 (a b out : Addr) (la lb : USize) (a_arr b_arr : Array I)
       (fun av cv s' => av = (cv, slice out (min la lb).toNat s'.heap))
       (zipL5 a_arr b_arr (min la lb)) zipL1 := by
   intro Q E
-  have hRHS : (Concretization.ofStateRepr (fun s : State => slice out (min la lb).toNat s.heap)).γQ
-        (αVeq id) ((purify (Array I)).γQ purifyαV Q)
+  have hRHS : (Concretization.ofStateRepr (fun s : State => slice out (min la lb).toNat s.heap)).post
+        (coupleEq id) ((purify (Array I)).post purifyCouple Q)
       = fun cv s' => Q (cv, slice out (min la lb).toNat s'.heap) := by
-    simp only [purify_γQ, Concretization.γQ_αVeq, Concretization.ofStateRepr_γP, id_eq]
-  rw [zip5_γQ out (min la lb) Q]
+    simp only [purify_post, Concretization.post_coupleEq, Concretization.ofStateRepr_pred, id_eq]
+  rw [zip5_post out (min la lb) Q]
   have hb' := corres_purifyL4 a_arr b_arr (min la lb) Q E
   have hc' := corres_zip a b out la lb a_arr b_arr ha hb hd
-    ((purify (Array I)).γQ purifyαV Q) ((purify (Array I)).γE E)
+    ((purify (Array I)).post purifyCouple Q) ((purify (Array I)).ePred E)
   rw [hRHS] at hc'
   refine PartialOrder.rel_trans (le_meet _ _ _ (meet_le_left _ _)
     (PartialOrder.rel_trans (meet_le_right _ _)
-      ((Concretization.ofStateRepr (fun s : State => slice out (min la lb).toNat s.heap)).γP_mono
+      ((Concretization.ofStateRepr (fun s : State => slice out (min la lb).toNat s.heap)).pred_mono
         (PartialOrder.rel_trans (le_meet _ _ _ (le_top _) PartialOrder.rel_refl) hb')))) hc'
 
 /-- `zip_with_add` is symmetric in its inputs: the pointwise sum does not depend on argument order. A
@@ -716,10 +716,10 @@ theorem zipL1_spec (a b out : Addr) (la lb : USize) (a_arr b_arr : Array I)
   obtain ⟨hentry, hsa, hsb, hav⟩ := hs
   have key := corres_zip5 a b out la lb (slice a (min la lb).toNat s.heap)
     (slice b (min la lb).toNat s.heap) (by simp) (by simp) hd φ ⊥ s
-  rw [zip5_γQ out (min la lb) φ] at key
+  rw [zip5_post out (min la lb) φ] at key
   refine key ?_
   simp only [meet_apply, meet_prop_eq_and, Concretization.comp, Function.comp,
-    Concretization.ofStateRepr_γP, purify]
+    Concretization.ofStateRepr_pred, purify]
   refine ⟨⟨hentry, trivial, trivial, hav⟩, ?_⟩
   show φ (min la lb, Array.zipWith (· + ·) (slice a (min la lb).toNat s.heap)
     (slice b (min la lb).toNat s.heap))

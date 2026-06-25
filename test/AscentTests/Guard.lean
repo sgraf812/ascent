@@ -16,19 +16,19 @@ open Std.Internal.Do Lean.Order Ascent
 depends on the first operation's *result*. The continuation guards on no-overflow, so the
 correspondence holds for every intermediate value. -/
 example (a b c : UInt64) (h1 : a.toNat + b.toNat < 2 ^ 64) :
-    Corres (Concretization.id Prop EPost.Nil) ⊤ (αVeq wordαV)
-      (do let r ← pure (wordαV a + wordαV b)
-          UB.guardRet (r * wordαV c < 2 ^ 64) (r * wordαV c) : UB Int)
+    Corres (Concretization.id Prop EPost.Nil) ⊤ (coupleEq wordVal)
+      (do let r ← pure (wordVal a + wordVal b)
+          UB.guardRet (r * wordVal c < 2 ^ 64) (r * wordVal c) : UB Int)
       (do let r ← pure (a + b); pure (r * c) : Id UInt64) := by
-  refine corres_bind_top wordαV wordαV ?_ (fun cv => ?_)
+  refine corres_bind_top wordVal wordVal ?_ (fun cv => ?_)
   · apply corres_pure ⊤
-    show wordαV (a + b) = wordαV a + wordαV b
-    simp only [wordαV, UInt64.toNat_add, Nat.mod_eq_of_lt h1]
+    show wordVal (a + b) = wordVal a + wordVal b
+    simp only [wordVal, UInt64.toNat_add, Nat.mod_eq_of_lt h1]
     omega
   · apply corres_guardRet ⊤
     intro hovf
-    show wordαV (cv * c) = wordαV cv * wordαV c
+    show wordVal (cv * c) = wordVal cv * wordVal c
     have hlt : cv.toNat * c.toNat < 2 ^ 64 := by
-      simp only [wordαV] at hovf; omega
-    simp only [wordαV, UInt64.toNat_mul, Nat.mod_eq_of_lt hlt]
+      simp only [wordVal] at hovf; omega
+    simp only [wordVal, UInt64.toNat_mul, Nat.mod_eq_of_lt hlt]
     rfl
