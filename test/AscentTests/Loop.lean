@@ -15,7 +15,13 @@ instance {α} : PartialOrder (UB α) := inferInstanceAs (PartialOrder (Option α
 instance {α} : CCPO (UB α) := inferInstanceAs (CCPO (Option α))
 instance : MonoBind UB := inferInstanceAs (MonoBind Option)
 
-/-- `while cond do body`, in `StateT σ UB`. -/
-def whileLoop {σ : Type} (cond : σ → Bool) (body : StateT σ UB Unit) : StateT σ UB Unit :=
-  fun s => if cond s then body s >>= fun p => whileLoop cond body p.2 else pure ((), s)
+/-- The loop's least fixpoint. `partial_fixpoint` builds it over the *unfolded* state-passing type
+`σ → UB (Unit × σ)` (that carries the `CCPO`), so this constant's type is not syntactically `StateT`. -/
+def loopFix {σ : Type} (cond : σ → Bool) (body : StateT σ UB Unit) : StateT σ UB Unit :=
+  fun s => if cond s then body s >>= fun p => loopFix cond body p.2 else pure ((), s)
 partial_fixpoint
+
+/-- `while cond do body`, in `StateT σ UB`. A wrapper whose declared type is `StateT`, so the `WP`
+instance fires when taking the loop's `wp` (the bare `loopFix` has the unfolded type). -/
+def whileLoop {σ : Type} (cond : σ → Bool) (body : StateT σ UB Unit) : StateT σ UB Unit :=
+  loopFix cond body

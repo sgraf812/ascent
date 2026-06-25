@@ -55,8 +55,13 @@ theorem wp_swapA (p q : Nat) (Q : PUnit → Heap → Prop) (E : EPost.Nil) :
 
 /-- The read-both/write-both swap abstracts to the atomic spec under non-aliasing. -/
 example (p q : Nat) :
-    Corres (idRefinement (Heap → Prop) EPost.Nil) (id : PUnit → PUnit) (swapA p q) (swapC p q) := by
+    Corres (idRefinement (Heap → Prop) EPost.Nil) ⊤ (αVeq (id : PUnit → PUnit))
+      (swapA p q) (swapC p q) := by
   intro Q E
+  have hQ : (idRefinement (Heap → Prop) EPost.Nil).γQ (αVeq (id : PUnit → PUnit)) Q = Q := by
+    funext cv; simp only [Refinement.γQ_αVeq, idRefinement, id_eq]
+  rw [hQ]
+  refine PartialOrder.rel_trans (meet_le_right _ _) ?_
   show wp (swapA p q) Q E ⊑ wp (swapC p q) Q E
   rw [wp_swapA, wp_swapC]
   intro h

@@ -54,44 +54,81 @@ theorem wp_bind_le {α β} (x : UB α) (f : α → UB β) (post : β → Prop) (
     wp (x >>= f) post epost ⊑ wp x (fun a => wp (f a) post epost) epost := by
   cases x <;> exact PartialOrder.rel_refl
 
+/-- `UB`'s `wp` interprets `bind` exactly. -/
+theorem wp_bind_eq {α β} (x : UB α) (f : α → UB β) (post : β → Prop) (epost : EPost.Nil) :
+    wp (x >>= f) post epost = wp x (fun a => wp (f a) post epost) epost := by
+  cases x <;> rfl
+
+/-- `UB`'s `wp` conjoins postconditions (the monad is deterministic). -/
+theorem wp_and {α} (x : UB α) (P R : α → Prop) (epost : EPost.Nil)
+    (hP : wp x P epost) (hR : wp x R epost) : wp x (fun a => P a ∧ R a) epost := by
+  cases x with
+  | none => exact hP
+  | some a => exact ⟨hP, hR⟩
+
+/-- `UB`'s `wp` is conjunctive (the lattice form of `wp_and`). -/
+theorem wp_meet {α} (x : UB α) (A B : α → Prop) (E : EPost.Nil) :
+    wp x A E ⊓ wp x B E ⊑ wp x (fun v => A v ⊓ B v) E := by
+  cases x with
+  | none => exact meet_le_left _ _
+  | some a => exact PartialOrder.rel_refl
+
 end UB
 
-/-- The structural laws for an abstraction into `UB` (`UB`'s `wp` is a monad morphism). -/
-instance : LawfulRefinement (idRefinement Prop EPost.Nil) Id UB :=
-  .ofWPMorphism UB.wp_pure_le UB.wp_bind_le
+/-- `⊤` is the identity of `⊓` (the `⊤` precondition adds nothing). -/
+@[simp] theorem top_meet {α} [Assertion α] (x : α) : (⊤ : α) ⊓ x = x :=
+  PartialOrder.rel_antisymm (meet_le_right _ _) (le_meet _ _ _ (le_top _) PartialOrder.rel_refl)
+
+/-- `wp` distributes over `if`. Stated generally; `simp` cannot derive this from `apply_ite`
+because the `ite` is a nested argument of `wp` rather than its sole argument. -/
+@[simp] theorem wp_ite {Prog Value Pred EPred} [Assertion Pred] [Assertion EPred]
+    [WP Prog Value Pred EPred] (c : Prop) [Decidable c]
+    (a b : Prog) (post : Value → Pred) (epost : EPred) :
+    wp (if c then a else b) post epost = if c then wp a post epost else wp b post epost := by
+  split <;> rfl
+
+/-- The structural laws for an abstraction into `UB` (`UB`'s `wp` is a monad morphism; the concrete
+`Id` is conjunctive). -/
+instance : LawfulRefinement (idRefinement Prop EPost.Nil) Id UB where
+  wp_pure_le := UB.wp_pure_le
+  wp_bind_le := UB.wp_bind_le
 
 /-- A guarded pure value abstracts a pure value, when the guard implies the value relation. The
 no-overflow obligation lives in the guard `g`, threaded by `wp`, not in a precondition. -/
-theorem corres_guardRet {CVal AVal} {g : Prop} [Decidable g] (γV : CVal → AVal)
-    {a : AVal} {c : CVal} (h : g → γV c = a) :
-    Corres (idRefinement Prop EPost.Nil) γV (UB.guardRet g a) (pure c : Id CVal) := by
+theorem corres_guardRet {CVal AVal} {g : Prop} [Decidable g] (P : Prop) (αV : CVal → AVal)
+    {a : AVal} {c : CVal} (h : g → αV c = a) :
+    Corres (idRefinement Prop EPost.Nil) P (αVeq αV) (UB.guardRet g a) (pure c : Id CVal) := by
   intro Q E
+  have hQ : (idRefinement Prop EPost.Nil).γQ (αVeq αV) Q = fun cv => Q (αV cv) := by
+    funext cv; simp only [Refinement.γQ_αVeq, idRefinement, id_eq]
+  rw [hQ]
+  refine PartialOrder.rel_trans (meet_le_right _ _) ?_
   by_cases hg : g
-  · have hh : γV c = a := h hg
+  · have hh : αV c = a := h hg
     subst hh
-    rw [show UB.guardRet g (γV c) = pure (γV c) from by simp [UB.guardRet, hg]]
+    rw [show UB.guardRet g (αV c) = pure (αV c) from by simp [UB.guardRet, hg]]
     exact PartialOrder.rel_refl
   · rw [show UB.guardRet g a = UB.fail from by simp [UB.guardRet, hg]]
-    show (⊥ : Prop) ⊑ Q (γV c)
+    show (⊥ : Prop) ⊑ Q (αV c)
     exact bot_le _
 
 /-- The word-overflow `bind` that was impossible without guards: a second operation whose
 overflow depends on the first operation's *result*. The continuation guards on no-overflow, so the
 correspondence holds for every intermediate value. -/
 example (a b c : UInt64) (h1 : a.toNat + b.toNat < 2 ^ 64) :
-    Corres (idRefinement Prop EPost.Nil) wordγV
-      (do let r ← pure (wordγV a + wordγV b)
-          UB.guardRet (r * wordγV c < 2 ^ 64) (r * wordγV c) : UB Int)
+    Corres (idRefinement Prop EPost.Nil) ⊤ (αVeq wordαV)
+      (do let r ← pure (wordαV a + wordαV b)
+          UB.guardRet (r * wordαV c < 2 ^ 64) (r * wordαV c) : UB Int)
       (do let r ← pure (a + b); pure (r * c) : Id UInt64) := by
-  refine corres_bind wordγV wordγV ?_ (fun cv => ?_)
-  · apply corres_pure
-    show wordγV (a + b) = wordγV a + wordγV b
-    simp only [wordγV, UInt64.toNat_add, Nat.mod_eq_of_lt h1]
+  refine corres_bind_top wordαV wordαV ?_ (fun cv => ?_)
+  · apply corres_pure ⊤
+    show wordαV (a + b) = wordαV a + wordαV b
+    simp only [wordαV, UInt64.toNat_add, Nat.mod_eq_of_lt h1]
     omega
-  · apply corres_guardRet
+  · apply corres_guardRet ⊤
     intro hovf
-    show wordγV (cv * c) = wordγV cv * wordγV c
+    show wordαV (cv * c) = wordαV cv * wordαV c
     have hlt : cv.toNat * c.toNat < 2 ^ 64 := by
-      simp only [wordγV] at hovf; omega
-    simp only [wordγV, UInt64.toNat_mul, Nat.mod_eq_of_lt hlt]
+      simp only [wordαV] at hovf; omega
+    simp only [wordαV, UInt64.toNat_mul, Nat.mod_eq_of_lt hlt]
     rfl

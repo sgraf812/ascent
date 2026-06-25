@@ -33,14 +33,19 @@ theorem stBindLe {α β} (x : StateT Nat Id α) (f : α → StateT Nat Id β)
     wp (x >>= f) post epost ⊑ wp x (fun a => wp (f a) post epost) epost := by
   intro s; exact PartialOrder.rel_refl
 
-instance : LawfulRefinement (typeStrengthen Nat) (TS Nat) (StateT Nat Id) :=
-  .ofWPMorphism stPureLe stBindLe
+instance : LawfulRefinement (typeStrengthen Nat) (TS Nat) (StateT Nat Id) where
+  wp_pure_le := stPureLe
+  wp_bind_le := stBindLe
 
 /-- A total state computation abstracts its lift into the failure monad: the never-fails
 obligation is discharged by the `⊥` failure barrel in `typeStrengthen`. -/
 theorem corres_lift {σ α : Type} (x : StateT σ Id α) :
-    Corres (typeStrengthen σ) (id : α → α) x (MonadLift.monadLift x : TS σ α) := by
+    Corres (typeStrengthen σ) ⊤ (αVeq (id : α → α)) x (MonadLift.monadLift x : TS σ α) := by
   intro Q E
+  have hQ : (typeStrengthen σ).γQ (αVeq id) Q = Q := by
+    funext cv; simp only [Refinement.γQ_αVeq, typeStrengthen, id_eq]
+  rw [hQ]
+  refine PartialOrder.rel_trans (meet_le_right _ _) ?_
   exact WPMonad.le_wp_monadLift_ExceptT_apply x Q (epost⟨fun _ => (⊥ : σ → Prop)⟩)
 
 /-- Abstract (total) increment in the state monad. -/
@@ -56,26 +61,26 @@ def concInc : TS Nat Nat := do
   pure x
 
 /-- The total failure-monad program abstracts to the pure state program. -/
-example : Corres (typeStrengthen Nat) (id : Nat → Nat) absInc concInc := by
+example : Corres (typeStrengthen Nat) ⊤ (αVeq (id : Nat → Nat)) absInc concInc := by
   unfold absInc concInc
-  refine corres_bind id id (corres_lift _) (fun x => ?_)
-  refine corres_bind id id (corres_lift _) (fun _ => ?_)
-  exact corres_pure id rfl
+  refine corres_bind_top id id (corres_lift _) (fun x => ?_)
+  refine corres_bind_top id id (corres_lift _) (fun _ => ?_)
+  exact corres_pure ⊤ id rfl
 
 /-- A program that can fail has no type strengthening: `throw` forces the forbidden failure
 barrel, so no total abstraction corresponds to it. -/
-example : ¬ Corres (typeStrengthen Nat) (id : Nat → Nat)
+example : ¬ Corres (typeStrengthen Nat) ⊤ (αVeq (id : Nat → Nat))
     (pure 0 : StateT Nat Id Nat) (throw () : TS Nat Nat) := by
   intro hcorres
   have H := hcorres (fun _ _ => True) EPost.Nil.mk
-  have hthrow : wp (throw () : TS Nat Nat) ((typeStrengthen Nat).γQ id (fun _ _ => True))
+  have hthrow : wp (throw () : TS Nat Nat) ((typeStrengthen Nat).γQ (αVeq id) (fun _ _ => True))
       ((typeStrengthen Nat).γE EPost.Nil.mk) = (⊥ : Nat → Prop) := by
     simp [typeStrengthen, ExceptT.wp_apply_eq, wp_pure_eq stPureLe]
   have hpure : (typeStrengthen Nat).γP
       (wp (pure 0 : StateT Nat Id Nat) (fun _ _ => True) EPost.Nil.mk) = (fun _ => True) := by
     simp [typeStrengthen, wp_pure_eq stPureLe]
   rw [hthrow, hpure] at H
-  have hfalse := H 0 trivial
+  have hfalse := H 0
   simp at hfalse
 
 /-! ## Option-monad strengthening: `OptionT (StateT σ Id) ↝ StateT σ Id`
@@ -94,13 +99,18 @@ def optionStrengthen (σ : Type) :
   γP_mono h := h
   γE_mono _ := PartialOrder.rel_refl
 
-instance : LawfulRefinement (optionStrengthen Nat) (OptS Nat) (StateT Nat Id) :=
-  .ofWPMorphism stPureLe stBindLe
+instance : LawfulRefinement (optionStrengthen Nat) (OptS Nat) (StateT Nat Id) where
+  wp_pure_le := stPureLe
+  wp_bind_le := stBindLe
 
 /-- A total state computation abstracts its lift into the option monad. -/
 theorem corres_liftOption {σ α : Type} (x : StateT σ Id α) :
-    Corres (optionStrengthen σ) (id : α → α) x (MonadLift.monadLift x : OptS σ α) := by
+    Corres (optionStrengthen σ) ⊤ (αVeq (id : α → α)) x (MonadLift.monadLift x : OptS σ α) := by
   intro Q E
+  have hQ : (optionStrengthen σ).γQ (αVeq id) Q = Q := by
+    funext cv; simp only [Refinement.γQ_αVeq, optionStrengthen, id_eq]
+  rw [hQ]
+  refine PartialOrder.rel_trans (meet_le_right _ _) ?_
   exact WPMonad.le_wp_monadLift_OptionT_apply x
 
 /-- The same total increment, now strengthened out of the option monad. -/
@@ -109,8 +119,8 @@ def concIncOpt : OptS Nat Nat := do
   MonadLift.monadLift (set (x + 1) : StateT Nat Id PUnit)
   pure x
 
-example : Corres (optionStrengthen Nat) (id : Nat → Nat) absInc concIncOpt := by
+example : Corres (optionStrengthen Nat) ⊤ (αVeq (id : Nat → Nat)) absInc concIncOpt := by
   unfold absInc concIncOpt
-  refine corres_bind id id (corres_liftOption _) (fun x => ?_)
-  refine corres_bind id id (corres_liftOption _) (fun _ => ?_)
-  exact corres_pure id rfl
+  refine corres_bind_top id id (corres_liftOption _) (fun x => ?_)
+  refine corres_bind_top id id (corres_liftOption _) (fun _ => ?_)
+  exact corres_pure ⊤ id rfl

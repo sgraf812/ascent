@@ -3,7 +3,7 @@ import AscentTests.TypeStrengthen
 import AscentTests.Pipeline
 import AscentTests.Guard
 import AscentTests.Loop
-import AscentTests.Zip
-import AscentTests.ZipL2
+import AscentTests.LoopCorres
+import AscentTests.ZipWithAdd
 import AscentTests.Heap
 import AscentTests.HeapValid
