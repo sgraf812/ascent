@@ -4,16 +4,17 @@ import Ascent.WPMonadExact
 /-!
 # `Corres`: soundness of monadic abstraction
 
-`Corres r pre couple a c` states that, under the concrete-state precondition `pre`, the abstract program
-`a` soundly abstracts the concrete program `c`: any property proved of `a` transports to `c` where
-`pre` holds. It is read as abstract interpretation,
-`(pre ⊓ r.pred (wp a Q E)) ⊑ wp c (r.post couple Q) (r.ePred E)`.
+`Corres r b a c` states that, under the boundary `b`, the abstract program `a` soundly abstracts the
+concrete program `c`: any property proved of `a` transports to `c` where `b.pre` holds. It is read as
+abstract interpretation,
+`(b.pre ⊓ r.pred (wp a Q E)) ⊑ wp c (r.post b.couple Q) (r.ePred E)`.
 
 `Concretization` carries the monad-level concretizations `pred`/`ePred` (the AutoCorres state/exception
-abstraction; `Concretization.ofStateRepr` builds the common functional case as a pullback). The value
-abstraction `couple` is per-`Corres` (`bind` relates programs at different value types). The precondition
-`pre` is threaded by `corres_bind` (the AutoCorres `corresXF_split`), so a coupling that is *established*
-mid-program (e.g. a loop counter) need not hold from the start.
+abstraction; `Concretization.ofStateRepr` builds the common functional case as a pullback). `Boundary`
+carries the entry precondition `pre` and the exit value coupling `couple`; the coupling is per-`Corres`
+(`bind` relates programs at different value types). The precondition is threaded by `corres_bind` (the
+AutoCorres `corresXF_split`), so a coupling that is *established* mid-program (e.g. a loop counter) need
+not hold from the start.
 -/
 
 open Std.Internal.Do Lean.Order
@@ -92,15 +93,27 @@ def ofStateRepr {Cσ Aσ : Type w} (st : Cσ → Aσ) :
 
 end Concretization
 
-/-- The abstract program `a` soundly abstracts the concrete program `c` under concretization `r`,
-value coupling `couple`, and concrete-state precondition `pre`. -/
+/-- The boundary of a `Corres` statement: the concrete-state precondition assumed on entry, and the
+value coupling relating the abstract and concrete return values on exit. -/
+structure Boundary (CPred : Type w) (AVal CVal : Type _) where
+  /-- Concrete-state precondition assumed on entry. -/
+  pre : CPred
+  /-- Value coupling relating an abstract and concrete return value on exit. -/
+  couple : AVal → CVal → CPred
+
+/-- The boundary whose coupling is the functional one (`couple = coupleEq f`). -/
+@[reducible] noncomputable def Boundary.eq {CPred : Type w} {AVal CVal : Type _} [Assertion CPred]
+    (pre : CPred) (f : CVal → AVal) : Boundary CPred AVal CVal := ⟨pre, coupleEq f⟩
+
+/-- The abstract program `a` soundly abstracts the concrete program `c` under concretization `r`
+across the boundary `b` (entry precondition and exit value coupling). -/
 def Corres {CProg AProg : Type _} {CVal AVal : Type _}
     {CPred APred : Type w} {CEPred AEPred : Type w'}
     [Assertion CPred] [Assertion APred] [Assertion CEPred] [Assertion AEPred]
     [WP CProg CVal CPred CEPred] [WP AProg AVal APred AEPred]
-    (r : Concretization CPred APred CEPred AEPred) (pre : CPred) (couple : AVal → CVal → CPred)
+    (r : Concretization CPred APred CEPred AEPred) (b : Boundary CPred AVal CVal)
     (a : AProg) (c : CProg) : Prop :=
-  ∀ Q E, (pre ⊓ r.pred (wp a Q E)) ⊑ wp c (r.post couple Q) (r.ePred E)
+  ∀ Q E, (b.pre ⊓ r.pred (wp a Q E)) ⊑ wp c (r.post b.couple Q) (r.ePred E)
 
 /-! ## Structural laws -/
 
@@ -123,7 +136,7 @@ variable {r : Concretization CPred APred CEPred AEPred}
 
 /-- `pure` abstracts `pure` when the returned values correspond (precondition-agnostic). -/
 theorem corres_pure {CVal AVal : Type w} (pre : CPred) (couple : CVal → AVal) {a : AVal} {c : CVal}
-    (h : couple c = a) : Corres r pre (coupleEq couple) (pure a : AM AVal) (pure c : CM CVal) := by
+    (h : couple c = a) : Corres r (.eq pre couple) (pure a : AM AVal) (pure c : CM CVal) := by
   intro Q E
   refine PartialOrder.rel_trans (meet_le_right _ _) ?_
   refine PartialOrder.rel_trans (r.pred_mono ((‹WPMonadExact AM APred AEPred›).wp_pure_le a Q E)) ?_
@@ -137,10 +150,10 @@ under `R`. -/
 theorem corres_bind [ConjWP CM CPred CEPred] {CV AV CV₂ AV₂ : Type w} (pre : CPred) (R : CV → CPred)
     (couple : CV → AV) (couple₂ : CV₂ → AV₂)
     {a₁ : AM AV} {c₁ : CM CV} {a₂ : AV → AM AV₂} {c₂ : CV → CM CV₂}
-    (hc : Corres r pre (coupleEq couple) a₁ c₁)
+    (hc : Corres r (.eq pre couple) a₁ c₁)
     (hmid : ∀ E, pre ⊑ wp c₁ (fun cv => R cv) E)
-    (hf : ∀ cv, Corres r (R cv) (coupleEq couple₂) (a₂ (couple cv)) (c₂ cv)) :
-    Corres r pre (coupleEq couple₂) (a₁ >>= a₂) (c₁ >>= c₂) := by
+    (hf : ∀ cv, Corres r (.eq (R cv) couple₂) (a₂ (couple cv)) (c₂ cv)) :
+    Corres r (.eq pre couple₂) (a₁ >>= a₂) (c₁ >>= c₂) := by
   intro Q E
   have step1 : (pre ⊓ r.pred (wp (a₁ >>= a₂) Q E)) ⊑ (pre ⊓ r.pred (wp a₁ (fun av => wp (a₂ av) Q E) E)) :=
     le_meet _ _ _ (meet_le_left _ _)
@@ -166,8 +179,8 @@ theorem corres_bind [ConjWP CM CPred CEPred] {CV AV CV₂ AV₂ : Type w} (pre :
 nor conjunctivity is used. -/
 theorem corres_bind_top {CV AV CV₂ AV₂ : Type w} (couple : CV → AV) (couple₂ : CV₂ → AV₂)
     {a₁ : AM AV} {c₁ : CM CV} {a₂ : AV → AM AV₂} {c₂ : CV → CM CV₂}
-    (hc : Corres r ⊤ (coupleEq couple) a₁ c₁) (hf : ∀ cv, Corres r ⊤ (coupleEq couple₂) (a₂ (couple cv)) (c₂ cv)) :
-    Corres r ⊤ (coupleEq couple₂) (a₁ >>= a₂) (c₁ >>= c₂) := by
+    (hc : Corres r (.eq ⊤ couple) a₁ c₁) (hf : ∀ cv, Corres r (.eq ⊤ couple₂) (a₂ (couple cv)) (c₂ cv)) :
+    Corres r (.eq ⊤ couple₂) (a₁ >>= a₂) (c₁ >>= c₂) := by
   intro Q E
   refine PartialOrder.rel_trans (meet_le_right _ _) ?_
   refine PartialOrder.rel_trans (r.pred_mono ((‹WPMonadExact AM APred AEPred›).wp_bind_le a₁ a₂ Q E)) ?_
@@ -188,10 +201,10 @@ theorem corres_bind_top {CV AV CV₂ AV₂ : Type w} (couple : CV → AV) (coupl
 omit [WPMonadExact AM APred AEPred] in
 /-- Branch congruence on a shared condition. -/
 theorem corres_ite (r : Concretization CPred APred CEPred AEPred) {CVal AVal : Type w}
-    (pre : CPred) (couple : AVal → CVal → CPred) {cond : Prop} [Decidable cond]
+    (b : Boundary CPred AVal CVal) {cond : Prop} [Decidable cond]
     {a₁ a₂ : AM AVal} {c₁ c₂ : CM CVal}
-    (h₁ : Corres r pre couple a₁ c₁) (h₂ : Corres r pre couple a₂ c₂) :
-    Corres r pre couple (if cond then a₁ else a₂) (if cond then c₁ else c₂) := by
+    (h₁ : Corres r b a₁ c₁) (h₂ : Corres r b a₂ c₂) :
+    Corres r b (if cond then a₁ else a₂) (if cond then c₁ else c₂) := by
   by_cases hc : cond <;> simp only [hc, if_true, if_false] <;> assumption
 
 end Structural
@@ -217,8 +230,8 @@ theorem corres_comp {CProg BProg AProg : Type _} {CVal BVal AVal : Type _}
     [WP CProg CVal CPred CEPred] [WP BProg BVal BPred BEPred] [WP AProg AVal APred AEPred]
     {r₁ : Concretization CPred BPred CEPred BEPred} {r₂ : Concretization BPred APred BEPred AEPred}
     {couple₁ : CVal → BVal} {couple₂ : BVal → AVal} {a : AProg} {b : BProg} {c : CProg}
-    (hc : Corres r₁ ⊤ (coupleEq couple₁) b c) (hb : Corres r₂ ⊤ (coupleEq couple₂) a b) :
-    Corres (r₁.comp r₂) ⊤ (coupleEq (couple₂ ∘ couple₁)) a c := by
+    (hc : Corres r₁ (.eq ⊤ couple₁) b c) (hb : Corres r₂ (.eq ⊤ couple₂) a b) :
+    Corres (r₁.comp r₂) (.eq ⊤ (couple₂ ∘ couple₁)) a c := by
   intro Q E
   have hpost : (r₁.comp r₂).post (coupleEq (couple₂ ∘ couple₁)) Q = r₁.post (coupleEq couple₁) (r₂.post (coupleEq couple₂) Q) := by
     simp only [Concretization.post_coupleEq, Concretization.comp, Function.comp]
@@ -235,9 +248,9 @@ instance {CProg BProg AProg : Type _} {CVal BVal AVal : Type _}
     [WP CProg CVal CPred CEPred] [WP BProg BVal BPred BEPred] [WP AProg AVal APred AEPred]
     {r₁ : Concretization CPred BPred CEPred BEPred} {r₂ : Concretization BPred APred BEPred AEPred}
     {couple₁ : CVal → BVal} {couple₂ : BVal → AVal} :
-    Trans (Corres r₂ ⊤ (coupleEq couple₂) : AProg → BProg → Prop)
-      (Corres r₁ ⊤ (coupleEq couple₁) : BProg → CProg → Prop)
-      (Corres (r₁.comp r₂) ⊤ (coupleEq (couple₂ ∘ couple₁)) : AProg → CProg → Prop) where
+    Trans (Corres r₂ (.eq ⊤ couple₂) : AProg → BProg → Prop)
+      (Corres r₁ (.eq ⊤ couple₁) : BProg → CProg → Prop)
+      (Corres (r₁.comp r₂) (.eq ⊤ (couple₂ ∘ couple₁)) : AProg → CProg → Prop) where
   trans hab hbc := corres_comp hbc hab
 
 end Comp
@@ -258,7 +271,7 @@ def Concretization.id (Pred : Type w) (EPred : Type w') [Assertion Pred] [Assert
 
 /-- Every program abstracts itself under the identity concretization, for any precondition. -/
 theorem corres_id {Prog Val : Type _} [WP Prog Val Pred EPred] (pre : Pred) (x : Prog) :
-    Corres (Concretization.id Pred EPred) pre (coupleEq (id : Val → Val)) x x := by
+    Corres (Concretization.id Pred EPred) (.eq pre (id : Val → Val)) x x := by
   intro Q E
   have hpost : (Concretization.id Pred EPred).post (coupleEq id) Q = Q := by
     funext cv; simp only [Concretization.post_coupleEq, Concretization.id, id_eq]
@@ -306,7 +319,7 @@ state) is abstracted by the pure return of its result-and-final-state, with no s
 theorem corres_purify {CProg σ α : Type} [WP CProg α (σ → Prop) EPost.Nil]
     (c : CProg) (v : α) (w : σ)
     (hc : ∀ (Q : α → σ → Prop) (E : EPost.Nil), (fun _ => Q v w) ⊑ wp c Q E) :
-    Corres (purify σ) ⊤ purifyCouple (pure (v, w) : Id (α × σ)) c := by
+    Corres (purify σ) ⟨⊤, purifyCouple⟩ (pure (v, w) : Id (α × σ)) c := by
   intro Q E
   rw [purify_post]
   refine PartialOrder.rel_trans (PartialOrder.rel_trans (meet_le_right _ _) ?_)

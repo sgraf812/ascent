@@ -94,7 +94,7 @@ instance : WPMonadExact UB Prop EPost.Nil where
 no-overflow obligation lives in the guard `g`, threaded by `wp`, not in a precondition. -/
 theorem corres_guardRet {CVal AVal} {g : Prop} [Decidable g] (pre : Prop) (couple : CVal → AVal)
     {a : AVal} {c : CVal} (h : g → couple c = a) :
-    Corres (Concretization.id Prop EPost.Nil) pre (coupleEq couple) (UB.guardRet g a) (pure c : Id CVal) := by
+    Corres (Concretization.id Prop EPost.Nil) (.eq pre couple) (UB.guardRet g a) (pure c : Id CVal) := by
   intro Q E
   have hQ : (Concretization.id Prop EPost.Nil).post (coupleEq couple) Q = fun cv => Q (couple cv) := by
     funext cv; simp only [Concretization.post_coupleEq, Concretization.id, id_eq]

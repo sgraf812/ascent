@@ -22,7 +22,7 @@ def wordAbstraction : Concretization Prop Prop EPost.Nil EPost.Nil :=
 
 /-- Addition abstracts to integer addition when it does not overflow. -/
 example (a b : UInt64) (h : a.toNat + b.toNat < 2 ^ 64) :
-    Corres wordAbstraction ⊤ (coupleEq wordVal)
+    Corres wordAbstraction (.eq ⊤ wordVal)
       (pure (wordVal a + wordVal b) : Id Int) (pure (a + b) : Id UInt64) := by
   apply corres_pure ⊤
   show wordVal (a + b) = wordVal a + wordVal b
@@ -31,7 +31,7 @@ example (a b : UInt64) (h : a.toNat + b.toNat < 2 ^ 64) :
 
 /-- Multiplication abstracts to integer multiplication when it does not overflow. -/
 example (a b : UInt64) (h : a.toNat * b.toNat < 2 ^ 64) :
-    Corres wordAbstraction ⊤ (coupleEq wordVal)
+    Corres wordAbstraction (.eq ⊤ wordVal)
       (pure (wordVal a * wordVal b) : Id Int) (pure (a * b) : Id UInt64) := by
   apply corres_pure ⊤
   show wordVal (a * b) = wordVal a * wordVal b
@@ -40,7 +40,7 @@ example (a b : UInt64) (h : a.toNat * b.toNat < 2 ^ 64) :
 
 /-- Subtraction abstracts to integer subtraction when it does not underflow (`b ≤ a`). -/
 example (a b : UInt64) (h : b ≤ a) :
-    Corres wordAbstraction ⊤ (coupleEq wordVal)
+    Corres wordAbstraction (.eq ⊤ wordVal)
       (pure (wordVal a - wordVal b) : Id Int) (pure (a - b) : Id UInt64) := by
   apply corres_pure ⊤
   show wordVal (a - b) = wordVal a - wordVal b
@@ -57,5 +57,5 @@ example : wordVal (2 ^ 63) + wordVal (2 ^ 63) ≠ wordVal ((2 ^ 63) + (2 ^ 63) :
 composition is transitivity. -/
 example {Prog Val : Type} [WP Prog Val Prop EPost.Nil] (x : Prog) :
     Corres ((Concretization.id Prop EPost.Nil).comp (Concretization.id Prop EPost.Nil))
-      ⊤ (coupleEq (id ∘ id : Val → Val)) x x :=
+      (.eq ⊤ (id ∘ id : Val → Val)) x x :=
   Trans.trans (corres_id ⊤ x) (corres_id ⊤ x)
