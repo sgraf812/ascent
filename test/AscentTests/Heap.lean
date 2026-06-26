@@ -55,7 +55,7 @@ theorem wp_swapA (p q : Nat) (Q : PUnit → Heap → Prop) (E : EPost.Nil) :
 
 /-- The read-both/write-both swap abstracts to the atomic spec under non-aliasing. -/
 example (p q : Nat) :
-    Corres (Concretization.id (Heap → Prop) EPost.Nil) (.eq ⊤ (id : PUnit → PUnit))
+    Corres (Concretization.id (Heap → Prop) EPost.Nil) .trivial
       (swapA p q) (swapC p q) := by
   intro Q E
   have hQ : (Concretization.id (Heap → Prop) EPost.Nil).post (coupleEq (id : PUnit → PUnit)) Q = Q := by

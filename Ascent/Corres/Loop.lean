@@ -48,10 +48,10 @@ theorem corres_whileLoop {Aσ Cσ : Type} (J : Aσ → Cσ → Prop)
     (ccond : Cσ → Bool) (cbody : StateT Cσ UB Unit)
     (μ : Aσ → Nat)
     (hcond : ∀ as cs, J as cs → acond as = ccond cs)
-    (hbody : Corres (relRef J) (.eq ⊤ (id : Unit → Unit)) abody cbody)
+    (hbody : Corres (relRef J) .trivial abody cbody)
     (hμ : ∀ (E : EPost.Nil) as, acond as = true → wp abody (fun _ _ => True) E as →
         wp abody (fun _ as' => μ as' < μ as) E as) :
-    Corres (relRef J) (.eq ⊤ (id : Unit → Unit)) (whileLoop acond abody) (whileLoop ccond cbody) := by
+    Corres (relRef J) .trivial (whileLoop acond abody) (whileLoop ccond cbody) := by
   intro Q E cs hcs
   simp only [top_meet] at hcs
   obtain ⟨as, hJ, hwp⟩ := hcs
@@ -90,7 +90,7 @@ theorem corres_whileLoop {Aσ Cσ : Type} (J : Aσ → Cσ → Prop)
 /-- Any program corresponds to itself under the identity (`Eq`) relation: `relRef Eq` recovers the
 ordinary `wp`, since `post id Q` is `Q` up to the existential witness. -/
 theorem corres_relEq_self {σ α} (a : StateT σ UB α) :
-    Corres (relRef (Eq : σ → σ → Prop)) (.eq ⊤ (id : α → α)) a a := by
+    Corres (relRef (Eq : σ → σ → Prop)) .trivial a a := by
   intro Q E cs hcs
   simp only [top_meet] at hcs
   obtain ⟨as, hJ, hwp⟩ := hcs

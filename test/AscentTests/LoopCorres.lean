@@ -11,7 +11,7 @@ open Std.Internal.Do Lean.Order Ascent
 
 /-- A terminating countdown loop corresponds to itself: the guards agree, the body corresponds to
 itself, and the body strictly decreases the counter (used as the variant). -/
-example : Corres (relRef (Eq : Nat → Nat → Prop)) (.eq ⊤ (id : Unit → Unit))
+example : Corres (relRef (Eq : Nat → Nat → Prop)) .trivial
     (whileLoop (fun n => decide (0 < n)) (fun n => pure ((), n - 1)))
     (whileLoop (fun n => decide (0 < n)) (fun n => pure ((), n - 1))) := by
   apply corres_whileLoop (μ := id)

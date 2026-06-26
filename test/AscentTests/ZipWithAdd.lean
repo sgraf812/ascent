@@ -232,7 +232,7 @@ theorem wp_stepL2 (a b out : Addr) (Q : Unit → USize × Heap → Prop) (E : EP
 /-- The loop body corresponds: each concrete local read extracts the coupled value, the heap
 operations act on the coupled heap, and the counter update evolves the coupling. -/
 theorem corres_stepL2 (a b out : Addr) (n : USize) :
-    Corres (relRef (invL2 a b out n)) (.eq ⊤ (id : Unit → Unit)) (stepL2 a b out) stepL1 := by
+    Corres (relRef (invL2 a b out n)) .trivial (stepL2 a b out) stepL1 := by
   intro Q E cs hpre
   simp only [top_meet] at hpre
   obtain ⟨⟨i, h⟩, ⟨hh, hi, hn, ha, hb, hout⟩, habs⟩ := hpre
@@ -250,7 +250,7 @@ theorem corres_stepL2 (a b out : Addr) (n : USize) :
   exact ⟨(i + 1, _), ⟨rfl, by simp, by simpa using hn, by simp, by simp, by simp⟩, habs⟩
 
 theorem corres_L1L2 (a b out : Addr) (n : USize) :
-    Corres (relRef (invL2 a b out n)) (.eq ⊤ (id : Unit → Unit))
+    Corres (relRef (invL2 a b out n)) .trivial
       (whileLoop (guardL2 n) (stepL2 a b out)) (whileLoop guardL1 stepL1) := by
   apply corres_whileLoop (μ := fun p => n.toNat - p.1.toNat)
   · -- guards agree under the coupling
@@ -274,7 +274,7 @@ theorem corres_L1L2 (a b out : Addr) (n : USize) :
 
 /-- `getSize "n"` (the `return n`) reads the coupled bound, abstracting to `pure n`. -/
 theorem corres_getSizeN (a b out : Addr) (n : USize) :
-    Corres (relRef (invL2 a b out n)) (.eq ⊤ (id : USize → USize))
+    Corres (relRef (invL2 a b out n)) .trivial
       (pure n : StateT (USize × Heap) UB USize) (getSize "n") := by
   intro Q E cs hpre
   simp only [top_meet] at hpre
@@ -286,7 +286,7 @@ theorem corres_getSizeN (a b out : Addr) (n : USize) :
 
 /-- The loop together with the trailing `return n`, composed with `corres_bind`. -/
 theorem corres_L1L2_tail (a b out : Addr) (n : USize) :
-    Corres (relRef (invL2 a b out n)) (.eq ⊤ (id : USize → USize))
+    Corres (relRef (invL2 a b out n)) .trivial
       (whileLoop (guardL2 n) (stepL2 a b out) >>= fun _ => pure n)
       (whileLoop guardL1 stepL1 >>= fun _ => getSize "n") :=
   corres_bind_top id id (corres_L1L2 a b out n) (fun _ => corres_getSizeN a b out n)
@@ -426,7 +426,7 @@ theorem slice_upd_eq (out : Addr) (n : Nat) (h : Heap) (i : Nat) (v : I) :
 slices fixed under the output write. -/
 theorem corres_stepL3 (a b out : Addr) (n : USize) (a_arr b_arr : Array I)
     (hd : NoAlias a b out n.toNat) :
-    Corres (relRef (invL3 a b out n a_arr b_arr)) (.eq ⊤ (id : Unit → Unit))
+    Corres (relRef (invL3 a b out n a_arr b_arr)) .trivial
       (stepL3 a_arr b_arr) (stepL2 a b out) := by
   intro Q E ch hpre
   simp only [top_meet] at hpre
@@ -460,7 +460,7 @@ theorem corres_stepL3 (a b out : Addr) (n : USize) (a_arr b_arr : Array I)
 
 theorem corres_L2L3 (a b out : Addr) (n : USize) (a_arr b_arr : Array I)
     (hd : NoAlias a b out n.toNat) :
-    Corres (relRef (invL3 a b out n a_arr b_arr)) (.eq ⊤ (id : Unit → Unit))
+    Corres (relRef (invL3 a b out n a_arr b_arr)) .trivial
       (whileLoop (guardL3 n) (stepL3 a_arr b_arr)) (whileLoop (guardL2 n) (stepL2 a b out)) := by
   apply corres_whileLoop (μ := fun p => n.toNat - p.1.toNat)
   · rintro ⟨i, oa⟩ ⟨ic, heap⟩ ⟨hc, _, _, _, _⟩
@@ -483,7 +483,7 @@ theorem corres_L2L3 (a b out : Addr) (n : USize) (a_arr b_arr : Array I)
 /-- The loop together with `return n`. -/
 theorem corres_L2L3_tail (a b out : Addr) (n : USize) (a_arr b_arr : Array I)
     (hd : NoAlias a b out n.toNat) :
-    Corres (relRef (invL3 a b out n a_arr b_arr)) (.eq ⊤ (id : USize → USize))
+    Corres (relRef (invL3 a b out n a_arr b_arr)) .trivial
       (whileLoop (guardL3 n) (stepL3 a_arr b_arr) >>= fun _ => pure n)
       (whileLoop (guardL2 n) (stepL2 a b out) >>= fun _ => pure n) :=
   corres_bind_top id id (corres_L2L3 a b out n a_arr b_arr hd)

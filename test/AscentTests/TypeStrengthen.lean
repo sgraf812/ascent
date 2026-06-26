@@ -26,7 +26,7 @@ def typeStrengthen (σ : Type) :
 /-- A total state computation abstracts its lift into the failure monad: the never-fails
 obligation is discharged by the `⊥` failure barrel in `typeStrengthen`. -/
 theorem corres_lift {σ α : Type} (x : StateT σ Id α) :
-    Corres (typeStrengthen σ) (.eq ⊤ (id : α → α)) x (MonadLift.monadLift x : TS σ α) := by
+    Corres (typeStrengthen σ) .trivial x (MonadLift.monadLift x : TS σ α) := by
   intro Q E
   have hQ : (typeStrengthen σ).post (coupleEq id) Q = Q := by
     funext cv; simp only [Concretization.post_coupleEq, typeStrengthen, id_eq]
@@ -47,7 +47,7 @@ def concInc : TS Nat Nat := do
   pure x
 
 /-- The total failure-monad program abstracts to the pure state program. -/
-example : Corres (typeStrengthen Nat) (.eq ⊤ (id : Nat → Nat)) absInc concInc := by
+example : Corres (typeStrengthen Nat) .trivial absInc concInc := by
   unfold absInc concInc
   refine corres_bind_top id id (corres_lift _) (fun x => ?_)
   refine corres_bind_top id id (corres_lift _) (fun _ => ?_)
@@ -55,7 +55,7 @@ example : Corres (typeStrengthen Nat) (.eq ⊤ (id : Nat → Nat)) absInc concIn
 
 /-- A program that can fail has no type strengthening: `throw` forces the forbidden failure
 barrel, so no total abstraction corresponds to it. -/
-example : ¬ Corres (typeStrengthen Nat) (.eq ⊤ (id : Nat → Nat))
+example : ¬ Corres (typeStrengthen Nat) .trivial
     (pure 0 : StateT Nat Id Nat) (throw () : TS Nat Nat) := by
   intro hcorres
   have H := hcorres (fun _ _ => True) EPost.Nil.mk
@@ -87,7 +87,7 @@ def optionStrengthen (σ : Type) :
 
 /-- A total state computation abstracts its lift into the option monad. -/
 theorem corres_liftOption {σ α : Type} (x : StateT σ Id α) :
-    Corres (optionStrengthen σ) (.eq ⊤ (id : α → α)) x (MonadLift.monadLift x : OptS σ α) := by
+    Corres (optionStrengthen σ) .trivial x (MonadLift.monadLift x : OptS σ α) := by
   intro Q E
   have hQ : (optionStrengthen σ).post (coupleEq id) Q = Q := by
     funext cv; simp only [Concretization.post_coupleEq, optionStrengthen, id_eq]
@@ -101,7 +101,7 @@ def concIncOpt : OptS Nat Nat := do
   MonadLift.monadLift (set (x + 1) : StateT Nat Id PUnit)
   pure x
 
-example : Corres (optionStrengthen Nat) (.eq ⊤ (id : Nat → Nat)) absInc concIncOpt := by
+example : Corres (optionStrengthen Nat) .trivial absInc concIncOpt := by
   unfold absInc concIncOpt
   refine corres_bind_top id id (corres_liftOption _) (fun x => ?_)
   refine corres_bind_top id id (corres_liftOption _) (fun _ => ?_)

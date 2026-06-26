@@ -105,6 +105,10 @@ structure Boundary (CPred : Type w) (AVal CVal : Type _) where
 @[reducible] noncomputable def Boundary.eq {CPred : Type w} {AVal CVal : Type _} [Assertion CPred]
     (pre : CPred) (f : CVal → AVal) : Boundary CPred AVal CVal := ⟨pre, coupleEq f⟩
 
+/-- The trivial boundary: no precondition (`⊤`) and the identity value coupling. -/
+@[reducible] noncomputable def Boundary.trivial {CPred : Type w} {Val : Type _} [Assertion CPred] :
+    Boundary CPred Val Val := .eq ⊤ id
+
 /-- The abstract program `a` soundly abstracts the concrete program `c` under concretization `r`
 across the boundary `b` (entry precondition and exit value coupling). -/
 def Corres {CProg AProg : Type _} {CVal AVal : Type _}
