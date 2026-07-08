@@ -128,14 +128,6 @@ variable {CM AM : Type w → Type v} {CPred APred : Type w} {CEPred AEPred : Typ
   [Assertion CPred] [Assertion APred] [Assertion CEPred] [Assertion AEPred]
   [WPMonad CM CPred CEPred] [WPMonad AM APred AEPred] [WPMonadExact AM APred AEPred]
 
-/-- The concrete `wp` is conjunctive. Needed only by the precondition-threading `corres_bind` (not
-`corres_bind_top`); every deterministic / demonic monad satisfies it. -/
-class ConjWP (CM : Type w → Type v) (CPred : Type w) (CEPred : Type w')
-    [Monad CM] [Assertion CPred] [Assertion CEPred] [WPMonad CM CPred CEPred] : Prop where
-  /-- Concrete `wp` distributes over meets of postconditions. -/
-  wp_meet {α : Type w} (x : CM α) (A B : α → CPred) (E : CEPred) :
-    wp x A E ⊓ wp x B E ⊑ wp x (fun v => A v ⊓ B v) E
-
 variable {r : Concretization CPred APred CEPred AEPred}
 
 /-- `pure` abstracts `pure` when the returned values correspond (precondition-agnostic). -/
@@ -151,7 +143,7 @@ theorem corres_pure {CVal AVal : Type w} (pre : CPred) (couple : CVal → AVal) 
 /-- `bind` abstracts `bind`, threading the precondition (`corresXF_split`): the heads correspond
 under `pre`, the concrete head establishes the mid-coupling `R`, and the continuations correspond
 under `R`. -/
-theorem corres_bind [ConjWP CM CPred CEPred] {CV AV CV₂ AV₂ : Type w} (pre : CPred) (R : CV → CPred)
+theorem corres_bind {CV AV CV₂ AV₂ : Type w} [WPConjunctive (CM CV) CV CPred CEPred] (pre : CPred) (R : CV → CPred)
     (couple : CV → AV) (couple₂ : CV₂ → AV₂)
     {a₁ : AM AV} {c₁ : CM CV} {a₂ : AV → AM AV₂} {c₂ : CV → CM CV₂}
     (hc : Corres r (.eq pre couple) a₁ c₁)
@@ -167,12 +159,12 @@ theorem corres_bind [ConjWP CM CPred CEPred] {CV AV CV₂ AV₂ : Type w} (pre :
   have hii : (pre ⊓ r.pred (wp a₁ (fun av => wp (a₂ av) Q E) E)) ⊑ wp c₁ (fun cv => R cv) (r.ePred E) :=
     PartialOrder.rel_trans (meet_le_left _ _) (hmid (r.ePred E))
   refine PartialOrder.rel_trans (le_meet _ _ _ hi hii) ?_
-  refine PartialOrder.rel_trans ((‹ConjWP CM CPred CEPred›).wp_meet c₁ (r.post (coupleEq couple) (fun av => wp (a₂ av) Q E))
+  refine PartialOrder.rel_trans (WPConjunctive.wp_meet_wp_le c₁ (r.post (coupleEq couple) (fun av => wp (a₂ av) Q E))
     (fun cv => R cv) (r.ePred E)) ?_
   refine PartialOrder.rel_trans
     (WP.wp_consequence c₁ _ (fun cv => wp (c₂ cv) (r.post (coupleEq couple₂) Q) (r.ePred E)) (r.ePred E) ?_) ?_
   · intro cv
-    simp only [Concretization.post_coupleEq]
+    simp only [Concretization.post_coupleEq, meet_apply]
     have hfcv := hf cv Q E
     simp only [Concretization.post_coupleEq] at hfcv
     refine PartialOrder.rel_trans ?_ hfcv

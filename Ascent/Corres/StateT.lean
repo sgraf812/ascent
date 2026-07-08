@@ -4,8 +4,9 @@ import Ascent.UB
 # `Corres` over `StateT σ UB`
 
 The facts that make `StateT σ UB` a usable concrete monad for `Corres`: its `wp` reduces `bind`
-pointwise, and the conjunctivity class `ConjWP` is inhabited (needed by the precondition-threading
-`corres_bind`).
+pointwise, and conjoins two established postconditions (`wp_and_StateT`). Conjunctivity as the
+lattice-form `WPConjunctive` class, needed by the precondition-threading `corres_bind`, is provided
+for `StateT σ UB` by the library instances (`StateT.instWPConjunctive` over `UB`'s).
 -/
 
 open Std.Internal.Do Lean.Order Ascent
@@ -22,10 +23,4 @@ theorem wp_and_StateT {σ α} (x : StateT σ UB α) (P R : α → σ → Prop) (
   rw [StateT.wp_apply_eq] at hP hR ⊢
   exact UB.wp_and (x.run s) (fun p => P p.1 p.2) (fun p => R p.1 p.2) E hP hR
 
-/-- `StateT σ UB` has conjunctive `wp` (the lattice form, threaded through the state). -/
-instance {σ} : ConjWP (StateT σ UB) (σ → Prop) EPost.Nil where
-  wp_meet x A B E := by
-    intro s
-    simp only [meet_apply, StateT.wp_apply_eq]
-    exact UB.wp_meet (x s) (fun p => A p.1 p.2) (fun p => B p.1 p.2) E
 

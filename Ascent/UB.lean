@@ -96,6 +96,12 @@ instance : WPMonadExact UB Prop EPost.Nil where
   wp_pure_le := UB.wp_pure_le
   wp_bind_le := UB.wp_bind_le
 
+/-- `UB`'s `wp` is conjunctive. -/
+instance {α} : WPConjunctive (UB α) α Prop EPost.Nil where
+  wp_meet_wp_le x Q₁ Q₂ E := by
+    rw [show (Q₁ ⊓ Q₂) = fun v => Q₁ v ⊓ Q₂ v from funext fun v => meet_apply Q₁ Q₂ v]
+    exact UB.wp_meet x Q₁ Q₂ E
+
 /-- A guarded pure value abstracts a pure value, when the guard implies the value relation. The
 no-overflow obligation lives in the guard `g`, threaded by `wp`, not in a precondition. -/
 theorem corres_guardRet {CVal AVal} {g : Prop} [Decidable g] (pre : Prop) (couple : CVal → AVal)
