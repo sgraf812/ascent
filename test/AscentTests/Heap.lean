@@ -36,7 +36,7 @@ theorem swapImpl_eq_spec {p q : Nat} (hpq : p ≠ q) : swapImpl p q = swapSpec p
 the denotation of `do guardS (p ≠ q); modify (swapSpec p q)`; failure (`none`) is
 `UB.fail`. -/
 def swapA (p q : Nat) : StateT Heap UB PUnit :=
-  fun h => if p ≠ q then some (⟨⟩, swapSpec p q h) else none
+  fun h => if p ≠ q then pure (⟨⟩, swapSpec p q h) else UB.fail
 
 /-- Concrete implementation: the denotation of `modify (swapImpl p q)`. -/
 def swapC (p q : Nat) : StateT Heap UB PUnit :=
@@ -48,10 +48,7 @@ theorem wp_swapC (p q : Nat) (Q : PUnit → Heap → Prop) (E : EPost.Nil) :
 theorem wp_swapA (p q : Nat) (Q : PUnit → Heap → Prop) (E : EPost.Nil) :
     wp (swapA p q) Q E = fun h => if p ≠ q then Q ⟨⟩ (swapSpec p q h) else ⊥ := by
   funext h
-  unfold swapA
-  by_cases hpq : p ≠ q
-  · simp only [if_pos hpq]; rfl
-  · simp only [if_neg hpq]; rfl
+  simp only [swapA, StateT.wp_apply_eq, StateT.run, wp_ite, UB.wp_pure_eq, UB.wp_fail_eq]
 
 /-- The read-both/write-both swap abstracts to the atomic spec under non-aliasing. -/
 example (p q : Nat) :
