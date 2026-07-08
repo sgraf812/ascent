@@ -54,11 +54,11 @@ structure State where
 abbrev M := StateT State UB                    -- state (locals + heap) + UB; no ExceptT
 
 /-- Memory load (well-defined only after `c_guard`). -/
-def load (p : Addr) : M I := fun s => pure (s.heap.data p, s)
+def load (p : Addr) : M I := do return (← get).heap.data p
 
 /-- Memory store. -/
 def store (p : Addr) (v : I) : M Unit :=
-  fun s => pure (⟨⟩, { s with heap.data := fun a => if a = p then v else s.heap.data a })
+  modify fun s => { s with heap.data := fun a => if a = p then v else s.heap.data a }
 
 /-- The parser's `c_guard`: UB unless `p` is a valid pointer. -/
 def cguard (p : Addr) : M Unit := do if (← get).heap.valid p then pure () else UB.fail
@@ -73,7 +73,7 @@ def getPtr (x : Ident) : M Addr := do
 
 /-- Write a `size_t` local. -/
 def setSize (x : Ident) (n : USize) : M Unit :=
-  fun s => pure (⟨⟩, { s with locals := fun y => if y = x then some (.size n) else s.locals y })
+  modify fun s => { s with locals := fun y => if y = x then some (.size n) else s.locals y }
 
 /-- The loop guard: `i < n`, reading both from the locals. -/
 def guardL1 : State → Bool := fun s =>
@@ -196,21 +196,18 @@ local macro "aomega" : tactic => `(tactic| (unfold Addr at *; omega))
 
 @[spec] theorem load_spec (p : Addr) (post : I → State → Prop) :
     ⦃fun s => post (s.heap.data p) s⦄ load p ⦃post⦄ := by
-  refine Triple.intro ?_
-  intro s hp
-  simpa [StateT.wp_apply_eq, StateT.run, load] using hp
+  vcgen [load]
 
 @[spec] theorem store_spec (p : Addr) (v : I) (post : Unit → State → Prop) :
     ⦃fun s => post ⟨⟩ { s with heap := s.heap.upd p v }⦄ store p v ⦃post⦄ := by
-  refine Triple.intro fun s hp => ?_
-  simpa [StateT.wp_apply_eq, StateT.run, store, Heap.upd] using hp
+  vcgen [store]
+  assumption
 
 @[spec] theorem setSize_spec (x : Ident) (n : USize) (post : Unit → State → Prop) :
     ⦃fun s => post ⟨⟩ { s with locals := fun y => if y = x then some (.size n) else s.locals y }⦄
       setSize x n ⦃post⦄ := by
-  refine Triple.intro ?_
-  intro s hp
-  simpa [StateT.wp_apply_eq, StateT.run, setSize] using hp
+  vcgen [setSize]
+  assumption
 
 /-- `getSize`'s `wp`, as a function of the state: reading a coupled `size_t` extracts its value,
 UB otherwise. -/
@@ -239,6 +236,13 @@ theorem wp_getPtr (x : Ident) (Q : Addr → State → Prop) (E : EPost.Nil) (s :
     | ptr a => rfl
     | size n => simp [StateT.lift, liftM, monadLift, MonadLift.monadLift]
     | int i => simp [StateT.lift, liftM, monadLift, MonadLift.monadLift]
+
+/-- `setSize`'s `wp`: writing a `size_t` local updates just that local. -/
+theorem wp_setSize (x : Ident) (n : USize) (Q : Unit → State → Prop) (E : EPost.Nil) (s : State) :
+    wp (setSize x n) Q E s
+      = Q () { s with locals := fun y => if y = x then some (.size n) else s.locals y } := by
+  simp only [setSize, StateT.wp_apply_eq, StateT.run, modify, modifyGet, MonadStateOf.modifyGet,
+    StateT.modifyGet, UB.wp_pure_eq]
 
 /-- The abstract body's `wp`, as a function of the state (so it rewrites under the `∃` in the
 relational precondition). -/
@@ -586,7 +590,7 @@ theorem corres_setSize_st {X : Type} (f : Heap → X) (pre : State → Prop) (x 
       (pure () : StateT X UB Unit) (setSize x v) := by
   intro Q E s hs
   simp only [Concretization.ofStateRepr_pred, meet_apply, meet_prop_eq_and, Concretization.ofStateRepr_post,
-    StateT.wp_apply_eq, StateT.run, setSize, UB.wp_pure_eq, id] at hs ⊢
+    wp_setSize, id] at hs ⊢
   exact hs.2
 
 /-- **End to end: `zipL1` is `Array.zipWith`.** Under the function-entry coupling, validity, and
@@ -638,7 +642,7 @@ theorem corres_zip (a b out : Addr) (la lb : USize) (a_arr b_arr : Array I)
       (corres_setSize_st (fun h => slice out (min la lb).toNat h) _ "n" _) ?_ (fun _ => ?_)
     · intro E s hs
       obtain ⟨⟨hentry, hsa, hsb, hav⟩, hcv1, hcv2⟩ := hs
-      simp only [StateT.wp_apply_eq, StateT.run, setSize, UB.wp_pure_eq, hcv1, hcv2]
+      simp only [wp_setSize, hcv1, hcv2]
       exact ⟨⟨by simp, by simp [hentry.2.2.1], by simp [hentry.2.2.2.1], by simp [hentry.2.2.2.2]⟩,
         hsa, hsb, hav⟩
     refine corres_bind _ (fun _ s => (s.locals "i" = some (.size 0) ∧
@@ -650,7 +654,7 @@ theorem corres_zip (a b out : Addr) (la lb : USize) (a_arr b_arr : Array I)
       (corres_setSize_st (fun h => slice out (min la lb).toNat h) _ "i" _) ?_ (fun _ => ?_)
     · intro E s hs
       obtain ⟨⟨hn, hpa, hpb, hpout⟩, hsa, hsb, hav⟩ := hs
-      simp only [StateT.wp_apply_eq, StateT.run, setSize, UB.wp_pure_eq]
+      simp only [wp_setSize]
       exact ⟨⟨by simp, by simp [hn], by simp [hpa], by simp [hpb], by simp [hpout]⟩, hsa, hsb, hav⟩
     exact corres_L3L4 a b out (min la lb) a_arr b_arr ha hb hd
   simpa only [pure_bind] using key
