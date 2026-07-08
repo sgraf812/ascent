@@ -45,6 +45,12 @@ instance instWPMonad : WPMonad UB Prop EPost.Nil where
 @[simp] theorem wp_fail_eq {α} (Q : α → Prop) (E : EPost.Nil) :
     wp (UB.fail : UB α) Q E = ⊥ := rfl
 
+@[simp] theorem wp_map_eq {α β} (f : α → β) (x : UB α) (Q : β → Prop) (E : EPost.Nil) :
+    wp (f <$> x) Q E = wp x (fun a => Q (f a)) E := by cases x <;> rfl
+
+@[spec] theorem UB.fail_spec :
+    ⦃⊥⦄ UB.fail ⦃Q; E⦄ := ⟨bot_le _⟩
+
 theorem wp_pure_le {α} (a : α) (post : α → Prop) (epost : EPost.Nil) :
     wp (pure a : UB α) post epost ⊑ post a := PartialOrder.rel_refl
 

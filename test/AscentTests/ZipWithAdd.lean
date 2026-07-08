@@ -61,13 +61,15 @@ def store (p : Addr) (v : I) : M Unit :=
   fun s => pure (⟨⟩, { s with heap.data := fun a => if a = p then v else s.heap.data a })
 
 /-- The parser's `c_guard`: UB unless `p` is a valid pointer. -/
-def cguard (p : Addr) : M Unit := fun s => if s.heap.valid p then pure (⟨⟩, s) else UB.fail
+def cguard (p : Addr) : M Unit := do if (← get).heap.valid p then pure () else UB.fail
 
 /-- Read a `size_t` local; UB if missing or wrong type. -/
-def getSize (x : Ident) : M USize := fun s => match s.locals x with | some (.size n) => pure (n, s) | _ => UB.fail
+def getSize (x : Ident) : M USize := do
+  match (← get).locals x with | some (.size n) => pure n | _ => UB.fail
 
 /-- Read a pointer local; UB if missing or wrong type. -/
-def getPtr (x : Ident) : M Addr := fun s => match s.locals x with | some (.ptr a) => pure (a, s) | _ => UB.fail
+def getPtr (x : Ident) : M Addr := do
+  match (← get).locals x with | some (.ptr a) => pure a | _ => UB.fail
 
 /-- Write a `size_t` local. -/
 def setSize (x : Ident) (n : USize) : M Unit :=
@@ -116,7 +118,7 @@ def stepL2 (a b out : Addr) : StateT (USize × Heap) UB Unit := fun p =>
 
 /-- The loop invariant: the abstract counter and heap match the concrete `i` local and heap, and the
 pointer/bound locals hold their fixed values. -/
-def invL2 (a b out : Addr) (n : USize) : USize × Heap → State → Prop := fun p s =>
+@[grind] def invL2 (a b out : Addr) (n : USize) : USize × Heap → State → Prop := fun p s =>
   s.heap = p.2 ∧ s.locals "i" = some (.size p.1) ∧ s.locals "n" = some (.size n) ∧
   s.locals "a" = some (.ptr a) ∧ s.locals "b" = some (.ptr b) ∧ s.locals "out" = some (.ptr out)
 
@@ -176,22 +178,21 @@ and the end-to-end `corres_zip`. -/
 local macro "aomega" : tactic => `(tactic| (unfold Addr at *; omega))
 
 @[spec] theorem getSize_spec (x : Ident) (post : USize → State → Prop) :
-    ⦃(fun s => ∃ v, s.locals x = some (.size v)) ⊓ (fun s => ∀ v, s.locals x = some (.size v) → post v s)⦄
-      getSize x ⦃post⦄ := by
-  refine Triple.intro ?_
-  intro s hs
-  simp only [meet_apply, meet_prop_eq_and] at hs
-  obtain ⟨⟨v, hloc⟩, hp⟩ := hs
-  simpa [StateT.wp_apply_eq, StateT.run, getSize, hloc] using hp v hloc
+    ⦃fun s => wp (Prog := M USize) (match s.locals x with | some (.size v) => pure v | _ => UB.fail) post ⊥ s⦄ getSize x ⦃post⦄ := by
+  vcgen (stepLimit := 3) [getSize]
+  assumption
 
 @[spec] theorem getPtr_spec (x : Ident) (post : Addr → State → Prop) :
-    ⦃(fun s => ∃ a, s.locals x = some (.ptr a)) ⊓ (fun s => ∀ a, s.locals x = some (.ptr a) → post a s)⦄
-      getPtr x ⦃post⦄ := by
-  refine Triple.intro ?_
-  intro s hs
-  simp only [meet_apply, meet_prop_eq_and] at hs
-  obtain ⟨⟨a, hloc⟩, hp⟩ := hs
-  simpa [StateT.wp_apply_eq, StateT.run, getPtr, hloc] using hp a hloc
+    ⦃fun s => wp (Prog := M Addr) (match s.locals x with | some (.ptr a) => pure a | _ => UB.fail)
+      post ⊥ s⦄ getPtr x ⦃post⦄ := by
+  vcgen (stepLimit := 3) [getPtr]
+  assumption
+
+@[spec] theorem cguard_spec (p : Addr) (post : Unit → State → Prop) :
+    ⦃fun s => wp (Prog := M Unit) (if s.heap.valid p then pure () else UB.fail) post ⊥ s⦄
+      cguard p ⦃post⦄ := by
+  vcgen (stepLimit := 3) [cguard]
+  assumption
 
 @[spec] theorem load_spec (p : Addr) (post : I → State → Prop) :
     ⦃fun s => post (s.heap.data p) s⦄ load p ⦃post⦄ := by
@@ -200,17 +201,9 @@ local macro "aomega" : tactic => `(tactic| (unfold Addr at *; omega))
   simpa [StateT.wp_apply_eq, StateT.run, load] using hp
 
 @[spec] theorem store_spec (p : Addr) (v : I) (post : Unit → State → Prop) :
-    ⦃fun s => post ⟨⟩ { s with heap.data := fun a => if a = p then v else s.heap.data a }⦄
-      store p v ⦃post⦄ := by
-  refine Triple.intro ?_
-  intro s hp
-  simpa [StateT.wp_apply_eq, StateT.run, store] using hp
-
-@[spec] theorem cguard_spec (p : Addr) (post : Unit → State → Prop) :
-    ⦃fun s => s.heap.valid p = true ∧ post ⟨⟩ s⦄ cguard p ⦃post⦄ := by
-  refine Triple.intro ?_
-  intro s ⟨hv, hp⟩
-  simpa [StateT.wp_apply_eq, StateT.run, cguard, hv] using hp
+    ⦃fun s => post ⟨⟩ { s with heap := s.heap.upd p v }⦄ store p v ⦃post⦄ := by
+  refine Triple.intro fun s hp => ?_
+  simpa [StateT.wp_apply_eq, StateT.run, store, Heap.upd] using hp
 
 @[spec] theorem setSize_spec (x : Ident) (n : USize) (post : Unit → State → Prop) :
     ⦃fun s => post ⟨⟩ { s with locals := fun y => if y = x then some (.size n) else s.locals y }⦄
@@ -218,6 +211,34 @@ local macro "aomega" : tactic => `(tactic| (unfold Addr at *; omega))
   refine Triple.intro ?_
   intro s hp
   simpa [StateT.wp_apply_eq, StateT.run, setSize] using hp
+
+/-- `getSize`'s `wp`, as a function of the state: reading a coupled `size_t` extracts its value,
+UB otherwise. -/
+theorem wp_getSize (x : Ident) (Q : USize → State → Prop) (E : EPost.Nil) (s : State) :
+    wp (getSize x) Q E s = match s.locals x with | some (.size n) => Q n s | _ => (⊥ : Prop) := by
+  rw [getSize, WPMonadExact.wp_bind_eq]
+  simp only [StateT.wp_apply_eq, StateT.run, get, getThe, MonadStateOf.get, StateT.get, UB.wp_pure_eq]
+  cases hl : s.locals x with
+  | none => simp [StateT.lift, liftM, monadLift, MonadLift.monadLift]
+  | some v =>
+    cases v with
+    | size n => rfl
+    | ptr a => simp [StateT.lift, liftM, monadLift, MonadLift.monadLift]
+    | int i => simp [StateT.lift, liftM, monadLift, MonadLift.monadLift]
+
+/-- `getPtr`'s `wp`, as a function of the state: reading a coupled pointer extracts its address,
+UB otherwise. -/
+theorem wp_getPtr (x : Ident) (Q : Addr → State → Prop) (E : EPost.Nil) (s : State) :
+    wp (getPtr x) Q E s = match s.locals x with | some (.ptr a) => Q a s | _ => (⊥ : Prop) := by
+  rw [getPtr, WPMonadExact.wp_bind_eq]
+  simp only [StateT.wp_apply_eq, StateT.run, get, getThe, MonadStateOf.get, StateT.get, UB.wp_pure_eq]
+  cases hl : s.locals x with
+  | none => simp [StateT.lift, liftM, monadLift, MonadLift.monadLift]
+  | some v =>
+    cases v with
+    | ptr a => rfl
+    | size n => simp [StateT.lift, liftM, monadLift, MonadLift.monadLift]
+    | int i => simp [StateT.lift, liftM, monadLift, MonadLift.monadLift]
 
 /-- The abstract body's `wp`, as a function of the state (so it rewrites under the `∃` in the
 relational precondition). -/
@@ -234,20 +255,29 @@ operations act on the coupled heap, and the counter update evolves the coupling.
 theorem corres_stepL2 (a b out : Addr) (n : USize) :
     Corres (relRef (invL2 a b out n)) .trivial (stepL2 a b out) stepL1 := by
   intro Q E cs hpre
-  simp only [top_meet] at hpre
+  simp only [top_meet, relRef_pred] at hpre
   obtain ⟨⟨i, h⟩, ⟨hh, hi, hn, ha, hb, hout⟩, habs⟩ := hpre
   subst hh
   rw [wp_stepL2] at habs
-  simp only [relRef_post, id, invL2, stepL1, wp_bind_StateT]
-  simp only [StateT.wp_apply_eq, StateT.run, getSize, getPtr, cguard, load, store, setSize,
-    hi, ha, hb, hout, UB.wp_pure_eq, wp_ite, UB.wp_fail_eq]
-  simp only [Heap.upd] at habs
+  simp only [relRef_post, id]
   by_cases hv1 : cs.heap.valid (a + i.toNat) = true <;>
     by_cases hv2 : cs.heap.valid (b + i.toNat) = true <;>
     by_cases hv3 : cs.heap.valid (out + i.toNat) = true <;>
-    simp only [hv1, hv2, hv3, Bool.and_true, Bool.and_false,
-      if_true, if_false, bot_prop_eq, Bool.false_eq_true] at habs ⊢
-  exact ⟨(i + 1, _), ⟨rfl, by simp, by simpa using hn, by simp, by simp, by simp⟩, habs⟩
+    simp only [hv1, hv2, hv3, Bool.and_true, Bool.and_false, bot_prop_eq, Bool.false_eq_true]
+      at habs <;>
+    (try exact habs.elim)
+  simp only [if_true] at habs
+  refine WP.wp_econs_bot stepL1 _ _ cs ?_
+  have key : ⦃fun s => invL2 a b out n (i, cs.heap) s ∧ s.heap.valid (a + i.toNat) = true ∧
+      s.heap.valid (b + i.toNat) = true ∧ s.heap.valid (out + i.toNat) = true⦄
+      stepL1
+      ⦃fun _ cs' => invL2 a b out n (i + 1, cs'.heap) cs' ∧ Q () (i + 1, cs'.heap)⦄ := by
+    vcgen [stepL1]
+    all_goals grind
+  refine WP.wp_consequence stepL1 _ _ ⊥ ?_ cs
+    (key.le_wp cs ⟨⟨rfl, hi, hn, ha, hb, hout⟩, hv1, hv2, hv3⟩)
+  rintro _ cs' ⟨h1, h2⟩
+  exact ⟨_, h1, h2⟩
 
 theorem corres_L1L2 (a b out : Addr) (n : USize) :
     Corres (relRef (invL2 a b out n)) .trivial
@@ -281,7 +311,7 @@ theorem corres_getSizeN (a b out : Addr) (n : USize) :
   obtain ⟨⟨i, h⟩, hJ, habs⟩ := hpre
   simp only [StateT.wp_apply_eq, StateT.run_pure, UB.wp_pure_eq] at habs
   obtain ⟨hh, hi, hn, ha, hb, hout⟩ := hJ
-  simp only [relRef_post, id, getSize, StateT.wp_apply_eq, StateT.run, hn, UB.wp_pure_eq]
+  simp only [relRef_post, id, wp_getSize, hn]
   exact ⟨(i, h), ⟨hh, hi, hn, ha, hb, hout⟩, habs⟩
 
 /-- The loop together with the trailing `return n`, composed with `corres_bind`. -/
@@ -545,8 +575,9 @@ theorem corres_getSizeVal_st {X : Type} (f : Heap → X) (pre : State → Prop) 
     Corres (Concretization.ofStateRepr (fun s => f s.heap)) (.eq pre (id : USize → USize))
       (pure v : StateT X UB USize) (getSize x) := by
   intro Q E s hs
-  simp only [Concretization.ofStateRepr_pred, meet_apply, meet_prop_eq_and, Concretization.ofStateRepr_post,
-    StateT.wp_apply_eq, StateT.run, getSize, id] at hs ⊢
+  simp only [Concretization.ofStateRepr_pred, meet_apply, meet_prop_eq_and,
+    StateT.wp_apply_eq, StateT.run] at hs
+  simp only [Concretization.ofStateRepr_post, wp_getSize, id]
   rw [hpre s hs.1]; exact hs.2
 
 /-- Writing a `size_t` local is invisible to the heap-determined abstract state. -/
@@ -589,7 +620,7 @@ theorem corres_zip (a b out : Addr) (la lb : USize) (a_arr b_arr : Array I)
         AllValid a b out (min la lb).toNat s.heap) ∧ cv1 = la) id id
       (corres_getSizeVal_st (fun h => slice out (min la lb).toNat h) _ "len_a" la (fun s hs => hs.1.1)) ?_ (fun cv1 => ?_)
     · intro E s hs
-      simp only [StateT.wp_apply_eq, StateT.run, getSize, hs.1.1, UB.wp_pure_eq]
+      simp only [wp_getSize, hs.1.1]
       exact ⟨hs, trivial⟩
     refine corres_bind _ (fun cv2 s => (entryP a b out la lb s ∧
         slice a (min la lb).toNat s.heap = a_arr ∧
@@ -597,7 +628,7 @@ theorem corres_zip (a b out : Addr) (la lb : USize) (a_arr b_arr : Array I)
         AllValid a b out (min la lb).toNat s.heap) ∧ cv1 = la ∧ cv2 = lb) id id
       (corres_getSizeVal_st (fun h => slice out (min la lb).toNat h) _ "len_b" lb (fun s hs => hs.1.1.2.1)) ?_ (fun cv2 => ?_)
     · intro E s hs
-      simp only [StateT.wp_apply_eq, StateT.run, getSize, hs.1.1.2.1, UB.wp_pure_eq]
+      simp only [wp_getSize, hs.1.1.2.1]
       exact ⟨hs.1, hs.2, trivial⟩
     refine corres_bind _ (fun _ s => (s.locals "n" = some (.size (min la lb)) ∧
         s.locals "a" = some (.ptr a) ∧ s.locals "b" = some (.ptr b) ∧ s.locals "out" = some (.ptr out)) ∧
