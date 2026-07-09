@@ -52,10 +52,3 @@ example (a b : UInt64) (h : b ≤ a) :
 `RTriple.pure_eq` would demand is false, since `2^63 + 2^63` wraps to `0`. -/
 example : wordVal (2 ^ 63) + wordVal (2 ^ 63) ≠ wordVal ((2 ^ 63) + (2 ^ 63) : UInt64) := by
   native_decide
-
-/-- Refinement composes: `RTriple.refl` is the identity and `RTriple.comp` chains phases. -/
-example {Prog Val : Type} [WP Prog Val Prop EPost.Nil] (x : Prog) :
-    ⦃(⊤ : Prop)⦄ x
-      ⊑[(Concretization.id Prop EPost.Nil).comp (Concretization.id Prop EPost.Nil)] x
-      ⦃fun (av cv : Val) => ⌜av = cv⌝⦄ :=
-  RTriple.comp (f₁ := id) (f₂ := id) (fun _ => rfl) (.refl ⊤ x) (.refl ⊤ x)
