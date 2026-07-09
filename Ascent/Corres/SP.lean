@@ -82,7 +82,6 @@ variable {CM AM : Type w → Type v} {CPred APred : Type w} {CEPred AEPred : Typ
   [Monad CM] [Monad AM]
   [Assertion CPred] [Assertion APred] [Assertion CEPred] [Assertion AEPred]
   [WPMonad CM CPred CEPred] [WPMonad AM APred AEPred] [WPMonadExact AM APred AEPred]
-  {r : Concretization CPred APred CEPred AEPred}
 
 /-- The erased-leaf bind at the inferred mid-coupling: `sp` at the `⊥` exception postcondition
 threads the strongest postcondition of the erased head, leaving only its failure-freedom to
@@ -99,19 +98,6 @@ theorem SimTriple.bind_erase_sp [Frame CPred] {CV AV CV₂ AV₂ : Type w} {Ξ :
     ⦃P⦄ a ⊑[γ] (c₁ >>= c₂) ⦃Q; E⦄ :=
   .bind_erase (h₁.conj_wp (le_wp_sp hdef))
     fun cv => (h₂ cv).weaken (meet_le_right _ _)
-
-/-- The erased-leaf `bind` at the inferred mid-condition: `sp` at the `⊥` exception
-postcondition threads the strongest postcondition of the erased head, leaving only its
-failure-freedom to prove. -/
-theorem corres_bind_erase_sp {CV AV CV₂ AV₂ : Type w}
-    [WPConjunctive (CM CV) CV CPred CEPred] [WPInfConjunctive (CM CV) CV CPred CEPred]
-    (pre : CPred) (couple : CV → AV) (couple₂ : CV₂ → AV₂)
-    {v : AV} {c₁ : CM CV} {a : AM AV₂} {c₂ : CV → CM CV₂}
-    (hc : Corres r (.eq pre couple) (pure v : AM AV) c₁)
-    (hdef : pre ⊑ wp c₁ ⊤ ⊥)
-    (hf : ∀ cv, Corres r (.eq (sp c₁ pre ⊥ cv) couple₂) a (c₂ cv)) :
-    Corres r (.eq pre couple₂) a (c₁ >>= c₂) :=
-  corres_bind_erase pre (sp c₁ pre ⊥) couple couple₂ hc (le_wp_sp hdef) hf
 
 end
 

@@ -12,9 +12,8 @@ nothing to couple get `Unit` and the barrel is `γ.ePred` (fills are phase data)
 
 The four laws are exactly symmetric: `sim_pure` consumes `Q` and `sim_throw` consumes `E`;
 `sim_bind` rebinds `Q` with the continuations' `sim` and `sim_tryCatch` rebinds `E` with the
-handlers' (`throw`/`tryCatch` per effect, here for `Except`). A correspondence is the
-triple-shaped entailment `pre ⊑ sim γ a c Q E` (`corres_iff_le_sim`, on shapes where the
-barrel transport is `γ.ePred`).
+handlers' (`throw`/`tryCatch` per effect, here for `Except`). `SimTriple γ P Q E a c` is the
+triple-shaped judgment `P ⊑ sim γ a c Q E`, with notation `⦃P⦄ a ⊑[γ] c ⦃Q; E⦄`.
 
 `esim γ` is the exception coupling induced by the concretization: the weakest relation on
 thrown values under which the abstract barrel concretizes to the concrete one.
@@ -201,45 +200,6 @@ theorem SimTriple.conj_wp [Frame CPred] [WPConjunctive CProg CVal CPred CEPred]
       (PartialOrder.rel_trans (meet_le_right _ _) (meet_le_left _ _)) (meet_le_left _ _))
     (PartialOrder.rel_trans (meet_le_right _ _) (meet_le_right _ _))
 
-/-- A correspondence entails the relational weakest precondition, on shapes where the barrel
-transport is `γ.ePred`. -/
-theorem Corres.le_sim {γ : Concretization CPred APred CEPred AEPred}
-    {b : Boundary CPred AVal CVal} {a : AProg} {c : CProg} {E : Ξ} (h : Corres γ b a c)
-    (hdel : ∀ Ea, γ.ePost E Ea = γ.ePred Ea) :
-    b.pre ⊑ sim γ a c b.couple E :=
-  le_iInf _ _ fun Qa => le_iInf _ _ fun Ea => by
-    rw [hdel Ea]
-    exact himp_complete _ _ _ (PartialOrder.rel_trans CompleteLattice.meet_le_comm (h Qa Ea))
-
-/-- The relational weakest precondition is a valid boundary precondition, on shapes where the
-barrel transport is `γ.ePred`. -/
-theorem corres_sim [Frame CPred] {γ : Concretization CPred APred CEPred AEPred}
-    {Q : AVal → CVal → CPred} {E : Ξ} {a : AProg} {c : CProg}
-    (hdel : ∀ Ea, γ.ePost E Ea = γ.ePred Ea) :
-    Corres γ ⟨sim γ a c Q E, Q⟩ a c := fun Qa Ea => by
-  have h := CompleteLattice.meet_le_of_le_himp
-    (PartialOrder.rel_trans (iInf_le _ Qa) (iInf_le _ Ea)
-      : sim γ a c Q E ⊑ _ ⇨ wp c (γ.post Q Qa) (γ.ePost E Ea))
-  rwa [hdel Ea] at h
-
-/-- Any entailment into the relational weakest precondition is a correspondence, on shapes
-where the barrel transport is `γ.ePred`. -/
-theorem corres_of_le_sim [Frame CPred] {γ : Concretization CPred APred CEPred AEPred}
-    {pre : CPred} {Q : AVal → CVal → CPred} {E : Ξ} {a : AProg} {c : CProg}
-    (hdel : ∀ Ea, γ.ePost E Ea = γ.ePred Ea)
-    (hle : pre ⊑ sim γ a c Q E) : Corres γ ⟨pre, Q⟩ a c := fun Qa Ea =>
-  PartialOrder.rel_trans
-    (le_meet _ _ _ (PartialOrder.rel_trans (meet_le_left _ _) hle) (meet_le_right _ _))
-    (corres_sim hdel Qa Ea)
-
-/-- A correspondence is exactly an entailment into the relational weakest precondition, on
-shapes where the barrel transport is `γ.ePred`. -/
-theorem corres_iff_le_sim [Frame CPred] {γ : Concretization CPred APred CEPred AEPred}
-    {pre : CPred} {Q : AVal → CVal → CPred} {E : Ξ} {a : AProg} {c : CProg}
-    (hdel : ∀ Ea, γ.ePost E Ea = γ.ePred Ea) :
-    Corres γ ⟨pre, Q⟩ a c ↔ pre ⊑ sim γ a c Q E :=
-  ⟨fun h => h.le_sim hdel, corres_of_le_sim hdel⟩
-
 end
 
 section
@@ -337,30 +297,6 @@ theorem SimTriple.bind_erase [Frame CPred] {CV AV CV₂ AV₂ : Type w} {P : CPr
     ⦃P⦄ a ⊑[γ] (c₁ >>= c₂) ⦃Q; E⦄ := by
   have h := SimTriple.bind' (a₂ := fun _ => a) h₁ fun av cv => h₂ cv
   simpa only [pure_bind] using h
-
-/-- `corres_bind` at the weakest mid-condition: the continuation obligation is `corres_sim`,
-leaving the head correspondence and one `wp` fact about the concrete head. -/
-theorem corres_bind_pre [Frame CPred] {CV AV CV₂ AV₂ : Type w}
-    [WPConjunctive (CM CV) CV CPred CEPred]
-    (pre : CPred) (couple : CV → AV) (couple₂ : CV₂ → AV₂) (E : Ξ)
-    {a₁ : AM AV} {c₁ : CM CV} {a₂ : AV → AM AV₂} {c₂ : CV → CM CV₂}
-    (hdel : ∀ Ea, γ.ePost E Ea = γ.ePred Ea)
-    (hc : Corres γ (.eq pre couple) a₁ c₁)
-    (hmid : pre ⊑
-      wp c₁ (fun cv => sim γ (a₂ (couple cv)) (c₂ cv) (coupleEq couple₂) E) ⊥) :
-    Corres γ (.eq pre couple₂) (a₁ >>= a₂) (c₁ >>= c₂) :=
-  corres_bind pre _ couple couple₂ hc hmid fun _ => corres_sim hdel
-
-/-- The erased-leaf `bind` at the weakest mid-condition. -/
-theorem corres_bind_erase_pre [Frame CPred] {CV AV CV₂ AV₂ : Type w}
-    [WPConjunctive (CM CV) CV CPred CEPred]
-    (pre : CPred) (couple : CV → AV) (couple₂ : CV₂ → AV₂) (E : Ξ)
-    {v : AV} {c₁ : CM CV} {a : AM AV₂} {c₂ : CV → CM CV₂}
-    (hdel : ∀ Ea, γ.ePost E Ea = γ.ePred Ea)
-    (hc : Corres γ (.eq pre couple) (pure v : AM AV) c₁)
-    (hmid : pre ⊑ wp c₁ (fun cv => sim γ a (c₂ cv) (coupleEq couple₂) E) ⊥) :
-    Corres γ (.eq pre couple₂) a (c₁ >>= c₂) :=
-  corres_bind_erase pre _ couple couple₂ hc hmid fun _ => corres_sim hdel
 
 end
 

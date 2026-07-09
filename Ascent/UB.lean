@@ -118,22 +118,3 @@ theorem Ascent.SimTriple.guardRet {AV CV : Type} {g : Prop} [Decidable g] {P : P
   · rw [show UB.guardRet g a = UB.fail from by simp [UB.guardRet, hg]]
     show P ⊓ (⊥ : Prop) ⊑ _
     exact PartialOrder.rel_trans (meet_le_right _ _) (bot_le _)
-
-/-- A guarded pure value abstracts a pure value, when the guard implies the value relation. The
-no-overflow obligation lives in the guard `g`, threaded by `wp`, not in a precondition. -/
-theorem corres_guardRet {CVal AVal} {g : Prop} [Decidable g] (pre : Prop) (couple : CVal → AVal)
-    {a : AVal} {c : CVal} (h : g → couple c = a) :
-    Corres (Concretization.id Prop EPost.Nil) (.eq pre couple) (UB.guardRet g a) (pure c : Id CVal) := by
-  intro Q E
-  have hQ : (Concretization.id Prop EPost.Nil).post (coupleEq couple) Q = fun cv => Q (couple cv) := by
-    funext cv; simp only [Concretization.post_coupleEq, Concretization.id, id_eq]
-  rw [hQ]
-  refine PartialOrder.rel_trans (meet_le_right _ _) ?_
-  by_cases hg : g
-  · have hh : couple c = a := h hg
-    subst hh
-    rw [show UB.guardRet g (couple c) = pure (couple c) from by simp [UB.guardRet, hg]]
-    exact PartialOrder.rel_refl
-  · rw [show UB.guardRet g a = UB.fail from by simp [UB.guardRet, hg]]
-    show (⊥ : Prop) ⊑ Q (couple c)
-    exact bot_le _

@@ -5,7 +5,7 @@ import Std.Internal.Do
 
 `WPMonad` makes a monad's `wp` *sound*: it lower-bounds the postcondition on `pure` and the
 decomposition on `bind`. `WPMonadExact` adds the matching upper bounds, so `wp` *computes* `pure`
-and `bind`. The abstract side of a `Corres` proof needs this, since its `wp` is decomposed out of
+and `bind`. The abstract side of a simulation proof needs this, since its `wp` is decomposed out of
 the precondition.
 
 Instances cover the deterministic / demonic monads: the leaves `Id`, `Option`, `Except`, `EStateM`,
@@ -19,7 +19,7 @@ namespace Ascent
 universe u v w w'
 
 /-- The weakest-precondition interpretation is exact: beyond `WPMonad` soundness it also upper-bounds
-`pure`/`bind`, so the two together compute them. The abstract side of `Corres` needs this, since its
+`pure`/`bind`, so the two together compute them. The abstract side of `sim` needs this, since its
 `wp` is decomposed out of the precondition. A mixin over `WPMonad` rather than an extension, so it
 never participates in `WP` synthesis. -/
 class WPMonadExact (m : Type u → Type v) (Pred : Type w) (EPred : Type w')

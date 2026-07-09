@@ -1,12 +1,12 @@
 import Ascent.UB
 
 /-!
-# `Corres` over `StateT σ UB`
+# Simulation over `StateT σ UB`
 
-The facts that make `StateT σ UB` a usable concrete monad for `Corres`: its `wp` reduces `bind`
+The facts that make `StateT σ UB` a usable concrete monad for simulation: its `wp` reduces `bind`
 pointwise, and conjoins two established postconditions (`wp_and_StateT`). Conjunctivity as the
-lattice-form `WPConjunctive` class, needed by the precondition-threading `corres_bind`, is provided
-for `StateT σ UB` by the library instances (`StateT.instWPConjunctive` over `UB`'s).
+lattice-form `WPConjunctive` class, needed by `SimTriple.conj_wp`, is provided for `StateT σ UB`
+by the library instances (`StateT.instWPConjunctive` over `UB`'s).
 -/
 
 open Std.Internal.Do Lean.Order Ascent
