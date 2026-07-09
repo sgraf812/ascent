@@ -61,7 +61,7 @@ example : ¬ ⦃(⊤ : Nat → Prop)⦄ (pure 0 : StateT Nat Id Nat)
   have H := hsim.elim (fun _ _ => True) EPost.Nil.mk
   have hthrow : wp (throw () : TS Nat Nat)
       ((typeStrengthen Nat).post (fun av cv => ⌜av = cv⌝) (fun _ _ => True))
-      ((typeStrengthen Nat).ePost () EPost.Nil.mk) = (⊥ : Nat → Prop) := by
+      ((typeStrengthen Nat).ePost .mk EPost.Nil.mk) = (⊥ : Nat → Prop) := by
     simp [typeStrengthen, Concretization.ePost_nil, ExceptT.wp_apply_eq,
       WPMonadExact.wp_pure_eq]
   have hpure : (typeStrengthen Nat).pred

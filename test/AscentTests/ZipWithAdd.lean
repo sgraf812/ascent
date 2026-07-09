@@ -786,7 +786,7 @@ theorem refines_zip5 (a b out : Addr) (la lb : USize) (a_arr b_arr : Array I)
   have hb' := (refines_purifyL4 a_arr b_arr (min la lb)).elim Q E
   rw [CompleteLattice.top_meet] at hb'
   have hc' := (refines_zip a b out la lb a_arr b_arr ha hb hd).elim
-    ((purify (Array I)).post purifyCouple Q) ((purify (Array I)).ePost () E)
+    ((purify (Array I)).post purifyCouple Q) ((purify (Array I)).ePost .mk E)
   rw [hRHS] at hc'
   refine PartialOrder.rel_trans (le_meet _ _ _ (meet_le_left _ _)
     (PartialOrder.rel_trans (meet_le_right _ _)

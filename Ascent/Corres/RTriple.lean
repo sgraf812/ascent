@@ -6,10 +6,11 @@ import Ascent.Corres.Basic
 `rwp γ a c Q E` is the weakest concrete-state precondition under which the abstract program
 `a` is refined by the concrete program `c` through `γ`: every abstract `wp` fact transports,
 so each concrete outcome is coupled by `Q : AVal → CVal → CPred` to some abstract outcome
-(`∀∃` refinement) and each thrown value by `E`, mirroring `wp x Q E`. `E`'s type is assigned by `HasEPost` from the pair
-of barrel shapes: aligned exception layers get `εa → εc → CPred` and the barrel is built by
-reifying `E` through `pred` (the exceptional mirror of `Concretization.post`); shapes with
-nothing to couple get `Unit` and the barrel is `γ.ePred` (fills are phase data).
+(`∀∃` refinement) and each thrown value by `E`, mirroring `wp x Q E`. `E`'s type `Ξ` is read
+off the barrel shapes by `HasEPost`, in two cases: an empty abstract barrel throws nothing, so
+there is nothing to couple (`Ξ := EPost.Nil`, barrels transported by `γ.ePred`); an aligned
+exception layer couples the thrown values (`Ξ := εa → εc → CPred`, the coupling reified
+through `pred` — the exceptional mirror of `Concretization.post`).
 
 The four laws are exactly symmetric: `rwp_pure` consumes `Q` and `rwp_throw` consumes `E`;
 `rwp_bind` rebinds `Q` with the continuations' `rwp` and `rwp_tryCatch` rebinds `E` with the
@@ -37,7 +38,7 @@ class HasEPost (CPred : Type w) (APred : Type w) (CEPred : Type w') (AEPred : Ty
 transport is `ePred` (concrete-only layers are phase data, filled by `ePred`). -/
 instance {CPred APred : Type w} {CEPred : Type} [Assertion CPred] [Assertion APred]
     [Assertion CEPred] :
-    HasEPost CPred APred CEPred EPost.Nil Unit where
+    HasEPost CPred APred CEPred EPost.Nil EPost.Nil where
   ePost γ _ := γ.ePred
 
 /-- Aligned exception layers: the relational head is `post` at the exception values; deeper
@@ -59,7 +60,7 @@ noncomputable def Concretization.ePost {CPred APred : Type w} {CEPred AEPred : T
 
 @[simp] theorem Concretization.ePost_nil {CPred APred : Type w} {CEPred : Type}
     [Assertion CPred] [Assertion APred] [Assertion CEPred]
-    (γ : Concretization CPred APred CEPred EPost.Nil) (E : Unit) (Ea : EPost.Nil) :
+    (γ : Concretization CPred APred CEPred EPost.Nil) (E Ea : EPost.Nil) :
     γ.ePost E Ea = γ.ePred Ea := rfl
 
 @[simp] theorem Concretization.ePost_cons_head {CPred APred : Type w} {εa εc : Type u}
@@ -119,18 +120,9 @@ def RTriple {CProg AProg : Type _} {CVal AVal : Type _}
     (P : CPred) (Q : AVal → CVal → CPred) (E : Ξ) : Prop :=
   P ⊑ rwp γ a c Q E
 
-/-- The one-point lattice: `()` is both `⊥` and `⊤`. Gives the omitted exception coupling a
-uniform `⊥` default across barrel shapes. -/
-scoped instance : Lean.Order.CompleteLattice Unit where
-  rel _ _ := True
-  rel_refl := trivial
-  rel_trans _ _ := trivial
-  rel_antisymm _ _ := rfl
-  has_sup _ := ⟨(), fun _ => ⟨fun _ _ _ => trivial, fun _ => trivial⟩⟩
-
 /-- Refinement triple notation without exception coupling (defaults to `⊥`: on coupled barrel
-shapes no concrete throw is matched, and on shapes with nothing to couple `Ξ` is the one-point
-lattice `Unit`). -/
+shapes no concrete throw is matched, and an empty coupling telescope `EPost.Nil` has `⊥` as its
+sole element). -/
 scoped syntax:lead atomic("⦃ " term " ⦄ " term:max " ⊑[") term "] " term:max
   " ⦃ " term " ⦄" : term
 
