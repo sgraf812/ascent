@@ -75,8 +75,8 @@ theorem corres_bind_pre [Frame CPred] {CV AV CV₂ AV₂ : Type w}
     (pre : CPred) (couple : CV → AV) (couple₂ : CV₂ → AV₂)
     {a₁ : AM AV} {c₁ : CM CV} {a₂ : AV → AM AV₂} {c₂ : CV → CM CV₂}
     (hc : Corres r (.eq pre couple) a₁ c₁)
-    (hmid : ∀ E, pre ⊑
-      wp c₁ (fun cv => corresPre r (coupleEq couple₂) (a₂ (couple cv)) (c₂ cv)) E) :
+    (hmid : pre ⊑
+      wp c₁ (fun cv => corresPre r (coupleEq couple₂) (a₂ (couple cv)) (c₂ cv)) ⊥) :
     Corres r (.eq pre couple₂) (a₁ >>= a₂) (c₁ >>= c₂) :=
   corres_bind pre _ couple couple₂ hc hmid fun _ => corres_corresPre
 
@@ -86,7 +86,7 @@ theorem corres_bind_erase_pre [Frame CPred] {CV AV CV₂ AV₂ : Type w}
     (pre : CPred) (couple : CV → AV) (couple₂ : CV₂ → AV₂)
     {v : AV} {c₁ : CM CV} {a : AM AV₂} {c₂ : CV → CM CV₂}
     (hc : Corres r (.eq pre couple) (pure v : AM AV) c₁)
-    (hmid : ∀ E, pre ⊑ wp c₁ (fun cv => corresPre r (coupleEq couple₂) a (c₂ cv)) E) :
+    (hmid : pre ⊑ wp c₁ (fun cv => corresPre r (coupleEq couple₂) a (c₂ cv)) ⊥) :
     Corres r (.eq pre couple₂) a (c₁ >>= c₂) :=
   corres_bind_erase pre _ couple couple₂ hc hmid fun _ => corres_corresPre
 

@@ -630,27 +630,26 @@ theorem corres_setSize_st {X : Type} (f : Heap → X) (pre : State → Prop) (x 
   exact hs.2
 
 /-- Establish/consume through the inferred mid-condition: `setSize` establishes the `"n"`
-coupling, `spAll` threads it, and `getSize` consumes it, abstracting the composite to `pure v`.
-The mid-condition is not written down; presence is read off `spAll` via its counit. -/
+coupling, `sp` threads it, and `getSize` consumes it, abstracting the composite to `pure v`.
+The mid-condition is not written down; presence is read off `sp` via its counit. -/
 example {X : Type} (f : Heap → X) (pre : State → Prop) (v : USize) :
     Corres (Concretization.ofStateRepr (fun s => f s.heap)) (.eq pre (id : USize → USize))
       (pure v : StateT X UB USize)
       (setSize "n" v >>= fun _ => getSize "n") := by
   refine corres_bind_erase_sp pre id id (corres_setSize_st f pre "n" v) ?_ fun cv => ?_
   · -- the erased head is failure-free
-    intro E
     refine le_wp_top_of_le_wp (Q := fun _ _ => True) ?_
     intro s _
     rw [wp_setSize]
     trivial
-  · -- `spAll` pins the `"n"` local for the consuming read
+  · -- `sp` pins the `"n"` local for the consuming read
     refine corres_getSizeVal_st f _ "n" v fun s hs => ?_
-    have himg : spAll (setSize "n" v) pre ⊑ fun _ s' => ∃ s₀, pre s₀ ∧
+    have himg : sp (setSize "n" v) pre ⊥ ⊑ fun _ s' => ∃ s₀, pre s₀ ∧
         s' = { s₀ with locals := fun y => if y = "n" then some (.size v) else s₀.locals y } :=
-      spAll_le fun E => by
+      sp_le (by
         intro s₀ h₀
         rw [wp_setSize]
-        exact ⟨s₀, h₀, rfl⟩
+        exact ⟨s₀, h₀, rfl⟩)
     obtain ⟨s₀, -, rfl⟩ := himg cv s hs
     simp
 
@@ -661,12 +660,12 @@ example {X : Type} (f : Heap → X) (pre : State → Prop) (v : USize) :
     Corres (Concretization.ofStateRepr (fun s => f s.heap)) (.eq pre (id : USize → USize))
       (pure v : StateT X UB USize)
       (setSize "n" v >>= fun _ => getSize "n") := by
-  refine corres_bind_erase_pre pre id id (corres_setSize_st f pre "n" v) fun E => ?_
+  refine corres_bind_erase_pre pre id id (corres_setSize_st f pre "n" v) ?_
   have htail : (fun s => s.locals "n" = some (.size v)) ⊑
       corresPre (Concretization.ofStateRepr (fun s : State => f s.heap))
         (coupleEq (id : USize → USize)) (pure v : StateT X UB USize) (getSize "n") :=
     Corres.le_corresPre (corres_getSizeVal_st f _ "n" v fun _ h => h)
-  refine PartialOrder.rel_trans ?_ (WP.wp_consequence _ _ _ E fun _ => htail)
+  refine PartialOrder.rel_trans ?_ (WP.wp_consequence _ _ _ ⊥ fun _ => htail)
   intro s _
   rw [wp_setSize]
   simp
@@ -701,7 +700,7 @@ theorem corres_zip (a b out : Addr) (la lb : USize) (a_arr b_arr : Array I)
         slice b (min la lb).toNat s.heap = b_arr ∧
         AllValid a b out (min la lb).toNat s.heap) ∧ cv1 = la) id id
       (corres_getSizeVal_st (fun h => slice out (min la lb).toNat h) _ "len_a" la (fun s hs => hs.1.1)) ?_ (fun cv1 => ?_)
-    · intro E s hs
+    · intro s hs
       simp only [wp_getSize, hs.1.1]
       exact ⟨hs, trivial⟩
     refine corres_bind _ (fun cv2 s => (entryP a b out la lb s ∧
@@ -709,7 +708,7 @@ theorem corres_zip (a b out : Addr) (la lb : USize) (a_arr b_arr : Array I)
         slice b (min la lb).toNat s.heap = b_arr ∧
         AllValid a b out (min la lb).toNat s.heap) ∧ cv1 = la ∧ cv2 = lb) id id
       (corres_getSizeVal_st (fun h => slice out (min la lb).toNat h) _ "len_b" lb (fun s hs => hs.1.1.2.1)) ?_ (fun cv2 => ?_)
-    · intro E s hs
+    · intro s hs
       simp only [wp_getSize, hs.1.1.2.1]
       exact ⟨hs.1, hs.2, trivial⟩
     refine corres_bind _ (fun _ s => (s.locals "n" = some (.size (min la lb)) ∧
@@ -718,7 +717,7 @@ theorem corres_zip (a b out : Addr) (la lb : USize) (a_arr b_arr : Array I)
         slice b (min la lb).toNat s.heap = b_arr ∧
         AllValid a b out (min la lb).toNat s.heap) id id
       (corres_setSize_st (fun h => slice out (min la lb).toNat h) _ "n" _) ?_ (fun _ => ?_)
-    · intro E s hs
+    · intro s hs
       obtain ⟨⟨hentry, hsa, hsb, hav⟩, hcv1, hcv2⟩ := hs
       simp only [wp_setSize, hcv1, hcv2]
       exact ⟨⟨by simp, by simp [hentry.2.2.1], by simp [hentry.2.2.2.1], by simp [hentry.2.2.2.2]⟩,
@@ -730,7 +729,7 @@ theorem corres_zip (a b out : Addr) (la lb : USize) (a_arr b_arr : Array I)
         slice b (min la lb).toNat s.heap = b_arr ∧
         AllValid a b out (min la lb).toNat s.heap) id id
       (corres_setSize_st (fun h => slice out (min la lb).toNat h) _ "i" _) ?_ (fun _ => ?_)
-    · intro E s hs
+    · intro s hs
       obtain ⟨⟨hn, hpa, hpb, hpout⟩, hsa, hsb, hav⟩ := hs
       simp only [wp_setSize]
       exact ⟨⟨by simp, by simp [hn], by simp [hpa], by simp [hpb], by simp [hpout]⟩, hsa, hsb, hav⟩

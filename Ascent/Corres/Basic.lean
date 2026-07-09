@@ -141,13 +141,13 @@ theorem corres_pure {CVal AVal : Type w} (pre : CPred) (couple : CVal → AVal) 
   exact WPMonad.pure_le_wp_pure c (r.post (coupleEq couple) Q) (r.ePred E)
 
 /-- `bind` abstracts `bind`, threading the precondition (`corresXF_split`): the heads correspond
-under `pre`, the concrete head establishes the mid-coupling `R`, and the continuations correspond
-under `R`. -/
+under `pre`, the concrete head establishes the mid-coupling `R` on normal return (the `⊥`
+exception postcondition), and the continuations correspond under `R`. -/
 theorem corres_bind {CV AV CV₂ AV₂ : Type w} [WPConjunctive (CM CV) CV CPred CEPred] (pre : CPred) (R : CV → CPred)
     (couple : CV → AV) (couple₂ : CV₂ → AV₂)
     {a₁ : AM AV} {c₁ : CM CV} {a₂ : AV → AM AV₂} {c₂ : CV → CM CV₂}
     (hc : Corres r (.eq pre couple) a₁ c₁)
-    (hmid : ∀ E, pre ⊑ wp c₁ (fun cv => R cv) E)
+    (hmid : pre ⊑ wp c₁ (fun cv => R cv) ⊥)
     (hf : ∀ cv, Corres r (.eq (R cv) couple₂) (a₂ (couple cv)) (c₂ cv)) :
     Corres r (.eq pre couple₂) (a₁ >>= a₂) (c₁ >>= c₂) := by
   intro Q E
@@ -157,7 +157,8 @@ theorem corres_bind {CV AV CV₂ AV₂ : Type w} [WPConjunctive (CM CV) CV CPred
   refine PartialOrder.rel_trans step1 ?_
   have hi := hc (fun av => wp (a₂ av) Q E) E
   have hii : (pre ⊓ r.pred (wp a₁ (fun av => wp (a₂ av) Q E) E)) ⊑ wp c₁ (fun cv => R cv) (r.ePred E) :=
-    PartialOrder.rel_trans (meet_le_left _ _) (hmid (r.ePred E))
+    PartialOrder.rel_trans (meet_le_left _ _)
+      (WP.wp_econs_bot_le c₁ (fun cv => R cv) (r.ePred E) hmid)
   refine PartialOrder.rel_trans (le_meet _ _ _ hi hii) ?_
   refine PartialOrder.rel_trans (WPConjunctive.wp_meet_wp_le c₁ (r.post (coupleEq couple) (fun av => wp (a₂ av) Q E))
     (fun cv => R cv) (r.ePred E)) ?_
@@ -200,7 +201,7 @@ theorem corres_bind_erase {CV AV CV₂ AV₂ : Type w} [WPConjunctive (CM CV) CV
     (pre : CPred) (R : CV → CPred) (couple : CV → AV) (couple₂ : CV₂ → AV₂)
     {v : AV} {c₁ : CM CV} {a : AM AV₂} {c₂ : CV → CM CV₂}
     (hc : Corres r (.eq pre couple) (pure v : AM AV) c₁)
-    (hmid : ∀ E, pre ⊑ wp c₁ (fun cv => R cv) E)
+    (hmid : pre ⊑ wp c₁ (fun cv => R cv) ⊥)
     (hf : ∀ cv, Corres r (.eq (R cv) couple₂) a (c₂ cv)) :
     Corres r (.eq pre couple₂) a (c₁ >>= c₂) := by
   have h := corres_bind pre R couple couple₂ (a₂ := fun _ => a) hc hmid hf
