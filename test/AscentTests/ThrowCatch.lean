@@ -1,12 +1,12 @@
-import Ascent.Corres.Refines
+import Ascent.Corres.RTriple
 import Ascent.UB
 
 /-!
 # Exceptions: the refinement meaning of `throw` and `tryCatch`
 
 Over one exception layer, `throw` is `pure` into the exception barrel and `tryCatch` is `bind`
-on it: `Refines.throw` consumes the exception coupling exactly as `Refines.pure` consumes
-the value coupling, and `Refines.tryCatch` rebinds it with the handlers' refinement exactly
+on it: `RTriple.throw` consumes the exception coupling exactly as `RTriple.pure` consumes
+the value coupling, and `RTriple.tryCatch` rebinds it with the handlers' refinement exactly
 as `bind` rebinds the value coupling. A caught throw is the handler call (`refines_catch_throw`),
 and inequal throws admit no refinement under the diagonal exception coupling.
 -/
@@ -25,23 +25,23 @@ abbrev exc : Concretization Prop Prop EE EE := Concretization.id Prop EE
 example {AV CV : Type} (e : Nat) (Q : AV → CV → Prop) :
     ⦃(⊤ : Prop)⦄ (MonadExceptOf.throw e : Except Nat AV)
       ⊑[exc] (MonadExceptOf.throw e : Except Nat CV) ⦃Q; (⌜· = ·⌝)⦄ :=
-  (Refines.throw e e).weaken (le_ofProp _ _ rfl)
+  (RTriple.throw e e).weaken (le_ofProp _ _ rfl)
 
-/-- A `tryCatch` around matching throws runs the handlers: `Refines.throw` establishes the
-body's exception coupling, which `Refines.tryCatch` rebinds with the handlers' refinement. -/
+/-- A `tryCatch` around matching throws runs the handlers: `RTriple.throw` establishes the
+body's exception coupling, which `RTriple.tryCatch` rebinds with the handlers' refinement. -/
 example {AV CV : Type} {P : Prop} (Q : AV → CV → Prop) (E : Nat → Nat → Prop)
     (ah : Nat → Except Nat AV) (ch : Nat → Except Nat CV)
     (h : ⦃P⦄ (ah 3) ⊑[exc] (ch 3) ⦃Q; E⦄) :
     ⦃P⦄ (MonadExceptOf.tryCatch (MonadExceptOf.throw 3) ah)
       ⊑[exc] (MonadExceptOf.tryCatch (MonadExceptOf.throw 3) ch) ⦃Q; E⦄ :=
-  ((Refines.throw 3 3).weaken h).tryCatch
+  ((RTriple.throw 3 3).weaken h).tryCatch
 
 /-- A caught throw is the handler call: the `throw`/`tryCatch` round trip is erased. -/
 theorem refines_catch_throw {AV CV : Type} {P : Prop} {Q : AV → CV → Prop} {E : Nat → Nat → Prop}
     (e : Nat) {a : Except Nat AV} {ch : Nat → Except Nat CV}
     (h : ⦃P⦄ a ⊑[exc] (ch e) ⦃Q; E⦄) :
     ⦃P⦄ a ⊑[exc] (MonadExceptOf.tryCatch (MonadExceptOf.throw e) ch) ⦃Q; E⦄ := by
-  refine Refines.intro fun Qa Ea => ?_
+  refine RTriple.intro fun Qa Ea => ?_
   simp only [WPMonad.wp_tryCatch_Except_apply_eq, WPMonad.wp_throw_Except_apply_eq]
   exact h.elim Qa Ea
 
@@ -59,7 +59,7 @@ example : ¬ ⦃(⊤ : Prop)⦄ (MonadExceptOf.throw 0 : Except Nat Nat)
 
 end ThrowCatch
 
-namespace RefinesValidation
+namespace RTripleValidation
 
 open Ascent
 
@@ -80,7 +80,7 @@ example (Q : Int → Int → Prop) :
     ⦃(⊤ : Prop)⦄ (MonadExceptOf.throw true : Except Bool Int)
       ⊑[errAbs] (MonadExceptOf.throw 3 : Except Nat Int)
       ⦃Q; fun ea ec => ⌜ea = decide (0 < ec)⌝⦄ :=
-  (Refines.throw true 3).weaken (le_ofProp _ _ (by decide))
+  (RTriple.throw true 3).weaken (le_ofProp _ _ (by decide))
 
 /-- Concrete-only exception layer: the fill is phase data. `⊤` permits an unmatched concrete
 throw. -/
@@ -94,7 +94,7 @@ def fillAbs (fill : Nat → Prop) :
 example (Q : Int → Int → Prop) :
     ⦃(⊤ : Prop)⦄ (pure 0 : Id Int)
       ⊑[fillAbs fun _ => ⊤] (MonadExceptOf.throw 3 : Except Nat Int) ⦃Q⦄ := by
-  refine Refines.intro fun Qa Ea => ?_
+  refine RTriple.intro fun Qa Ea => ?_
   simp only [WPMonad.wp_throw_Except_apply_eq, Concretization.ePost_fill]
   exact le_top _
 
@@ -109,4 +109,4 @@ example : ¬ ⦃(⊤ : Prop)⦄ (pure 0 : Id Int)
   rw [bot_prop_eq] at hfalse
   exact hfalse
 
-end RefinesValidation
+end RTripleValidation

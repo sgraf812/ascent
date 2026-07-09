@@ -59,7 +59,7 @@ theorem refines_whileLoop {Aσ Cσ : Type} (J : Aσ → Cσ → Prop)
         wp abody (fun _ as' => μ as' < μ as) E as) :
     ⦃(⊤ : Cσ → Prop)⦄ (whileLoop acond abody) ⊑[relRef J] (whileLoop ccond cbody)
       ⦃fun _ _ => ⊤⦄ := by
-  refine Refines.intro fun Q E => ?_
+  refine RTriple.intro fun Q E => ?_
   intro cs hcs
   simp only [top_meet, relRef_pred] at hcs
   obtain ⟨as, hJ, hwp⟩ := hcs
@@ -99,7 +99,7 @@ theorem refines_whileLoop {Aσ Cσ : Type} (J : Aσ → Cσ → Prop)
 the ordinary `wp`, since `post id Q` is `Q` up to the existential witness. -/
 theorem refines_relEq_self {σ α} (P : σ → Prop) (a : StateT σ UB α) :
     ⦃P⦄ a ⊑[relRef (Eq : σ → σ → Prop)] a ⦃fun av cv => ⌜av = cv⌝⦄ := by
-  refine Refines.intro fun Q E => ?_
+  refine RTriple.intro fun Q E => ?_
   intro cs hcs
   simp only [meet_apply, meet_prop_eq_and, relRef_pred] at hcs
   obtain ⟨-, as, rfl, hwp⟩ := hcs

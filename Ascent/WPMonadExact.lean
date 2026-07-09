@@ -19,7 +19,7 @@ namespace Ascent
 universe u v w w'
 
 /-- The weakest-precondition interpretation is exact: beyond `WPMonad` soundness it also upper-bounds
-`pure`/`bind`, so the two together compute them. The abstract side of `refines` needs this, since its
+`pure`/`bind`, so the two together compute them. The abstract side of `rwp` needs this, since its
 `wp` is decomposed out of the precondition. A mixin over `WPMonad` rather than an extension, so it
 never participates in `WP` synthesis. -/
 class WPMonadExact (m : Type u → Type v) (Pred : Type w) (EPred : Type w')

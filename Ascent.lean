@@ -4,5 +4,5 @@ import Ascent.UB
 import Ascent.Loop
 import Ascent.Corres.StateT
 import Ascent.Corres.SP
-import Ascent.Corres.Refines
+import Ascent.Corres.RTriple
 import Ascent.Corres.Loop

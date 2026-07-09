@@ -1,4 +1,4 @@
-import Ascent.Corres.Refines
+import Ascent.Corres.RTriple
 
 /-!
 # The `UB` (undefined-behavior) effect
@@ -106,10 +106,10 @@ instance {α} : WPConjunctive (UB α) α Prop EPost.Nil where
 coupling; on a failed guard the abstract program fails and the refinement is discharged
 trivially. The no-overflow obligation lives in the guard `g`, threaded by `wp`, not in the
 precondition. -/
-theorem Ascent.Refines.guardRet {AV CV : Type} {g : Prop} [Decidable g] {P : Prop}
+theorem Ascent.RTriple.guardRet {AV CV : Type} {g : Prop} [Decidable g] {P : Prop}
     {Q : AV → CV → Prop} (a : AV) (c : CV) (h : g → P ⊑ Q a c) :
     ⦃P⦄ (UB.guardRet g a) ⊑[Concretization.id Prop EPost.Nil] (Pure.pure c : Id CV) ⦃Q⦄ := by
-  refine Refines.intro fun Qa Ea => ?_
+  refine RTriple.intro fun Qa Ea => ?_
   by_cases hg : g
   · rw [show UB.guardRet g a = Pure.pure a from by simp [UB.guardRet, hg]]
     show P ⊓ Qa a ⊑ (Concretization.id Prop EPost.Nil).post Q Qa c

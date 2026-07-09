@@ -1,5 +1,5 @@
 import Ascent.UB
-import Ascent.Corres.Refines
+import Ascent.Corres.RTriple
 
 /-!
 # Strongest postconditions from `wp`
@@ -86,7 +86,7 @@ variable {CM AM : Type w → Type v} {CPred APred : Type w} {CEPred AEPred : Typ
 /-- The erased-leaf bind at the inferred mid-coupling: `sp` at the `⊥` exception postcondition
 threads the strongest postcondition of the erased head, leaving only its failure-freedom to
 prove. -/
-theorem Refines.bind_erase_sp [Frame CPred] {CV AV CV₂ AV₂ : Type w} {Ξ : Type u}
+theorem RTriple.bind_erase_sp [Frame CPred] {CV AV CV₂ AV₂ : Type w} {Ξ : Type u}
     [HasEPost CPred APred CEPred AEPred Ξ]
     [WPConjunctive (CM CV) CV CPred CEPred] [WPInfConjunctive (CM CV) CV CPred CEPred]
     {γ : Concretization CPred APred CEPred AEPred}

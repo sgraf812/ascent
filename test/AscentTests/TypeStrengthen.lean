@@ -1,4 +1,4 @@
-import Ascent.Corres.Refines
+import Ascent.Corres.RTriple
 
 /-!
 # Type strengthening: `ExceptT Unit (StateT σ Id) ↝ StateT σ Id`
@@ -27,7 +27,7 @@ def typeStrengthen (σ : Type) :
 obligation is discharged by the `⊥` failure barrel in `typeStrengthen`. -/
 theorem refines_lift {σ α : Type} (P : σ → Prop) (x : StateT σ Id α) :
     ⦃P⦄ x ⊑[typeStrengthen σ] (MonadLift.monadLift x : TS σ α) ⦃(⌜· = ·⌝)⦄ := by
-  refine Refines.intro fun Qa Ea => ?_
+  refine RTriple.intro fun Qa Ea => ?_
   have hQ : (typeStrengthen σ).post (fun av cv => ⌜av = cv⌝) Qa = Qa := by
     funext cv; simp only [Concretization.post_eq, typeStrengthen, id_eq]
   rw [hQ]
@@ -90,7 +90,7 @@ def optionStrengthen (σ : Type) :
 /-- A total state computation abstracts its lift into the option monad. -/
 theorem refines_liftOption {σ α : Type} (P : σ → Prop) (x : StateT σ Id α) :
     ⦃P⦄ x ⊑[optionStrengthen σ] (MonadLift.monadLift x : OptS σ α) ⦃(⌜· = ·⌝)⦄ := by
-  refine Refines.intro fun Qa Ea => ?_
+  refine RTriple.intro fun Qa Ea => ?_
   have hQ : (optionStrengthen σ).post (fun av cv => ⌜av = cv⌝) Qa = Qa := by
     funext cv; simp only [Concretization.post_eq, optionStrengthen, id_eq]
   rw [hQ]

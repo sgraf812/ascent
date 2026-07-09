@@ -1,6 +1,6 @@
 import Ascent.Corres.Loop
 import Ascent.Corres.SP
-import Ascent.Corres.Refines
+import Ascent.Corres.RTriple
 import Std.Tactic.Do
 
 /-!
@@ -295,7 +295,7 @@ operations act on the coupled heap, and the counter update evolves the coupling.
 theorem refines_stepL2 (a b out : Addr) (n : USize) :
     ⦃(⊤ : State → Prop)⦄ (stepL2 a b out) ⊑[relRef (invL2 a b out n)] stepL1
       ⦃fun _ _ => ⊤⦄ := by
-  refine Refines.intro fun Q E => ?_
+  refine RTriple.intro fun Q E => ?_
   intro cs hpre
   simp only [top_meet, relRef_pred] at hpre
   obtain ⟨⟨i, h⟩, ⟨hh, hi, hn, ha, hb, hout⟩, habs⟩ := hpre
@@ -348,7 +348,7 @@ theorem refines_L1L2 (a b out : Addr) (n : USize) :
 theorem refines_getSizeN (a b out : Addr) (n : USize) :
     ⦃(⊤ : State → Prop)⦄ (pure n : StateT (USize × Heap) UB USize)
       ⊑[relRef (invL2 a b out n)] (getSize "n") ⦃(⌜· = ·⌝)⦄ := by
-  refine Refines.intro fun Q E => ?_
+  refine RTriple.intro fun Q E => ?_
   intro cs hpre
   simp only [top_meet, relRef_pred] at hpre
   obtain ⟨⟨i, h⟩, hJ, habs⟩ := hpre
@@ -502,7 +502,7 @@ theorem refines_stepL3 (a b out : Addr) (n : USize) (a_arr b_arr : Array I)
     (hd : NoAlias a b out n.toNat) :
     ⦃(⊤ : (USize × Heap) → Prop)⦄ (stepL3 a_arr b_arr)
       ⊑[relRef (invL3 a b out n a_arr b_arr)] (stepL2 a b out) ⦃fun _ _ => ⊤⦄ := by
-  refine Refines.intro fun Q E => ?_
+  refine RTriple.intro fun Q E => ?_
   intro ch hpre
   simp only [top_meet, relRef_pred] at hpre
   obtain ⟨⟨i, oa⟩, ⟨hc, ho, hsa, hsb, hav⟩, habs⟩ := hpre
@@ -567,7 +567,7 @@ theorem refines_L2L3_tail (a b out : Addr) (n : USize) (a_arr b_arr : Array I)
   .bind' (refines_L2L3 a b out n a_arr b_arr hd) fun _ _ => .pure_eq ⊤ _ rfl
 
 /-- The locals lift (`refines_L1L2_tail`, `State ⇝ USize × Heap`) and the heap→array lift
-(`refines_L2L3_tail`, `USize × Heap ⇝ USize × Array`) chained by `Refines.comp`. Relates the
+(`refines_L2L3_tail`, `USize × Heap ⇝ USize × Array`) chained by `RTriple.comp`. Relates the
 concrete loop+`return` to the out-param array loop over `USize × Array`, the counter still
 carried. -/
 theorem refines_L1L3 (a b out : Addr) (n : USize) (a_arr b_arr : Array I)
@@ -577,7 +577,7 @@ theorem refines_L1L3 (a b out : Addr) (n : USize) (a_arr b_arr : Array I)
       ⊑[(relRef (invL2 a b out n)).comp (relRef (invL3 a b out n a_arr b_arr))]
       (whileLoop guardL1 stepL1 >>= fun _ => getSize "n")
       ⦃(⌜· = ·⌝)⦄ :=
-  Refines.comp (f₁ := id) (f₂ := id) (fun _ => rfl)
+  RTriple.comp (f₁ := id) (f₂ := id) (fun _ => rfl)
     (refines_L2L3_tail a b out n a_arr b_arr hd) (refines_L1L2_tail a b out n)
 
 /-- Under the loop-entry couplings (`i = 0`, the bound and pointers, the input slices, validity and
@@ -593,7 +593,7 @@ theorem refines_L3L4 (a b out : Addr) (n : USize) (a_arr b_arr : Array I)
       (zipL4 a_arr b_arr n)
       ⊑[Concretization.ofStateRepr fun s : State => slice out n.toNat s.heap]
       (whileLoop guardL1 stepL1 >>= fun _ => getSize "n") ⦃(⌜· = ·⌝)⦄ := by
-  refine Refines.intro fun Q E => ?_
+  refine RTriple.intro fun Q E => ?_
   intro s hs
   simp only [Concretization.ofStateRepr_pred, meet_apply, meet_prop_eq_and, zipL4, StateT.wp_apply_eq,
     StateT.run] at hs
@@ -624,7 +624,7 @@ theorem refines_getSize_st {X : Type} (f : Heap → X) (P : State → Prop) (x :
     (hpre : ∀ s, P s → s.locals x = some (.size v)) :
     ⦃P⦄ (pure v : StateT X UB USize) ⊑[Concretization.ofStateRepr fun s => f s.heap] (getSize x)
       ⦃fun av cv s => P s ∧ av = v ∧ cv = v⦄ := by
-  refine Refines.intro fun Qa Ea => ?_
+  refine RTriple.intro fun Qa Ea => ?_
   intro s hs
   simp only [Concretization.ofStateRepr_pred, meet_apply, meet_prop_eq_and,
     StateT.wp_apply_eq, StateT.run] at hs
@@ -638,7 +638,7 @@ theorem refines_setSize_st {X : Type} (f : Heap → X) (P : State → Prop) (x :
     ⦃P⦄ (pure () : StateT X UB Unit) ⊑[Concretization.ofStateRepr fun s => f s.heap] (setSize x v)
       ⦃fun _ _ s' => ∃ s, P s ∧
         s' = { s with locals := fun y => if y = x then some (.size v) else s.locals y }⦄ := by
-  refine Refines.intro fun Qa Ea => ?_
+  refine RTriple.intro fun Qa Ea => ?_
   intro s hs
   simp only [Concretization.ofStateRepr_pred, meet_apply, meet_prop_eq_and,
     StateT.wp_apply_eq, StateT.run] at hs
@@ -660,7 +660,7 @@ example {X : Type} (f : Heap → X) (P : State → Prop) (v : USize) :
     ⦃P⦄ (pure v : StateT X UB USize)
       ⊑[Concretization.ofStateRepr fun s => f s.heap]
       (setSize "n" v >>= fun _ => getSize "n") ⦃(⌜· = ·⌝)⦄ := by
-  refine Refines.bind_erase_sp (v := ())
+  refine RTriple.bind_erase_sp (v := ())
     ((refines_setSize_st f P "n" v).mono_post fun _ _ => le_top _) ?_ fun cv => ?_
   · -- the erased head is failure-free
     refine le_wp_top_of_le_wp (Q := fun _ _ => True) ?_
@@ -685,7 +685,7 @@ example {X : Type} (f : Heap → X) (P : State → Prop) (v : USize) :
     ⦃P⦄ (pure v : StateT X UB USize)
       ⊑[Concretization.ofStateRepr fun s => f s.heap]
       (setSize "n" v >>= fun _ => getSize "n") ⦃(⌜· = ·⌝)⦄ := by
-  refine Refines.bind_erase (v := ())
+  refine RTriple.bind_erase (v := ())
     ((refines_setSize_st f P "n" v).mono_post fun _ cv => ?_)
     fun cv => PartialOrder.rel_refl
   intro s' hs'
@@ -737,11 +737,11 @@ theorem wp_zipL4 (a_arr b_arr : Array I) (n : USize) (Q : USize → Array I → 
 
 /-- **Dropping the state monad.** Under no precondition, `zipL4` (a state computation over the output
 buffer) is abstracted by the pure `zipL5`, which returns the output array as a value. The terminal
-`Refines.purify` reads the final state into the result. -/
+`RTriple.purify` reads the final state into the result. -/
 theorem refines_purifyL4 (a_arr b_arr : Array I) (n : USize) :
     ⦃(⊤ : Array I → Prop)⦄ (zipL5 a_arr b_arr n) ⊑[purify (Array I)] (zipL4 a_arr b_arr n)
       ⦃purifyCouple⦄ := by
-  apply Refines.purify (zipL4 a_arr b_arr n) n (Array.zipWith (· + ·) a_arr b_arr)
+  apply RTriple.purify (zipL4 a_arr b_arr n) n (Array.zipWith (· + ·) a_arr b_arr)
   intro Q E
   apply le_of_forall_le
   intro s
@@ -777,7 +777,7 @@ theorem refines_zip5 (a b out : Addr) (la lb : USize) (a_arr b_arr : Array I)
       ⊑[(Concretization.ofStateRepr fun s : State => slice out (min la lb).toNat s.heap).comp
           (purify (Array I))] zipL1
       ⦃fun av cv s' => av = (cv, slice out (min la lb).toNat s'.heap)⦄ := by
-  refine Refines.intro fun Q E => ?_
+  refine RTriple.intro fun Q E => ?_
   have hRHS : (Concretization.ofStateRepr fun s : State => slice out (min la lb).toNat s.heap).post
         (fun av cv => ⌜av = cv⌝) ((purify (Array I)).post purifyCouple Q)
       = fun cv s' => Q (cv, slice out (min la lb).toNat s'.heap) := by
