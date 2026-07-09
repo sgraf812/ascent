@@ -134,17 +134,25 @@ theorem corres_bind_erase_pre [Frame CPred] {CV AV CV₂ AV₂ : Type w}
 end
 
 section
+variable {CPred APred : Type w} {εa εc : Type u} {ARest CRest : Type w'}
+  [Assertion CPred] [Assertion APred] [Assertion ARest] [Assertion CRest]
+
+/-- The exception coupling induced by the concretization at a `Cons` layer: the weakest relation
+on thrown values under which the abstract barrel concretizes to the concrete one. `esim r`
+stands to exception values as `sim r` stands to programs. -/
+noncomputable def esim
+    (r : Concretization CPred APred (EPost.Cons (εc → CPred) CRest)
+      (EPost.Cons (εa → APred) ARest))
+    (ea : εa) (ec : εc) : CPred :=
+  iInf fun Ea : EPost.Cons (εa → APred) ARest =>
+    r.pred (Ea.head ea) ⇨ (r.ePred Ea).head ec
+
+end
+
+section
 variable {εa εc AV CV : Type}
   {r : Concretization Prop Prop (EPost.Cons (εc → Prop) EPost.Nil)
     (EPost.Cons (εa → Prop) EPost.Nil)}
-
-/-- The exception coupling induced by the concretization: the weakest relation on thrown values
-under which the abstract barrel concretizes to the concrete one. `esim r` stands to exception
-values as `sim r` stands to programs. -/
-noncomputable def esim (r : Concretization Prop Prop (EPost.Cons (εc → Prop) EPost.Nil)
-    (EPost.Cons (εa → Prop) EPost.Nil)) (ea : εa) (ec : εc) : Prop :=
-  iInf fun Ea : EPost.Cons (εa → Prop) EPost.Nil =>
-    r.pred (Ea.head ea) ⇨ (r.ePred Ea).head ec
 
 /-- The relational throw law: `throw` consumes the induced exception coupling as `pure`
 consumes the relational postcondition. -/
