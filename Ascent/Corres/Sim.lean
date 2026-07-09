@@ -101,6 +101,38 @@ noncomputable def sim (r : Concretization CPred APred CEPred AEPred)
   iInf fun Qa : AVal → APred => iInf fun Ea : AEPred =>
     r.pred (wp a Qa Ea) ⇨ wp c (r.post Q Qa) (r.ePost E Ea)
 
+/-- The simulation triple: under precondition `P`, the abstract program `a` simulates the
+concrete program `c` with value coupling `Q` and exception coupling `E`. -/
+def SimTriple (r : Concretization CPred APred CEPred AEPred) (P : CPred)
+    (a : AProg) (c : CProg) (Q : AVal → CVal → CPred) (E : Ξ) : Prop :=
+  P ⊑ sim r a c Q E
+
+@[inherit_doc SimTriple]
+scoped syntax:lead atomic("⦃ " term " ⦄ " term:max " ⪅[") term "] " term:max
+  " ⦃ " term "; " term " ⦄" : term
+
+scoped macro_rules
+  | `(⦃ $P ⦄ $a ⪅[$r] $c ⦃ $Q; $E ⦄) => `(SimTriple $r $P $a $c $Q $E)
+
+/-- Weaken the precondition. -/
+theorem SimTriple.weaken {r : Concretization CPred APred CEPred AEPred} {P' P : CPred}
+    {a : AProg} {c : CProg} {Q : AVal → CVal → CPred} {E : Ξ}
+    (h : ⦃P⦄ a ⪅[r] c ⦃Q; E⦄) (hP : P' ⊑ P) : ⦃P'⦄ a ⪅[r] c ⦃Q; E⦄ :=
+  PartialOrder.rel_trans hP h
+
+/-- `sim` is monotone in the value coupling. -/
+theorem sim_mono_post [Frame CPred] {r : Concretization CPred APred CEPred AEPred}
+    {a : AProg} {c : CProg} {Q Q' : AVal → CVal → CPred} {E : Ξ}
+    (hQ : ∀ av cv, Q av cv ⊑ Q' av cv) : sim r a c Q E ⊑ sim r a c Q' E := by
+  refine CompleteLattice.iInf_mono fun Qa => CompleteLattice.iInf_mono fun Ea => ?_
+  refine CompleteLattice.himp_mono PartialOrder.rel_refl ?_
+  refine WP.wp_consequence c _ _ _ ?_
+  intro cv
+  refine iSup_le _ _ fun av => ?_
+  exact PartialOrder.rel_trans
+    (le_meet _ _ _ (PartialOrder.rel_trans (meet_le_left _ _) (hQ av cv)) (meet_le_right _ _))
+    (le_iSup (fun av' => Q' av' cv ⊓ r.pred (Qa av')) av)
+
 /-- A correspondence entails the relational weakest precondition, on shapes where the barrel
 transport is `r.ePred`. -/
 theorem Corres.le_sim {r : Concretization CPred APred CEPred AEPred}
@@ -187,6 +219,30 @@ theorem sim_bind [Frame CPred] {CV AV CV₂ AV₂ : Type w}
   exact CompleteLattice.meet_le_of_le_himp
     (PartialOrder.rel_trans (iInf_le _ Qa) (iInf_le _ Ea))
 
+/-- The triple unit rule: `pure` consumes the value coupling. -/
+theorem SimTriple.pure {AV CV : Type w} {Q : AV → CV → CPred} {E : Ξ} (av : AV) (cv : CV) :
+    ⦃Q av cv⦄ (pure av : AM AV) ⪅[r] (pure cv : CM CV) ⦃Q; E⦄ :=
+  sim_pure av cv
+
+/-- The triple bind rule, post-parametric form: the head's value coupling is the
+continuations' `sim`. -/
+theorem SimTriple.bind [Frame CPred] {CV AV CV₂ AV₂ : Type w} {P : CPred}
+    {a₁ : AM AV} {c₁ : CM CV} {a₂ : AV → AM AV₂} {c₂ : CV → CM CV₂}
+    {Q : AV₂ → CV₂ → CPred} {E : Ξ}
+    (h : ⦃P⦄ a₁ ⪅[r] c₁ ⦃fun av cv => sim r (a₂ av) (c₂ cv) Q E; E⦄) :
+    ⦃P⦄ (a₁ >>= a₂) ⪅[r] (c₁ >>= c₂) ⦃Q; E⦄ :=
+  PartialOrder.rel_trans h sim_bind
+
+/-- The triple bind rule, mid-coupling form: the head establishes `R`, the continuations
+correspond under it. -/
+theorem SimTriple.bind' [Frame CPred] {CV AV CV₂ AV₂ : Type w} {P : CPred}
+    {a₁ : AM AV} {c₁ : CM CV} {a₂ : AV → AM AV₂} {c₂ : CV → CM CV₂}
+    {R : AV → CV → CPred} {Q : AV₂ → CV₂ → CPred} {E : Ξ}
+    (h₁ : ⦃P⦄ a₁ ⪅[r] c₁ ⦃R; E⦄)
+    (h₂ : ∀ av cv, ⦃R av cv⦄ (a₂ av) ⪅[r] (c₂ cv) ⦃Q; E⦄) :
+    ⦃P⦄ (a₁ >>= a₂) ⪅[r] (c₁ >>= c₂) ⦃Q; E⦄ :=
+  .bind (PartialOrder.rel_trans h₁ (sim_mono_post h₂))
+
 /-- `corres_bind` at the weakest mid-condition: the continuation obligation is `corres_sim`,
 leaving the head correspondence and one `wp` fact about the concrete head. -/
 theorem corres_bind_pre [Frame CPred] {CV AV CV₂ AV₂ : Type w}
@@ -266,6 +322,28 @@ theorem sim_tryCatch {Q : AV → CV → Prop} {E : εa → εc → Prop}
   refine iSup_le _ _ fun ea => ?_
   exact CompleteLattice.meet_le_of_le_himp
     (PartialOrder.rel_trans (iInf_le _ Qa) (iInf_le _ Ea))
+
+end
+
+section
+variable {εa εc AV CV : Type}
+  {r : Concretization Prop Prop (EPost.Cons (εc → Prop) EPost.Nil)
+    (EPost.Cons (εa → Prop) EPost.Nil)}
+
+/-- The triple throw rule: `throw` consumes the exception coupling. -/
+theorem SimTriple.throw {Q : AV → CV → Prop} {E : εa → εc → Prop} (ea : εa) (ec : εc) :
+    ⦃E ea ec⦄ (MonadExceptOf.throw ea : Except εa AV)
+      ⪅[r] (MonadExceptOf.throw ec : Except εc CV) ⦃Q; E⦄ :=
+  sim_throw ea ec
+
+/-- The triple tryCatch rule, post-parametric form: the body's exception coupling is the
+handlers' `sim`. -/
+theorem SimTriple.tryCatch {P : Prop} {Q : AV → CV → Prop} {E : εa → εc → Prop}
+    {ax : Except εa AV} {cx : Except εc CV}
+    {ah : εa → Except εa AV} {ch : εc → Except εc CV}
+    (h : ⦃P⦄ ax ⪅[r] cx ⦃Q; fun ea ec => sim r (ah ea) (ch ec) Q E⦄) :
+    ⦃P⦄ (MonadExceptOf.tryCatch ax ah) ⪅[r] (MonadExceptOf.tryCatch cx ch) ⦃Q; E⦄ :=
+  PartialOrder.rel_trans h sim_tryCatch
 
 end
 

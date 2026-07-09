@@ -91,13 +91,12 @@ def errAbs : Concretization Prop Prop (EPost.Cons (Nat → Prop) EPost.Nil)
   ePred_mono _ := PartialOrder.rel_refl
 
 /-- Throwing errno `3` abstracts to throwing `true` under the code coupling, supplied as the
-relational exceptional postcondition. -/
+exception coupling. -/
 example (Q : Int → Int → Prop) :
-    (⊤ : Prop) ⊑ sim errAbs (MonadExceptOf.throw true : Except Bool Int)
-      (MonadExceptOf.throw 3 : Except Nat Int) Q
-      (fun ea ec => ⌜ea = decide (0 < ec)⌝) := by
-  refine PartialOrder.rel_trans ?_ (sim_throw true 3)
-  exact le_ofProp _ _ (by decide)
+    ⦃(⊤ : Prop)⦄ (MonadExceptOf.throw true : Except Bool Int)
+      ⪅[errAbs] (MonadExceptOf.throw 3 : Except Nat Int)
+      ⦃Q; fun ea ec => ⌜ea = decide (0 < ec)⌝⦄ :=
+  (SimTriple.throw true 3).weaken (le_ofProp _ _ (by decide))
 
 /-- Concrete-only exception layer: the fill is phase data. `⊤` permits an unmatched concrete
 throw. -/
