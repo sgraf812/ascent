@@ -95,7 +95,7 @@ example (Q : Int → Int → Prop) :
     ⦃(⊤ : Prop)⦄ (pure 0 : Id Int)
       ⊑[fillAbs fun _ => ⊤] (MonadExceptOf.throw 3 : Except Nat Int) ⦃Q⦄ := by
   refine RTriple.intro fun Qa Ea => ?_
-  simp only [WPMonad.wp_throw_Except_apply_eq, Concretization.ePost_fill]
+  simp only [WPMonad.wp_throw_Except_apply_eq, Concretization.ePost_nil]
   exact le_top _
 
 /-- The `⊥` fill forbids it: type strengthening as `ePred` data. -/
@@ -103,7 +103,7 @@ example : ¬ ⦃(⊤ : Prop)⦄ (pure 0 : Id Int)
     ⊑[fillAbs fun _ => ⊥] (MonadExceptOf.throw 3 : Except Nat Int) ⦃(⌜· = ·⌝)⦄ := by
   intro h
   have h2 := h.elim (fun _ => True) EPost.Nil.mk
-  simp only [WPMonad.wp_throw_Except_apply_eq, Concretization.ePost_fill, top_meet,
+  simp only [WPMonad.wp_throw_Except_apply_eq, Concretization.ePost_nil, top_meet,
     WPMonadExact.wp_pure_eq] at h2
   have hfalse := h2 trivial
   rw [bot_prop_eq] at hfalse

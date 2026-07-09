@@ -62,7 +62,7 @@ example : ¬ ⦃(⊤ : Nat → Prop)⦄ (pure 0 : StateT Nat Id Nat)
   have hthrow : wp (throw () : TS Nat Nat)
       ((typeStrengthen Nat).post (fun av cv => ⌜av = cv⌝) (fun _ _ => True))
       ((typeStrengthen Nat).ePost () EPost.Nil.mk) = (⊥ : Nat → Prop) := by
-    simp [typeStrengthen, Concretization.ePost_fill, ExceptT.wp_apply_eq,
+    simp [typeStrengthen, Concretization.ePost_nil, ExceptT.wp_apply_eq,
       WPMonadExact.wp_pure_eq]
   have hpure : (typeStrengthen Nat).pred
       (wp (pure 0 : StateT Nat Id Nat) (fun _ _ => True) EPost.Nil.mk) = (fun _ => True) := by

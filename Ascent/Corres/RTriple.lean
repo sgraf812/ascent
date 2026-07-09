@@ -3,8 +3,8 @@ import Ascent.Corres.Basic
 /-!
 # `rwp`: the weakest precondition of refinement
 
-`rwp γ a c Q E` is the weakest concrete-state precondition under which the concrete program
-`c` refines the abstract program `a` through `γ`: every abstract `wp` fact transports to `c`,
+`rwp γ a c Q E` is the weakest concrete-state precondition under which the abstract program
+`a` is refined by the concrete program `c` through `γ`: every abstract `wp` fact transports,
 so each concrete outcome is coupled by `Q : AVal → CVal → CPred` to some abstract outcome
 (`∀∃` refinement) and each thrown value by `E`, mirroring `wp x Q E`. `E`'s type is assigned by `HasEPost` from the pair
 of barrel shapes: aligned exception layers get `εa → εc → CPred` and the barrel is built by
@@ -24,22 +24,20 @@ namespace Ascent
 
 universe u v w w'
 
-/-- Assigns to a pair of barrel shapes the type of the relational exceptional postcondition,
-and its concretization against the abstract barrel. -/
+/-- The type `Ξ` of the exception coupling, read off the pair of barrel shapes, and its
+transport into the concrete barrel. Two cases: an empty abstract barrel throws nothing, so
+there is nothing to couple; an aligned exception layer couples the thrown values. -/
 class HasEPost (CPred : Type w) (APred : Type w) (CEPred : Type w') (AEPred : Type w')
     (Ξ : outParam (Type u))
     [Assertion CPred] [Assertion APred] [Assertion CEPred] [Assertion AEPred] where
   /-- The exceptional mirror of `post`. -/
   ePost : Concretization CPred APred CEPred AEPred → Ξ → AEPred → CEPred
 
-instance {CPred APred : Type w} [Assertion CPred] [Assertion APred] :
-    HasEPost CPred APred EPost.Nil EPost.Nil Unit where
-  ePost γ _ := γ.ePred
-
-/-- A concrete-only barrel couples nothing: the fill is phase data, living in `ePred`. -/
-instance {CPred APred εh CRest : Type} [Assertion CPred] [Assertion APred] [Assertion εh]
-    [Assertion CRest] :
-    HasEPost CPred APred (EPost.Cons εh CRest) EPost.Nil Unit where
+/-- An empty abstract barrel throws nothing, so there is nothing to couple: the barrel
+transport is `ePred` (concrete-only layers are phase data, filled by `ePred`). -/
+instance {CPred APred : Type w} {CEPred : Type} [Assertion CPred] [Assertion APred]
+    [Assertion CEPred] :
+    HasEPost CPred APred CEPred EPost.Nil Unit where
   ePost γ _ := γ.ePred
 
 /-- Aligned exception layers: the relational head is `post` at the exception values; deeper
@@ -59,15 +57,9 @@ noncomputable def Concretization.ePost {CPred APred : Type w} {CEPred AEPred : T
     (γ : Concretization CPred APred CEPred AEPred) (E : Ξ) (Ea : AEPred) : CEPred :=
   HasEPost.ePost γ E Ea
 
-@[simp] theorem Concretization.ePost_nil {CPred APred : Type w}
-    [Assertion CPred] [Assertion APred]
-    (γ : Concretization CPred APred EPost.Nil EPost.Nil) (E : Unit) (Ea : EPost.Nil) :
-    γ.ePost E Ea = γ.ePred Ea := rfl
-
-@[simp] theorem Concretization.ePost_fill {CPred APred εh CRest : Type}
-    [Assertion CPred] [Assertion APred] [Assertion εh] [Assertion CRest]
-    (γ : Concretization CPred APred (EPost.Cons εh CRest) EPost.Nil)
-    (E : Unit) (Ea : EPost.Nil) :
+@[simp] theorem Concretization.ePost_nil {CPred APred : Type w} {CEPred : Type}
+    [Assertion CPred] [Assertion APred] [Assertion CEPred]
+    (γ : Concretization CPred APred CEPred EPost.Nil) (E : Unit) (Ea : EPost.Nil) :
     γ.ePost E Ea = γ.ePred Ea := rfl
 
 @[simp] theorem Concretization.ePost_cons_head {CPred APred : Type w} {εa εc : Type u}
@@ -101,8 +93,9 @@ variable {CProg AProg : Type _} {CVal AVal : Type _}
   [WP CProg CVal CPred CEPred] [WP AProg AVal APred AEPred]
   [HasEPost CPred APred CEPred AEPred Ξ]
 
-/-- The weakest precondition under which `c` refines `a` through `γ`: every abstract `wp` fact
-transports to `c`, coupling each concrete outcome to some abstract outcome (`∀∃` refinement).
+/-- The weakest precondition under which `a` is refined by `c` through `γ`: every abstract
+`wp` fact transports, coupling each concrete outcome to some abstract outcome (`∀∃`
+refinement).
 The constant-through-a-proof data (instances, `γ`) comes first, so occurrences share a common
 prefix under manipulation by a tactic. -/
 noncomputable def rwp (γ : Concretization CPred APred CEPred AEPred)
@@ -112,8 +105,8 @@ noncomputable def rwp (γ : Concretization CPred APred CEPred AEPred)
 
 end
 
-/-- The refinement triple: under precondition `P`, the concrete program `c` refines the
-abstract program `a` through `γ`, with value coupling `Q` and exception coupling `E`. The
+/-- The refinement triple: under precondition `P`, the abstract program `a` is refined by the
+concrete program `c` through `γ`, with value coupling `Q` and exception coupling `E`. The
 binder order mirrors `Triple`: the programs come first and the instances as late as possible,
 so that elaborating an application pins the assertion lattices before `γ` and `Ξ` before `E`. -/
 def RTriple {CProg AProg : Type _} {CVal AVal : Type _}
