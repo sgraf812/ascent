@@ -79,53 +79,29 @@ namespace SimValidation
 
 open Ascent
 
-/-! ## `sim`/`esim` validation: induced exception couplings, generation, fills -/
+/-! ## `sim` validation: exception-value coupling as judgment data, fills as phase data -/
 
-/-- Error-code abstraction: Boolean abstract exceptions over numeric concrete codes, the
-`ePred` built by reifying the code coupling `ea = decide (0 < ec)` through `pred`. -/
-noncomputable def errAbs : Concretization Prop Prop (EPost.Cons (Nat → Prop) EPost.Nil)
+/-- Error-code abstraction: Boolean abstract exceptions over numeric concrete codes; the
+concretization carries no exception structure of its own. -/
+def errAbs : Concretization Prop Prop (EPost.Cons (Nat → Prop) EPost.Nil)
     (EPost.Cons (Bool → Prop) EPost.Nil) where
   pred := _root_.id
-  ePred Ea := epost⟨fun ec => iSup fun ea => (⌜ea = decide (0 < ec)⌝ : Prop) ⊓ Ea.head ea⟩
+  ePred _ := epost⟨fun _ => ⊥⟩
   pred_mono h := h
-  ePred_mono {Ea Ea'} h := by
-    have h' : Ea.head ⊑ Ea'.head ∧ Ea.tail ⊑ Ea'.tail := by
-      simpa [PartialOrder.rel, meet_prop_eq_and] using h
-    refine EPost.Cons.mk_le _ _ _ ?_ (EPost.Nil.le _)
-    intro ec
-    show iSup (fun ea => (⌜ea = decide (0 < ec)⌝ : Prop) ⊓ Ea.head ea) ⊑
-      iSup fun ea => (⌜ea = decide (0 < ec)⌝ : Prop) ⊓ Ea'.head ea
-    refine iSup_le _ _ fun ea => ?_
-    exact PartialOrder.rel_trans
-      (le_meet _ _ _ (meet_le_left _ _)
-        (PartialOrder.rel_trans (meet_le_right _ _) (h'.1 ea)))
-      (le_iSup (fun ea => (⌜ea = decide (0 < ec)⌝ : Prop) ⊓ Ea'.head ea) ea)
+  ePred_mono _ := PartialOrder.rel_refl
 
-/-- Throwing errno `3` abstracts to throwing `true`: the reified kernel lies below the induced
-coupling `esim errAbs`, and `sim_throw` consumes it. -/
+/-- Throwing errno `3` abstracts to throwing `true` under the code coupling, supplied as the
+relational exceptional postcondition. -/
 example (Q : Int → Int → Prop) :
     (⊤ : Prop) ⊑ sim errAbs (MonadExceptOf.throw true : Except Bool Int)
-      (MonadExceptOf.throw 3 : Except Nat Int) Q := by
+      (MonadExceptOf.throw 3 : Except Nat Int) Q
+      (fun ea ec => ⌜ea = decide (0 < ec)⌝) := by
   refine PartialOrder.rel_trans ?_ (sim_throw true 3)
-  refine le_iInf _ _ fun Ea => ?_
-  refine himp_complete _ _ _ ?_
-  refine CompleteLattice.le_iSup_of_le true ?_
-  exact le_meet _ _ _ (le_ofProp _ _ (by decide)) (meet_le_left _ _)
+  exact le_ofProp _ _ (by decide)
 
-/-- The identity concretization satisfies `sim_tryCatch`'s generation hypothesis: `esim` at the
-diagonal is `⊤`, so each barrel value generates itself. -/
-example {ε : Type} (Ea : EPost.Cons (ε → Prop) EPost.Nil) (ec : ε) :
-    ((Concretization.id Prop (EPost.Cons (ε → Prop) EPost.Nil)).ePred Ea).head ec ⊑
-      iSup fun ea => esim (Concretization.id Prop (EPost.Cons (ε → Prop) EPost.Nil)) ea ec
-        ⊓ (Concretization.id Prop (EPost.Cons (ε → Prop) EPost.Nil)).pred (Ea.head ea) := by
-  refine CompleteLattice.le_iSup_of_le ec ?_
-  refine le_meet _ _ _ ?_ PartialOrder.rel_refl
-  refine PartialOrder.rel_trans (le_top _) ?_
-  refine le_iInf _ _ fun Ea' => ?_
-  exact himp_complete _ _ _ (meet_le_left _ _)
-
-/-- Concrete-only exception layer with a fill: `⊤` permits an unmatched concrete throw. -/
-noncomputable def fillAbs (fill : Nat → Prop) :
+/-- Concrete-only exception layer: the fill is phase data. `⊤` permits an unmatched concrete
+throw. -/
+def fillAbs (fill : Nat → Prop) :
     Concretization Prop Prop (EPost.Cons (Nat → Prop) EPost.Nil) EPost.Nil where
   pred := _root_.id
   ePred _ := epost⟨fill⟩
@@ -134,20 +110,21 @@ noncomputable def fillAbs (fill : Nat → Prop) :
 
 example (Q : Int → Int → Prop) :
     (⊤ : Prop) ⊑ sim (fillAbs fun _ => ⊤) (pure 0 : Id Int)
-      (MonadExceptOf.throw 3 : Except Nat Int) Q := by
+      (MonadExceptOf.throw 3 : Except Nat Int) Q ⟨⟩ := by
   refine le_iInf _ _ fun Qa => le_iInf _ _ fun Ea => ?_
   refine himp_complete _ _ _ ?_
-  simp only [WPMonad.wp_throw_Except_apply_eq]
+  simp only [WPMonad.wp_throw_Except_apply_eq, ECouple.epost_fill]
   exact le_top _
 
 /-- The `⊥` fill forbids it: type strengthening as `ePred` data. -/
 example : ¬ ((⊤ : Prop) ⊑ sim (fillAbs fun _ => ⊥) (pure 0 : Id Int)
-      (MonadExceptOf.throw 3 : Except Nat Int) (fun av cv => ⌜av = cv⌝)) := by
+      (MonadExceptOf.throw 3 : Except Nat Int) (fun av cv => ⌜av = cv⌝) ⟨⟩) := by
   intro h
   have h2 := CompleteLattice.meet_le_of_le_himp
     (PartialOrder.rel_trans h
       (PartialOrder.rel_trans (iInf_le _ (fun _ => True)) (iInf_le _ EPost.Nil.mk)))
-  simp only [WPMonad.wp_throw_Except_apply_eq, top_meet, WPMonadExact.wp_pure_eq] at h2
+  simp only [WPMonad.wp_throw_Except_apply_eq, ECouple.epost_fill, top_meet,
+    WPMonadExact.wp_pure_eq] at h2
   have hfalse := h2 trivial
   rw [bot_prop_eq] at hfalse
   exact hfalse

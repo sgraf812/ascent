@@ -660,11 +660,12 @@ example {X : Type} (f : Heap → X) (pre : State → Prop) (v : USize) :
     Corres (Concretization.ofStateRepr (fun s => f s.heap)) (.eq pre (id : USize → USize))
       (pure v : StateT X UB USize)
       (setSize "n" v >>= fun _ => getSize "n") := by
-  refine corres_bind_erase_pre pre id id (corres_setSize_st f pre "n" v) ?_
+  refine corres_bind_erase_pre pre id id ⟨⟩ (fun _ => rfl)
+    (corres_setSize_st f pre "n" v) ?_
   have htail : (fun s => s.locals "n" = some (.size v)) ⊑
       sim (Concretization.ofStateRepr (fun s : State => f s.heap))
-        (pure v : StateT X UB USize) (getSize "n") (coupleEq (id : USize → USize)) :=
-    Corres.le_sim (corres_getSizeVal_st f _ "n" v fun _ h => h)
+        (pure v : StateT X UB USize) (getSize "n") (coupleEq (id : USize → USize)) ⟨⟩ :=
+    Corres.le_sim (corres_getSizeVal_st f _ "n" v fun _ h => h) (fun _ => rfl)
   refine PartialOrder.rel_trans ?_ (WP.wp_consequence _ _ _ ⊥ fun _ => htail)
   intro s _
   rw [wp_setSize]
