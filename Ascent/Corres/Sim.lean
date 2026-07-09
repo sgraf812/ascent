@@ -101,23 +101,23 @@ noncomputable def sim (γ : Concretization CPred APred CEPred AEPred)
   iInf fun Qa : AVal → APred => iInf fun Ea : AEPred =>
     γ.pred (wp a Qa Ea) ⇨ wp c (γ.post Q Qa) (γ.ePost E Ea)
 
-/-- The simulation triple: under precondition `P`, the abstract program `a` simulates the
-concrete program `c` with value coupling `Q` and exception coupling `E`. -/
+/-- The simulation triple: under precondition `P`, the abstract program `a` approximates the
+concrete program `c` through `γ`, with value coupling `Q` and exception coupling `E`. -/
 def SimTriple (γ : Concretization CPred APred CEPred AEPred) (P : CPred)
     (a : AProg) (c : CProg) (Q : AVal → CVal → CPred) (E : Ξ) : Prop :=
   P ⊑ sim γ a c Q E
 
 @[inherit_doc SimTriple]
-scoped syntax:lead atomic("⦃ " term " ⦄ " term:max " ⪯[") term "] " term:max
+scoped syntax:lead atomic("⦃ " term " ⦄ " term:max " ⊑[") term "] " term:max
   " ⦃ " term "; " term " ⦄" : term
 
 scoped macro_rules
-  | `(⦃ $P ⦄ $a ⪯[$γ] $c ⦃ $Q; $E ⦄) => `(SimTriple $γ $P $a $c $Q $E)
+  | `(⦃ $P ⦄ $a ⊑[$γ] $c ⦃ $Q; $E ⦄) => `(SimTriple $γ $P $a $c $Q $E)
 
 /-- Weaken the precondition. -/
 theorem SimTriple.weaken {γ : Concretization CPred APred CEPred AEPred} {P' P : CPred}
     {a : AProg} {c : CProg} {Q : AVal → CVal → CPred} {E : Ξ}
-    (h : ⦃P⦄ a ⪯[γ] c ⦃Q; E⦄) (hP : P' ⊑ P) : ⦃P'⦄ a ⪯[γ] c ⦃Q; E⦄ :=
+    (h : ⦃P⦄ a ⊑[γ] c ⦃Q; E⦄) (hP : P' ⊑ P) : ⦃P'⦄ a ⊑[γ] c ⦃Q; E⦄ :=
   PartialOrder.rel_trans hP h
 
 /-- `sim` is monotone in the value coupling. -/
@@ -221,7 +221,7 @@ theorem sim_bind [Frame CPred] {CV AV CV₂ AV₂ : Type w}
 
 /-- The triple unit rule: `pure` consumes the value coupling. -/
 theorem SimTriple.pure {AV CV : Type w} {Q : AV → CV → CPred} {E : Ξ} (av : AV) (cv : CV) :
-    ⦃Q av cv⦄ (pure av : AM AV) ⪯[γ] (pure cv : CM CV) ⦃Q; E⦄ :=
+    ⦃Q av cv⦄ (pure av : AM AV) ⊑[γ] (pure cv : CM CV) ⦃Q; E⦄ :=
   sim_pure av cv
 
 /-- The triple bind rule, post-parametric form: the head's value coupling is the
@@ -229,8 +229,8 @@ continuations' `sim`. -/
 theorem SimTriple.bind [Frame CPred] {CV AV CV₂ AV₂ : Type w} {P : CPred}
     {a₁ : AM AV} {c₁ : CM CV} {a₂ : AV → AM AV₂} {c₂ : CV → CM CV₂}
     {Q : AV₂ → CV₂ → CPred} {E : Ξ}
-    (h : ⦃P⦄ a₁ ⪯[γ] c₁ ⦃fun av cv => sim γ (a₂ av) (c₂ cv) Q E; E⦄) :
-    ⦃P⦄ (a₁ >>= a₂) ⪯[γ] (c₁ >>= c₂) ⦃Q; E⦄ :=
+    (h : ⦃P⦄ a₁ ⊑[γ] c₁ ⦃fun av cv => sim γ (a₂ av) (c₂ cv) Q E; E⦄) :
+    ⦃P⦄ (a₁ >>= a₂) ⊑[γ] (c₁ >>= c₂) ⦃Q; E⦄ :=
   PartialOrder.rel_trans h sim_bind
 
 /-- The triple bind rule, mid-coupling form: the head establishes `R`, the continuations
@@ -238,9 +238,9 @@ correspond under it. -/
 theorem SimTriple.bind' [Frame CPred] {CV AV CV₂ AV₂ : Type w} {P : CPred}
     {a₁ : AM AV} {c₁ : CM CV} {a₂ : AV → AM AV₂} {c₂ : CV → CM CV₂}
     {R : AV → CV → CPred} {Q : AV₂ → CV₂ → CPred} {E : Ξ}
-    (h₁ : ⦃P⦄ a₁ ⪯[γ] c₁ ⦃R; E⦄)
-    (h₂ : ∀ av cv, ⦃R av cv⦄ (a₂ av) ⪯[γ] (c₂ cv) ⦃Q; E⦄) :
-    ⦃P⦄ (a₁ >>= a₂) ⪯[γ] (c₁ >>= c₂) ⦃Q; E⦄ :=
+    (h₁ : ⦃P⦄ a₁ ⊑[γ] c₁ ⦃R; E⦄)
+    (h₂ : ∀ av cv, ⦃R av cv⦄ (a₂ av) ⊑[γ] (c₂ cv) ⦃Q; E⦄) :
+    ⦃P⦄ (a₁ >>= a₂) ⊑[γ] (c₁ >>= c₂) ⦃Q; E⦄ :=
   .bind (PartialOrder.rel_trans h₁ (sim_mono_post h₂))
 
 /-- `corres_bind` at the weakest mid-condition: the continuation obligation is `corres_sim`,
@@ -333,7 +333,7 @@ variable {εa εc AV CV : Type}
 /-- The triple throw rule: `throw` consumes the exception coupling. -/
 theorem SimTriple.throw {Q : AV → CV → Prop} {E : εa → εc → Prop} (ea : εa) (ec : εc) :
     ⦃E ea ec⦄ (MonadExceptOf.throw ea : Except εa AV)
-      ⪯[γ] (MonadExceptOf.throw ec : Except εc CV) ⦃Q; E⦄ :=
+      ⊑[γ] (MonadExceptOf.throw ec : Except εc CV) ⦃Q; E⦄ :=
   sim_throw ea ec
 
 /-- The triple tryCatch rule, post-parametric form: the body's exception coupling is the
@@ -341,8 +341,8 @@ handlers' `sim`. -/
 theorem SimTriple.tryCatch {P : Prop} {Q : AV → CV → Prop} {E : εa → εc → Prop}
     {ax : Except εa AV} {cx : Except εc CV}
     {ah : εa → Except εa AV} {ch : εc → Except εc CV}
-    (h : ⦃P⦄ ax ⪯[γ] cx ⦃Q; fun ea ec => sim γ (ah ea) (ch ec) Q E⦄) :
-    ⦃P⦄ (MonadExceptOf.tryCatch ax ah) ⪯[γ] (MonadExceptOf.tryCatch cx ch) ⦃Q; E⦄ :=
+    (h : ⦃P⦄ ax ⊑[γ] cx ⦃Q; fun ea ec => sim γ (ah ea) (ch ec) Q E⦄) :
+    ⦃P⦄ (MonadExceptOf.tryCatch ax ah) ⊑[γ] (MonadExceptOf.tryCatch cx ch) ⦃Q; E⦄ :=
   PartialOrder.rel_trans h sim_tryCatch
 
 end
