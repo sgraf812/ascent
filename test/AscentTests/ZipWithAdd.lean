@@ -1,5 +1,6 @@
 import Ascent.Corres.Loop
 import Ascent.Corres.SP
+import Ascent.Corres.WeakestPre
 import Std.Tactic.Do
 
 /-!
@@ -652,6 +653,23 @@ example {X : Type} (f : Heap → X) (pre : State → Prop) (v : USize) :
         exact ⟨s₀, h₀, rfl⟩
     obtain ⟨s₀, -, rfl⟩ := himg cv s hs
     simp
+
+/-- The same composite through the weakest boundary precondition: the tail's requirement is
+substituted into the head's postcondition, so the whole obligation is one Hoare triple on the
+head, with the tail's correspondence supplying the postcondition via `Corres.le_corresPre`. -/
+example {X : Type} (f : Heap → X) (pre : State → Prop) (v : USize) :
+    Corres (Concretization.ofStateRepr (fun s => f s.heap)) (.eq pre (id : USize → USize))
+      (pure v : StateT X UB USize)
+      (setSize "n" v >>= fun _ => getSize "n") := by
+  refine corres_bind_erase_pre pre id id (corres_setSize_st f pre "n" v) fun E => ?_
+  have htail : (fun s => s.locals "n" = some (.size v)) ⊑
+      corresPre (Concretization.ofStateRepr (fun s : State => f s.heap))
+        (coupleEq (id : USize → USize)) (pure v : StateT X UB USize) (getSize "n") :=
+    Corres.le_corresPre (corres_getSizeVal_st f _ "n" v fun _ h => h)
+  refine PartialOrder.rel_trans ?_ (WP.wp_consequence _ _ _ E fun _ => htail)
+  intro s _
+  rw [wp_setSize]
+  simp
 
 /-- **End to end: `zipL1` is `Array.zipWith`.** Under the function-entry coupling, validity, and
 non-aliasing, the denotation `zipL1` abstracts to the pure array program `zipL4`: the output
