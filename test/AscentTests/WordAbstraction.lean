@@ -1,13 +1,13 @@
-import Ascent.Corres.Basic
+import Ascent.Corres.Sim
 
 /-!
 # Word abstraction: `UInt64 ↝ Int`
 
 Machine-word values are abstracted to mathematical integers. The assertion lattice is
-unchanged, so the concretization is `Concretization.id`; the abstraction lives entirely in the value
-map `wordVal`, supplied per `Corres`. Each arithmetic correspondence is an instance of
-`corres_pure` whose value-equality hypothesis is the no-overflow side-condition, discharged by
-`omega`. A genuinely overflowing program admits no correspondence.
+unchanged, so the concretization is `Concretization.id`; the abstraction lives entirely in the
+value coupling `⌜· = wordVal ·⌝`, supplied per triple. Each arithmetic simulation is an
+instance of `SimTriple.pure_eq` whose value-equality hypothesis is the no-overflow
+side-condition, discharged by `omega`. A genuinely overflowing program admits no simulation.
 -/
 
 open Std.Internal.Do Lean.Order Ascent
@@ -22,40 +22,41 @@ def wordAbstraction : Concretization Prop Prop EPost.Nil EPost.Nil :=
 
 /-- Addition abstracts to integer addition when it does not overflow. -/
 example (a b : UInt64) (h : a.toNat + b.toNat < 2 ^ 64) :
-    Corres wordAbstraction (.eq ⊤ wordVal)
-      (pure (wordVal a + wordVal b) : Id Int) (pure (a + b) : Id UInt64) := by
-  apply corres_pure ⊤
+    ⦃(⊤ : Prop)⦄ (pure (wordVal a + wordVal b) : Id Int)
+      ⊑[wordAbstraction] (pure (a + b) : Id UInt64) ⦃(⌜· = wordVal ·⌝); ()⦄ := by
+  refine .pure_eq ⊤ _ ?_
   show wordVal (a + b) = wordVal a + wordVal b
   simp only [wordVal, UInt64.toNat_add, Nat.mod_eq_of_lt h]
   omega
 
 /-- Multiplication abstracts to integer multiplication when it does not overflow. -/
 example (a b : UInt64) (h : a.toNat * b.toNat < 2 ^ 64) :
-    Corres wordAbstraction (.eq ⊤ wordVal)
-      (pure (wordVal a * wordVal b) : Id Int) (pure (a * b) : Id UInt64) := by
-  apply corres_pure ⊤
+    ⦃(⊤ : Prop)⦄ (pure (wordVal a * wordVal b) : Id Int)
+      ⊑[wordAbstraction] (pure (a * b) : Id UInt64) ⦃(⌜· = wordVal ·⌝); ()⦄ := by
+  refine .pure_eq ⊤ _ ?_
   show wordVal (a * b) = wordVal a * wordVal b
   simp only [wordVal, UInt64.toNat_mul, Nat.mod_eq_of_lt h]
   rfl
 
 /-- Subtraction abstracts to integer subtraction when it does not underflow (`b ≤ a`). -/
 example (a b : UInt64) (h : b ≤ a) :
-    Corres wordAbstraction (.eq ⊤ wordVal)
-      (pure (wordVal a - wordVal b) : Id Int) (pure (a - b) : Id UInt64) := by
-  apply corres_pure ⊤
+    ⦃(⊤ : Prop)⦄ (pure (wordVal a - wordVal b) : Id Int)
+      ⊑[wordAbstraction] (pure (a - b) : Id UInt64) ⦃(⌜· = wordVal ·⌝); ()⦄ := by
+  refine .pure_eq ⊤ _ ?_
   show wordVal (a - b) = wordVal a - wordVal b
   have hle : b.toNat ≤ a.toNat := h
   simp only [wordVal, UInt64.toNat_sub_of_le _ _ h]
   omega
 
 /-- A genuinely overflowing addition has no word abstraction: the no-overflow equation that
-`corres_pure` would demand is false, since `2^63 + 2^63` wraps to `0`. -/
+`SimTriple.pure_eq` would demand is false, since `2^63 + 2^63` wraps to `0`. -/
 example : wordVal (2 ^ 63) + wordVal (2 ^ 63) ≠ wordVal ((2 ^ 63) + (2 ^ 63) : UInt64) := by
   native_decide
 
-/-- Correspondence chains through the `Trans` instance: `corres_id` is the identity and
+/-- Simulation chains through the `Trans` instance: `SimTriple.refl` is the identity and
 composition is transitivity. -/
 example {Prog Val : Type} [WP Prog Val Prop EPost.Nil] (x : Prog) :
-    Corres ((Concretization.id Prop EPost.Nil).comp (Concretization.id Prop EPost.Nil))
-      (.eq ⊤ (id ∘ id : Val → Val)) x x :=
-  Trans.trans (corres_id ⊤ x) (corres_id ⊤ x)
+    ⦃(⊤ : Prop)⦄ x
+      ⊑[(Concretization.id Prop EPost.Nil).comp (Concretization.id Prop EPost.Nil)] x
+      ⦃fun (av cv : Val) => ⌜av = cv⌝; ()⦄ :=
+  Trans.trans (SimTriple.refl ⊤ x) (SimTriple.refl ⊤ x)

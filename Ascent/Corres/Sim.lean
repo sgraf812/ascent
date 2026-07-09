@@ -312,9 +312,9 @@ theorem SimTriple.bind' [Frame CPred] {CV AV CV₂ AV₂ : Type w} {P : CPred}
   .bind (PartialOrder.rel_trans h₁ (sim_mono_post h₂))
 
 /-- The triple unit rule at a functional coupling. -/
-theorem SimTriple.pure_coupleEq {AV CV : Type w} {f : CV → AV} {E : Ξ}
+theorem SimTriple.pure_eq {AV CV : Type w} {f : CV → AV} {E : Ξ}
     (P : CPred) {av : AV} (cv : CV) (h : f cv = av) :
-    ⦃P⦄ (Pure.pure av : AM AV) ⊑[γ] (Pure.pure cv : CM CV) ⦃coupleEq f; E⦄ :=
+    ⦃P⦄ (Pure.pure av : AM AV) ⊑[γ] (Pure.pure cv : CM CV) ⦃fun av cv => ⌜av = f cv⌝; E⦄ :=
   (SimTriple.pure av cv).weaken (le_ofProp _ _ h.symm)
 
 /-- The triple bind rule at a functional head coupling: the continuations correspond at each
@@ -322,7 +322,7 @@ concrete value and its coupled abstract value. -/
 theorem SimTriple.bind_eq [Frame CPred] {CV AV CV₂ AV₂ : Type w} {P : CPred}
     {f : CV → AV} {a₁ : AM AV} {c₁ : CM CV} {a₂ : AV → AM AV₂} {c₂ : CV → CM CV₂}
     {Q : AV₂ → CV₂ → CPred} {E : Ξ}
-    (h₁ : ⦃P⦄ a₁ ⊑[γ] c₁ ⦃coupleEq f; E⦄)
+    (h₁ : ⦃P⦄ a₁ ⊑[γ] c₁ ⦃fun av cv => ⌜av = f cv⌝; E⦄)
     (h₂ : ∀ cv, ⦃(⊤ : CPred)⦄ (a₂ (f cv)) ⊑[γ] (c₂ cv) ⦃Q; E⦄) :
     ⦃P⦄ (a₁ >>= a₂) ⊑[γ] (c₁ >>= c₂) ⦃Q; E⦄ :=
   .bind' h₁ fun av cv => .of_prop fun h => by rw [h]; exact h₂ cv
@@ -389,21 +389,22 @@ theorem SimTriple.comp
     {f₁ : CVal → BVal} {f₂ : BVal → AVal} {E₁ : Ξ₁} {E₂ : Ξ₂} {E : Ξ} {P : CPred}
     {a : AProg} {b : BProg} {c : CProg}
     (hE : ∀ Ea, γ₁.ePost E₁ (γ₂.ePost E₂ Ea) = (γ₁.comp γ₂).ePost E Ea)
-    (h₂ : ⦃(⊤ : BPred)⦄ a ⊑[γ₂] b ⦃coupleEq f₂; E₂⦄)
-    (h₁ : ⦃P⦄ b ⊑[γ₁] c ⦃coupleEq f₁; E₁⦄) :
-    ⦃P⦄ a ⊑[γ₁.comp γ₂] c ⦃coupleEq (f₂ ∘ f₁); E⦄ := by
+    (h₂ : ⦃(⊤ : BPred)⦄ a ⊑[γ₂] b ⦃fun av bv => ⌜av = f₂ bv⌝; E₂⦄)
+    (h₁ : ⦃P⦄ b ⊑[γ₁] c ⦃fun bv cv => ⌜bv = f₁ cv⌝; E₁⦄) :
+    ⦃P⦄ a ⊑[γ₁.comp γ₂] c ⦃fun av cv => ⌜av = f₂ (f₁ cv)⌝; E⦄ := by
   refine SimTriple.intro fun Qa Ea => ?_
-  have hb : γ₂.pred (wp a Qa Ea) ⊑ wp b (γ₂.post (coupleEq f₂) Qa) (γ₂.ePost E₂ Ea) := by
+  have hb : γ₂.pred (wp a Qa Ea) ⊑
+      wp b (γ₂.post (fun av bv => ⌜av = f₂ bv⌝) Qa) (γ₂.ePost E₂ Ea) := by
     have h := h₂.elim Qa Ea
     rwa [CompleteLattice.top_meet] at h
-  have hc := h₁.elim (γ₂.post (coupleEq f₂) Qa) (γ₂.ePost E₂ Ea)
+  have hc := h₁.elim (γ₂.post (fun av bv => ⌜av = f₂ bv⌝) Qa) (γ₂.ePost E₂ Ea)
   rw [hE Ea] at hc
   refine PartialOrder.rel_trans
     (le_meet _ _ _ (meet_le_left _ _)
       (PartialOrder.rel_trans (meet_le_right _ _) (γ₁.pred_mono hb))) ?_
   refine PartialOrder.rel_trans hc ?_
   refine WP.wp_consequence c _ _ _ fun cv => ?_
-  simp only [Concretization.post_coupleEq, Concretization.comp, Function.comp]
+  simp only [Concretization.post_eq, Concretization.comp, Function.comp]
   exact PartialOrder.rel_refl
 
 /-- Simulation at `⊤` precondition and functional couplings chains in `calc`. -/
@@ -412,9 +413,9 @@ instance {γ₁ : Concretization CPred BPred EPost.Nil EPost.Nil}
     {f₁ : CVal → BVal} {f₂ : BVal → AVal}
     [WP CProg CVal CPred EPost.Nil] [WP BProg BVal BPred EPost.Nil]
     [WP AProg AVal APred EPost.Nil] :
-    Trans (SimTriple γ₂ ⊤ (coupleEq f₂) () : AProg → BProg → Prop)
-      (SimTriple γ₁ ⊤ (coupleEq f₁) () : BProg → CProg → Prop)
-      (SimTriple (γ₁.comp γ₂) ⊤ (coupleEq (f₂ ∘ f₁)) () : AProg → CProg → Prop) where
+    Trans (SimTriple γ₂ ⊤ (fun av bv => ⌜av = f₂ bv⌝) () : AProg → BProg → Prop)
+      (SimTriple γ₁ ⊤ (fun bv cv => ⌜bv = f₁ cv⌝) () : BProg → CProg → Prop)
+      (SimTriple (γ₁.comp γ₂) ⊤ (fun av cv => ⌜av = f₂ (f₁ cv)⌝) () : AProg → CProg → Prop) where
   trans h₂ h₁ := SimTriple.comp (fun _ => rfl) h₂ h₁
 
 end Comp
@@ -424,10 +425,10 @@ end Comp
 /-- Every program simulates itself under the identity concretization. -/
 theorem SimTriple.refl {Prog Val : Type _} {Pred : Type w} [Assertion Pred]
     [WP Prog Val Pred EPost.Nil] (P : Pred) (x : Prog) :
-    ⦃P⦄ x ⊑[Concretization.id Pred EPost.Nil] x ⦃coupleEq id; ()⦄ := by
+    ⦃P⦄ x ⊑[Concretization.id Pred EPost.Nil] x ⦃fun av cv => ⌜av = cv⌝; ()⦄ := by
   refine SimTriple.intro fun Qa Ea => ?_
-  have hpost : (Concretization.id Pred EPost.Nil).post (coupleEq id) Qa = Qa := by
-    funext cv; simp only [Concretization.post_coupleEq, Concretization.id, id_eq]
+  have hpost : (Concretization.id Pred EPost.Nil).post (fun av cv => ⌜av = cv⌝) Qa = Qa := by
+    funext cv; simp only [Concretization.post_eq, Concretization.id, id_eq]
   rw [Concretization.ePost_nil, hpost]
   show P ⊓ wp x Qa Ea ⊑ wp x Qa Ea
   exact meet_le_right _ _

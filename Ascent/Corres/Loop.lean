@@ -87,25 +87,35 @@ theorem corres_whileLoop {Aσ Cσ : Type} (J : Aσ → Cσ → Prop)
       simp only [relRef_post]
       exact ⟨as, hJ, hwp⟩
 
+/-- The `⊤`-coupling `post` collapse for `relRef`: some coupled abstract state satisfies the
+postcondition at some abstract value. -/
+@[simp] theorem relRef_post_top {Aσ Cσ AV CV : Type} (J : Aσ → Cσ → Prop) (Q : AV → Aσ → Prop) :
+    (relRef J).post (fun (_ : AV) (_ : CV) => ⊤) Q
+      = fun (_ : CV) cs => ∃ av as, J as cs ∧ Q av as := by
+  funext cv cs
+  simp only [Concretization.post, relRef_pred, iSup_apply, meet_apply, top_apply,
+    iSup_prop_eq_exists, meet_prop_eq_and, top_prop_eq, true_and]
+
 /-- The loop simulation: under a state relation `J`, if the guards agree, the body simulates
 (preserving `J`), and the body strictly decreases an abstract variant `μ`, then the loops
-simulate. By strong induction on `μ`. -/
+simulate. The loops return no value, so there is no value coupling. By strong induction on
+`μ`. -/
 theorem sim_whileLoop {Aσ Cσ : Type} (J : Aσ → Cσ → Prop)
     (acond : Aσ → Bool) (abody : StateT Aσ UB Unit)
     (ccond : Cσ → Bool) (cbody : StateT Cσ UB Unit)
     (μ : Aσ → Nat)
     (hcond : ∀ as cs, J as cs → acond as = ccond cs)
-    (hbody : ⦃(⊤ : Cσ → Prop)⦄ abody ⊑[relRef J] cbody ⦃coupleEq id; ()⦄)
+    (hbody : ⦃(⊤ : Cσ → Prop)⦄ abody ⊑[relRef J] cbody ⦃fun _ _ => ⊤; ()⦄)
     (hμ : ∀ (E : EPost.Nil) as, acond as = true → wp abody (fun _ _ => True) E as →
         wp abody (fun _ as' => μ as' < μ as) E as) :
     ⦃(⊤ : Cσ → Prop)⦄ (whileLoop acond abody) ⊑[relRef J] (whileLoop ccond cbody)
-      ⦃coupleEq id; ()⦄ := by
+      ⦃fun _ _ => ⊤; ()⦄ := by
   refine SimTriple.intro fun Q E => ?_
   intro cs hcs
   simp only [top_meet, relRef_pred] at hcs
   obtain ⟨as, hJ, hwp⟩ := hcs
   suffices H : ∀ n as cs, μ as < n → J as cs → wp (whileLoop acond abody) Q E as →
-      wp (whileLoop ccond cbody) ((relRef J).post (coupleEq id) Q) E cs by
+      wp (whileLoop ccond cbody) ((relRef J).post (fun _ _ => ⊤) Q) E cs by
     exact H (μ as + 1) as cs (Nat.lt_succ_self _) hJ hwp
   intro n
   induction n with
@@ -124,29 +134,29 @@ theorem sim_whileLoop {Aσ Cσ : Type} (J : Aσ → Cσ → Prop)
       have hcomb := wp_and_StateT abody _ _ E as hwp (hμ E as hc hsucc)
       have hcb := (hbody.elim (fun _ as' => wp (whileLoop acond abody) Q E as' ∧ μ as' < μ as) E)
         cs (by simp only [top_meet, relRef_pred]; exact ⟨as, hJ, hcomb⟩)
-      simp only [relRef_post] at hcb
+      simp only [relRef_post_top] at hcb
       refine WP.wp_consequence cbody _ _ _ ?_ cs hcb
       intro _ cs' hpost'
-      obtain ⟨as', hJ', hwp', hlt'⟩ := hpost'
+      obtain ⟨_, as', hJ', hwp', hlt'⟩ := hpost'
       exact ih as' cs' (Nat.lt_of_lt_of_le hlt' (Nat.lt_succ_iff.mp hlt)) hJ' hwp'
     · have hcf : acond as = false := by simp only [Bool.not_eq_true] at hc; exact hc
       rw [if_neg (by rw [hcf]; simp)] at hwp
       have hccf : ccond cs = false := by rw [← hcc]; exact hcf
       rw [if_neg (by rw [hccf]; simp)]
-      simp only [relRef_post]
-      exact ⟨as, hJ, hwp⟩
+      simp only [relRef_post_top]
+      exact ⟨(), as, hJ, hwp⟩
 
 /-- Any program simulates itself under the identity (`Eq`) state relation: `relRef Eq` recovers
 the ordinary `wp`, since `post id Q` is `Q` up to the existential witness. -/
 theorem sim_relEq_self {σ α} (P : σ → Prop) (a : StateT σ UB α) :
-    ⦃P⦄ a ⊑[relRef (Eq : σ → σ → Prop)] a ⦃coupleEq id; ()⦄ := by
+    ⦃P⦄ a ⊑[relRef (Eq : σ → σ → Prop)] a ⦃fun av cv => ⌜av = cv⌝; ()⦄ := by
   refine SimTriple.intro fun Q E => ?_
   intro cs hcs
   simp only [meet_apply, meet_prop_eq_and, relRef_pred] at hcs
   obtain ⟨-, as, rfl, hwp⟩ := hcs
   refine WP.wp_consequence a Q _ E ?_ as hwp
   intro cv cs' hq
-  simp only [relRef_post]
+  simp only [Concretization.post_eq, relRef_pred]
   exact ⟨cs', rfl, hq⟩
 
 /-- Any program corresponds to itself under the identity (`Eq`) relation: `relRef Eq` recovers the

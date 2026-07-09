@@ -1,13 +1,13 @@
-import Ascent.Corres.Basic
+import Ascent.Corres.Sim
 
 /-!
 # Type strengthening: `ExceptT Unit (StateT σ Id) ↝ StateT σ Id`
 
 A total computation typed in the failure monad is abstracted to one in the pure state monad.
 The assertion lattice is unchanged (`pred = id`); the abstraction forbids failure by sending the
-trivial abstract exception postcondition to `⊥` on the failure barrel. A `Corres` proof
+trivial abstract exception postcondition to `⊥` on the failure barrel. A simulation proof
 therefore carries the obligation that the concrete program never fails. A throwing program
-admits no correspondence.
+admits no simulation.
 -/
 
 open Std.Internal.Do Lean.Order Ascent
@@ -25,14 +25,14 @@ def typeStrengthen (σ : Type) :
 
 /-- A total state computation abstracts its lift into the failure monad: the never-fails
 obligation is discharged by the `⊥` failure barrel in `typeStrengthen`. -/
-theorem corres_lift {σ α : Type} (x : StateT σ Id α) :
-    Corres (typeStrengthen σ) .trivial x (MonadLift.monadLift x : TS σ α) := by
-  intro Q E
-  have hQ : (typeStrengthen σ).post (coupleEq id) Q = Q := by
-    funext cv; simp only [Concretization.post_coupleEq, typeStrengthen, id_eq]
+theorem sim_lift {σ α : Type} (P : σ → Prop) (x : StateT σ Id α) :
+    ⦃P⦄ x ⊑[typeStrengthen σ] (MonadLift.monadLift x : TS σ α) ⦃(⌜· = ·⌝); ()⦄ := by
+  refine SimTriple.intro fun Qa Ea => ?_
+  have hQ : (typeStrengthen σ).post (fun av cv => ⌜av = cv⌝) Qa = Qa := by
+    funext cv; simp only [Concretization.post_eq, typeStrengthen, id_eq]
   rw [hQ]
   refine PartialOrder.rel_trans (meet_le_right _ _) ?_
-  exact WPMonad.le_wp_monadLift_ExceptT_apply x Q (epost⟨fun _ => (⊥ : σ → Prop)⟩)
+  exact WPMonad.le_wp_monadLift_ExceptT_apply x Qa (epost⟨fun _ => (⊥ : σ → Prop)⟩)
 
 /-- Abstract (total) increment in the state monad. -/
 def absInc : StateT Nat Id Nat := do
@@ -47,21 +47,23 @@ def concInc : TS Nat Nat := do
   pure x
 
 /-- The total failure-monad program abstracts to the pure state program. -/
-example : Corres (typeStrengthen Nat) .trivial absInc concInc := by
+example : ⦃(⊤ : Nat → Prop)⦄ absInc ⊑[typeStrengthen Nat] concInc ⦃(⌜· = ·⌝); ()⦄ := by
   unfold absInc concInc
-  refine corres_bind_top id id (corres_lift _) (fun x => ?_)
-  refine corres_bind_top id id (corres_lift _) (fun _ => ?_)
-  exact corres_pure ⊤ id rfl
+  refine .bind_eq (sim_lift _ _) fun x => ?_
+  refine .bind_eq (sim_lift _ _) fun _ => ?_
+  exact .pure_eq _ _ rfl
 
 /-- A program that can fail has no type strengthening: `throw` forces the forbidden failure
-barrel, so no total abstraction corresponds to it. -/
-example : ¬ Corres (typeStrengthen Nat) .trivial
-    (pure 0 : StateT Nat Id Nat) (throw () : TS Nat Nat) := by
-  intro hcorres
-  have H := hcorres (fun _ _ => True) EPost.Nil.mk
-  have hthrow : wp (throw () : TS Nat Nat) ((typeStrengthen Nat).post (coupleEq id) (fun _ _ => True))
-      ((typeStrengthen Nat).ePred EPost.Nil.mk) = (⊥ : Nat → Prop) := by
-    simp [typeStrengthen, ExceptT.wp_apply_eq, WPMonadExact.wp_pure_eq]
+barrel, so no total abstraction simulates it. -/
+example : ¬ ⦃(⊤ : Nat → Prop)⦄ (pure 0 : StateT Nat Id Nat)
+    ⊑[typeStrengthen Nat] (throw () : TS Nat Nat) ⦃(⌜· = ·⌝); ()⦄ := by
+  intro hsim
+  have H := hsim.elim (fun _ _ => True) EPost.Nil.mk
+  have hthrow : wp (throw () : TS Nat Nat)
+      ((typeStrengthen Nat).post (fun av cv => ⌜av = cv⌝) (fun _ _ => True))
+      ((typeStrengthen Nat).ePost () EPost.Nil.mk) = (⊥ : Nat → Prop) := by
+    simp [typeStrengthen, Concretization.ePost_fill, ExceptT.wp_apply_eq,
+      WPMonadExact.wp_pure_eq]
   have hpure : (typeStrengthen Nat).pred
       (wp (pure 0 : StateT Nat Id Nat) (fun _ _ => True) EPost.Nil.mk) = (fun _ => True) := by
     simp [typeStrengthen, WPMonadExact.wp_pure_eq]
@@ -86,11 +88,11 @@ def optionStrengthen (σ : Type) :
   ePred_mono _ := PartialOrder.rel_refl
 
 /-- A total state computation abstracts its lift into the option monad. -/
-theorem corres_liftOption {σ α : Type} (x : StateT σ Id α) :
-    Corres (optionStrengthen σ) .trivial x (MonadLift.monadLift x : OptS σ α) := by
-  intro Q E
-  have hQ : (optionStrengthen σ).post (coupleEq id) Q = Q := by
-    funext cv; simp only [Concretization.post_coupleEq, optionStrengthen, id_eq]
+theorem sim_liftOption {σ α : Type} (P : σ → Prop) (x : StateT σ Id α) :
+    ⦃P⦄ x ⊑[optionStrengthen σ] (MonadLift.monadLift x : OptS σ α) ⦃(⌜· = ·⌝); ()⦄ := by
+  refine SimTriple.intro fun Qa Ea => ?_
+  have hQ : (optionStrengthen σ).post (fun av cv => ⌜av = cv⌝) Qa = Qa := by
+    funext cv; simp only [Concretization.post_eq, optionStrengthen, id_eq]
   rw [hQ]
   refine PartialOrder.rel_trans (meet_le_right _ _) ?_
   exact WPMonad.le_wp_monadLift_OptionT_apply x
@@ -101,8 +103,8 @@ def concIncOpt : OptS Nat Nat := do
   MonadLift.monadLift (set (x + 1) : StateT Nat Id PUnit)
   pure x
 
-example : Corres (optionStrengthen Nat) .trivial absInc concIncOpt := by
+example : ⦃(⊤ : Nat → Prop)⦄ absInc ⊑[optionStrengthen Nat] concIncOpt ⦃(⌜· = ·⌝); ()⦄ := by
   unfold absInc concIncOpt
-  refine corres_bind_top id id (corres_liftOption _) (fun x => ?_)
-  refine corres_bind_top id id (corres_liftOption _) (fun _ => ?_)
-  exact corres_pure ⊤ id rfl
+  refine .bind_eq (sim_liftOption _ _) fun x => ?_
+  refine .bind_eq (sim_liftOption _ _) fun _ => ?_
+  exact .pure_eq _ _ rfl

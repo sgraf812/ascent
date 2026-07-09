@@ -62,16 +62,23 @@ namespace Concretization
 variable {CPred APred : Type w} {CEPred AEPred : Type w'}
   [Assertion CPred] [Assertion APred] [Assertion CEPred] [Assertion AEPred]
 
+/-- One-point rule: under a functional coupling `⌜· = f ·⌝` the reified `iSup` collapses to the
+pullback. -/
+@[simp] theorem post_eq (r : Concretization CPred APred CEPred AEPred) {CVal AVal : Type _}
+    (f : CVal → AVal) (Q : AVal → APred) :
+    r.post (fun av cv => (⌜av = f cv⌝ : CPred)) Q = fun cv => r.pred (Q (f cv)) := by
+  funext cv
+  refine PartialOrder.rel_antisymm (iSup_le _ _ fun av => ?_) ?_
+  · exact CompleteLattice.ofProp_meet_le_left (by rintro rfl; exact PartialOrder.rel_refl)
+  · refine PartialOrder.rel_trans ?_
+      (le_iSup (fun av => (⌜av = f cv⌝ : CPred) ⊓ r.pred (Q av)) (f cv))
+    exact le_meet _ _ _ (le_ofProp _ _ rfl) PartialOrder.rel_refl
+
 /-- One-point rule: under the functional coupling the reified `iSup` collapses to the pullback. -/
 @[simp] theorem post_coupleEq (r : Concretization CPred APred CEPred AEPred) {CVal AVal : Type _}
     (f : CVal → AVal) (Q : AVal → APred) :
-    r.post (coupleEq f) Q = fun cv => r.pred (Q (f cv)) := by
-  funext cv
-  refine PartialOrder.rel_antisymm (iSup_le _ _ fun av => ?_) ?_
-  · show (⌜av = f cv⌝ : CPred) ⊓ r.pred (Q av) ⊑ r.pred (Q (f cv))
-    exact CompleteLattice.ofProp_meet_le_left (by rintro rfl; exact PartialOrder.rel_refl)
-  · refine PartialOrder.rel_trans ?_ (le_iSup (fun av => coupleEq f av cv ⊓ r.pred (Q av)) (f cv))
-    exact le_meet _ _ _ (le_ofProp _ _ rfl) PartialOrder.rel_refl
+    r.post (coupleEq f) Q = fun cv => r.pred (Q (f cv)) :=
+  r.post_eq f Q
 
 /-- The functional concretization from a state representation function `st : Cσ → Aσ`: the
 concretization is the pullback `st^*` (`pred P = P ∘ st`). Exception-free (`EPost.Nil`). This is
