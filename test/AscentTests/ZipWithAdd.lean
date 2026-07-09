@@ -1,4 +1,5 @@
 import Ascent.Corres.Loop
+import Ascent.Corres.SP
 import Std.Tactic.Do
 
 /-!
@@ -243,6 +244,40 @@ theorem wp_setSize (x : Ident) (n : USize) (Q : Unit → State → Prop) (E : EP
       = Q () { s with locals := fun y => if y = x then some (.size n) else s.locals y } := by
   simp only [setSize, StateT.wp_apply_eq, StateT.run, modify, modifyGet, MonadStateOf.modifyGet,
     StateT.modifyGet, UB.wp_pure_eq]
+
+/-- `setSize`'s strongest postcondition: the image of `P` under the local update. -/
+theorem sp_setSize (x : Ident) (n : USize) (P : State → Prop) (E : EPost.Nil) :
+    sp (setSize x n) P E = fun _ s' =>
+      ∃ s, P s ∧ s' = { s with locals := fun y => if y = x then some (.size n) else s.locals y } := by
+  apply PartialOrder.rel_antisymm
+  · apply sp_le
+    intro s hs
+    rw [wp_setSize]
+    exact ⟨s, hs, rfl⟩
+  · apply le_sp
+    rintro Q hQ cv s' ⟨s, hs, rfl⟩
+    have h := hQ s hs
+    rw [wp_setSize] at h
+    exact h
+
+/-- `getSize`'s strongest postcondition, on a presence-guaranteeing precondition: the read value
+coupled to the local, state unchanged. -/
+theorem sp_getSize (x : Ident) (P : State → Prop) (E : EPost.Nil)
+    (hdef : ∀ s, P s → ∃ v, s.locals x = some (.size v)) :
+    sp (getSize x) P E = fun v s' => P s' ∧ s'.locals x = some (.size v) := by
+  apply PartialOrder.rel_antisymm
+  · apply sp_le
+    intro s hs
+    rw [wp_getSize]
+    obtain ⟨v, hv⟩ := hdef s hs
+    simp only [hv]
+    exact ⟨hs, trivial⟩
+  · apply le_sp
+    rintro Q hQ v s' ⟨hs, hv⟩
+    have h := hQ s' hs
+    rw [wp_getSize] at h
+    simp only [hv] at h
+    exact h
 
 /-- The abstract body's `wp`, as a function of the state (so it rewrites under the `∃` in the
 relational precondition). -/
