@@ -113,7 +113,7 @@ example (Q : Int → Int → Prop) :
       (MonadExceptOf.throw 3 : Except Nat Int) Q ⟨⟩ := by
   refine le_iInf _ _ fun Qa => le_iInf _ _ fun Ea => ?_
   refine himp_complete _ _ _ ?_
-  simp only [WPMonad.wp_throw_Except_apply_eq, Concretization.epost_fill]
+  simp only [WPMonad.wp_throw_Except_apply_eq, Concretization.ePost_fill]
   exact le_top _
 
 /-- The `⊥` fill forbids it: type strengthening as `ePred` data. -/
@@ -123,7 +123,7 @@ example : ¬ ((⊤ : Prop) ⊑ sim (fillAbs fun _ => ⊥) (pure 0 : Id Int)
   have h2 := CompleteLattice.meet_le_of_le_himp
     (PartialOrder.rel_trans h
       (PartialOrder.rel_trans (iInf_le _ (fun _ => True)) (iInf_le _ EPost.Nil.mk)))
-  simp only [WPMonad.wp_throw_Except_apply_eq, Concretization.epost_fill, top_meet,
+  simp only [WPMonad.wp_throw_Except_apply_eq, Concretization.ePost_fill, top_meet,
     WPMonadExact.wp_pure_eq] at h2
   have hfalse := h2 trivial
   rw [bot_prop_eq] at hfalse
