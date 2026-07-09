@@ -3,7 +3,7 @@ import Ascent.Corres.Basic
 /-!
 # `rwp`: the relational weakest precondition
 
-`rwp γ a c Q E` is the weakest concrete-state precondition under which the concrete program
+`rwp a c γ Q E` is the weakest concrete-state precondition under which the concrete program
 `c` refines the abstract program `a`: `Q : AVal → CVal → CPred` couples returned values and `E`
 couples thrown values, mirroring `wp x Q E`. `E`'s type is assigned by `HasEPost` from the pair
 of barrel shapes: aligned exception layers get `εa → εc → CPred` and the barrel is built by
@@ -12,8 +12,8 @@ nothing to couple get `Unit` and the barrel is `γ.ePred` (fills are phase data)
 
 The four laws are exactly symmetric: `rwp_pure` consumes `Q` and `rwp_throw` consumes `E`;
 `rwp_bind` rebinds `Q` with the continuations' `rwp` and `rwp_tryCatch` rebinds `E` with the
-handlers' (`throw`/`tryCatch` per effect, here for `Except`). `RTriple γ a c P Q E` is the
-triple-shaped judgment `P ⊑ rwp γ a c Q E`, with notation `⦃P⦄ a ⊑[γ] c ⦃Q; E⦄`.
+handlers' (`throw`/`tryCatch` per effect, here for `Except`). `RTriple a c γ P Q E` is the
+triple-shaped judgment `P ⊑ rwp a c γ Q E`, with notation `⦃P⦄ a ⊑[γ] c ⦃Q; E⦄`.
 -/
 
 open Std.Internal.Do Lean.Order
@@ -101,16 +101,16 @@ variable {CProg AProg : Type _} {CVal AVal : Type _}
 
 /-- The relational weakest precondition: the weakest concrete-state predicate under which every
 abstract `wp` fact concretizes to the concrete `wp` at the coupled postconditions. -/
-noncomputable def rwp (γ : Concretization CPred APred CEPred AEPred)
-    (a : AProg) (c : CProg) (Q : AVal → CVal → CPred) (E : Ξ) : CPred :=
+noncomputable def rwp (a : AProg) (c : CProg) (γ : Concretization CPred APred CEPred AEPred)
+    (Q : AVal → CVal → CPred) (E : Ξ) : CPred :=
   iInf fun Qa : AVal → APred => iInf fun Ea : AEPred =>
     γ.pred (wp a Qa Ea) ⇨ wp c (γ.post Q Qa) (γ.ePost E Ea)
 
 /-- The refinement triple: under precondition `P`, the concrete program `c` refines the
 abstract program `a` through `γ`, with value coupling `Q` and exception coupling `E`. -/
-def RTriple (γ : Concretization CPred APred CEPred AEPred) (a : AProg) (c : CProg)
+def RTriple (a : AProg) (c : CProg) (γ : Concretization CPred APred CEPred AEPred)
     (P : CPred) (Q : AVal → CVal → CPred) (E : Ξ) : Prop :=
-  P ⊑ rwp γ a c Q E
+  P ⊑ rwp a c γ Q E
 
 /-- The one-point lattice: `()` is both `⊥` and `⊤`. Gives the omitted exception coupling a
 uniform `⊥` default across barrel shapes. -/
@@ -132,8 +132,8 @@ scoped syntax:lead atomic("⦃ " term " ⦄ " term:max " ⊑[") term "] " term:m
   " ⦃ " term "; " term " ⦄" : term
 
 scoped macro_rules
-  | `(⦃ $P ⦄ $a ⊑[$γ] $c ⦃ $Q ⦄) => `(RTriple $γ $a $c $P $Q Lean.Order.bot)
-  | `(⦃ $P ⦄ $a ⊑[$γ] $c ⦃ $Q; $E ⦄) => `(RTriple $γ $a $c $P $Q $E)
+  | `(⦃ $P ⦄ $a ⊑[$γ] $c ⦃ $Q ⦄) => `(RTriple $a $c $γ $P $Q Lean.Order.bot)
+  | `(⦃ $P ⦄ $a ⊑[$γ] $c ⦃ $Q; $E ⦄) => `(RTriple $a $c $γ $P $Q $E)
 
 variable {γ : Concretization CPred APred CEPred AEPred} {P : CPred}
   {a : AProg} {c : CProg} {Q : AVal → CVal → CPred} {E : Ξ}
@@ -161,7 +161,7 @@ theorem RTriple.elim [Frame CPred] (h : ⦃P⦄ a ⊑[γ] c ⦃Q; E⦄)
 
 /-- `rwp` is monotone in the value coupling. -/
 theorem rwp_mono_post [Frame CPred] {Q' : AVal → CVal → CPred}
-    (hQ : ∀ av cv, Q av cv ⊑ Q' av cv) : rwp γ a c Q E ⊑ rwp γ a c Q' E := by
+    (hQ : ∀ av cv, Q av cv ⊑ Q' av cv) : rwp a c γ Q E ⊑ rwp a c γ Q' E := by
   refine CompleteLattice.iInf_mono fun Qa => CompleteLattice.iInf_mono fun Ea => ?_
   refine CompleteLattice.himp_mono PartialOrder.rel_refl ?_
   refine WP.wp_consequence c _ _ _ ?_
@@ -224,7 +224,7 @@ variable {CM AM : Type w → Type v} {CPred APred : Type w} {CEPred AEPred : Typ
 
 /-- The relational unit law: `pure` consumes the relational postcondition. -/
 theorem rwp_pure {AV CV : Type w} {Q : AV → CV → CPred} {E : Ξ} (av : AV) (cv : CV) :
-    Q av cv ⊑ rwp γ (pure av : AM AV) (pure cv : CM CV) Q E := by
+    Q av cv ⊑ rwp (pure av : AM AV) (pure cv : CM CV) γ Q E := by
   refine RTriple.intro fun Qa Ea => ?_
   refine PartialOrder.rel_trans (le_meet _ _ _ (meet_le_left _ _)
     (PartialOrder.rel_trans (meet_le_right _ _)
@@ -237,8 +237,8 @@ continuations' `rwp`; the relational exceptional postcondition threads. -/
 theorem rwp_bind [Frame CPred] {CV AV CV₂ AV₂ : Type w}
     {a₁ : AM AV} {c₁ : CM CV} {a₂ : AV → AM AV₂} {c₂ : CV → CM CV₂}
     {Q : AV₂ → CV₂ → CPred} {E : Ξ} :
-    rwp γ a₁ c₁ (fun av cv => rwp γ (a₂ av) (c₂ cv) Q E) E ⊑
-      rwp γ (a₁ >>= a₂) (c₁ >>= c₂) Q E := by
+    rwp a₁ c₁ γ (fun av cv => rwp (a₂ av) (c₂ cv) γ Q E) E ⊑
+      rwp (a₁ >>= a₂) (c₁ >>= c₂) γ Q E := by
   refine RTriple.intro fun Qa Ea => ?_
   refine PartialOrder.rel_trans (le_meet _ _ _ (meet_le_left _ _)
     (PartialOrder.rel_trans (meet_le_right _ _)
@@ -252,7 +252,7 @@ theorem rwp_bind [Frame CPred] {CV AV CV₂ AV₂ : Type w}
       (γ.ePost E Ea) ?_)
     (WPMonad.bind_le_wp_bind c₁ c₂ (γ.post Q Qa) (γ.ePost E Ea))
   intro cv
-  show iSup (fun av => rwp γ (a₂ av) (c₂ cv) Q E ⊓ γ.pred (wp (a₂ av) Qa Ea)) ⊑ _
+  show iSup (fun av => rwp (a₂ av) (c₂ cv) γ Q E ⊓ γ.pred (wp (a₂ av) Qa Ea)) ⊑ _
   refine iSup_le _ _ fun av => ?_
   exact CompleteLattice.meet_le_of_le_himp
     (PartialOrder.rel_trans (iInf_le _ Qa) (iInf_le _ Ea))
@@ -267,7 +267,7 @@ continuations' `rwp`. -/
 theorem RTriple.bind [Frame CPred] {CV AV CV₂ AV₂ : Type w} {P : CPred}
     {a₁ : AM AV} {c₁ : CM CV} {a₂ : AV → AM AV₂} {c₂ : CV → CM CV₂}
     {Q : AV₂ → CV₂ → CPred} {E : Ξ}
-    (h : ⦃P⦄ a₁ ⊑[γ] c₁ ⦃fun av cv => rwp γ (a₂ av) (c₂ cv) Q E; E⦄) :
+    (h : ⦃P⦄ a₁ ⊑[γ] c₁ ⦃fun av cv => rwp (a₂ av) (c₂ cv) γ Q E; E⦄) :
     ⦃P⦄ (a₁ >>= a₂) ⊑[γ] (c₁ >>= c₂) ⦃Q; E⦄ :=
   PartialOrder.rel_trans h rwp_bind
 
@@ -393,8 +393,8 @@ variable {εa εc AV CV : Type}
 exactly as `pure` consumes the relational postcondition. -/
 theorem rwp_throw {Q : AV → CV → Prop} {E : εa → εc → Prop} (ea : εa) (ec : εc) :
     E ea ec ⊑
-      rwp γ (MonadExceptOf.throw ea : Except εa AV)
-        (MonadExceptOf.throw ec : Except εc CV) Q E := by
+      rwp (MonadExceptOf.throw ea : Except εa AV)
+        (MonadExceptOf.throw ec : Except εc CV) γ Q E := by
   refine RTriple.intro fun Qa Ea => ?_
   simp only [WPMonad.wp_throw_Except_apply_eq, Concretization.ePost_cons_head]
   exact CompleteLattice.le_iSup_of_le ea PartialOrder.rel_refl
@@ -405,8 +405,8 @@ relational postcondition threads. -/
 theorem rwp_tryCatch {Q : AV → CV → Prop} {E : εa → εc → Prop}
     {ax : Except εa AV} {cx : Except εc CV}
     {ah : εa → Except εa AV} {ch : εc → Except εc CV} :
-    rwp γ ax cx Q (fun ea ec => rwp γ (ah ea) (ch ec) Q E) ⊑
-      rwp γ (MonadExceptOf.tryCatch ax ah) (MonadExceptOf.tryCatch cx ch) Q E := by
+    rwp ax cx γ Q (fun ea ec => rwp (ah ea) (ch ec) γ Q E) ⊑
+      rwp (MonadExceptOf.tryCatch ax ah) (MonadExceptOf.tryCatch cx ch) γ Q E := by
   refine RTriple.intro fun Qa Ea => ?_
   simp only [WPMonad.wp_tryCatch_Except_apply_eq]
   refine PartialOrder.rel_trans
@@ -416,7 +416,7 @@ theorem rwp_tryCatch {Q : AV → CV → Prop} {E : εa → εc → Prop}
   refine WP.wp_consequence_econs cx _ _ _ _ PartialOrder.rel_refl ?_
   refine EPost.Cons.mk_le _ _ _ ?_ PartialOrder.rel_refl
   intro ec
-  show iSup (fun ea => rwp γ (ah ea) (ch ec) Q E ⊓ γ.pred (wp (ah ea) Qa Ea)) ⊑ _
+  show iSup (fun ea => rwp (ah ea) (ch ec) γ Q E ⊓ γ.pred (wp (ah ea) Qa Ea)) ⊑ _
   refine iSup_le _ _ fun ea => ?_
   exact CompleteLattice.meet_le_of_le_himp
     (PartialOrder.rel_trans (iInf_le _ Qa) (iInf_le _ Ea))
@@ -439,7 +439,7 @@ handlers' `rwp`. -/
 theorem RTriple.tryCatch {P : Prop} {Q : AV → CV → Prop} {E : εa → εc → Prop}
     {ax : Except εa AV} {cx : Except εc CV}
     {ah : εa → Except εa AV} {ch : εc → Except εc CV}
-    (h : ⦃P⦄ ax ⊑[γ] cx ⦃Q; fun ea ec => rwp γ (ah ea) (ch ec) Q E⦄) :
+    (h : ⦃P⦄ ax ⊑[γ] cx ⦃Q; fun ea ec => rwp (ah ea) (ch ec) γ Q E⦄) :
     ⦃P⦄ (MonadExceptOf.tryCatch ax ah) ⊑[γ] (MonadExceptOf.tryCatch cx ch) ⦃Q; E⦄ :=
   PartialOrder.rel_trans h rwp_tryCatch
 
