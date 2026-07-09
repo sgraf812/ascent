@@ -4,5 +4,5 @@ import Ascent.UB
 import Ascent.Loop
 import Ascent.Corres.StateT
 import Ascent.Corres.SP
-import Ascent.Corres.WeakestPre
+import Ascent.Corres.Sim
 import Ascent.Corres.Loop
