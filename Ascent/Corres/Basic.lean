@@ -6,8 +6,8 @@ import Ascent.WPMonadExact
 
 `Concretization` carries the monad-level concretizations `pred`/`ePred` (the AutoCorres
 state/exception abstraction; `Concretization.ofStateRepr` builds the common functional case as a
-pullback). The value-level coupling is a relational postcondition supplied per simulation triple
-(`Ascent.Corres.Sim`); `Concretization.post` reifies it against an abstract postcondition.
+pullback). The value-level coupling is a relational postcondition supplied per refinement triple
+(`Ascent.Corres.Refines`); `Concretization.post` reifies it against an abstract postcondition.
 -/
 
 open Std.Internal.Do Lean.Order
@@ -17,7 +17,7 @@ namespace Ascent
 universe u v w w'
 
 /-- Monad-level concretizations of normal and exceptional assertions, mapping an abstract `WP`
-setup's predicates into a concrete one's. The value-level coupling is supplied per simulation
+setup's predicates into a concrete one's. The value-level coupling is supplied per refinement
 triple. -/
 structure Concretization (CPred : Type w) (APred : Type w) (CEPred : Type w') (AEPred : Type w')
     [Assertion CPred] [Assertion APred] [Assertion CEPred] [Assertion AEPred] where

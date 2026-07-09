@@ -1,21 +1,21 @@
 import Ascent.Corres.Basic
 
 /-!
-# `sim`: the relational weakest precondition
+# `refines`: the relational weakest precondition
 
-`sim γ a c Q E` is the weakest concrete-state precondition under which the abstract program `a`
-simulates the concrete program `c`: `Q : AVal → CVal → CPred` couples returned values and `E`
+`refines γ a c Q E` is the weakest concrete-state precondition under which the concrete program
+`c` refines the abstract program `a`: `Q : AVal → CVal → CPred` couples returned values and `E`
 couples thrown values, mirroring `wp x Q E`. `E`'s type is assigned by `HasEPost` from the pair
 of barrel shapes: aligned exception layers get `εa → εc → CPred` and the barrel is built by
 reifying `E` through `pred` (the exceptional mirror of `Concretization.post`); shapes with
 nothing to couple get `Unit` and the barrel is `γ.ePred` (fills are phase data).
 
-The four laws are exactly symmetric: `sim_pure` consumes `Q` and `sim_throw` consumes `E`;
-`sim_bind` rebinds `Q` with the continuations' `sim` and `sim_tryCatch` rebinds `E` with the
-handlers' (`throw`/`tryCatch` per effect, here for `Except`). `SimTriple γ P Q E a c` is the
-triple-shaped judgment `P ⊑ sim γ a c Q E`, with notation `⦃P⦄ a ⊑[γ] c ⦃Q; E⦄`.
+The four laws are exactly symmetric: `refines_pure` consumes `Q` and `refines_throw` consumes `E`;
+`refines_bind` rebinds `Q` with the continuations' `refines` and `refines_tryCatch` rebinds `E` with the
+handlers' (`throw`/`tryCatch` per effect, here for `Except`). `Refines γ a c P Q E` is the
+triple-shaped judgment `P ⊑ refines γ a c Q E`, with notation `⦃P⦄ a ⊑[γ] c ⦃Q; E⦄`.
 
-`esim γ` is the exception coupling induced by the concretization: the weakest relation on
+`erefines γ` is the exception coupling induced by the concretization: the weakest relation on
 thrown values under which the abstract barrel concretizes to the concrete one.
 -/
 
@@ -104,52 +104,57 @@ variable {CProg AProg : Type _} {CVal AVal : Type _}
 
 /-- The relational weakest precondition: the weakest concrete-state predicate under which every
 abstract `wp` fact concretizes to the concrete `wp` at the coupled postconditions. -/
-noncomputable def sim (γ : Concretization CPred APred CEPred AEPred)
+noncomputable def refines (γ : Concretization CPred APred CEPred AEPred)
     (a : AProg) (c : CProg) (Q : AVal → CVal → CPred) (E : Ξ) : CPred :=
   iInf fun Qa : AVal → APred => iInf fun Ea : AEPred =>
     γ.pred (wp a Qa Ea) ⇨ wp c (γ.post Q Qa) (γ.ePost E Ea)
 
-/-- The simulation triple: under precondition `P`, the abstract program `a` approximates the
-concrete program `c` through `γ`, with value coupling `Q` and exception coupling `E`. The
-programs come last, so `SimTriple γ P Q E` is a relation between programs. -/
-def SimTriple (γ : Concretization CPred APred CEPred AEPred) (P : CPred)
-    (Q : AVal → CVal → CPred) (E : Ξ) (a : AProg) (c : CProg) : Prop :=
-  P ⊑ sim γ a c Q E
+/-- The refinement triple: under precondition `P`, the concrete program `c` refines the
+abstract program `a` through `γ`, with value coupling `Q` and exception coupling `E`. -/
+def Refines (γ : Concretization CPred APred CEPred AEPred) (a : AProg) (c : CProg)
+    (P : CPred) (Q : AVal → CVal → CPred) (E : Ξ) : Prop :=
+  P ⊑ refines γ a c Q E
 
-@[inherit_doc SimTriple]
+/-- Refinement triple notation without exception coupling (defaults to `()`, the coupling of a
+barrel shape with nothing to couple). -/
+scoped syntax:lead atomic("⦃ " term " ⦄ " term:max " ⊑[") term "] " term:max
+  " ⦃ " term " ⦄" : term
+
+@[inherit_doc Refines]
 scoped syntax:lead atomic("⦃ " term " ⦄ " term:max " ⊑[") term "] " term:max
   " ⦃ " term "; " term " ⦄" : term
 
 scoped macro_rules
-  | `(⦃ $P ⦄ $a ⊑[$γ] $c ⦃ $Q; $E ⦄) => `(SimTriple $γ $P $Q $E $a $c)
+  | `(⦃ $P ⦄ $a ⊑[$γ] $c ⦃ $Q ⦄) => `(Refines $γ $a $c $P $Q ())
+  | `(⦃ $P ⦄ $a ⊑[$γ] $c ⦃ $Q; $E ⦄) => `(Refines $γ $a $c $P $Q $E)
 
 variable {γ : Concretization CPred APred CEPred AEPred} {P : CPred}
   {a : AProg} {c : CProg} {Q : AVal → CVal → CPred} {E : Ξ}
 
 /-- Weaken the precondition. -/
-theorem SimTriple.weaken {P' : CPred}
+theorem Refines.weaken {P' : CPred}
     (h : ⦃P⦄ a ⊑[γ] c ⦃Q; E⦄) (hP : P' ⊑ P) : ⦃P'⦄ a ⊑[γ] c ⦃Q; E⦄ :=
   PartialOrder.rel_trans hP h
 
-/-- Introduction, unfolded: a simulation triple transports each abstract `wp` fact under the
+/-- Introduction, unfolded: a refinement triple transports each abstract `wp` fact under the
 precondition. -/
-theorem SimTriple.intro
+theorem Refines.intro
     (h : ∀ (Qa : AVal → APred) (Ea : AEPred),
       P ⊓ γ.pred (wp a Qa Ea) ⊑ wp c (γ.post Q Qa) (γ.ePost E Ea)) :
     ⦃P⦄ a ⊑[γ] c ⦃Q; E⦄ :=
   le_iInf _ _ fun Qa => le_iInf _ _ fun Ea =>
     himp_complete _ _ _ (PartialOrder.rel_trans CompleteLattice.meet_le_comm (h Qa Ea))
 
-/-- Elimination, unfolded: instantiate a simulation triple at an abstract postcondition pair. -/
-theorem SimTriple.elim [Frame CPred] (h : ⦃P⦄ a ⊑[γ] c ⦃Q; E⦄)
+/-- Elimination, unfolded: instantiate a refinement triple at an abstract postcondition pair. -/
+theorem Refines.elim [Frame CPred] (h : ⦃P⦄ a ⊑[γ] c ⦃Q; E⦄)
     (Qa : AVal → APred) (Ea : AEPred) :
     P ⊓ γ.pred (wp a Qa Ea) ⊑ wp c (γ.post Q Qa) (γ.ePost E Ea) :=
   CompleteLattice.meet_le_of_le_himp
     (PartialOrder.rel_trans h (PartialOrder.rel_trans (iInf_le _ Qa) (iInf_le _ Ea)))
 
-/-- `sim` is monotone in the value coupling. -/
-theorem sim_mono_post [Frame CPred] {Q' : AVal → CVal → CPred}
-    (hQ : ∀ av cv, Q av cv ⊑ Q' av cv) : sim γ a c Q E ⊑ sim γ a c Q' E := by
+/-- `refines` is monotone in the value coupling. -/
+theorem refines_mono_post [Frame CPred] {Q' : AVal → CVal → CPred}
+    (hQ : ∀ av cv, Q av cv ⊑ Q' av cv) : refines γ a c Q E ⊑ refines γ a c Q' E := by
   refine CompleteLattice.iInf_mono fun Qa => CompleteLattice.iInf_mono fun Ea => ?_
   refine CompleteLattice.himp_mono PartialOrder.rel_refl ?_
   refine WP.wp_consequence c _ _ _ ?_
@@ -160,27 +165,27 @@ theorem sim_mono_post [Frame CPred] {Q' : AVal → CVal → CPred}
     (le_iSup (fun av' => Q' av' cv ⊓ γ.pred (Qa av')) av)
 
 /-- Weaken the value coupling. -/
-theorem SimTriple.mono_post [Frame CPred] {Q' : AVal → CVal → CPred}
+theorem Refines.mono_post [Frame CPred] {Q' : AVal → CVal → CPred}
     (h : ⦃P⦄ a ⊑[γ] c ⦃Q; E⦄) (hQ : ∀ av cv, Q av cv ⊑ Q' av cv) : ⦃P⦄ a ⊑[γ] c ⦃Q'; E⦄ :=
-  PartialOrder.rel_trans h (sim_mono_post hQ)
+  PartialOrder.rel_trans h (refines_mono_post hQ)
 
 /-- Consume a propositional precondition. -/
-theorem SimTriple.of_prop {p : Prop} (h : p → ⦃(⊤ : CPred)⦄ a ⊑[γ] c ⦃Q; E⦄) :
+theorem Refines.of_prop {p : Prop} (h : p → ⦃(⊤ : CPred)⦄ a ⊑[γ] c ⦃Q; E⦄) :
     ⦃(⌜p⌝ : CPred)⦄ a ⊑[γ] c ⦃Q; E⦄ :=
   ofProp_le _ _ h
 
 /-- Branch congruence on a shared condition. -/
-theorem SimTriple.ite {cond : Prop} [Decidable cond] {a₁ a₂ : AProg} {c₁ c₂ : CProg}
+theorem Refines.ite {cond : Prop} [Decidable cond] {a₁ a₂ : AProg} {c₁ c₂ : CProg}
     (h₁ : ⦃P⦄ a₁ ⊑[γ] c₁ ⦃Q; E⦄) (h₂ : ⦃P⦄ a₂ ⊑[γ] c₂ ⦃Q; E⦄) :
     ⦃P⦄ (if cond then a₁ else a₂) ⊑[γ] (if cond then c₁ else c₂) ⦃Q; E⦄ := by
   by_cases hc : cond <;> simp only [hc, if_true, if_false] <;> assumption
 
 /-- A concrete `wp` fact rides along in the value coupling: what the concrete program
 establishes on normal return strengthens the relational postcondition. -/
-theorem SimTriple.conj_wp [Frame CPred] [WPConjunctive CProg CVal CPred CEPred]
+theorem Refines.conj_wp [Frame CPred] [WPConjunctive CProg CVal CPred CEPred]
     {R : CVal → CPred} (h : ⦃P⦄ a ⊑[γ] c ⦃Q; E⦄) (hw : P ⊑ wp c R ⊥) :
     ⦃P⦄ a ⊑[γ] c ⦃fun av cv => Q av cv ⊓ R cv; E⦄ := by
-  refine SimTriple.intro fun Qa Ea => ?_
+  refine Refines.intro fun Qa Ea => ?_
   have h1 : P ⊓ γ.pred (wp a Qa Ea) ⊑
       wp c (γ.post Q Qa) (γ.ePost E Ea) ⊓ wp c R (γ.ePost E Ea) :=
     le_meet _ _ _ (h.elim Qa Ea)
@@ -211,9 +216,9 @@ variable {CM AM : Type w → Type v} {CPred APred : Type w} {CEPred AEPred : Typ
   {γ : Concretization CPred APred CEPred AEPred}
 
 /-- The relational unit law: `pure` consumes the relational postcondition. -/
-theorem sim_pure {AV CV : Type w} {Q : AV → CV → CPred} {E : Ξ} (av : AV) (cv : CV) :
-    Q av cv ⊑ sim γ (pure av : AM AV) (pure cv : CM CV) Q E := by
-  refine SimTriple.intro fun Qa Ea => ?_
+theorem refines_pure {AV CV : Type w} {Q : AV → CV → CPred} {E : Ξ} (av : AV) (cv : CV) :
+    Q av cv ⊑ refines γ (pure av : AM AV) (pure cv : CM CV) Q E := by
+  refine Refines.intro fun Qa Ea => ?_
   refine PartialOrder.rel_trans (le_meet _ _ _ (meet_le_left _ _)
     (PartialOrder.rel_trans (meet_le_right _ _)
       (γ.pred_mono ((‹WPMonadExact AM APred AEPred›).wp_pure_le av Qa Ea)))) ?_
@@ -221,13 +226,13 @@ theorem sim_pure {AV CV : Type w} {Q : AV → CV → CPred} {E : Ξ} (av : AV) (
     (WPMonad.pure_le_wp_pure cv (γ.post Q Qa) (γ.ePost E Ea))
 
 /-- The relational bind law: `bind` rebinds the relational postcondition with the
-continuations' `sim`; the relational exceptional postcondition threads. -/
-theorem sim_bind [Frame CPred] {CV AV CV₂ AV₂ : Type w}
+continuations' `refines`; the relational exceptional postcondition threads. -/
+theorem refines_bind [Frame CPred] {CV AV CV₂ AV₂ : Type w}
     {a₁ : AM AV} {c₁ : CM CV} {a₂ : AV → AM AV₂} {c₂ : CV → CM CV₂}
     {Q : AV₂ → CV₂ → CPred} {E : Ξ} :
-    sim γ a₁ c₁ (fun av cv => sim γ (a₂ av) (c₂ cv) Q E) E ⊑
-      sim γ (a₁ >>= a₂) (c₁ >>= c₂) Q E := by
-  refine SimTriple.intro fun Qa Ea => ?_
+    refines γ a₁ c₁ (fun av cv => refines γ (a₂ av) (c₂ cv) Q E) E ⊑
+      refines γ (a₁ >>= a₂) (c₁ >>= c₂) Q E := by
+  refine Refines.intro fun Qa Ea => ?_
   refine PartialOrder.rel_trans (le_meet _ _ _ (meet_le_left _ _)
     (PartialOrder.rel_trans (meet_le_right _ _)
       (γ.pred_mono ((‹WPMonadExact AM APred AEPred›).wp_bind_le a₁ a₂ Qa Ea)))) ?_
@@ -240,44 +245,44 @@ theorem sim_bind [Frame CPred] {CV AV CV₂ AV₂ : Type w}
       (γ.ePost E Ea) ?_)
     (WPMonad.bind_le_wp_bind c₁ c₂ (γ.post Q Qa) (γ.ePost E Ea))
   intro cv
-  show iSup (fun av => sim γ (a₂ av) (c₂ cv) Q E ⊓ γ.pred (wp (a₂ av) Qa Ea)) ⊑ _
+  show iSup (fun av => refines γ (a₂ av) (c₂ cv) Q E ⊓ γ.pred (wp (a₂ av) Qa Ea)) ⊑ _
   refine iSup_le _ _ fun av => ?_
   exact CompleteLattice.meet_le_of_le_himp
     (PartialOrder.rel_trans (iInf_le _ Qa) (iInf_le _ Ea))
 
 /-- The triple unit rule: `pure` consumes the value coupling. -/
-theorem SimTriple.pure {AV CV : Type w} {Q : AV → CV → CPred} {E : Ξ} (av : AV) (cv : CV) :
+theorem Refines.pure {AV CV : Type w} {Q : AV → CV → CPred} {E : Ξ} (av : AV) (cv : CV) :
     ⦃Q av cv⦄ (pure av : AM AV) ⊑[γ] (pure cv : CM CV) ⦃Q; E⦄ :=
-  sim_pure av cv
+  refines_pure av cv
 
 /-- The triple bind rule, post-parametric form: the head's value coupling is the
-continuations' `sim`. -/
-theorem SimTriple.bind [Frame CPred] {CV AV CV₂ AV₂ : Type w} {P : CPred}
+continuations' `refines`. -/
+theorem Refines.bind [Frame CPred] {CV AV CV₂ AV₂ : Type w} {P : CPred}
     {a₁ : AM AV} {c₁ : CM CV} {a₂ : AV → AM AV₂} {c₂ : CV → CM CV₂}
     {Q : AV₂ → CV₂ → CPred} {E : Ξ}
-    (h : ⦃P⦄ a₁ ⊑[γ] c₁ ⦃fun av cv => sim γ (a₂ av) (c₂ cv) Q E; E⦄) :
+    (h : ⦃P⦄ a₁ ⊑[γ] c₁ ⦃fun av cv => refines γ (a₂ av) (c₂ cv) Q E; E⦄) :
     ⦃P⦄ (a₁ >>= a₂) ⊑[γ] (c₁ >>= c₂) ⦃Q; E⦄ :=
-  PartialOrder.rel_trans h sim_bind
+  PartialOrder.rel_trans h refines_bind
 
 /-- The triple bind rule, mid-coupling form: the head establishes `R`, the continuations
 correspond under it. -/
-theorem SimTriple.bind' [Frame CPred] {CV AV CV₂ AV₂ : Type w} {P : CPred}
+theorem Refines.bind' [Frame CPred] {CV AV CV₂ AV₂ : Type w} {P : CPred}
     {a₁ : AM AV} {c₁ : CM CV} {a₂ : AV → AM AV₂} {c₂ : CV → CM CV₂}
     {R : AV → CV → CPred} {Q : AV₂ → CV₂ → CPred} {E : Ξ}
     (h₁ : ⦃P⦄ a₁ ⊑[γ] c₁ ⦃R; E⦄)
     (h₂ : ∀ av cv, ⦃R av cv⦄ (a₂ av) ⊑[γ] (c₂ cv) ⦃Q; E⦄) :
     ⦃P⦄ (a₁ >>= a₂) ⊑[γ] (c₁ >>= c₂) ⦃Q; E⦄ :=
-  .bind (PartialOrder.rel_trans h₁ (sim_mono_post h₂))
+  .bind (PartialOrder.rel_trans h₁ (refines_mono_post h₂))
 
 /-- The triple unit rule at a functional coupling. -/
-theorem SimTriple.pure_eq {AV CV : Type w} {f : CV → AV} {E : Ξ}
+theorem Refines.pure_eq {AV CV : Type w} {f : CV → AV} {E : Ξ}
     (P : CPred) {av : AV} (cv : CV) (h : f cv = av) :
     ⦃P⦄ (Pure.pure av : AM AV) ⊑[γ] (Pure.pure cv : CM CV) ⦃fun av cv => ⌜av = f cv⌝; E⦄ :=
-  (SimTriple.pure av cv).weaken (le_ofProp _ _ h.symm)
+  (Refines.pure av cv).weaken (le_ofProp _ _ h.symm)
 
 /-- The triple bind rule at a functional head coupling: the continuations correspond at each
 concrete value and its coupled abstract value. -/
-theorem SimTriple.bind_eq [Frame CPred] {CV AV CV₂ AV₂ : Type w} {P : CPred}
+theorem Refines.bind_eq [Frame CPred] {CV AV CV₂ AV₂ : Type w} {P : CPred}
     {f : CV → AV} {a₁ : AM AV} {c₁ : CM CV} {a₂ : AV → AM AV₂} {c₂ : CV → CM CV₂}
     {Q : AV₂ → CV₂ → CPred} {E : Ξ}
     (h₁ : ⦃P⦄ a₁ ⊑[γ] c₁ ⦃fun av cv => ⌜av = f cv⌝; E⦄)
@@ -287,18 +292,18 @@ theorem SimTriple.bind_eq [Frame CPred] {CV AV CV₂ AV₂ : Type w} {P : CPred}
 
 /-- The erased-leaf bind: a concrete head abstracted by `pure v` leaves no abstract bind; the
 mid-coupling it establishes is threaded to the continuation. -/
-theorem SimTriple.bind_erase [Frame CPred] {CV AV CV₂ AV₂ : Type w} {P : CPred}
+theorem Refines.bind_erase [Frame CPred] {CV AV CV₂ AV₂ : Type w} {P : CPred}
     {v : AV} {c₁ : CM CV} {a : AM AV₂} {c₂ : CV → CM CV₂}
     {R : CV → CPred} {Q : AV₂ → CV₂ → CPred} {E : Ξ}
     (h₁ : ⦃P⦄ (Pure.pure v : AM AV) ⊑[γ] c₁ ⦃fun _ cv => R cv; E⦄)
     (h₂ : ∀ cv, ⦃R cv⦄ a ⊑[γ] (c₂ cv) ⦃Q; E⦄) :
     ⦃P⦄ a ⊑[γ] (c₁ >>= c₂) ⦃Q; E⦄ := by
-  have h := SimTriple.bind' (a₂ := fun _ => a) h₁ fun av cv => h₂ cv
+  have h := Refines.bind' (a₂ := fun _ => a) h₁ fun av cv => h₂ cv
   simpa only [pure_bind] using h
 
 end
 
-/-! ## Composition of simulations -/
+/-! ## Composition of refinements -/
 
 section Comp
 universe u₁ u₂
@@ -313,11 +318,11 @@ variable {CProg BProg AProg : Type _} {CVal BVal AVal : Type _}
   [HasEPost CPred APred CEPred AEPred Ξ]
   [Frame BPred] [Frame CPred]
 
-/-- Simulations at functional couplings compose through the composed concretization: the outer
-`pred` transports the middle simulation, `hE` aligns the barrel transports (definitional on
-delegating shapes). The middle simulation holds unconditionally; a middle-lattice precondition
+/-- Refinements at functional couplings compose through the composed concretization: the outer
+`pred` transports the middle refinement, `hE` aligns the barrel transports (definitional on
+delegating shapes). The middle refinement holds unconditionally; a middle-lattice precondition
 has no transport into the concrete lattice. -/
-theorem SimTriple.comp
+theorem Refines.comp
     {γ₁ : Concretization CPred BPred CEPred BEPred}
     {γ₂ : Concretization BPred APred BEPred AEPred}
     {f₁ : CVal → BVal} {f₂ : BVal → AVal} {E₁ : Ξ₁} {E₂ : Ξ₂} {E : Ξ} {P : CPred}
@@ -326,7 +331,7 @@ theorem SimTriple.comp
     (h₂ : ⦃(⊤ : BPred)⦄ a ⊑[γ₂] b ⦃fun av bv => ⌜av = f₂ bv⌝; E₂⦄)
     (h₁ : ⦃P⦄ b ⊑[γ₁] c ⦃fun bv cv => ⌜bv = f₁ cv⌝; E₁⦄) :
     ⦃P⦄ a ⊑[γ₁.comp γ₂] c ⦃fun av cv => ⌜av = f₂ (f₁ cv)⌝; E⦄ := by
-  refine SimTriple.intro fun Qa Ea => ?_
+  refine Refines.intro fun Qa Ea => ?_
   have hb : γ₂.pred (wp a Qa Ea) ⊑
       wp b (γ₂.post (fun av bv => ⌜av = f₂ bv⌝) Qa) (γ₂.ePost E₂ Ea) := by
     have h := h₂.elim Qa Ea
@@ -341,26 +346,15 @@ theorem SimTriple.comp
   simp only [Concretization.post_eq, Concretization.comp, Function.comp]
   exact PartialOrder.rel_refl
 
-/-- Simulation at `⊤` precondition and functional couplings chains in `calc`. -/
-instance {γ₁ : Concretization CPred BPred EPost.Nil EPost.Nil}
-    {γ₂ : Concretization BPred APred EPost.Nil EPost.Nil}
-    {f₁ : CVal → BVal} {f₂ : BVal → AVal}
-    [WP CProg CVal CPred EPost.Nil] [WP BProg BVal BPred EPost.Nil]
-    [WP AProg AVal APred EPost.Nil] :
-    Trans (SimTriple γ₂ ⊤ (fun av bv => ⌜av = f₂ bv⌝) () : AProg → BProg → Prop)
-      (SimTriple γ₁ ⊤ (fun bv cv => ⌜bv = f₁ cv⌝) () : BProg → CProg → Prop)
-      (SimTriple (γ₁.comp γ₂) ⊤ (fun av cv => ⌜av = f₂ (f₁ cv)⌝) () : AProg → CProg → Prop) where
-  trans h₂ h₁ := SimTriple.comp (fun _ => rfl) h₂ h₁
-
 end Comp
 
 /-! ## The identity concretization -/
 
-/-- Every program simulates itself under the identity concretization. -/
-theorem SimTriple.refl {Prog Val : Type _} {Pred : Type w} [Assertion Pred]
+/-- Every program refines itself under the identity concretization. -/
+theorem Refines.refl {Prog Val : Type _} {Pred : Type w} [Assertion Pred]
     [WP Prog Val Pred EPost.Nil] (P : Pred) (x : Prog) :
-    ⦃P⦄ x ⊑[Concretization.id Pred EPost.Nil] x ⦃fun av cv => ⌜av = cv⌝; ()⦄ := by
-  refine SimTriple.intro fun Qa Ea => ?_
+    ⦃P⦄ x ⊑[Concretization.id Pred EPost.Nil] x ⦃fun av cv => ⌜av = cv⌝⦄ := by
+  refine Refines.intro fun Qa Ea => ?_
   have hpost : (Concretization.id Pred EPost.Nil).post (fun av cv => ⌜av = cv⌝) Qa = Qa := by
     funext cv; simp only [Concretization.post_eq, Concretization.id, id_eq]
   rw [Concretization.ePost_nil, hpost]
@@ -372,11 +366,11 @@ theorem SimTriple.refl {Prog Val : Type _} {Pred : Type w} [Assertion Pred]
 /-- A write-once concrete program (its result `v` and final state `w` are independent of the
 initial state) is abstracted by the pure return of its result and final state; the terminal
 coupling `purifyCouple` reads the exit state into the value. -/
-theorem SimTriple.purify {CProg σ α : Type} [WP CProg α (σ → Prop) EPost.Nil]
+theorem Refines.purify {CProg σ α : Type} [WP CProg α (σ → Prop) EPost.Nil]
     (c : CProg) (v : α) (w : σ)
     (hc : ∀ (Q : α → σ → Prop) (E : EPost.Nil), (fun _ => Q v w) ⊑ wp c Q E) :
-    ⦃(⊤ : σ → Prop)⦄ (Pure.pure (v, w) : Id (α × σ)) ⊑[Ascent.purify σ] c ⦃purifyCouple; ()⦄ := by
-  refine SimTriple.intro fun Qa Ea => ?_
+    ⦃(⊤ : σ → Prop)⦄ (Pure.pure (v, w) : Id (α × σ)) ⊑[Ascent.purify σ] c ⦃purifyCouple⦄ := by
+  refine Refines.intro fun Qa Ea => ?_
   rw [purify_post]
   refine PartialOrder.rel_trans (meet_le_right _ _) ?_
   refine PartialOrder.rel_trans ?_ (hc (fun cv s => Qa (cv, s)) _)
@@ -388,7 +382,7 @@ variable {CPred APred : Type w} {εa εc : Type u} {ARest CRest : Type w'}
 
 /-- The exception coupling induced by the concretization at a `Cons` layer: the weakest relation
 on thrown values under which the abstract barrel concretizes to the concrete one. -/
-noncomputable def esim
+noncomputable def erefines
     (γ : Concretization CPred APred (EPost.Cons (εc → CPred) CRest)
       (EPost.Cons (εa → APred) ARest))
     (ea : εa) (ec : εc) : CPred :=
@@ -404,23 +398,23 @@ variable {εa εc AV CV : Type}
 
 /-- The relational throw law: `throw` consumes the relational exceptional postcondition,
 exactly as `pure` consumes the relational postcondition. -/
-theorem sim_throw {Q : AV → CV → Prop} {E : εa → εc → Prop} (ea : εa) (ec : εc) :
+theorem refines_throw {Q : AV → CV → Prop} {E : εa → εc → Prop} (ea : εa) (ec : εc) :
     E ea ec ⊑
-      sim γ (MonadExceptOf.throw ea : Except εa AV)
+      refines γ (MonadExceptOf.throw ea : Except εa AV)
         (MonadExceptOf.throw ec : Except εc CV) Q E := by
-  refine SimTriple.intro fun Qa Ea => ?_
+  refine Refines.intro fun Qa Ea => ?_
   simp only [WPMonad.wp_throw_Except_apply_eq, Concretization.ePost_cons_head]
   exact CompleteLattice.le_iSup_of_le ea PartialOrder.rel_refl
 
 /-- The relational tryCatch law: `tryCatch` rebinds the relational exceptional postcondition
-with the handlers' `sim`, exactly as `bind` rebinds the relational postcondition; the
+with the handlers' `refines`, exactly as `bind` rebinds the relational postcondition; the
 relational postcondition threads. -/
-theorem sim_tryCatch {Q : AV → CV → Prop} {E : εa → εc → Prop}
+theorem refines_tryCatch {Q : AV → CV → Prop} {E : εa → εc → Prop}
     {ax : Except εa AV} {cx : Except εc CV}
     {ah : εa → Except εa AV} {ch : εc → Except εc CV} :
-    sim γ ax cx Q (fun ea ec => sim γ (ah ea) (ch ec) Q E) ⊑
-      sim γ (MonadExceptOf.tryCatch ax ah) (MonadExceptOf.tryCatch cx ch) Q E := by
-  refine SimTriple.intro fun Qa Ea => ?_
+    refines γ ax cx Q (fun ea ec => refines γ (ah ea) (ch ec) Q E) ⊑
+      refines γ (MonadExceptOf.tryCatch ax ah) (MonadExceptOf.tryCatch cx ch) Q E := by
+  refine Refines.intro fun Qa Ea => ?_
   simp only [WPMonad.wp_tryCatch_Except_apply_eq]
   refine PartialOrder.rel_trans
     (CompleteLattice.meet_le_of_le_himp
@@ -429,7 +423,7 @@ theorem sim_tryCatch {Q : AV → CV → Prop} {E : εa → εc → Prop}
   refine WP.wp_consequence_econs cx _ _ _ _ PartialOrder.rel_refl ?_
   refine EPost.Cons.mk_le _ _ _ ?_ PartialOrder.rel_refl
   intro ec
-  show iSup (fun ea => sim γ (ah ea) (ch ec) Q E ⊓ γ.pred (wp (ah ea) Qa Ea)) ⊑ _
+  show iSup (fun ea => refines γ (ah ea) (ch ec) Q E ⊓ γ.pred (wp (ah ea) Qa Ea)) ⊑ _
   refine iSup_le _ _ fun ea => ?_
   exact CompleteLattice.meet_le_of_le_himp
     (PartialOrder.rel_trans (iInf_le _ Qa) (iInf_le _ Ea))
@@ -442,19 +436,19 @@ variable {εa εc AV CV : Type}
     (EPost.Cons (εa → Prop) EPost.Nil)}
 
 /-- The triple throw rule: `throw` consumes the exception coupling. -/
-theorem SimTriple.throw {Q : AV → CV → Prop} {E : εa → εc → Prop} (ea : εa) (ec : εc) :
+theorem Refines.throw {Q : AV → CV → Prop} {E : εa → εc → Prop} (ea : εa) (ec : εc) :
     ⦃E ea ec⦄ (MonadExceptOf.throw ea : Except εa AV)
       ⊑[γ] (MonadExceptOf.throw ec : Except εc CV) ⦃Q; E⦄ :=
-  sim_throw ea ec
+  refines_throw ea ec
 
 /-- The triple tryCatch rule, post-parametric form: the body's exception coupling is the
-handlers' `sim`. -/
-theorem SimTriple.tryCatch {P : Prop} {Q : AV → CV → Prop} {E : εa → εc → Prop}
+handlers' `refines`. -/
+theorem Refines.tryCatch {P : Prop} {Q : AV → CV → Prop} {E : εa → εc → Prop}
     {ax : Except εa AV} {cx : Except εc CV}
     {ah : εa → Except εa AV} {ch : εc → Except εc CV}
-    (h : ⦃P⦄ ax ⊑[γ] cx ⦃Q; fun ea ec => sim γ (ah ea) (ch ec) Q E⦄) :
+    (h : ⦃P⦄ ax ⊑[γ] cx ⦃Q; fun ea ec => refines γ (ah ea) (ch ec) Q E⦄) :
     ⦃P⦄ (MonadExceptOf.tryCatch ax ah) ⊑[γ] (MonadExceptOf.tryCatch cx ch) ⦃Q; E⦄ :=
-  PartialOrder.rel_trans h sim_tryCatch
+  PartialOrder.rel_trans h refines_tryCatch
 
 end
 

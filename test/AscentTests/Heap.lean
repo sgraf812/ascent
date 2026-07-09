@@ -1,14 +1,14 @@
-import Ascent.Corres.Sim
+import Ascent.Corres.Refines
 import Ascent.UB
 
 /-!
-# A heap swap simulation (aliasing)
+# A heap swap refinement (aliasing)
 
 A pointer swap implemented by read-both/write-both abstracts to the atomic swap specification,
 *provided the pointers do not alias*. Aliasing surfaces as the `p ≠ q` guard on the abstract
 spec: without it the two heap transformers differ (writing `q` would clobber the value just
 written to `p`). The guard lives in the `UB` effect, so when `p = q` the spec fails and
-the simulation is discharged trivially. This is the split-heap picture in miniature: one heap,
+the refinement is discharged trivially. This is the split-heap picture in miniature: one heap,
 pointer (in)equality carrying the aliasing, no separation logic.
 -/
 
@@ -53,8 +53,8 @@ theorem wp_swapA (p q : Nat) (Q : PUnit → Heap → Prop) (E : EPost.Nil) :
 /-- The read-both/write-both swap abstracts to the atomic spec under non-aliasing. -/
 example (p q : Nat) :
     ⦃(⊤ : Heap → Prop)⦄ (swapA p q) ⊑[Concretization.id (Heap → Prop) EPost.Nil] (swapC p q)
-      ⦃(⌜· = ·⌝); ()⦄ := by
-  refine SimTriple.intro fun Qa Ea => ?_
+      ⦃(⌜· = ·⌝)⦄ := by
+  refine Refines.intro fun Qa Ea => ?_
   refine PartialOrder.rel_trans (meet_le_right _ _) ?_
   show wp (swapA p q) Qa Ea ⊑ wp (swapC p q) _ Ea
   rw [wp_swapA, wp_swapC]

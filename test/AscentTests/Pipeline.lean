@@ -6,8 +6,8 @@ import AscentTests.WordAbstraction
 
 A total, word-valued program in the failure monad is abstracted in two steps: type strengthening
 removes the failure layer (`ExceptT Unit (StateT σ Id) ↝ StateT σ Id`), then word abstraction
-lifts the result `UInt64 ↝ Int`. The phases compose through `SimTriple.comp`, yielding a single
-simulation from the abstract integer-state program to the concrete failure-monad word program.
+lifts the result `UInt64 ↝ Int`. The phases compose through `Refines.comp`, yielding a single
+refinement of the abstract integer-state program by the concrete failure-monad word program.
 -/
 
 open Std.Internal.Do Lean.Order Ascent
@@ -24,9 +24,9 @@ def concWord : TS Nat UInt64 :=
 word program, through the composed concretization. -/
 example : ⦃(⊤ : Nat → Prop)⦄ (pure ((10 : Int) + 20) : StateT Nat Id Int)
     ⊑[(typeStrengthen Nat).comp wordAbstractionStateT] concWord
-    ⦃(⌜· = wordVal ·⌝); ()⦄ := by
+    ⦃(⌜· = wordVal ·⌝)⦄ := by
   unfold concWord
   have hWA : ⦃(⊤ : Nat → Prop)⦄ (pure ((10 : Int) + 20) : StateT Nat Id Int)
       ⊑[wordAbstractionStateT] (pure ((10 : UInt64) + 20) : StateT Nat Id UInt64)
-      ⦃(⌜· = wordVal ·⌝); ()⦄ := .pure_eq ⊤ _ (by decide)
-  exact SimTriple.comp (fun _ => rfl) hWA (sim_lift _ _)
+      ⦃(⌜· = wordVal ·⌝)⦄ := .pure_eq ⊤ _ (by decide)
+  exact Refines.comp (fun _ => rfl) hWA (refines_lift _ _)

@@ -2,15 +2,15 @@ import Ascent.Loop
 import Ascent.Corres.StateT
 
 /-!
-# A general while-loop simulation
+# A general while-loop refinement
 
 The loop body mutates the loop counter, so a *fixed* state coupling cannot span the loop. The
-simulation is therefore stated against a **relational** concretization `relRef J`, where
+refinement is therefore stated against a **relational** concretization `relRef J`, where
 `J : Aσ → Cσ → Prop` couples an abstract and a concrete state. The relation is invariant across
 iterations even though the coupled *values* change.
 
-`sim_whileLoop` reduces a loop simulation to: the guards agree under `J`, the body simulates
-(preserving `J`), and the body strictly decreases an abstract variant `μ`. It is proved by
+`refines_whileLoop` reduces a loop refinement to: the guards agree under `J`, the body
+refinement holds (preserving `J`), and the body strictly decreases an abstract variant `μ`. It is proved by
 strong induction on `μ`, unfolding both loops one step at a time.
 -/
 
@@ -45,21 +45,21 @@ postcondition at some abstract value. -/
   simp only [Concretization.post, relRef_pred, iSup_apply, meet_apply, top_apply,
     iSup_prop_eq_exists, meet_prop_eq_and, top_prop_eq, true_and]
 
-/-- The loop simulation: under a state relation `J`, if the guards agree, the body simulates
-(preserving `J`), and the body strictly decreases an abstract variant `μ`, then the loops
-simulate. The loops return no value, so there is no value coupling. By strong induction on
-`μ`. -/
-theorem sim_whileLoop {Aσ Cσ : Type} (J : Aσ → Cσ → Prop)
+/-- The loop refinement: under a state relation `J`, if the guards agree, the body refinement
+holds (preserving `J`), and the body strictly decreases an abstract variant `μ`, then the loop
+refinement holds. The loops return no value, so there is no value coupling. By strong induction
+on `μ`. -/
+theorem refines_whileLoop {Aσ Cσ : Type} (J : Aσ → Cσ → Prop)
     (acond : Aσ → Bool) (abody : StateT Aσ UB Unit)
     (ccond : Cσ → Bool) (cbody : StateT Cσ UB Unit)
     (μ : Aσ → Nat)
     (hcond : ∀ as cs, J as cs → acond as = ccond cs)
-    (hbody : ⦃(⊤ : Cσ → Prop)⦄ abody ⊑[relRef J] cbody ⦃fun _ _ => ⊤; ()⦄)
+    (hbody : ⦃(⊤ : Cσ → Prop)⦄ abody ⊑[relRef J] cbody ⦃fun _ _ => ⊤⦄)
     (hμ : ∀ (E : EPost.Nil) as, acond as = true → wp abody (fun _ _ => True) E as →
         wp abody (fun _ as' => μ as' < μ as) E as) :
     ⦃(⊤ : Cσ → Prop)⦄ (whileLoop acond abody) ⊑[relRef J] (whileLoop ccond cbody)
-      ⦃fun _ _ => ⊤; ()⦄ := by
-  refine SimTriple.intro fun Q E => ?_
+      ⦃fun _ _ => ⊤⦄ := by
+  refine Refines.intro fun Q E => ?_
   intro cs hcs
   simp only [top_meet, relRef_pred] at hcs
   obtain ⟨as, hJ, hwp⟩ := hcs
@@ -95,11 +95,11 @@ theorem sim_whileLoop {Aσ Cσ : Type} (J : Aσ → Cσ → Prop)
       simp only [relRef_post_top]
       exact ⟨(), as, hJ, hwp⟩
 
-/-- Any program simulates itself under the identity (`Eq`) state relation: `relRef Eq` recovers
+/-- Any program refines itself under the identity (`Eq`) state relation: `relRef Eq` recovers
 the ordinary `wp`, since `post id Q` is `Q` up to the existential witness. -/
-theorem sim_relEq_self {σ α} (P : σ → Prop) (a : StateT σ UB α) :
-    ⦃P⦄ a ⊑[relRef (Eq : σ → σ → Prop)] a ⦃fun av cv => ⌜av = cv⌝; ()⦄ := by
-  refine SimTriple.intro fun Q E => ?_
+theorem refines_relEq_self {σ α} (P : σ → Prop) (a : StateT σ UB α) :
+    ⦃P⦄ a ⊑[relRef (Eq : σ → σ → Prop)] a ⦃fun av cv => ⌜av = cv⌝⦄ := by
+  refine Refines.intro fun Q E => ?_
   intro cs hcs
   simp only [meet_apply, meet_prop_eq_and, relRef_pred] at hcs
   obtain ⟨-, as, rfl, hwp⟩ := hcs

@@ -1,13 +1,13 @@
-import Ascent.Corres.Sim
+import Ascent.Corres.Refines
 
 /-!
 # Type strengthening: `ExceptT Unit (StateT σ Id) ↝ StateT σ Id`
 
 A total computation typed in the failure monad is abstracted to one in the pure state monad.
 The assertion lattice is unchanged (`pred = id`); the abstraction forbids failure by sending the
-trivial abstract exception postcondition to `⊥` on the failure barrel. A simulation proof
+trivial abstract exception postcondition to `⊥` on the failure barrel. A refinement proof
 therefore carries the obligation that the concrete program never fails. A throwing program
-admits no simulation.
+admits no refinement.
 -/
 
 open Std.Internal.Do Lean.Order Ascent
@@ -25,9 +25,9 @@ def typeStrengthen (σ : Type) :
 
 /-- A total state computation abstracts its lift into the failure monad: the never-fails
 obligation is discharged by the `⊥` failure barrel in `typeStrengthen`. -/
-theorem sim_lift {σ α : Type} (P : σ → Prop) (x : StateT σ Id α) :
-    ⦃P⦄ x ⊑[typeStrengthen σ] (MonadLift.monadLift x : TS σ α) ⦃(⌜· = ·⌝); ()⦄ := by
-  refine SimTriple.intro fun Qa Ea => ?_
+theorem refines_lift {σ α : Type} (P : σ → Prop) (x : StateT σ Id α) :
+    ⦃P⦄ x ⊑[typeStrengthen σ] (MonadLift.monadLift x : TS σ α) ⦃(⌜· = ·⌝)⦄ := by
+  refine Refines.intro fun Qa Ea => ?_
   have hQ : (typeStrengthen σ).post (fun av cv => ⌜av = cv⌝) Qa = Qa := by
     funext cv; simp only [Concretization.post_eq, typeStrengthen, id_eq]
   rw [hQ]
@@ -47,16 +47,16 @@ def concInc : TS Nat Nat := do
   pure x
 
 /-- The total failure-monad program abstracts to the pure state program. -/
-example : ⦃(⊤ : Nat → Prop)⦄ absInc ⊑[typeStrengthen Nat] concInc ⦃(⌜· = ·⌝); ()⦄ := by
+example : ⦃(⊤ : Nat → Prop)⦄ absInc ⊑[typeStrengthen Nat] concInc ⦃(⌜· = ·⌝)⦄ := by
   unfold absInc concInc
-  refine .bind_eq (sim_lift _ _) fun x => ?_
-  refine .bind_eq (sim_lift _ _) fun _ => ?_
+  refine .bind_eq (refines_lift _ _) fun x => ?_
+  refine .bind_eq (refines_lift _ _) fun _ => ?_
   exact .pure_eq _ _ rfl
 
 /-- A program that can fail has no type strengthening: `throw` forces the forbidden failure
-barrel, so no total abstraction simulates it. -/
+barrel, so it refines no total abstraction. -/
 example : ¬ ⦃(⊤ : Nat → Prop)⦄ (pure 0 : StateT Nat Id Nat)
-    ⊑[typeStrengthen Nat] (throw () : TS Nat Nat) ⦃(⌜· = ·⌝); ()⦄ := by
+    ⊑[typeStrengthen Nat] (throw () : TS Nat Nat) ⦃(⌜· = ·⌝)⦄ := by
   intro hsim
   have H := hsim.elim (fun _ _ => True) EPost.Nil.mk
   have hthrow : wp (throw () : TS Nat Nat)
@@ -88,9 +88,9 @@ def optionStrengthen (σ : Type) :
   ePred_mono _ := PartialOrder.rel_refl
 
 /-- A total state computation abstracts its lift into the option monad. -/
-theorem sim_liftOption {σ α : Type} (P : σ → Prop) (x : StateT σ Id α) :
-    ⦃P⦄ x ⊑[optionStrengthen σ] (MonadLift.monadLift x : OptS σ α) ⦃(⌜· = ·⌝); ()⦄ := by
-  refine SimTriple.intro fun Qa Ea => ?_
+theorem refines_liftOption {σ α : Type} (P : σ → Prop) (x : StateT σ Id α) :
+    ⦃P⦄ x ⊑[optionStrengthen σ] (MonadLift.monadLift x : OptS σ α) ⦃(⌜· = ·⌝)⦄ := by
+  refine Refines.intro fun Qa Ea => ?_
   have hQ : (optionStrengthen σ).post (fun av cv => ⌜av = cv⌝) Qa = Qa := by
     funext cv; simp only [Concretization.post_eq, optionStrengthen, id_eq]
   rw [hQ]
@@ -103,8 +103,8 @@ def concIncOpt : OptS Nat Nat := do
   MonadLift.monadLift (set (x + 1) : StateT Nat Id PUnit)
   pure x
 
-example : ⦃(⊤ : Nat → Prop)⦄ absInc ⊑[optionStrengthen Nat] concIncOpt ⦃(⌜· = ·⌝); ()⦄ := by
+example : ⦃(⊤ : Nat → Prop)⦄ absInc ⊑[optionStrengthen Nat] concIncOpt ⦃(⌜· = ·⌝)⦄ := by
   unfold absInc concIncOpt
-  refine .bind_eq (sim_liftOption _ _) fun x => ?_
-  refine .bind_eq (sim_liftOption _ _) fun _ => ?_
+  refine .bind_eq (refines_liftOption _ _) fun x => ?_
+  refine .bind_eq (refines_liftOption _ _) fun _ => ?_
   exact .pure_eq _ _ rfl
