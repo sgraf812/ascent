@@ -5,7 +5,7 @@ import Ascent.Corres.Basic
 
 `sim r a c Q E` is the weakest concrete-state precondition under which the abstract program `a`
 simulates the concrete program `c`: `Q : AVal → CVal → CPred` couples returned values and `E`
-couples thrown values, mirroring `wp x Q E`. `E`'s type is assigned by `ECouple` from the pair
+couples thrown values, mirroring `wp x Q E`. `E`'s type is assigned by `HasEPost` from the pair
 of barrel shapes: aligned exception layers get `εa → εc → CPred` and the barrel is built by
 reifying `E` through `pred` (the exceptional mirror of `Concretization.post`); shapes with
 nothing to couple get `Unit` and the barrel is `r.ePred` (fills are phase data).
@@ -27,39 +27,38 @@ namespace Ascent
 universe u v w w'
 
 /-- Assigns to a pair of barrel shapes the type of the relational exceptional postcondition,
-and the barrel transport built from it: coupled layers are reified through `pred`, everything
-else is concretized by `ePred`. -/
-class ECouple (APred : Type u₁) (CPred : Type u₂) (AEPred : Type u₃) (CEPred : Type u₄)
-    (Ξ : outParam (Type u₅)) where
-  /-- The barrel transport: the exceptional mirror of `Concretization.post`. -/
-  ePost : (APred → CPred) → (AEPred → CEPred) → Ξ → AEPred → CEPred
+and its concretization against the abstract barrel. -/
+class HasEPost (CPred : Type w) (APred : Type w) (CEPred : Type w') (AEPred : Type w')
+    (Ξ : outParam (Type u))
+    [Assertion CPred] [Assertion APred] [Assertion CEPred] [Assertion AEPred] where
+  /-- The exceptional mirror of `post`. -/
+  ePost : Concretization CPred APred CEPred AEPred → Ξ → AEPred → CEPred
 
-instance {APred : Type u₁} {CPred : Type u₂} :
-    ECouple APred CPred EPost.Nil EPost.Nil Unit where
-  ePost _ ePred _ := ePred
+instance {CPred APred : Type w} [Assertion CPred] [Assertion APred] :
+    HasEPost CPred APred EPost.Nil EPost.Nil Unit where
+  ePost r _ := r.ePred
 
 /-- A concrete-only barrel couples nothing: the fill is phase data, living in `ePred`. -/
-instance {APred : Type u₁} {CPred : Type u₂} {εc : Type u₄} {CRest : Type u₆} :
-    ECouple APred CPred EPost.Nil (EPost.Cons (εc → CPred) CRest) Unit where
-  ePost _ ePred _ := ePred
+instance {CPred APred εc CRest : Type} [Assertion CPred] [Assertion APred] [Assertion CRest] :
+    HasEPost CPred APred (EPost.Cons (εc → CPred) CRest) EPost.Nil Unit where
+  ePost r _ := r.ePred
 
-/-- Aligned exception layers: the relational head couples thrown values and reifies the
-abstract layer through `pred`; deeper layers are concretized by `ePred`. -/
-noncomputable instance {APred : Type u₁} {CPred : Type u₂} {εa : Type u₃} {εc : Type u₄}
-    {ARest : Type u₅} {CRest : Type u₆} [Assertion CPred] :
-    ECouple APred CPred (EPost.Cons (εa → APred) ARest) (EPost.Cons (εc → CPred) CRest)
+/-- Aligned exception layers: the relational head is `post` at the exception values; deeper
+layers are concretized by `ePred`. -/
+noncomputable instance {CPred APred : Type w} {εa εc : Type u} {ARest CRest : Type w'}
+    [Assertion CPred] [Assertion APred] [Assertion ARest] [Assertion CRest] :
+    HasEPost CPred APred (EPost.Cons (εc → CPred) CRest) (EPost.Cons (εa → APred) ARest)
       (εa → εc → CPred) where
-  ePost pred ePred E Ea :=
-    ⟨fun ec => iSup fun ea => E ea ec ⊓ pred (Ea.head ea), (ePred Ea).tail⟩
+  ePost r E Ea := ⟨r.post E Ea.head, (r.ePred Ea).tail⟩
 
 /-- The exceptional postcondition concretization: reify the relational exceptional
 postcondition against the abstract barrel. The exceptional mirror of `post`. -/
 noncomputable def Concretization.ePost {CPred APred : Type w} {CEPred AEPred : Type w'}
     {Ξ : Type u}
     [Assertion CPred] [Assertion APred] [Assertion CEPred] [Assertion AEPred]
-    [ECouple APred CPred AEPred CEPred Ξ]
+    [HasEPost CPred APred CEPred AEPred Ξ]
     (r : Concretization CPred APred CEPred AEPred) (E : Ξ) (Ea : AEPred) : CEPred :=
-  ECouple.ePost r.pred r.ePred E Ea
+  HasEPost.ePost r E Ea
 
 @[simp] theorem Concretization.ePost_nil {CPred APred : Type w}
     [Assertion CPred] [Assertion APred]
@@ -67,8 +66,7 @@ noncomputable def Concretization.ePost {CPred APred : Type w} {CEPred AEPred : T
     r.ePost E Ea = r.ePred Ea := rfl
 
 @[simp] theorem Concretization.ePost_fill {CPred APred εc CRest : Type}
-    [Assertion CPred] [Assertion APred]
-    [Assertion (EPost.Cons (εc → CPred) CRest)]
+    [Assertion CPred] [Assertion APred] [Assertion CRest]
     (r : Concretization CPred APred (EPost.Cons (εc → CPred) CRest) EPost.Nil)
     (E : Unit) (Ea : EPost.Nil) :
     r.ePost E Ea = r.ePred Ea := rfl
@@ -78,8 +76,8 @@ noncomputable def Concretization.ePost {CPred APred : Type w} {CEPred AEPred : T
     [Assertion CPred] [Assertion APred] [Assertion ARest] [Assertion CRest]
     (r : Concretization CPred APred (EPost.Cons (εc → CPred) CRest)
       (EPost.Cons (εa → APred) ARest))
-    (E : εa → εc → CPred) (Ea : EPost.Cons (εa → APred) ARest) (ec : εc) :
-    (r.ePost E Ea).head ec = iSup fun ea => E ea ec ⊓ r.pred (Ea.head ea) := rfl
+    (E : εa → εc → CPred) (Ea : EPost.Cons (εa → APred) ARest) :
+    (r.ePost E Ea).head = r.post E Ea.head := rfl
 
 @[simp] theorem Concretization.ePost_cons_tail {CPred APred : Type w} {εa εc : Type u}
     {ARest CRest : Type w'}
@@ -94,7 +92,7 @@ variable {CProg AProg : Type _} {CVal AVal : Type _}
   {CPred APred : Type w} {CEPred AEPred : Type w'} {Ξ : Type u}
   [Assertion CPred] [Assertion APred] [Assertion CEPred] [Assertion AEPred]
   [WP CProg CVal CPred CEPred] [WP AProg AVal APred AEPred]
-  [ECouple APred CPred AEPred CEPred Ξ]
+  [HasEPost CPred APred CEPred AEPred Ξ]
 
 /-- The relational weakest precondition: the weakest concrete-state predicate under which every
 abstract `wp` fact concretizes to the concrete `wp` at the coupled postconditions. -/
@@ -149,7 +147,7 @@ variable {CM AM : Type w → Type v} {CPred APred : Type w} {CEPred AEPred : Typ
   [Monad CM] [Monad AM]
   [Assertion CPred] [Assertion APred] [Assertion CEPred] [Assertion AEPred]
   [WPMonad CM CPred CEPred] [WPMonad AM APred AEPred] [WPMonadExact AM APred AEPred]
-  [ECouple APred CPred AEPred CEPred Ξ]
+  [HasEPost CPred APred CEPred AEPred Ξ]
   {r : Concretization CPred APred CEPred AEPred}
 
 /-- The relational unit law: `pure` consumes the relational postcondition. -/
