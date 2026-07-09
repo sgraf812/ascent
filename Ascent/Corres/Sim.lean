@@ -111,9 +111,10 @@ noncomputable def sim (γ : Concretization CPred APred CEPred AEPred)
     γ.pred (wp a Qa Ea) ⇨ wp c (γ.post Q Qa) (γ.ePost E Ea)
 
 /-- The simulation triple: under precondition `P`, the abstract program `a` approximates the
-concrete program `c` through `γ`, with value coupling `Q` and exception coupling `E`. -/
+concrete program `c` through `γ`, with value coupling `Q` and exception coupling `E`. The
+programs come last, so `SimTriple γ P Q E` is a relation between programs. -/
 def SimTriple (γ : Concretization CPred APred CEPred AEPred) (P : CPred)
-    (a : AProg) (c : CProg) (Q : AVal → CVal → CPred) (E : Ξ) : Prop :=
+    (Q : AVal → CVal → CPred) (E : Ξ) (a : AProg) (c : CProg) : Prop :=
   P ⊑ sim γ a c Q E
 
 @[inherit_doc SimTriple]
@@ -121,7 +122,7 @@ scoped syntax:lead atomic("⦃ " term " ⦄ " term:max " ⊑[") term "] " term:m
   " ⦃ " term "; " term " ⦄" : term
 
 scoped macro_rules
-  | `(⦃ $P ⦄ $a ⊑[$γ] $c ⦃ $Q; $E ⦄) => `(SimTriple $γ $P $a $c $Q $E)
+  | `(⦃ $P ⦄ $a ⊑[$γ] $c ⦃ $Q; $E ⦄) => `(SimTriple $γ $P $Q $E $a $c)
 
 variable {γ : Concretization CPred APred CEPred AEPred} {P : CPred}
   {a : AProg} {c : CProg} {Q : AVal → CVal → CPred} {E : Ξ}
@@ -411,10 +412,9 @@ instance {γ₁ : Concretization CPred BPred EPost.Nil EPost.Nil}
     {f₁ : CVal → BVal} {f₂ : BVal → AVal}
     [WP CProg CVal CPred EPost.Nil] [WP BProg BVal BPred EPost.Nil]
     [WP AProg AVal APred EPost.Nil] :
-    Trans (fun (a : AProg) (b : BProg) => ⦃(⊤ : BPred)⦄ a ⊑[γ₂] b ⦃coupleEq f₂; ()⦄)
-      (fun (b : BProg) (c : CProg) => ⦃(⊤ : CPred)⦄ b ⊑[γ₁] c ⦃coupleEq f₁; ()⦄)
-      (fun (a : AProg) (c : CProg) =>
-        ⦃(⊤ : CPred)⦄ a ⊑[γ₁.comp γ₂] c ⦃coupleEq (f₂ ∘ f₁); ()⦄) where
+    Trans (SimTriple γ₂ ⊤ (coupleEq f₂) () : AProg → BProg → Prop)
+      (SimTriple γ₁ ⊤ (coupleEq f₁) () : BProg → CProg → Prop)
+      (SimTriple (γ₁.comp γ₂) ⊤ (coupleEq (f₂ ∘ f₁)) () : AProg → CProg → Prop) where
   trans h₂ h₁ := SimTriple.comp (fun _ => rfl) h₂ h₁
 
 end Comp
