@@ -1,4 +1,4 @@
-import Ascent.Corres.Basic
+import Ascent.Corres.Sim
 
 /-!
 # The `UB` (undefined-behavior) effect
@@ -101,6 +101,23 @@ instance {α} : WPConjunctive (UB α) α Prop EPost.Nil where
   wp_meet_wp_le x Q₁ Q₂ E := by
     rw [show (Q₁ ⊓ Q₂) = fun v => Q₁ v ⊓ Q₂ v from funext fun v => meet_apply Q₁ Q₂ v]
     exact UB.wp_meet x Q₁ Q₂ E
+
+/-- A guarded pure value abstracts a pure value: under the guard, the precondition entails the
+coupling; on a failed guard the abstract program fails and the simulation is discharged
+trivially. The no-overflow obligation lives in the guard `g`, threaded by `wp`, not in the
+precondition. -/
+theorem Ascent.SimTriple.guardRet {AV CV : Type} {g : Prop} [Decidable g] {P : Prop}
+    {Q : AV → CV → Prop} (a : AV) (c : CV) (h : g → P ⊑ Q a c) :
+    ⦃P⦄ (UB.guardRet g a) ⊑[Concretization.id Prop EPost.Nil] (Pure.pure c : Id CV) ⦃Q; ()⦄ := by
+  refine SimTriple.intro fun Qa Ea => ?_
+  by_cases hg : g
+  · rw [show UB.guardRet g a = Pure.pure a from by simp [UB.guardRet, hg]]
+    show P ⊓ Qa a ⊑ (Concretization.id Prop EPost.Nil).post Q Qa c
+    refine CompleteLattice.le_iSup_of_le a ?_
+    exact le_meet _ _ _ (PartialOrder.rel_trans (meet_le_left _ _) (h hg)) (meet_le_right _ _)
+  · rw [show UB.guardRet g a = UB.fail from by simp [UB.guardRet, hg]]
+    show P ⊓ (⊥ : Prop) ⊑ _
+    exact PartialOrder.rel_trans (meet_le_right _ _) (bot_le _)
 
 /-- A guarded pure value abstracts a pure value, when the guard implies the value relation. The
 no-overflow obligation lives in the guard `g`, threaded by `wp`, not in a precondition. -/
