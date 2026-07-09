@@ -14,9 +14,6 @@ The four laws are exactly symmetric: `rwp_pure` consumes `Q` and `rwp_throw` con
 `rwp_bind` rebinds `Q` with the continuations' `rwp` and `rwp_tryCatch` rebinds `E` with the
 handlers' (`throw`/`tryCatch` per effect, here for `Except`). `RTriple γ a c P Q E` is the
 triple-shaped judgment `P ⊑ rwp γ a c Q E`, with notation `⦃P⦄ a ⊑[γ] c ⦃Q; E⦄`.
-
-`erwp γ` is the exception coupling induced by the concretization: the weakest relation on
-thrown values under which the abstract barrel concretizes to the concrete one.
 -/
 
 open Std.Internal.Do Lean.Order
@@ -386,20 +383,6 @@ theorem RTriple.purify {CProg σ α : Type} [WP CProg α (σ → Prop) EPost.Nil
   refine PartialOrder.rel_trans ?_ (hc (fun cv s => Qa (cv, s)) _)
   exact le_of_forall_le fun s => PartialOrder.rel_refl
 
-section
-variable {CPred APred : Type w} {εa εc : Type u} {ARest CRest : Type w'}
-  [Assertion CPred] [Assertion APred] [Assertion ARest] [Assertion CRest]
-
-/-- The exception coupling induced by the concretization at a `Cons` layer: the weakest relation
-on thrown values under which the abstract barrel concretizes to the concrete one. -/
-noncomputable def erwp
-    (γ : Concretization CPred APred (EPost.Cons (εc → CPred) CRest)
-      (EPost.Cons (εa → APred) ARest))
-    (ea : εa) (ec : εc) : CPred :=
-  iInf fun Ea : EPost.Cons (εa → APred) ARest =>
-    γ.pred (Ea.head ea) ⇨ (γ.ePred Ea).head ec
-
-end
 
 section
 variable {εa εc AV CV : Type}
