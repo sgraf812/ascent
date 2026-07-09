@@ -63,11 +63,65 @@ theorem le_wp_top {x : Prog} {P : Pred} {E : EPred} (h : P ⊑ wp x (sp x P E) E
     P ⊑ wp x ⊤ E :=
   PartialOrder.rel_trans h (WP.wp_consequence x _ _ E (le_top _))
 
+/-- Failure-freedom from any valid postcondition. -/
+theorem le_wp_top_of_le_wp {x : Prog} {P : Pred} {Q : Value → Pred} {E : EPred}
+    (h : P ⊑ wp x Q E) : P ⊑ wp x ⊤ E :=
+  PartialOrder.rel_trans h (WP.wp_consequence x Q ⊤ E (le_top _))
+
 /-- The Galois connection between `sp` and `wp`, on failure-free preconditions. -/
 theorem sp_le_iff [WPInfConjunctive Prog Value Pred EPred] {x : Prog} {P : Pred}
     {Q : Value → Pred} {E : EPred} (hdef : P ⊑ wp x ⊤ E) :
     sp x P E ⊑ Q ↔ P ⊑ wp x Q E :=
   ⟨fun h => PartialOrder.rel_trans (le_wp_sp hdef) (WP.wp_consequence x _ _ E h), sp_le⟩
+
+/-- Strongest postcondition uniform in the exception postcondition: the meet of all
+postconditions valid for `P` at every `E`. -/
+noncomputable def spAll (x : Prog) (P : Pred) : Value → Pred :=
+  iInf fun Q : {Q : Value → Pred // ∀ E, P ⊑ wp x Q E} => Q.val
+
+/-- Counit: `spAll x P` is below every postcondition valid for `P` at every `E`. -/
+theorem spAll_le {x : Prog} {P : Pred} {Q : Value → Pred} (h : ∀ E, P ⊑ wp x Q E) :
+    spAll x P ⊑ Q :=
+  iInf_le (fun Q : {Q : Value → Pred // ∀ E, P ⊑ wp x Q E} => Q.val) ⟨Q, h⟩
+
+/-- Greatest-lower-bound introduction for `spAll`. -/
+theorem le_spAll {x : Prog} {P : Pred} {R : Value → Pred}
+    (h : ∀ Q : Value → Pred, (∀ E, P ⊑ wp x Q E) → R ⊑ Q) : R ⊑ spAll x P :=
+  le_iInf _ _ fun Q => h Q.val Q.property
+
+/-- The per-`E` strongest postcondition refines the uniform one. -/
+theorem sp_le_spAll {x : Prog} {P : Pred} (E : EPred) : sp x P E ⊑ spAll x P :=
+  le_spAll fun _ hQ => sp_le (hQ E)
+
+/-- Unit for `spAll`: on a failure-free precondition, `P` entails the `wp` of its uniform
+strongest postcondition at every `E`. -/
+theorem le_wp_spAll [WPInfConjunctive Prog Value Pred EPred] {x : Prog} {P : Pred}
+    (hdef : ∀ E, P ⊑ wp x ⊤ E) (E : EPred) : P ⊑ wp x (spAll x P) E :=
+  have : Nonempty {Q : Value → Pred // ∀ E, P ⊑ wp x Q E} := ⟨⟨⊤, hdef⟩⟩
+  PartialOrder.rel_trans (le_iInf _ _ fun Q => Q.property E)
+    (WPInfConjunctive.iInf_wp_le_wp_iInf x
+      (fun Q : {Q : Value → Pred // ∀ E, P ⊑ wp x Q E} => Q.val) E)
+
+end
+
+section
+variable {CM AM : Type w → Type v} {CPred APred : Type w} {CEPred AEPred : Type w'}
+  [Monad CM] [Monad AM]
+  [Assertion CPred] [Assertion APred] [Assertion CEPred] [Assertion AEPred]
+  [WPMonad CM CPred CEPred] [WPMonad AM APred AEPred] [WPMonadExact AM APred AEPred]
+  {r : Concretization CPred APred CEPred AEPred}
+
+/-- The erased-leaf `bind` at the inferred mid-condition: `spAll` threads the strongest
+`E`-uniform postcondition of the erased head, leaving only its failure-freedom to prove. -/
+theorem corres_bind_erase_sp {CV AV CV₂ AV₂ : Type w}
+    [WPConjunctive (CM CV) CV CPred CEPred] [WPInfConjunctive (CM CV) CV CPred CEPred]
+    (pre : CPred) (couple : CV → AV) (couple₂ : CV₂ → AV₂)
+    {v : AV} {c₁ : CM CV} {a : AM AV₂} {c₂ : CV → CM CV₂}
+    (hc : Corres r (.eq pre couple) (pure v : AM AV) c₁)
+    (hdef : ∀ E, pre ⊑ wp c₁ ⊤ E)
+    (hf : ∀ cv, Corres r (.eq (spAll c₁ pre cv) couple₂) a (c₂ cv)) :
+    Corres r (.eq pre couple₂) a (c₁ >>= c₂) :=
+  corres_bind_erase pre (spAll c₁ pre) couple couple₂ hc (le_wp_spAll hdef) hf
 
 end
 

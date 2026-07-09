@@ -194,6 +194,18 @@ theorem corres_bind_top {CV AV CV₂ AV₂ : Type w} (couple : CV → AV) (coupl
     exact PartialOrder.rel_trans (le_meet _ _ _ (le_top _) PartialOrder.rel_refl) hfcv
   · exact WPMonad.bind_le_wp_bind c₁ c₂ (r.post (coupleEq couple₂) Q) (r.ePred E)
 
+/-- The erased-leaf `bind`: a concrete head abstracted by `pure v` leaves no abstract bind; its
+effect survives as the mid-condition `R` threaded to the continuation. -/
+theorem corres_bind_erase {CV AV CV₂ AV₂ : Type w} [WPConjunctive (CM CV) CV CPred CEPred]
+    (pre : CPred) (R : CV → CPred) (couple : CV → AV) (couple₂ : CV₂ → AV₂)
+    {v : AV} {c₁ : CM CV} {a : AM AV₂} {c₂ : CV → CM CV₂}
+    (hc : Corres r (.eq pre couple) (pure v : AM AV) c₁)
+    (hmid : ∀ E, pre ⊑ wp c₁ (fun cv => R cv) E)
+    (hf : ∀ cv, Corres r (.eq (R cv) couple₂) a (c₂ cv)) :
+    Corres r (.eq pre couple₂) a (c₁ >>= c₂) := by
+  have h := corres_bind pre R couple couple₂ (a₂ := fun _ => a) hc hmid hf
+  simpa only [pure_bind] using h
+
 omit [WPMonadExact AM APred AEPred] in
 /-- Branch congruence on a shared condition. -/
 theorem corres_ite (r : Concretization CPred APred CEPred AEPred) {CVal AVal : Type w}

@@ -628,6 +628,31 @@ theorem corres_setSize_st {X : Type} (f : Heap → X) (pre : State → Prop) (x 
     wp_setSize, id] at hs ⊢
   exact hs.2
 
+/-- Establish/consume through the inferred mid-condition: `setSize` establishes the `"n"`
+coupling, `spAll` threads it, and `getSize` consumes it, abstracting the composite to `pure v`.
+The mid-condition is not written down; presence is read off `spAll` via its counit. -/
+example {X : Type} (f : Heap → X) (pre : State → Prop) (v : USize) :
+    Corres (Concretization.ofStateRepr (fun s => f s.heap)) (.eq pre (id : USize → USize))
+      (pure v : StateT X UB USize)
+      (setSize "n" v >>= fun _ => getSize "n") := by
+  refine corres_bind_erase_sp pre id id (corres_setSize_st f pre "n" v) ?_ fun cv => ?_
+  · -- the erased head is failure-free
+    intro E
+    refine le_wp_top_of_le_wp (Q := fun _ _ => True) ?_
+    intro s _
+    rw [wp_setSize]
+    trivial
+  · -- `spAll` pins the `"n"` local for the consuming read
+    refine corres_getSizeVal_st f _ "n" v fun s hs => ?_
+    have himg : spAll (setSize "n" v) pre ⊑ fun _ s' => ∃ s₀, pre s₀ ∧
+        s' = { s₀ with locals := fun y => if y = "n" then some (.size v) else s₀.locals y } :=
+      spAll_le fun E => by
+        intro s₀ h₀
+        rw [wp_setSize]
+        exact ⟨s₀, h₀, rfl⟩
+    obtain ⟨s₀, -, rfl⟩ := himg cv s hs
+    simp
+
 /-- **End to end: `zipL1` is `Array.zipWith`.** Under the function-entry coupling, validity, and
 non-aliasing, the denotation `zipL1` abstracts to the pure array program `zipL4`: the output
 region becomes `Array.zipWith (· + ·)` of the input regions. The entry `getSize`/`setSize` are threaded
