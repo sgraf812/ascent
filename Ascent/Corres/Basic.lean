@@ -80,6 +80,24 @@ pullback. -/
     r.post (coupleEq f) Q = fun cv => r.pred (Q (f cv)) :=
   r.post_eq f Q
 
+/-- `post` in the `Prop` lattice, elementwise: some abstract value is coupled and satisfies the
+concretized postcondition. -/
+theorem post_prop {APred : Type} {CEPred AEPred : Type w'}
+    [Assertion APred] [Assertion CEPred] [Assertion AEPred]
+    (r : Concretization Prop APred CEPred AEPred) {CVal AVal : Type _}
+    (couple : AVal → CVal → Prop) (Q : AVal → APred) (cv : CVal) :
+    r.post couple Q cv = ∃ av, couple av cv ∧ r.pred (Q av) := by
+  simp only [Concretization.post, iSup_prop_eq_exists, meet_prop_eq_and]
+
+/-- `post` in a function lattice into `Prop`, elementwise. -/
+theorem post_pi {σ : Type} {APred : Type} {CEPred AEPred : Type w'}
+    [Assertion APred] [Assertion CEPred] [Assertion AEPred]
+    (r : Concretization (σ → Prop) APred CEPred AEPred) {CVal AVal : Type _}
+    (couple : AVal → CVal → σ → Prop) (Q : AVal → APred) (cv : CVal) (s : σ) :
+    r.post couple Q cv s = ∃ av, couple av cv s ∧ r.pred (Q av) s := by
+  simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
+    meet_prop_eq_and]
+
 /-- The functional concretization from a state representation function `st : Cσ → Aσ`: the
 concretization is the pullback `st^*` (`pred P = P ∘ st`). Exception-free (`EPost.Nil`). This is
 AutoCorres' functional state abstraction; the coupling side-condition lives in the `Corres`

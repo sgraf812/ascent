@@ -1,14 +1,14 @@
-import Ascent.Corres.Basic
+import Ascent.Corres.Sim
 import Ascent.UB
 
 /-!
-# A heap swap correspondence (aliasing)
+# A heap swap simulation (aliasing)
 
 A pointer swap implemented by read-both/write-both abstracts to the atomic swap specification,
 *provided the pointers do not alias*. Aliasing surfaces as the `p ≠ q` guard on the abstract
 spec: without it the two heap transformers differ (writing `q` would clobber the value just
 written to `p`). The guard lives in the `UB` effect, so when `p = q` the spec fails and
-the correspondence is discharged trivially. This is the split-heap picture in miniature: one heap,
+the simulation is discharged trivially. This is the split-heap picture in miniature: one heap,
 pointer (in)equality carrying the aliasing, no separation logic.
 -/
 
@@ -52,17 +52,18 @@ theorem wp_swapA (p q : Nat) (Q : PUnit → Heap → Prop) (E : EPost.Nil) :
 
 /-- The read-both/write-both swap abstracts to the atomic spec under non-aliasing. -/
 example (p q : Nat) :
-    Corres (Concretization.id (Heap → Prop) EPost.Nil) .trivial
-      (swapA p q) (swapC p q) := by
-  intro Q E
-  have hQ : (Concretization.id (Heap → Prop) EPost.Nil).post (coupleEq (id : PUnit → PUnit)) Q = Q := by
-    funext cv; simp only [Concretization.post_coupleEq, Concretization.id, id_eq]
-  rw [hQ]
+    ⦃(⊤ : Heap → Prop)⦄ (swapA p q) ⊑[Concretization.id (Heap → Prop) EPost.Nil] (swapC p q)
+      ⦃(⌜· = ·⌝); ()⦄ := by
+  refine SimTriple.intro fun Qa Ea => ?_
   refine PartialOrder.rel_trans (meet_le_right _ _) ?_
-  show wp (swapA p q) Q E ⊑ wp (swapC p q) Q E
+  show wp (swapA p q) Qa Ea ⊑ wp (swapC p q) _ Ea
   rw [wp_swapA, wp_swapC]
-  intro h
-  dsimp only
+  intro h hpre
   by_cases hpq : p ≠ q
-  · rw [if_pos hpq, swapImpl_eq_spec hpq]
-  · rw [if_neg hpq]; exact bot_le _
+  · rw [if_pos hpq] at hpre
+    rw [swapImpl_eq_spec hpq]
+    simp only [Concretization.post_pi, Concretization.id, id_eq,
+      CompleteLattice.ofProp_apply, ofProp_prop_eq]
+    exact ⟨⟨⟩, trivial, hpre⟩
+  · rw [if_neg hpq, bot_prop_eq] at hpre
+    exact hpre.elim
