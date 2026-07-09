@@ -213,8 +213,7 @@ variable {CM AM : Type w → Type v} {CPred APred : Type w} {CEPred AEPred : Typ
 /-- The relational unit law: `pure` consumes the relational postcondition. -/
 theorem sim_pure {AV CV : Type w} {Q : AV → CV → CPred} {E : Ξ} (av : AV) (cv : CV) :
     Q av cv ⊑ sim γ (pure av : AM AV) (pure cv : CM CV) Q E := by
-  refine le_iInf _ _ fun Qa => le_iInf _ _ fun Ea => ?_
-  refine himp_complete _ _ _ (PartialOrder.rel_trans CompleteLattice.meet_le_comm ?_)
+  refine SimTriple.intro fun Qa Ea => ?_
   refine PartialOrder.rel_trans (le_meet _ _ _ (meet_le_left _ _)
     (PartialOrder.rel_trans (meet_le_right _ _)
       (γ.pred_mono ((‹WPMonadExact AM APred AEPred›).wp_pure_le av Qa Ea)))) ?_
@@ -228,8 +227,7 @@ theorem sim_bind [Frame CPred] {CV AV CV₂ AV₂ : Type w}
     {Q : AV₂ → CV₂ → CPred} {E : Ξ} :
     sim γ a₁ c₁ (fun av cv => sim γ (a₂ av) (c₂ cv) Q E) E ⊑
       sim γ (a₁ >>= a₂) (c₁ >>= c₂) Q E := by
-  refine le_iInf _ _ fun Qa => le_iInf _ _ fun Ea => ?_
-  refine himp_complete _ _ _ (PartialOrder.rel_trans CompleteLattice.meet_le_comm ?_)
+  refine SimTriple.intro fun Qa Ea => ?_
   refine PartialOrder.rel_trans (le_meet _ _ _ (meet_le_left _ _)
     (PartialOrder.rel_trans (meet_le_right _ _)
       (γ.pred_mono ((‹WPMonadExact AM APred AEPred›).wp_bind_le a₁ a₂ Qa Ea)))) ?_
@@ -410,8 +408,7 @@ theorem sim_throw {Q : AV → CV → Prop} {E : εa → εc → Prop} (ea : εa)
     E ea ec ⊑
       sim γ (MonadExceptOf.throw ea : Except εa AV)
         (MonadExceptOf.throw ec : Except εc CV) Q E := by
-  refine le_iInf _ _ fun Qa => le_iInf _ _ fun Ea => ?_
-  refine himp_complete _ _ _ (PartialOrder.rel_trans CompleteLattice.meet_le_comm ?_)
+  refine SimTriple.intro fun Qa Ea => ?_
   simp only [WPMonad.wp_throw_Except_apply_eq, Concretization.ePost_cons_head]
   exact CompleteLattice.le_iSup_of_le ea PartialOrder.rel_refl
 
@@ -423,8 +420,7 @@ theorem sim_tryCatch {Q : AV → CV → Prop} {E : εa → εc → Prop}
     {ah : εa → Except εa AV} {ch : εc → Except εc CV} :
     sim γ ax cx Q (fun ea ec => sim γ (ah ea) (ch ec) Q E) ⊑
       sim γ (MonadExceptOf.tryCatch ax ah) (MonadExceptOf.tryCatch cx ch) Q E := by
-  refine le_iInf _ _ fun Qa => le_iInf _ _ fun Ea => ?_
-  refine himp_complete _ _ _ (PartialOrder.rel_trans CompleteLattice.meet_le_comm ?_)
+  refine SimTriple.intro fun Qa Ea => ?_
   simp only [WPMonad.wp_tryCatch_Except_apply_eq]
   refine PartialOrder.rel_trans
     (CompleteLattice.meet_le_of_le_himp
