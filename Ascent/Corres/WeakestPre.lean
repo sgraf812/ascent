@@ -67,6 +67,41 @@ variable {CM AM : Type w → Type v} {CPred APred : Type w} {CEPred AEPred : Typ
   [WPMonad CM CPred CEPred] [WPMonad AM APred AEPred] [WPMonadExact AM APred AEPred]
   {r : Concretization CPred APred CEPred AEPred}
 
+/-- The coupled values entail the relational weakest precondition of `pure` against `pure`. -/
+theorem le_corresPre_pure {AV CV : Type w} {couple : AV → CV → CPred} (av : AV) (cv : CV) :
+    couple av cv ⊑ corresPre r couple (pure av : AM AV) (pure cv : CM CV) := by
+  refine le_iInf _ _ fun Q => le_iInf _ _ fun E => ?_
+  refine himp_complete _ _ _ (PartialOrder.rel_trans CompleteLattice.meet_le_comm ?_)
+  refine PartialOrder.rel_trans (le_meet _ _ _ (meet_le_left _ _)
+    (PartialOrder.rel_trans (meet_le_right _ _)
+      (r.pred_mono ((‹WPMonadExact AM APred AEPred›).wp_pure_le av Q E)))) ?_
+  exact PartialOrder.rel_trans (le_iSup (fun av' => couple av' cv ⊓ r.pred (Q av')) av)
+    (WPMonad.pure_le_wp_pure cv (r.post couple Q) (r.ePred E))
+
+/-- The relational monad law: embedding the continuations' relational weakest precondition in
+the value coupling bounds the `bind`s' relational weakest precondition. -/
+theorem le_corresPre_bind [Frame CPred] {CV AV CV₂ AV₂ : Type w}
+    {a₁ : AM AV} {c₁ : CM CV} {a₂ : AV → AM AV₂} {c₂ : CV → CM CV₂}
+    {couple₂ : AV₂ → CV₂ → CPred} :
+    corresPre r (fun av cv => corresPre r couple₂ (a₂ av) (c₂ cv)) a₁ c₁ ⊑
+      corresPre r couple₂ (a₁ >>= a₂) (c₁ >>= c₂) := by
+  refine le_iInf _ _ fun Q => le_iInf _ _ fun E => ?_
+  refine himp_complete _ _ _ (PartialOrder.rel_trans CompleteLattice.meet_le_comm ?_)
+  refine PartialOrder.rel_trans (le_meet _ _ _ (meet_le_left _ _)
+    (PartialOrder.rel_trans (meet_le_right _ _)
+      (r.pred_mono ((‹WPMonadExact AM APred AEPred›).wp_bind_le a₁ a₂ Q E)))) ?_
+  refine PartialOrder.rel_trans
+    (CompleteLattice.meet_le_of_le_himp
+      (PartialOrder.rel_trans (iInf_le _ (fun av => wp (a₂ av) Q E)) (iInf_le _ E))) ?_
+  refine PartialOrder.rel_trans
+    (WP.wp_consequence c₁ _ (fun cv => wp (c₂ cv) (r.post couple₂ Q) (r.ePred E)) (r.ePred E) ?_)
+    (WPMonad.bind_le_wp_bind c₁ c₂ (r.post couple₂ Q) (r.ePred E))
+  intro cv
+  show iSup (fun av => corresPre r couple₂ (a₂ av) (c₂ cv) ⊓ r.pred (wp (a₂ av) Q E)) ⊑ _
+  refine iSup_le _ _ fun av => ?_
+  exact CompleteLattice.meet_le_of_le_himp
+    (PartialOrder.rel_trans (iInf_le _ Q) (iInf_le _ E))
+
 /-- `corres_bind` at the weakest mid-condition: the continuation obligation is
 `corres_corresPre`, leaving the head correspondence and one `wp` fact about the concrete
 head. -/
