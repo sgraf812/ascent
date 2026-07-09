@@ -1,16 +1,14 @@
-import Ascent.Corres.Basic
 import Ascent.Corres.Sim
 import Ascent.UB
 
 /-!
-# Exceptions: the `Corres` meaning of `throw` and `tryCatch`
+# Exceptions: the simulation meaning of `throw` and `tryCatch`
 
-Over one exception layer with the identity concretization, `throw` is `pure` into the exception
-barrel and `tryCatch` is `bind` on it: `corres_throw` needs no value-coupling premise (no value
-crosses the boundary; the exception values are coupled diagonally by the identity `ePred`), and
-`corres_tryCatch` composes a body correspondence with a handler correspondence per exception,
-the body instantiated at the barrel holding the abstract handler's `wp`. A caught throw is the
-handler call (`corres_catch_throw`), and inequal throws admit no correspondence.
+Over one exception layer, `throw` is `pure` into the exception barrel and `tryCatch` is `bind`
+on it: `SimTriple.throw` consumes the exception coupling exactly as `SimTriple.pure` consumes
+the value coupling, and `SimTriple.tryCatch` rebinds it with the handlers' simulation exactly
+as `bind` rebinds the value coupling. A caught throw is the handler call (`sim_catch_throw`),
+and inequal throws admit no simulation under the diagonal exception coupling.
 -/
 
 open Std.Internal.Do Lean.Order Ascent
@@ -23,55 +21,41 @@ abbrev EE := EPost.Cons (Nat → Prop) EPost.Nil
 /-- The identity concretization over the exception layer. -/
 abbrev exc : Concretization Prop Prop EE EE := Concretization.id Prop EE
 
-/-- `throw` abstracts `throw`, under any boundary: no value crosses, and the identity `ePred`
-couples the exception values diagonally. -/
-theorem corres_throw {AV CV : Type} (e : Nat) (b : Boundary Prop AV CV) :
-    Corres exc b (throw e : Except Nat AV) (throw e : Except Nat CV) := by
-  intro Q E
-  refine PartialOrder.rel_trans (meet_le_right _ _) ?_
-  show wp (MonadExceptOf.throw e : Except Nat AV) Q E ⊑
-    wp (MonadExceptOf.throw e : Except Nat CV) (exc.post b.couple Q) E
-  simp only [WPMonad.wp_throw_Except_apply_eq]
-  exact PartialOrder.rel_refl
+/-- `throw` abstracts `throw` at equal codes: the diagonal exception coupling is consumed. -/
+example {AV CV : Type} (e : Nat) (Q : AV → CV → Prop) :
+    ⦃(⊤ : Prop)⦄ (MonadExceptOf.throw e : Except Nat AV)
+      ⊑[exc] (MonadExceptOf.throw e : Except Nat CV) ⦃Q; (⌜· = ·⌝)⦄ :=
+  (SimTriple.throw e e).weaken (le_ofProp _ _ rfl)
 
-/-- `tryCatch` abstracts `tryCatch` when the bodies correspond and the handlers correspond
-pointwise: `bind` on the exception barrel. -/
-theorem corres_tryCatch {AV CV : Type} (couple : CV → AV)
-    {ax : Except Nat AV} {cx : Except Nat CV} {ah : Nat → Except Nat AV}
-    {ch : Nat → Except Nat CV}
-    (hx : Corres exc (.eq ⊤ couple) ax cx)
-    (hh : ∀ e, Corres exc (.eq ⊤ couple) (ah e) (ch e)) :
-    Corres exc (.eq ⊤ couple) (tryCatch ax ah) (tryCatch cx ch) := by
-  intro Q E
-  refine PartialOrder.rel_trans (meet_le_right _ _) ?_
-  show wp (MonadExceptOf.tryCatch ax ah) Q E ⊑
-    wp (MonadExceptOf.tryCatch cx ch) (exc.post (coupleEq couple) Q) E
-  simp only [WPMonad.wp_tryCatch_Except_apply_eq]
-  have hbody := hx Q (epost⟨fun e => wp (ah e) Q E⟩)
-  refine PartialOrder.rel_trans
-    (PartialOrder.rel_trans (le_meet _ _ _ (le_top _) PartialOrder.rel_refl) hbody) ?_
-  refine WP.wp_consequence_econs cx _ _ _ _ PartialOrder.rel_refl ?_
-  refine EPost.Cons.mk_le _ _ _ ?_ (EPost.Nil.le _)
-  intro e
-  exact PartialOrder.rel_trans (le_meet _ _ _ (le_top _) PartialOrder.rel_refl) (hh e Q E)
+/-- A `tryCatch` around matching throws runs the handlers: `SimTriple.throw` establishes the
+body's exception coupling, which `SimTriple.tryCatch` rebinds with the handlers' simulation. -/
+example {AV CV : Type} {P : Prop} (Q : AV → CV → Prop) (E : Nat → Nat → Prop)
+    (ah : Nat → Except Nat AV) (ch : Nat → Except Nat CV)
+    (h : ⦃P⦄ (ah 3) ⊑[exc] (ch 3) ⦃Q; E⦄) :
+    ⦃P⦄ (MonadExceptOf.tryCatch (MonadExceptOf.throw 3) ah)
+      ⊑[exc] (MonadExceptOf.tryCatch (MonadExceptOf.throw 3) ch) ⦃Q; E⦄ :=
+  ((SimTriple.throw 3 3).weaken h).tryCatch
 
 /-- A caught throw is the handler call: the `throw`/`tryCatch` round trip is erased. -/
-theorem corres_catch_throw {CV : Type} (e : Nat) (ch : Nat → Except Nat CV) :
-    Corres exc (.eq ⊤ (id : CV → CV)) (ch e) (tryCatch (throw e) ch) := by
-  intro Q E
-  refine PartialOrder.rel_trans (meet_le_right _ _) ?_
-  show wp (ch e) Q E ⊑ wp (MonadExceptOf.tryCatch (MonadExceptOf.throw e) ch) (exc.post (coupleEq id) Q) E
-  simp only [WPMonad.wp_tryCatch_Except_apply_eq, WPMonad.wp_throw_Except_apply_eq,
-    Concretization.post_coupleEq, Concretization.id, id_eq]
-  exact PartialOrder.rel_refl
+theorem sim_catch_throw {AV CV : Type} {P : Prop} {Q : AV → CV → Prop} {E : Nat → Nat → Prop}
+    (e : Nat) {a : Except Nat AV} {ch : Nat → Except Nat CV}
+    (h : ⦃P⦄ a ⊑[exc] (ch e) ⦃Q; E⦄) :
+    ⦃P⦄ a ⊑[exc] (MonadExceptOf.tryCatch (MonadExceptOf.throw e) ch) ⦃Q; E⦄ := by
+  refine SimTriple.intro fun Qa Ea => ?_
+  simp only [WPMonad.wp_tryCatch_Except_apply_eq, WPMonad.wp_throw_Except_apply_eq]
+  exact h.elim Qa Ea
 
-/-- Distinct throws admit no correspondence: the barrel distinguishes the exception values. -/
-example : ¬ Corres exc .trivial (throw 0 : Except Nat Nat) (throw 1 : Except Nat Nat) := by
-  intro hcorres
-  have h : ((0 : Nat) = 0) → ((1 : Nat) = 0) :=
-    PartialOrder.rel_trans (le_meet _ _ _ (le_top _) PartialOrder.rel_refl)
-      (hcorres (fun _ => True) (epost⟨fun n => n = 0⟩))
-  exact Nat.one_ne_zero (h rfl)
+/-- Distinct throws admit no simulation under the diagonal exception coupling: the barrel
+distinguishes the thrown values. -/
+example : ¬ ⦃(⊤ : Prop)⦄ (MonadExceptOf.throw 0 : Except Nat Nat)
+    ⊑[exc] (MonadExceptOf.throw 1 : Except Nat Nat) ⦃fun _ _ => ⊤; (⌜· = ·⌝)⦄ := by
+  intro hsim
+  have H := hsim.elim (fun _ => True) (epost⟨fun n => n = 0⟩)
+  simp only [WPMonad.wp_throw_Except_apply_eq, Concretization.ePost_cons_head,
+    Concretization.post_prop, Concretization.id, id_eq, ofProp_prop_eq, meet_prop_eq_and,
+    top_prop_eq, true_and] at H
+  obtain ⟨ea, h1, h0⟩ := H trivial
+  omega
 
 end ThrowCatch
 
@@ -79,7 +63,7 @@ namespace SimValidation
 
 open Ascent
 
-/-! ## `sim` validation: exception-value coupling as judgment data, fills as phase data -/
+/-! ## Heterogeneous exception couplings: judgment data vs phase data -/
 
 /-- Error-code abstraction: Boolean abstract exceptions over numeric concrete codes; the
 concretization carries no exception structure of its own. -/
@@ -108,20 +92,17 @@ def fillAbs (fill : Nat → Prop) :
   ePred_mono _ := PartialOrder.rel_refl
 
 example (Q : Int → Int → Prop) :
-    (⊤ : Prop) ⊑ sim (fillAbs fun _ => ⊤) (pure 0 : Id Int)
-      (MonadExceptOf.throw 3 : Except Nat Int) Q ⟨⟩ := by
-  refine le_iInf _ _ fun Qa => le_iInf _ _ fun Ea => ?_
-  refine himp_complete _ _ _ ?_
+    ⦃(⊤ : Prop)⦄ (pure 0 : Id Int)
+      ⊑[fillAbs fun _ => ⊤] (MonadExceptOf.throw 3 : Except Nat Int) ⦃Q; ()⦄ := by
+  refine SimTriple.intro fun Qa Ea => ?_
   simp only [WPMonad.wp_throw_Except_apply_eq, Concretization.ePost_fill]
   exact le_top _
 
 /-- The `⊥` fill forbids it: type strengthening as `ePred` data. -/
-example : ¬ ((⊤ : Prop) ⊑ sim (fillAbs fun _ => ⊥) (pure 0 : Id Int)
-      (MonadExceptOf.throw 3 : Except Nat Int) (fun av cv => ⌜av = cv⌝) ⟨⟩) := by
+example : ¬ ⦃(⊤ : Prop)⦄ (pure 0 : Id Int)
+    ⊑[fillAbs fun _ => ⊥] (MonadExceptOf.throw 3 : Except Nat Int) ⦃(⌜· = ·⌝); ()⦄ := by
   intro h
-  have h2 := CompleteLattice.meet_le_of_le_himp
-    (PartialOrder.rel_trans h
-      (PartialOrder.rel_trans (iInf_le _ (fun _ => True)) (iInf_le _ EPost.Nil.mk)))
+  have h2 := h.elim (fun _ => True) EPost.Nil.mk
   simp only [WPMonad.wp_throw_Except_apply_eq, Concretization.ePost_fill, top_meet,
     WPMonadExact.wp_pure_eq] at h2
   have hfalse := h2 trivial
