@@ -6,3 +6,4 @@ import AscentTests.LoopCorres
 import AscentTests.ZipWithAdd
 import AscentTests.Heap
 import AscentTests.HeapValid
+import AscentTests.ThrowCatch
