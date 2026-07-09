@@ -94,7 +94,7 @@ def errAbs : Concretization Prop Prop (EPost.Cons (Nat → Prop) EPost.Nil)
 exception coupling. -/
 example (Q : Int → Int → Prop) :
     ⦃(⊤ : Prop)⦄ (MonadExceptOf.throw true : Except Bool Int)
-      ⪅[errAbs] (MonadExceptOf.throw 3 : Except Nat Int)
+      ⪯[errAbs] (MonadExceptOf.throw 3 : Except Nat Int)
       ⦃Q; fun ea ec => ⌜ea = decide (0 < ec)⌝⦄ :=
   (SimTriple.throw true 3).weaken (le_ofProp _ _ (by decide))
 
