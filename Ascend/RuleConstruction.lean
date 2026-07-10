@@ -100,7 +100,7 @@ private def compileRule (si : SpecInfo) (g : RWPApp) : AscendM (Option CachedRul
 
 /-- The compiled rule for `spec` against the phase of `g`, from the cache or compiled now. -/
 private def cachedRule (si : SpecInfo) (g : RWPApp) : AscendM (Option CachedRule) := do
-  let key := (si.declName, ExprPtr.mk g.instWPc, ExprPtr.mk g.instWPa)
+  let key := (si.declName, ExprPtr.mk g.γ)
   if let some c := (← get).ruleCache[key]? then return some c
   let some c ← compileRule si g | return none
   modify fun s => { s with ruleCache := s.ruleCache.insert key c }
@@ -113,7 +113,10 @@ private def fixAbstractSlot? (goal : MVarId) (g : RWPApp) (c : CachedRule) :
     AscendM (Option (Option MVarId)) := do
   let goalA ← instantiateMVarsIfMVarApp g.a
   let .mvar mvarId := goalA.getAppFn | return some none
-  let ts := goalA.getAppArgs
+  -- Substitute the value arguments now: rule application binds by metavariable assignment, so
+  -- an uninstantiated value is an assigned-mvar chain that every later inspection would
+  -- re-walk. The previous leaf cleaned its prefix, so this is one layer per leaf.
+  let ts ← goalA.getAppArgs.mapM (instantiateMVars ·)
   if ts.isEmpty then return some none
   let some tmpl := c.template? | return none
   let (_, _, lam) ← openAbstractMVarsResult tmpl

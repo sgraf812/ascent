@@ -28,6 +28,15 @@ inductive SolveResult where
   /-- No further progress; emit the goal as a VC. -/
   | stop (reason : StopReason)
 
+/-- Substitute an assigned metavariable at the application head, without instantiating the
+spliced value: a rebound coupling's body carries the chain's synthesis metavariables, so a
+full `instantiateMVars` would walk the entire remaining chain at every handoff. The body's
+own assignments substitute lazily when they reach a head position themselves. -/
+private partial def instantiateHead (e : Expr) : MetaM Expr := do
+  let .mvar id := e.getAppFn | return e
+  let some val ← getExprMVarAssignment? id | return e
+  instantiateHead (mkAppN val e.getAppArgs)
+
 /-- Strategy: introduce a `∀`/implication target, lifting rule-precondition hypotheses (such
 as no-overflow guards) into the context. -/
 private def forallIntro? (goal : MVarId) (target : Expr) : AscendM (Option MVarId) := do
@@ -111,16 +120,17 @@ private def eqRefl? (goal : MVarId) (relArgs : Array Expr) : AscendM (Option Uni
 /-- Strategy: close against a hypothesis, such as a coupling established by an earlier leaf. -/
 private def hypClose? (goal : MVarId) (relArgs : Array Expr) : AscendM (Option Unit) := do
   let rhs ← instantiateMVars relArgs[3]!
-  -- Most recent first: the wanted coupling is typically the last leaf's.
-  let decls := (← getLCtx).decls.toArray.filterMap id
+  -- Most recent first, without materializing the context: the wanted coupling is typically
+  -- the last leaf's, the immediately preceding declaration.
+  let decls := (← getLCtx).decls
   let mut found := none
   for i in [:decls.size] do
-    let d := decls[decls.size - 1 - i]!
-    unless d.isImplementationDetail do
-      let ty ← instantiateMVars d.type
-      if isSameExpr ty rhs || ty == rhs then
-        found := some d
-        break
+    if let some (some d) := decls[decls.size - 1 - i]? then
+      unless d.isImplementationDetail do
+        let ty ← instantiateMVars d.type
+        if isSameExpr ty rhs || ty == rhs then
+          found := some d
+          break
   let some hyp := found | return none
   goal.assign (mkApp3 (mkConst ``Ascend.prop_le_of) relArgs[2]! rhs hyp.toExpr)
   return some ()
@@ -139,7 +149,7 @@ def solve (goal : MVarId) : AscendM SolveResult := goal.withContext do
     | return .stop (.noEntailment target)
   -- An assigned coupling slot arrives as `?Q v c`; substitute the head so beta reduction and
   -- the `rwp` parse below see the rebound continuation.
-  let relArgs := relArgs.set! 3 (← instantiateMVarsIfMVarApp relArgs[3]!)
+  let relArgs := relArgs.set! 3 (← instantiateHead relArgs[3]!)
   if let some goal ← rhsBeta? goal relHead relArgs then return .goals [goal]
   if let some g := parseRWP? (mkApp4 relHead relArgs[0]! relArgs[1]! relArgs[2]! relArgs[3]!) then
     if let some goal ← progBeta? goal g then return .goals [goal]

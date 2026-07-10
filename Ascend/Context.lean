@@ -82,9 +82,11 @@ structure Context where
 structure State where
   /-- Verification conditions emitted so far. -/
   vcs : Array MVarId := #[]
-  /-- Apply-ready rules, keyed by spec name and the goal's `WP` instances. The instances are
-  keyed by pointer, sound because they are subterms of the hash-consed goal. -/
-  ruleCache : Std.HashMap (Name × ExprPtr × ExprPtr) CachedRule := {}
+  /-- Apply-ready rules, keyed by spec name and the phase's `γ` (by pointer: the compiled
+  rule pins `γ`, so every subgoal it produces carries the same object). The goal's `WP`
+  instance slots are unusable as keys: rule application leaves them as fresh metavariables,
+  one per node. A run mixing monad pairs under one `γ` would need the monads in the key. -/
+  ruleCache : Std.HashMap (Name × ExprPtr) CachedRule := {}
 
 abbrev AscendM := ReaderT Context (StateRefT State SymM)
 
