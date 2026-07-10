@@ -109,7 +109,7 @@ precondition. -/
 theorem Ascent.RTriple.guardRet {AV CV : Type} {g : Prop} [Decidable g] {P : Prop}
     {Q : AV → CV → Prop} (a : AV) (c : CV) (h : g → P ⊑ Q a c) :
     ⦃P⦄ (UB.guardRet g a) ⊑[Concretization.id Prop EPost.Nil] (Pure.pure c : Id CV) ⦃Q⦄ := by
-  refine RTriple.intro fun Qa Ea => ?_
+  refine ⟨rwp_intro fun Qa Ea => ?_⟩
   by_cases hg : g
   · rw [show UB.guardRet g a = Pure.pure a from by simp [UB.guardRet, hg]]
     show P ⊓ Qa a ⊑ (Concretization.id Prop EPost.Nil).post Q Qa c

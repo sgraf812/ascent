@@ -64,6 +64,24 @@ chain. -/
     ⦃Q (wordVal cv) cv⦄ (pure (wordVal cv) : UB Int) ⊑[γw] (pure cv : Id UInt64) ⦃Q; E⦄ :=
   RTriple.pure _ _
 
+/-- The mid-coupling bind form for the baseline chain: the head establishes `R`, the
+continuations correspond under it. -/
+theorem bindChain {CM AM : Type w → Type v} {CPred APred : Type w}
+    {CEPred AEPred : Type w'} {Ξ : Type u}
+    [Monad CM] [Monad AM]
+    [Assertion CPred] [Assertion APred] [Assertion CEPred] [Assertion AEPred]
+    [WPMonad CM CPred CEPred] [WPMonad AM APred AEPred] [WPMonadExact AM APred AEPred]
+    [HasEPost CPred APred CEPred AEPred Ξ]
+    {γ : Concretization CPred APred CEPred AEPred}
+    [Frame CPred] {CV AV CV₂ AV₂ : Type w} {P : CPred}
+    {a₁ : AM AV} {c₁ : CM CV} {a₂ : AV → AM AV₂} {c₂ : CV → CM CV₂}
+    {R : AV → CV → CPred} {Q : AV₂ → CV₂ → CPred} {E : Ξ}
+    (h₁ : ⦃P⦄ a₁ ⊑[γ] c₁ ⦃R; E⦄)
+    (h₂ : ∀ av cv, ⦃R av cv⦄ (a₂ av) ⊑[γ] (c₂ cv) ⦃Q; E⦄) :
+    ⦃P⦄ (a₁ >>= a₂) ⊑[γ] (c₁ >>= c₂) ⦃Q; E⦄ :=
+  RTriple.bind.weaken
+    (PartialOrder.rel_trans h₁.le_rwp (rwp_mono_post fun av cv => (h₂ av cv).le_rwp))
+
 /-- The concrete chain: `n` dependent additions of the constant `c`. -/
 def chainC (c : UInt64) : Nat → Id UInt64
   | 0 => pure c

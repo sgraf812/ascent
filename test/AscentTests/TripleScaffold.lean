@@ -1,0 +1,43 @@
+import Ascent.Corres.RTriple
+
+/-!
+# Scaffold forms of the bind rule
+
+Mid-coupling forms of `RTriple.bind` for hand-written proofs: the head establishes a coupling
+and the continuations correspond under it. Derived from the pre-form rule by weakening.
+-/
+
+open Std.Internal.Do Lean.Order
+
+namespace Ascent
+
+universe u v w w'
+
+variable {CM AM : Type w → Type v} {CPred APred : Type w} {CEPred AEPred : Type w'} {Ξ : Type u}
+  [Monad CM] [Monad AM]
+  [Assertion CPred] [Assertion APred] [Assertion CEPred] [Assertion AEPred]
+  [WPMonad CM CPred CEPred] [WPMonad AM APred AEPred] [WPMonadExact AM APred AEPred]
+  [HasEPost CPred APred CEPred AEPred Ξ]
+  {γ : Concretization CPred APred CEPred AEPred}
+  [Frame CPred] {CV AV CV₂ AV₂ : Type w} {P : CPred}
+  {a₁ : AM AV} {c₁ : CM CV} {a₂ : AV → AM AV₂} {c₂ : CV → CM CV₂}
+  {Q : AV₂ → CV₂ → CPred} {E : Ξ}
+
+/-- The bind rule at a mid coupling: the head establishes `R`, the continuations correspond
+under it. -/
+theorem RTriple.bind' {R : AV → CV → CPred}
+    (h₁ : ⦃P⦄ a₁ ⊑[γ] c₁ ⦃R; E⦄)
+    (h₂ : ∀ av cv, ⦃R av cv⦄ (a₂ av) ⊑[γ] (c₂ cv) ⦃Q; E⦄) :
+    ⦃P⦄ (a₁ >>= a₂) ⊑[γ] (c₁ >>= c₂) ⦃Q; E⦄ :=
+  RTriple.bind.weaken
+    (PartialOrder.rel_trans h₁.le_rwp (rwp_mono_post fun av cv => (h₂ av cv).le_rwp))
+
+/-- The bind rule at a functional head coupling: the continuations correspond at each concrete
+value and its coupled abstract value. -/
+theorem RTriple.bind_eq {f : CV → AV}
+    (h₁ : ⦃P⦄ a₁ ⊑[γ] c₁ ⦃fun av cv => ⌜av = f cv⌝; E⦄)
+    (h₂ : ∀ cv, ⦃(⊤ : CPred)⦄ (a₂ (f cv)) ⊑[γ] (c₂ cv) ⦃Q; E⦄) :
+    ⦃P⦄ (a₁ >>= a₂) ⊑[γ] (c₁ >>= c₂) ⦃Q; E⦄ :=
+  .bind' h₁ fun av cv => .of_prop fun h => by rw [h]; exact h₂ cv
+
+end Ascent

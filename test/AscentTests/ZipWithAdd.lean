@@ -1,5 +1,6 @@
 import Ascent.Corres.Loop
 import Ascent.Corres.SP
+import AscentTests.TripleScaffold
 import Ascent.Corres.RTriple
 import Std.Tactic.Do
 
@@ -295,7 +296,7 @@ operations act on the coupled heap, and the counter update evolves the coupling.
 theorem refines_stepL2 (a b out : Addr) (n : USize) :
     ⦃(⊤ : State → Prop)⦄ (stepL2 a b out) ⊑[relRef (invL2 a b out n)] stepL1
       ⦃fun _ _ => ⊤⦄ := by
-  refine RTriple.intro fun Q E => ?_
+  refine ⟨rwp_intro fun Q E => ?_⟩
   intro cs hpre
   simp only [top_meet, relRef_pred] at hpre
   obtain ⟨⟨i, h⟩, ⟨hh, hi, hn, ha, hb, hout⟩, habs⟩ := hpre
@@ -348,7 +349,7 @@ theorem refines_L1L2 (a b out : Addr) (n : USize) :
 theorem refines_getSizeN (a b out : Addr) (n : USize) :
     ⦃(⊤ : State → Prop)⦄ (pure n : StateT (USize × Heap) UB USize)
       ⊑[relRef (invL2 a b out n)] (getSize "n") ⦃(⌜· = ·⌝)⦄ := by
-  refine RTriple.intro fun Q E => ?_
+  refine ⟨rwp_intro fun Q E => ?_⟩
   intro cs hpre
   simp only [top_meet, relRef_pred] at hpre
   obtain ⟨⟨i, h⟩, hJ, habs⟩ := hpre
@@ -502,7 +503,7 @@ theorem refines_stepL3 (a b out : Addr) (n : USize) (a_arr b_arr : Array I)
     (hd : NoAlias a b out n.toNat) :
     ⦃(⊤ : (USize × Heap) → Prop)⦄ (stepL3 a_arr b_arr)
       ⊑[relRef (invL3 a b out n a_arr b_arr)] (stepL2 a b out) ⦃fun _ _ => ⊤⦄ := by
-  refine RTriple.intro fun Q E => ?_
+  refine ⟨rwp_intro fun Q E => ?_⟩
   intro ch hpre
   simp only [top_meet, relRef_pred] at hpre
   obtain ⟨⟨i, oa⟩, ⟨hc, ho, hsa, hsb, hav⟩, habs⟩ := hpre
@@ -593,7 +594,7 @@ theorem refines_L3L4 (a b out : Addr) (n : USize) (a_arr b_arr : Array I)
       (zipL4 a_arr b_arr n)
       ⊑[Concretization.ofStateRepr fun s : State => slice out n.toNat s.heap]
       (whileLoop guardL1 stepL1 >>= fun _ => getSize "n") ⦃(⌜· = ·⌝)⦄ := by
-  refine RTriple.intro fun Q E => ?_
+  refine ⟨rwp_intro fun Q E => ?_⟩
   intro s hs
   simp only [Concretization.ofStateRepr_pred, meet_apply, meet_prop_eq_and, zipL4, StateT.wp_apply_eq,
     StateT.run] at hs
@@ -608,7 +609,7 @@ theorem refines_L3L4 (a b out : Addr) (n : USize) (a_arr b_arr : Array I)
           (slice_size out n.toNat s.heap)]; exact hQspec) n.toNat 0 (by simp) (by simp)
     simp only [StateT.wp_apply_eq, StateT.run_pure, UB.wp_pure_eq]
     simpa using hsp
-  have hcl := (refines_L1L3 a b out n a_arr b_arr hd).elim (fun v p => Q v p.2) E s (by
+  have hcl := rwp_transport (refines_L1L3 a b out n a_arr b_arr hd).le_rwp (fun v p => Q v p.2) E s (by
     simp only [top_meet, Concretization.comp, Function.comp, relRef_pred]
     exact ⟨(0, s.heap), ⟨rfl, hloc⟩, (0, slice out n.toNat s.heap), ⟨rfl, rfl, hsa, hsb, hav⟩, hwp⟩)
   refine WP.wp_consequence (whileLoop guardL1 stepL1 >>= fun _ => getSize "n") _ _ _ ?_ s hcl
@@ -624,7 +625,7 @@ theorem refines_getSize_st {X : Type} (f : Heap → X) (P : State → Prop) (x :
     (hpre : ∀ s, P s → s.locals x = some (.size v)) :
     ⦃P⦄ (pure v : StateT X UB USize) ⊑[Concretization.ofStateRepr fun s => f s.heap] (getSize x)
       ⦃fun av cv s => P s ∧ av = v ∧ cv = v⦄ := by
-  refine RTriple.intro fun Qa Ea => ?_
+  refine ⟨rwp_intro fun Qa Ea => ?_⟩
   intro s hs
   simp only [Concretization.ofStateRepr_pred, meet_apply, meet_prop_eq_and,
     StateT.wp_apply_eq, StateT.run] at hs
@@ -638,7 +639,7 @@ theorem refines_setSize_st {X : Type} (f : Heap → X) (P : State → Prop) (x :
     ⦃P⦄ (pure () : StateT X UB Unit) ⊑[Concretization.ofStateRepr fun s => f s.heap] (setSize x v)
       ⦃fun _ _ s' => ∃ s, P s ∧
         s' = { s with locals := fun y => if y = x then some (.size v) else s.locals y }⦄ := by
-  refine RTriple.intro fun Qa Ea => ?_
+  refine ⟨rwp_intro fun Qa Ea => ?_⟩
   intro s hs
   simp only [Concretization.ofStateRepr_pred, meet_apply, meet_prop_eq_and,
     StateT.wp_apply_eq, StateT.run] at hs
@@ -692,11 +693,11 @@ example {X : Type} (f : Heap → X) (P : State → Prop) (v : USize) :
       ⊑[Concretization.ofStateRepr fun s => f s.heap]
       (setSize "n" v >>= fun _ => getSize "n") ⦃(⌜· = ·⌝)⦄ := by
     refine .bind' ((refines_setSize_st f P "n" v).mono_post fun _ cv => ?_)
-      fun _ cv => PartialOrder.rel_refl
+      fun _ cv => ⟨PartialOrder.rel_refl⟩
     intro s' hs'
     obtain ⟨s₀, -, rfl⟩ := hs'
     exact ((refines_getSize_st f (fun s => s.locals "n" = some (.size v)) "n" v
-      fun _ h => h).mono_post getSize_couple_eq) _ (by simp)
+      fun _ h => h).mono_post getSize_couple_eq).le_rwp _ (by simp)
   simpa only [pure_bind] using key
 
 /-- **End to end: `zipL1` is `Array.zipWith`.** Under the function-entry coupling, validity, and
@@ -783,15 +784,15 @@ theorem refines_zip5 (a b out : Addr) (la lb : USize) (a_arr b_arr : Array I)
       ⊑[(Concretization.ofStateRepr fun s : State => slice out (min la lb).toNat s.heap).comp
           (purify (Array I))] zipL1
       ⦃fun av cv s' => av = (cv, slice out (min la lb).toNat s'.heap)⦄ := by
-  refine RTriple.intro fun Q E => ?_
+  refine ⟨rwp_intro fun Q E => ?_⟩
   have hRHS : (Concretization.ofStateRepr fun s : State => slice out (min la lb).toNat s.heap).post
         (fun av cv => ⌜av = cv⌝) ((purify (Array I)).post purifyCouple Q)
       = fun cv s' => Q (cv, slice out (min la lb).toNat s'.heap) := by
     simp only [purify_post, Concretization.post_eq, Concretization.ofStateRepr_pred]
   rw [zip5_post out (min la lb) Q]
-  have hb' := (refines_purifyL4 a_arr b_arr (min la lb)).elim Q E
+  have hb' := rwp_transport (refines_purifyL4 a_arr b_arr (min la lb)).le_rwp Q E
   rw [CompleteLattice.top_meet] at hb'
-  have hc' := (refines_zip a b out la lb a_arr b_arr ha hb hd).elim
+  have hc' := rwp_transport (refines_zip a b out la lb a_arr b_arr ha hb hd).le_rwp
     ((purify (Array I)).post purifyCouple Q) ((purify (Array I)).ePost .mk E)
   rw [hRHS] at hc'
   refine PartialOrder.rel_trans (le_meet _ _ _ (meet_le_left _ _)
@@ -826,8 +827,8 @@ theorem zipL1_spec (a b out : Addr) (la lb : USize) (a_arr b_arr : Array I)
   refine Triple.intro ?_
   intro s hs
   obtain ⟨hentry, hsa, hsb, hav⟩ := hs
-  have key := (refines_zip5 a b out la lb (slice a (min la lb).toNat s.heap)
-    (slice b (min la lb).toNat s.heap) (by simp) (by simp) hd).elim φ ⊥
+  have key := rwp_transport (refines_zip5 a b out la lb (slice a (min la lb).toNat s.heap)
+    (slice b (min la lb).toNat s.heap) (by simp) (by simp) hd).le_rwp φ ⊥
   rw [zip5_post out (min la lb) φ] at key
   refine key s ?_
   simp only [meet_apply, meet_prop_eq_and, Concretization.comp, Function.comp,

@@ -15,7 +15,7 @@ namespace Ascend
 
 /-- Unseal the abstract-program hole of an `RTriple` goal so rule application can assign it. -/
 def unsealAbstractHole (goal : MVarId) : MetaM Unit := do
-  let target ← instantiateMVars (← goal.getType)
+  let target ← goal.getType
   unless target.isAppOfArity ``Ascent.RTriple 22 do return
   let a := target.getAppArgs[13]!
   let .mvar mvarId := a.getAppFn | return

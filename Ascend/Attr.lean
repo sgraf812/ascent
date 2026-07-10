@@ -68,9 +68,6 @@ def analyzeSpec (declName : Name) : MetaM (SpecInfo × Array (DiscrTree.Key)) :=
     let cPositions ← mvarPositions xs c
     let avPositions := (← mvarPositions xs a).filter fun i =>
       !cPositions.contains i && i != qPosition && some i != ePosition?
-    if avPositions.size > 1 then
-      throwError "@[ascend]: {declName} has more than one abstract-input variable; not yet \
-        supported"
     let keys ← DiscrTree.mkPath c
     return ({ declName, avPositions, qPosition, ePosition?, specificity := keys.size }, keys)
 

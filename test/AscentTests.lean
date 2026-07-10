@@ -1,3 +1,4 @@
+import AscentTests.TripleScaffold
 import AscentTests.WordAbstraction
 import AscentTests.TypeStrengthen
 import AscentTests.Pipeline

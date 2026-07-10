@@ -54,7 +54,7 @@ theorem wp_swapA (p q : Nat) (Q : PUnit → Heap → Prop) (E : EPost.Nil) :
 example (p q : Nat) :
     ⦃(⊤ : Heap → Prop)⦄ (swapA p q) ⊑[Concretization.id (Heap → Prop) EPost.Nil] (swapC p q)
       ⦃(⌜· = ·⌝)⦄ := by
-  refine RTriple.intro fun Qa Ea => ?_
+  refine ⟨rwp_intro fun Qa Ea => ?_⟩
   refine PartialOrder.rel_trans (meet_le_right _ _) ?_
   show wp (swapA p q) Qa Ea ⊑ wp (swapC p q) _ Ea
   rw [wp_swapA, wp_swapC]

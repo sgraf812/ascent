@@ -1,4 +1,5 @@
 import Ascent.UB
+import AscentTests.TripleScaffold
 import AscentTests.WordAbstraction
 
 /-!
