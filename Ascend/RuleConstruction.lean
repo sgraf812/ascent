@@ -27,6 +27,14 @@ open Lean Meta Sym
 
 namespace Ascend
 
+/-- Replace `goal`'s target with the definitionally equal `target`, without reading the old
+target back: `MVarId.replaceTargetDefEq` instantiates it, which walks the goal's assigned
+synthesis metavariables. -/
+def setTargetRaw (goal : MVarId) (target : Expr) : MetaM MVarId := do
+  let ng ← mkFreshExprSyntheticOpaqueMVar target (← goal.getTag)
+  goal.assign ng
+  return ng.mvarId!
+
 /-- Run `k`; on failure or a `none` result, roll back all state (including metavariable
 assignments). -/
 def commitWhenSome? (k : AscendM (Option α)) : AscendM (Option α) := do
@@ -84,7 +92,8 @@ private def compileRule (si : SpecInfo) (g : RWPApp) : AscendM (Option CachedRul
       let lam ← withLocalDeclsD decls fun xs => do
         let a ← instantiateMVars ruleRwp.a
         mkLambdaFVars xs <| a.replace fun e => avMVars.idxOf? e |>.map (xs[·]!)
-      pure (some (← abstractMVars lam))
+      -- Substitute eagerly: this is compile-time work, shared by all applications.
+      pure (some (← abstractMVars (← instantiateMVars lam)))
   -- The auxiliary theorem `∀ P', (P' ⊑ pre') → P' ⊑ rwp …`.
   let relTy ← instantiateMVars relTy
   let some (relHead, relArgs) := parseRel? relTy | return none
@@ -94,7 +103,8 @@ private def compileRule (si : SpecInfo) (g : RWPApp) : AscendM (Option CachedRul
       let relTrans := mkConst ``Lean.Order.PartialOrder.rel_trans relHead.constLevels!
       mkLambdaFVars #[P', h] <|
         mkApp7 relTrans relArgs[0]! relArgs[1]! P' pre' relArgs[3]! h (← instantiateMVars prf)
-  let res ← abstractMVars aux
+  -- Substitute eagerly: this is compile-time work, shared by all applications.
+  let res ← abstractMVars (← instantiateMVars aux)
   let rule ← mkBackwardRuleFromExpr res.expr res.paramNames.toList
   -- Internalize the rule (and the template) into the Sym object table, so apply-time
   -- comparisons hit pointer fast paths and the subgoals it builds are pre-shared.
@@ -127,10 +137,10 @@ private def fixAbstractSlot? (goal : MVarId) (g : RWPApp) (c : CachedRule) :
   let (_, _, lam) ← openAbstractMVarsResult tmpl
   unless lam.isLambda do return none
   mvarId.assign lam
-  let a ← shareCommonInc (lam.beta ts)
+  let a := lam.beta ts
   let rhs := mkAppN g.head (g.args.set! 17 a)
   let target := mkApp4 g.relHead g.relArgs[0]! g.relArgs[1]! g.pre rhs
-  return some (some (← goal.replaceTargetDefEq (← shareCommonInc target)))
+  return some (some (← setTargetRaw goal target))
 
 /-- Apply the registered rule `si` to a goal `pre ⊑ rwp γ a c Q E`. Returns the `pre ⊑ pre'`
 subgoal, or `none` (state rolled back) if the rule does not apply. -/

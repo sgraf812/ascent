@@ -57,16 +57,15 @@ private def rhsBeta? (goal : MVarId) (relHead : Expr) (relArgs : Array Expr) :
     AscendM (Option MVarId) := do
   let rhs := relArgs[3]!
   unless rhs.getAppFn.isLambda do return none
-  let target ← shareCommonInc <|
-    mkApp4 relHead relArgs[0]! relArgs[1]! relArgs[2]! rhs.headBeta
-  return some (← goal.replaceTargetDefEq target)
+  let target := mkApp4 relHead relArgs[0]! relArgs[1]! relArgs[2]! rhs.headBeta
+  return some (← setTargetRaw goal target)
 
 /-- Strategy: beta-reduce the program head; continuations arrive as `c₂ cv`. -/
 private def progBeta? (goal : MVarId) (g : RWPApp) : AscendM (Option MVarId) := do
   unless g.c.getAppFn.isLambda do return none
   let rhs := mkAppN g.head (g.args.set! 18 g.c.headBeta)
-  let target ← shareCommonInc <| mkApp4 g.relHead g.relArgs[0]! g.relArgs[1]! g.pre rhs
-  return some (← goal.replaceTargetDefEq target)
+  let target := mkApp4 g.relHead g.relArgs[0]! g.relArgs[1]! g.pre rhs
+  return some (← setTargetRaw goal target)
 
 /-- Strategy: apply a registered spec for the program, most specific first. -/
 private def applySpec (goal : MVarId) (g : RWPApp) : AscendM SolveResult := do
@@ -85,12 +84,11 @@ private def andSplit? (goal : MVarId) (relHead : Expr) (relArgs : Array Expr) :
   let rhs := relArgs[3]!
   unless rhs.isAppOfArity ``And 2 do return none
   let pre := relArgs[2]!
-  let A := rhs.getAppArgs[0]!
+  -- Canonicalize the left conjunct once, at creation: the closing strategies compare it.
+  let A ← instantiateMVars rhs.getAppArgs[0]!
   let B := rhs.getAppArgs[1]!
-  let ngA ← mkFreshExprSyntheticOpaqueMVar
-    (← shareCommonInc (mkApp4 relHead relArgs[0]! relArgs[1]! pre A))
-  let ngB ← mkFreshExprSyntheticOpaqueMVar
-    (← shareCommonInc (mkApp4 relHead relArgs[0]! relArgs[1]! pre B))
+  let ngA ← mkFreshExprSyntheticOpaqueMVar (mkApp4 relHead relArgs[0]! relArgs[1]! pre A)
+  let ngB ← mkFreshExprSyntheticOpaqueMVar (mkApp4 relHead relArgs[0]! relArgs[1]! pre B)
   goal.assign (mkApp5 (mkConst ``Ascend.prop_le_and) pre A B ngA ngB)
   return some [ngA.mvarId!, ngB.mvarId!]
 
@@ -101,10 +99,12 @@ private def impIntro? (goal : MVarId) (relHead : Expr) (relArgs : Array Expr) :
   let rhs := relArgs[3]!
   unless rhs.isArrow do return none
   let pre := relArgs[2]!
-  let A := rhs.bindingDomain!
+  -- Canonicalize the hypothesis once, at creation: it becomes a context entry the closing
+  -- strategies compare against.
+  let A ← instantiateMVars rhs.bindingDomain!
   let B := rhs.bindingBody!
   let inner := mkApp4 relHead relArgs[0]! relArgs[1]! pre B
-  let ng ← mkFreshExprSyntheticOpaqueMVar (← shareCommonInc (← mkArrow A inner))
+  let ng ← mkFreshExprSyntheticOpaqueMVar (← mkArrow A inner)
   goal.assign (mkApp4 (mkConst ``Ascend.prop_le_imp) pre A B ng)
   return some ng.mvarId!
 
