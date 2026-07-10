@@ -102,22 +102,48 @@ private partial def buildPreProof (mkRel : Expr → Expr) (P' pre : Expr) (hyps 
   | h :: rest => return (h, rest)
   | [] => throwError "ascend: precondition currying mismatch"
 
-/-- Compile `spec` to apply-ready form against the phase of the goal `g`. -/
-private def compileRule (si : SpecInfo) (g : RWPApp) : AscendM (Option CachedRule) := do
+/-- Compile `spec` to apply-ready form against the phase of the goal `g`. With `fuseBind`,
+compose it with the bind rule into one rule per chain link: the spec's coupling is
+instantiated with the bind's rebound continuation at compile time, so the curried hypotheses
+expose the next link's `rwp` directly and no handoff goals arise at application time. -/
+private def compileRule (si : SpecInfo) (g : RWPApp) (fuseBind : Bool) :
+    AscendM (Option CachedRule) := do
   let rule ← mkConstWithFreshMVarLevels si.declName
   -- Non-reducing: at the `Prop` lattice the `RTriple` conclusion would reduce to an
   -- implication and the telescope would consume the precondition as a binder.
   let (mvs, bis, concl) ← forallMetaTelescope (← Meta.inferType rule)
   let some (relTy, prf) ← conclusionProof rule mvs concl | return none
-  let some ruleRwp := parseRWP? relTy | return none
+  let some leafRwp := parseRWP? relTy | return none
   -- Pin the phase, and the monads (the proof-only instances depend on them).
   for i in phasePositions do
-    unless ← isDefEqGuarded ruleRwp.args[i]! g.args[i]! do return none
-  unless ← isDefEqGuarded ruleRwp.AProg.getAppFn g.AProg.getAppFn do return none
-  unless ← isDefEqGuarded ruleRwp.CProg.getAppFn g.CProg.getAppFn do return none
+    unless ← isDefEqGuarded leafRwp.args[i]! g.args[i]! do return none
+  unless ← isDefEqGuarded leafRwp.AProg.getAppFn g.AProg.getAppFn do return none
+  unless ← isDefEqGuarded leafRwp.CProg.getAppFn g.CProg.getAppFn do return none
   for mv in mvs, bi in bis do
     if bi.isInstImplicit && !(← mv.mvarId!.isAssigned) then
       mv.mvarId!.assign (← Meta.synthInstance (← instantiateMVars (← Meta.inferType mv)))
+  -- Fusion: chain through the bind rule, with the spec as its head.
+  let (relTy, prf) ← do
+    if !fuseBind then
+      pure (relTy, prf)
+    else
+      let bind ← mkConstWithFreshMVarLevels ``Ascent.RTriple.bind
+      let (bmvs, bbis, bconcl) ← forallMetaTelescope (← Meta.inferType bind)
+      let some (brelTy, bprf) ← conclusionProof bind bmvs bconcl | return none
+      let some (_, brelArgs) := parseRel? brelTy | return none
+      -- The bind's precondition is the head's rwp with the rebound coupling; unify the head
+      -- with the spec's conclusion, which also assigns the spec's coupling to the rebound.
+      unless ← isDefEqGuarded brelArgs[2]! leafRwp.rhs do return none
+      for mv in bmvs, bi in bbis do
+        if bi.isInstImplicit && !(← mv.mvarId!.isAssigned) then
+          mv.mvarId!.assign (← Meta.synthInstance (← instantiateMVars (← Meta.inferType mv)))
+      let relHead := brelTy.getAppFn
+      let fusedTy := mkApp4 relHead brelArgs[0]! brelArgs[1]! relTy.getAppArgs[2]! brelArgs[3]!
+      let relTrans := mkConst ``Lean.Order.PartialOrder.rel_trans relHead.constLevels!
+      let fusedPrf := mkApp7 relTrans brelArgs[0]! brelArgs[1]!
+        relTy.getAppArgs[2]! brelArgs[2]! brelArgs[3]! prf bprf
+      pure (fusedTy, fusedPrf)
+  let some ruleRwp := parseRWP? (← instantiateMVars relTy) | return none
   -- The abstract template, before `abstractMVars` retires the telescope metavariables.
   let template? ← do
     if si.avPositions.isEmpty then
@@ -136,7 +162,9 @@ private def compileRule (si : SpecInfo) (g : RWPApp) : AscendM (Option CachedRul
   -- hypotheses `hᵢ`.
   let relTy ← instantiateMVars relTy
   let some (relHead, relArgs) := parseRel? relTy | return none
-  let pre' ← instantiateMVars relArgs[2]!
+  -- Beta-reduce: fusion instantiates the coupling with the rebound continuation, leaving
+  -- redexes at its use sites; reduced, the curried hypotheses expose the `rwp` directly.
+  let pre' ← Core.betaReduce (← instantiateMVars relArgs[2]!)
   let carrier ← instantiateMVars g.CPred
   let aux ← withLocalDeclD `P' carrier fun P' => do
     let mkRel := fun pre => mkApp4 relHead relArgs[0]! relArgs[1]! P' pre
@@ -159,10 +187,11 @@ private def compileRule (si : SpecInfo) (g : RWPApp) : AscendM (Option CachedRul
   return some { rule, template? }
 
 /-- The compiled rule for `spec` against the phase of `g`, from the cache or compiled now. -/
-private def cachedRule (si : SpecInfo) (g : RWPApp) : AscendM (Option CachedRule) := do
-  let key := (si.declName, ExprPtr.mk g.γ)
+private def cachedRule (si : SpecInfo) (g : RWPApp) (fuseBind : Bool) :
+    AscendM (Option CachedRule) := do
+  let key := (if fuseBind then si.declName ++ `fused else si.declName, ExprPtr.mk g.γ)
   if let some c := (← get).ruleCache[key]? then return some c
-  let some c ← compileRule si g | return none
+  let some c ← compileRule si g fuseBind | return none
   modify fun s => { s with ruleCache := s.ruleCache.insert key c }
   return some c
 
@@ -193,9 +222,10 @@ private def fixAbstractSlot? (goal : MVarId) (g : RWPApp) (c : CachedRule) :
 
 /-- Apply the registered rule `si` to a goal `pre ⊑ rwp γ a c Q E`. Returns the curried
 precondition subgoals, or `none` (state rolled back) if the rule does not apply. -/
-def applyRule (goal : MVarId) (g : RWPApp) (si : SpecInfo) : AscendM (Option (List MVarId)) := do
+def applyRule (goal : MVarId) (g : RWPApp) (si : SpecInfo) (fuseBind : Bool := false) :
+    AscendM (Option (List MVarId)) := do
   commitWhenSome? do
-    let some c ← cachedRule si g | return none
+    let some c ← cachedRule si g fuseBind | return none
     let some goal? ← fixAbstractSlot? goal g c | return none
     let goal := goal?.getD goal
     let .goals ngs ← c.rule.apply goal | return none

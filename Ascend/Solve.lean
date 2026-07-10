@@ -69,6 +69,13 @@ private def progBeta? (goal : MVarId) (g : RWPApp) : AscendM (Option MVarId) := 
 
 /-- Strategy: apply a registered spec for the program, most specific first. -/
 private def applySpec (goal : MVarId) (g : RWPApp) : AscendM SolveResult := do
+  -- A bind whose head matches a leaf spec applies as one fused rule per chain link.
+  if g.c.isAppOfArity ``Bind.bind 6 then
+    let mut heads ← (← read).specs.getMatch g.c.getAppArgs[4]!
+    heads := heads.qsort fun s₁ s₂ => s₁.specificity > s₂.specificity
+    for spec in heads do
+      if let some ngs ← applyRule goal g spec (fuseBind := true) then
+        return .goals ngs
   let mut cands ← (← read).specs.getMatch g.c
   cands := cands.qsort fun s₁ s₂ => s₁.specificity > s₂.specificity
   for spec in cands do
@@ -82,7 +89,11 @@ private def eqRefl? (goal : MVarId) (relArgs : Array Expr) : AscendM (Option Uni
   let rhs := relArgs[3]!
   unless rhs.isAppOfArity ``Eq 3 do return none
   let args ← rhs.getAppArgs.mapM (instantiateMVars ·)
-  unless isSameExpr args[1]! args[2]! || args[1]! == args[2]! do return none
+  -- One-point: a flex side is a synthesis choice pinned by this very equation.
+  if args[1]!.isMVar then
+    unless ← isDefEq args[1]! args[2]! do return none
+  else
+    unless isSameExpr args[1]! args[2]! || args[1]! == args[2]! do return none
   let u ← Sym.getLevel args[0]!
   goal.assign (mkApp3 (mkConst ``Ascend.prop_le_eq_refl [u]) relArgs[2]! args[0]! args[1]!)
   return some ()
