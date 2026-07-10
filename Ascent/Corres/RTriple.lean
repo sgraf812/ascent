@@ -17,6 +17,11 @@ The four laws are exactly symmetric: `rwp_pure` consumes `Q` and `rwp_throw` con
 handlers' (`throw`/`tryCatch` per effect, here for `Except`). `RTriple a c γ P Q E` is the
 triple-shaped judgment `P ⊑ rwp γ a c Q E`, with notation `⦃P⦄ a ⊑[γ] c ⦃Q; E⦄`;
 `rwp` is what a refinement tactic manipulates, `RTriple` the user interface.
+
+An erased concrete step is a leaf that refines `pure v`: scaffolding the abstract program with
+the matching `pure` head restores the shared shape for `RTriple.bind'`, and the monad laws
+collapse the scaffold inside the triple (`simp only [pure_bind]`), the judgment being a
+predicate on program terms.
 -/
 
 open Std.Internal.Do Lean.Order
@@ -302,17 +307,6 @@ theorem RTriple.bind_eq [Frame CPred] {CV AV CV₂ AV₂ : Type w} {P : CPred}
     (h₂ : ∀ cv, ⦃(⊤ : CPred)⦄ (a₂ (f cv)) ⊑[γ] (c₂ cv) ⦃Q; E⦄) :
     ⦃P⦄ (a₁ >>= a₂) ⊑[γ] (c₁ >>= c₂) ⦃Q; E⦄ :=
   .bind' h₁ fun av cv => .of_prop fun h => by rw [h]; exact h₂ cv
-
-/-- The erased-leaf bind: a concrete head abstracted by `pure v` leaves no abstract bind; the
-mid-coupling it establishes is threaded to the continuation. -/
-theorem RTriple.bind_erase [Frame CPred] {CV AV CV₂ AV₂ : Type w} {P : CPred}
-    {v : AV} {c₁ : CM CV} {a : AM AV₂} {c₂ : CV → CM CV₂}
-    {R : CV → CPred} {Q : AV₂ → CV₂ → CPred} {E : Ξ}
-    (h₁ : ⦃P⦄ (Pure.pure v : AM AV) ⊑[γ] c₁ ⦃fun _ cv => R cv; E⦄)
-    (h₂ : ∀ cv, ⦃R cv⦄ a ⊑[γ] (c₂ cv) ⦃Q; E⦄) :
-    ⦃P⦄ a ⊑[γ] (c₁ >>= c₂) ⦃Q; E⦄ := by
-  have h := RTriple.bind' (a₂ := fun _ => a) h₁ fun av cv => h₂ cv
-  simpa only [pure_bind] using h
 
 end
 

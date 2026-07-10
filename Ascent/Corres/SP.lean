@@ -1,5 +1,4 @@
 import Ascent.UB
-import Ascent.Corres.RTriple
 
 /-!
 # Strongest postconditions from `wp`
@@ -74,30 +73,6 @@ theorem sp_le_iff [WPInfConjunctive Prog Value Pred EPred] {x : Prog} {P : Pred}
     {Q : Value → Pred} {E : EPred} (hdef : P ⊑ wp x ⊤ E) :
     sp x P E ⊑ Q ↔ P ⊑ wp x Q E :=
   ⟨fun h => PartialOrder.rel_trans (le_wp_sp hdef) (WP.wp_consequence x _ _ E h), sp_le⟩
-
-end
-
-section
-variable {CM AM : Type w → Type v} {CPred APred : Type w} {CEPred AEPred : Type w'}
-  [Monad CM] [Monad AM]
-  [Assertion CPred] [Assertion APred] [Assertion CEPred] [Assertion AEPred]
-  [WPMonad CM CPred CEPred] [WPMonad AM APred AEPred] [WPMonadExact AM APred AEPred]
-
-/-- The erased-leaf bind at the inferred mid-coupling: `sp` at the `⊥` exception postcondition
-threads the strongest postcondition of the erased head, leaving only its failure-freedom to
-prove. -/
-theorem RTriple.bind_erase_sp [Frame CPred] {CV AV CV₂ AV₂ : Type w} {Ξ : Type u}
-    [HasEPost CPred APred CEPred AEPred Ξ]
-    [WPConjunctive (CM CV) CV CPred CEPred] [WPInfConjunctive (CM CV) CV CPred CEPred]
-    {γ : Concretization CPred APred CEPred AEPred}
-    {P : CPred} {v : AV} {c₁ : CM CV} {a : AM AV₂} {c₂ : CV → CM CV₂}
-    {Q : AV₂ → CV₂ → CPred} {E : Ξ}
-    (h₁ : ⦃P⦄ (Pure.pure v : AM AV) ⊑[γ] c₁ ⦃fun _ _ => ⊤; E⦄)
-    (hdef : P ⊑ wp c₁ ⊤ ⊥)
-    (h₂ : ∀ cv, ⦃sp c₁ P ⊥ cv⦄ a ⊑[γ] (c₂ cv) ⦃Q; E⦄) :
-    ⦃P⦄ a ⊑[γ] (c₁ >>= c₂) ⦃Q; E⦄ :=
-  .bind_erase (h₁.conj_wp (le_wp_sp hdef))
-    fun cv => (h₂ cv).weaken (meet_le_right _ _)
 
 end
 

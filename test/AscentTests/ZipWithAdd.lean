@@ -655,20 +655,21 @@ private theorem getSize_couple_eq {P : State → Prop} {v : USize} :
 
 /-- Establish/consume through the inferred mid-coupling: `setSize` establishes the `"n"`
 coupling, `sp` threads it, and `getSize` consumes it, abstracting the composite to `pure v`.
-The mid-coupling is not written down; presence is read off `sp` via its counit. -/
+The erased head refines `pure ()`; the scaffold collapses by `pure_bind`. -/
 example {X : Type} (f : Heap → X) (P : State → Prop) (v : USize) :
     ⦃P⦄ (pure v : StateT X UB USize)
       ⊑[Concretization.ofStateRepr fun s => f s.heap]
       (setSize "n" v >>= fun _ => getSize "n") ⦃(⌜· = ·⌝)⦄ := by
-  refine RTriple.bind_erase_sp (v := ())
-    ((refines_setSize_st f P "n" v).mono_post fun _ _ => le_top _) ?_ fun cv => ?_
-  · -- the erased head is failure-free
-    refine le_wp_top_of_le_wp (Q := fun _ _ => True) ?_
-    intro s _
-    rw [wp_setSize]
-    trivial
-  · -- `sp` pins the `"n"` local for the consuming read
-    refine (refines_getSize_st f _ "n" v fun s hs => ?_).mono_post getSize_couple_eq
+  have key : ⦃P⦄ ((pure () : StateT X UB Unit) >>= fun _ => pure v)
+      ⊑[Concretization.ofStateRepr fun s => f s.heap]
+      (setSize "n" v >>= fun _ => getSize "n") ⦃(⌜· = ·⌝)⦄ := by
+    have hdef : P ⊑ wp (setSize "n" v) ⊤ ⊥ :=
+      le_wp_top_of_le_wp (Q := fun _ _ => True) fun s _ => by rw [wp_setSize]; trivial
+    refine .bind'
+      (((refines_setSize_st f P "n" v).mono_post fun _ _ => le_top _).conj_wp (le_wp_sp hdef))
+      fun _ cv => ?_
+    refine ((refines_getSize_st f _ "n" v fun s hs => ?_).mono_post
+      getSize_couple_eq).weaken (meet_le_right _ _)
     have himg : sp (setSize "n" v) P ⊥ ⊑ fun _ s' => ∃ s₀, P s₀ ∧
         s' = { s₀ with locals := fun y => if y = "n" then some (.size v) else s₀.locals y } :=
       sp_le (by
@@ -678,20 +679,25 @@ example {X : Type} (f : Heap → X) (P : State → Prop) (v : USize) :
     obtain ⟨s₀, -, rfl⟩ := himg cv s hs
     simp
 
-/-- The same composite through the post-parametric bind: the tail's refinement is the head's
+  simpa only [pure_bind] using key
+
+/-- The same composite through the post-parametric bind: the tail's `rwp` is the head's
 mid-coupling, so the whole obligation is the head triple with the tail substituted into its
 postcondition. -/
 example {X : Type} (f : Heap → X) (P : State → Prop) (v : USize) :
     ⦃P⦄ (pure v : StateT X UB USize)
       ⊑[Concretization.ofStateRepr fun s => f s.heap]
       (setSize "n" v >>= fun _ => getSize "n") ⦃(⌜· = ·⌝)⦄ := by
-  refine RTriple.bind_erase (v := ())
-    ((refines_setSize_st f P "n" v).mono_post fun _ cv => ?_)
-    fun cv => PartialOrder.rel_refl
-  intro s' hs'
-  obtain ⟨s₀, -, rfl⟩ := hs'
-  exact ((refines_getSize_st f (fun s => s.locals "n" = some (.size v)) "n" v fun _ h => h).mono_post
-    getSize_couple_eq) _ (by simp)
+  have key : ⦃P⦄ ((pure () : StateT X UB Unit) >>= fun _ => pure v)
+      ⊑[Concretization.ofStateRepr fun s => f s.heap]
+      (setSize "n" v >>= fun _ => getSize "n") ⦃(⌜· = ·⌝)⦄ := by
+    refine .bind' ((refines_setSize_st f P "n" v).mono_post fun _ cv => ?_)
+      fun _ cv => PartialOrder.rel_refl
+    intro s' hs'
+    obtain ⟨s₀, -, rfl⟩ := hs'
+    exact ((refines_getSize_st f (fun s => s.locals "n" = some (.size v)) "n" v
+      fun _ h => h).mono_post getSize_couple_eq) _ (by simp)
+  simpa only [pure_bind] using key
 
 /-- **End to end: `zipL1` is `Array.zipWith`.** Under the function-entry coupling, validity, and
 non-aliasing, the denotation `zipL1` abstracts to the pure array program `zipL4`: the output
