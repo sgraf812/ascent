@@ -8,7 +8,7 @@ A registered spec is compiled once per phase into an apply-ready backward rule, 
 per goal by pattern matching, so no application-time work scales with the size of the goal's
 value terms.
 
-**Compilation** (`compileRule`, cached by spec name and the goal's `WP` instances): project
+**Compilation** (`compileRule`, cached by spec name and the phase's `γ`): project
 the spec's `RTriple` conclusion through `le_rwp` to `pre' ⊑ rwp …`; pin the phase against the
 goal (the assertion lattices, `γ`, and the monads, read off the goal's `rwp` arguments);
 synthesize the instances the conclusion does not determine; wrap the transitivity composition
@@ -96,6 +96,11 @@ private def compileRule (si : SpecInfo) (g : RWPApp) : AscendM (Option CachedRul
         mkApp7 relTrans relArgs[0]! relArgs[1]! P' pre' relArgs[3]! h (← instantiateMVars prf)
   let res ← abstractMVars aux
   let rule ← mkBackwardRuleFromExpr res.expr res.paramNames.toList
+  -- Internalize the rule (and the template) into the Sym object table, so apply-time
+  -- comparisons hit pointer fast paths and the subgoals it builds are pre-shared.
+  let rule ← rule.shareCommon
+  let template? ← template?.mapM fun tmpl =>
+    return { tmpl with expr := ← shareCommonInc tmpl.expr }
   return some { rule, template? }
 
 /-- The compiled rule for `spec` against the phase of `g`, from the cache or compiled now. -/
@@ -113,9 +118,9 @@ private def fixAbstractSlot? (goal : MVarId) (g : RWPApp) (c : CachedRule) :
     AscendM (Option (Option MVarId)) := do
   let goalA ← instantiateMVarsIfMVarApp g.a
   let .mvar mvarId := goalA.getAppFn | return some none
-  -- Substitute the value arguments now: rule application binds by metavariable assignment, so
-  -- an uninstantiated value is an assigned-mvar chain that every later inspection would
-  -- re-walk. The previous leaf cleaned its prefix, so this is one layer per leaf.
+  -- Values are substituted once, here, where they enter the goal: rule application binds by
+  -- metavariable assignment, and every later inspection would otherwise re-walk the
+  -- assigned-mvar chain. The previous leaf cleaned its prefix, so this is one layer per leaf.
   let ts ← goalA.getAppArgs.mapM (instantiateMVars ·)
   if ts.isEmpty then return some none
   let some tmpl := c.template? | return none

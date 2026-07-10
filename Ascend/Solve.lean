@@ -28,10 +28,11 @@ inductive SolveResult where
   /-- No further progress; emit the goal as a VC. -/
   | stop (reason : StopReason)
 
-/-- Substitute an assigned metavariable at the application head, without instantiating the
-spliced value: a rebound coupling's body carries the chain's synthesis metavariables, so a
-full `instantiateMVars` would walk the entire remaining chain at every handoff. The body's
-own assignments substitute lazily when they reach a head position themselves. -/
+/-- Substitute an assigned metavariable at the application head only. This is the engine's
+analogue of `instantiateMVarsIfMVarApp`: that helper instantiates the whole application, but a
+rebound coupling's body carries the chain's synthesis metavariables, so the full instantiation
+would walk the entire remaining chain at every handoff. The body's own assignments substitute
+lazily when they reach a head position themselves. -/
 private partial def instantiateHead (e : Expr) : MetaM Expr := do
   let .mvar id := e.getAppFn | return e
   let some val ← getExprMVarAssignment? id | return e
@@ -77,14 +78,14 @@ private def applySpec (goal : MVarId) (g : RWPApp) : AscendM SolveResult := do
   return .stop (.noSpecFound g.c)
 
 /-- Strategy: split a conjunction on the right, at the `Prop` lattice. The left conjunct is
-instantiated (it is inspected downstream); the right conjunct carries the continuation and
-stays untouched. -/
+left raw (the strategies that inspect it substitute what they compare); the right conjunct
+carries the continuation and stays untouched. -/
 private def andSplit? (goal : MVarId) (relHead : Expr) (relArgs : Array Expr) :
     AscendM (Option (List MVarId)) := do
   let rhs := relArgs[3]!
   unless rhs.isAppOfArity ``And 2 do return none
   let pre := relArgs[2]!
-  let A ← instantiateMVars rhs.getAppArgs[0]!
+  let A := rhs.getAppArgs[0]!
   let B := rhs.getAppArgs[1]!
   let ngA ← mkFreshExprSyntheticOpaqueMVar
     (← shareCommonInc (mkApp4 relHead relArgs[0]! relArgs[1]! pre A))
@@ -100,14 +101,15 @@ private def impIntro? (goal : MVarId) (relHead : Expr) (relArgs : Array Expr) :
   let rhs := relArgs[3]!
   unless rhs.isArrow do return none
   let pre := relArgs[2]!
-  let A ← instantiateMVars rhs.bindingDomain!
+  let A := rhs.bindingDomain!
   let B := rhs.bindingBody!
   let inner := mkApp4 relHead relArgs[0]! relArgs[1]! pre B
   let ng ← mkFreshExprSyntheticOpaqueMVar (← shareCommonInc (← mkArrow A inner))
   goal.assign (mkApp4 (mkConst ``Ascend.prop_le_imp) pre A B ng)
   return some ng.mvarId!
 
-/-- Strategy: close a reflexive equation on the right. -/
+/-- Strategy: close a reflexive equation on the right. The compared sides are substituted:
+rule application binds by metavariable assignment, and comparison needs canonical forms. -/
 private def eqRefl? (goal : MVarId) (relArgs : Array Expr) : AscendM (Option Unit) := do
   let rhs := relArgs[3]!
   unless rhs.isAppOfArity ``Eq 3 do return none
@@ -117,7 +119,8 @@ private def eqRefl? (goal : MVarId) (relArgs : Array Expr) : AscendM (Option Uni
   goal.assign (mkApp3 (mkConst ``Ascend.prop_le_eq_refl [u]) relArgs[2]! args[0]! args[1]!)
   return some ()
 
-/-- Strategy: close against a hypothesis, such as a coupling established by an earlier leaf. -/
+/-- Strategy: close against a hypothesis, such as a coupling established by an earlier leaf.
+The compared propositions are substituted: comparison needs canonical forms. -/
 private def hypClose? (goal : MVarId) (relArgs : Array Expr) : AscendM (Option Unit) := do
   let rhs ← instantiateMVars relArgs[3]!
   -- Most recent first, without materializing the context: the wanted coupling is typically
@@ -134,6 +137,11 @@ private def hypClose? (goal : MVarId) (relArgs : Array Expr) : AscendM (Option U
   let some hyp := found | return none
   goal.assign (mkApp3 (mkConst ``Ascend.prop_le_of) relArgs[2]! rhs hyp.toExpr)
   return some ()
+
+/-- Whether the entailment carrier is `Prop`, seeing through an assigned level. -/
+private def isPropCarrier (carrier : Expr) : MetaM Bool := do
+  let .sort u := carrier | return false
+  return (← instantiateLevelMVars u).isZero
 
 /--
 One solve step, dispatching the strategies in order: introduce `∀`/implication targets, unfold
@@ -154,10 +162,8 @@ def solve (goal : MVarId) : AscendM SolveResult := goal.withContext do
   if let some g := parseRWP? (mkApp4 relHead relArgs[0]! relArgs[1]! relArgs[2]! relArgs[3]!) then
     if let some goal ← progBeta? goal g then return .goals [goal]
     return ← applySpec goal g
-  -- Rule application leaves assigned-but-unsubstituted metavariables (and levels) in the
-  -- targets it builds; the strategies instantiate exactly what they inspect, never the
-  -- continuation slot.
-  if (← instantiateMVars relArgs[0]!).isProp then
+  -- The carrier arrives as `Sort ?u` with `?u` assigned, from rules applied at fresh levels.
+  if ← isPropCarrier relArgs[0]! then
     if let some goals ← andSplit? goal relHead relArgs then return .goals goals
     if let some goal ← impIntro? goal relHead relArgs then return .goals [goal]
     if let some _ ← eqRefl? goal relArgs then return .goals []
