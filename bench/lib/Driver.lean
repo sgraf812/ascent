@@ -98,8 +98,10 @@ def runBench (label : String) (mkStmt : Nat → MetaM Term) (unfold : List Name)
     (discharge : MetaM (TSyntax `tactic)) (sizes : List Nat) (showSynth : Bool := false) :
     MetaM Unit := do
   for n in sizes do
-    Term.TermElabM.run' do
+    -- A fresh `Meta` state per size: sharing the metavariable context and caches across
+    -- sizes lets earlier runs pollute later measurements.
+    (Term.TermElabM.run' do
       driver s!"{label}({n})" (← mkStmt n) unfold (← mkExpected n) (solve n) discharge
-        (showSynth := showSynth)
+        (showSynth := showSynth) : MetaM Unit).run' {} {}
 
 end AscendBench
