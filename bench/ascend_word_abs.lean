@@ -33,9 +33,25 @@ def runBaseline (sizes : List Nat) (showSynth := false) : MetaM Unit := do
   runBench "WordAbs" mkStmt [``chainC] mkExpected solveBaseline (`(tactic| grind)) sizes
     (showSynth := showSynth)
 
+def solveEngine (_n : Nat) (goal : MVarId) : MetaM (List MVarId) :=
+  return (← Ascend.main goal).toList
+
+def runEngine (sizes : List Nat) (showSynth := false) : MetaM Unit := do
+  IO.println "=== WordAbs ascend engine ==="
+  runBench "WordAbs" mkStmt [``chainC] mkExpected solveEngine
+    (`(tactic| first
+        | (simp only [ofProp_prop_eq]; assumption)
+        | decide
+        | (simp only [wordVal, ofProp_prop_eq, UInt64.toNat_add] at *; omega))) sizes
+    (showSynth := showSynth)
+
 set_option maxRecDepth 100000
 set_option maxHeartbeats 10000000
 
 #eval runBaseline [2] (showSynth := true)
 
+#eval runEngine [2] (showSynth := true)
+
 #eval runBaseline [10, 20, 50, 100, 200, 500, 1000]
+
+#eval runEngine [10, 20, 50, 100, 200, 500, 1000]

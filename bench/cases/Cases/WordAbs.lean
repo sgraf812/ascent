@@ -1,5 +1,6 @@
 import Ascent.Corres.RTriple
 import Ascent.UB
+import Ascend
 
 /-!
 # Guarded word abstraction: the first synthesis family
@@ -28,13 +29,23 @@ def γw : Concretization Prop Prop EPost.Nil EPost.Nil := Concretization.id Prop
 
 /-- Adding a word to a coupled value is abstracted by the guarded integer sum. Registry form:
 Q-generalized, so the spec applies to any coupling by unification. The precondition carries the
-synthesis directives: `av = wordVal cv` pins the abstract input, and the guard is a hypothesis
-of the continuation. -/
-theorem addW_spec (av : Int) (cv y : UInt64) {Q : Int → UInt64 → Prop} {E : EPost.Nil} :
-    ⦃(av = wordVal cv ∧ (av + wordVal y < 2 ^ 64 → Q (av + wordVal y) (cv + y)) : Prop)⦄
+synthesis directives and the coupling bookkeeping: `av = wordVal cv` pins the abstract input,
+and the continuation receives the no-overflow guard and the *established* coupling of the sum
+as hypotheses, so downstream coupling obligations close by assumption instead of re-deriving
+the chain's arithmetic. -/
+@[ascend] theorem addW_spec (av : Int) (cv y : UInt64) {Q : Int → UInt64 → Prop} {E : EPost.Nil} :
+    ⦃(av = wordVal cv ∧
+        (av + wordVal y < 2 ^ 64 → av + wordVal y = wordVal (cv + y) →
+          Q (av + wordVal y) (cv + y)) : Prop)⦄
       (UB.guardRet (av + wordVal y < 2 ^ 64) (av + wordVal y))
-      ⊑[γw] (pure (cv + y) : Id UInt64) ⦃Q; E⦄ :=
-  RTriple.guardRet _ _ fun hovf hp => hp.2 hovf
+      ⊑[γw] (pure (cv + y) : Id UInt64) ⦃Q; E⦄ := by
+  refine RTriple.guardRet _ _ fun hovf hp => hp.2 hovf ?_
+  obtain ⟨hav, -⟩ := hp
+  subst hav
+  show wordVal cv + wordVal y = wordVal (cv + y)
+  have h : cv.toNat + y.toNat < 2 ^ 64 := by simp only [wordVal] at hovf; omega
+  simp only [wordVal, UInt64.toNat_add, Nat.mod_eq_of_lt h]
+  omega
 
 /-- The coupling form of `addW_spec`, for the hand-written baseline chain: under the no-overflow
 guard, the sum stays coupled. -/
@@ -45,12 +56,13 @@ theorem refines_addW (av : Int) (cv y : UInt64) :
   refine (addW_spec av cv y).weaken ?_
   simp only [ofProp_prop_eq]
   intro hav
-  refine ⟨hav, fun hovf => ?_⟩
-  subst hav
-  show wordVal cv + wordVal y = wordVal (cv + y)
-  have h : cv.toNat + y.toNat < 2 ^ 64 := by simp only [wordVal] at hovf; omega
-  simp only [wordVal, UInt64.toNat_add, Nat.mod_eq_of_lt h]
-  omega
+  exact ⟨hav, fun _ hcpl => hcpl⟩
+
+/-- A pure word value is abstracted by its integer image. Registry form; the seed of every
+chain. -/
+@[ascend] theorem pureW_spec (cv : UInt64) {Q : Int → UInt64 → Prop} {E : EPost.Nil} :
+    ⦃Q (wordVal cv) cv⦄ (pure (wordVal cv) : UB Int) ⊑[γw] (pure cv : Id UInt64) ⦃Q; E⦄ :=
+  RTriple.pure _ _
 
 /-- The concrete chain: `n` dependent additions of the constant `c`. -/
 def chainC (c : UInt64) : Nat → Id UInt64
