@@ -2,26 +2,28 @@ import Ascend.Context
 import Ascend.Rules
 
 /-!
-# Rule application
+# Rule compilation and application
 
-One mechanism applies every registered rule, structural or leaf, all of which are `RTriple`
-theorems with any recursive `rwp` occurrence confined to the precondition:
+A registered spec is compiled once per phase into an apply-ready backward rule, and applied
+per goal by pattern matching, so no application-time work scales with the size of the goal's
+value terms.
 
-1. Instantiate the rule's telescope with fresh metavariables and project the `RTriple`
-   conclusion through `le_rwp`, giving a proof of `pre' ⊑ rwp γ' a' c' Q' E'`.
-2. When the goal's abstract slot is a flex application `?m t₁ … tₖ`, assign
-   `?m := fun x₁ … xₖ => a'[avᵢ ↦ xᵢ]`, the rule's abstract program with its abstract-input
-   metavariables abstracted. The goal's abstract side then beta-reduces to `a'` with `avᵢ`
-   unified against `tᵢ`, so the flex application never reaches the unifier.
-3. `isDefEq` the rule's `rwp` application against the goal's. This instantiates the abstract
-   program (synthesis), the couplings `Q'`/`E'` (auto-framing: the goal's rebound continuation
-   passes through untouched), the value types and instances, and validates the concrete match.
-4. Synthesize any instance metavariables the conclusion did not determine.
-5. Close the goal with `rel_trans`, leaving `pre ⊑ pre'` as the sole subgoal: the rule's
-   precondition, carrying the rest of the chain.
+**Compilation** (`compileRule`, cached by spec name and the goal's `WP` instances): project
+the spec's `RTriple` conclusion through `le_rwp` to `pre' ⊑ rwp …`; pin the phase against the
+goal (the assertion lattices, `γ`, and the monads, read off the goal's `rwp` arguments);
+synthesize the instances the conclusion does not determine; wrap the transitivity composition
+as the auxiliary theorem `∀ params P', (P' ⊑ pre') → P' ⊑ rwp …`; abstract the remaining
+parameters (the value slots) into a `BackwardRule`.
+
+**Application** (`applyRule`): when the goal's abstract slot is a flex application
+`?m t₁ … tₖ`, first assign `?m` the spec's abstract template (a lambda over its abstract
+inputs, other parameters fresh) and rebuild the target with the application beta-reduced, so
+the slot is rigid. Then `BackwardRule.apply` matches the conclusion — binding the value slots,
+the couplings (auto-framing), and any goal-side metavariables by match-unification — and
+leaves the precondition entailment `pre ⊑ pre'` as the sole subgoal.
 -/
 
-open Lean Meta
+open Lean Meta Sym
 
 namespace Ascend
 
@@ -44,54 +46,92 @@ private def conclusionProof (rule : Expr) (mvs : Array Expr) (concl : Expr) :
   if concl.isAppOfArity ``Ascent.RTriple 22 then
     let leRwp ← mkConstWithFreshMVarLevels ``Ascent.RTriple.le_rwp
     let prf := mkAppN leRwp (concl.getAppArgs.push (mkAppN rule mvs))
-    return some (← inferType prf, prf)
+    return some (← Meta.inferType prf, prf)
   if concl.isAppOfArity ``Lean.Order.PartialOrder.rel 4 then
     return some (concl, mkAppN rule mvs)
   return none
 
-/-- Assign the goal's flex abstract slot `?m t₁ … tₖ` the rule's abstract template with the
-abstract-input metavariables `avMVars` abstracted. A bare metavariable (`k = 0`) needs no
-template; the `isDefEq` step assigns it directly. -/
-private def assignAbstractTemplate (goalA : Expr) (ruleA : Expr) (avMVars : Array Expr) :
-    MetaM Bool := do
-  let .mvar mvarId := goalA.getAppFn | return false
-  let ts := goalA.getAppArgs
-  if ts.isEmpty then
-    return true
-  unless ts.size == avMVars.size do return false
-  let decls ← avMVars.mapM fun av => return (`x, fun _ => inferType av)
-  let lam ← withLocalDeclsD decls fun xs => do
-    let template := ruleA.replace fun e =>
-      avMVars.idxOf? e |>.map fun i => xs[i]!
-    mkLambdaFVars xs template
-  mvarId.assign lam
-  return true
+/-- The `rwp` argument positions that identify a phase: the assertion lattices and their
+instances, `Ξ`, `HasEPost`, and `γ`. The program and value types (and with them the `WP`
+instances) stay parametric, so one compiled rule serves every node of a chain. -/
+private def phasePositions : Array Nat := #[4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 16]
 
-/-- Apply the registered rule `spec` to a goal `pre ⊑ rwp γ a c Q E`. Returns the
-`pre ⊑ pre'` subgoal, or `none` (state rolled back) if the rule does not apply. -/
-def applyRule (goal : MVarId) (g : RWPApp) (spec : SpecInfo) : AscendM (Option MVarId) := do
+/-- Compile `spec` to apply-ready form against the phase of the goal `g`. -/
+private def compileRule (si : SpecInfo) (g : RWPApp) : AscendM (Option CachedRule) := do
+  let rule ← mkConstWithFreshMVarLevels si.declName
+  -- Non-reducing: at the `Prop` lattice the `RTriple` conclusion would reduce to an
+  -- implication and the telescope would consume the precondition as a binder.
+  let (mvs, bis, concl) ← forallMetaTelescope (← Meta.inferType rule)
+  let some (relTy, prf) ← conclusionProof rule mvs concl | return none
+  let some ruleRwp := parseRWP? relTy | return none
+  -- Pin the phase, and the monads (the proof-only instances depend on them).
+  for i in phasePositions do
+    unless ← isDefEqGuarded ruleRwp.args[i]! g.args[i]! do return none
+  unless ← isDefEqGuarded ruleRwp.AProg.getAppFn g.AProg.getAppFn do return none
+  unless ← isDefEqGuarded ruleRwp.CProg.getAppFn g.CProg.getAppFn do return none
+  for mv in mvs, bi in bis do
+    if bi.isInstImplicit && !(← mv.mvarId!.isAssigned) then
+      mv.mvarId!.assign (← Meta.synthInstance (← instantiateMVars (← Meta.inferType mv)))
+  -- The abstract template, before `abstractMVars` retires the telescope metavariables.
+  let template? ← do
+    if si.avPositions.isEmpty then
+      pure none
+    else
+      let avMVars := si.avPositions.map (mvs[·]!)
+      let decls ← avMVars.mapM fun av => do
+        let ty ← Meta.inferType av
+        return (`x, fun (_ : Array Expr) => (pure ty : AscendM Expr))
+      let lam ← withLocalDeclsD decls fun xs => do
+        let a ← instantiateMVars ruleRwp.a
+        mkLambdaFVars xs <| a.replace fun e => avMVars.idxOf? e |>.map (xs[·]!)
+      pure (some (← abstractMVars lam))
+  -- The auxiliary theorem `∀ P', (P' ⊑ pre') → P' ⊑ rwp …`.
+  let relTy ← instantiateMVars relTy
+  let some (relHead, relArgs) := parseRel? relTy | return none
+  let pre' := relArgs[2]!
+  let aux ← withLocalDeclD `P' (← instantiateMVars g.CPred) fun P' => do
+    withLocalDeclD `h (mkApp4 relHead relArgs[0]! relArgs[1]! P' pre') fun h => do
+      let relTrans := mkConst ``Lean.Order.PartialOrder.rel_trans relHead.constLevels!
+      mkLambdaFVars #[P', h] <|
+        mkApp7 relTrans relArgs[0]! relArgs[1]! P' pre' relArgs[3]! h (← instantiateMVars prf)
+  let res ← abstractMVars aux
+  let rule ← mkBackwardRuleFromExpr res.expr res.paramNames.toList
+  return some { rule, template? }
+
+/-- The compiled rule for `spec` against the phase of `g`, from the cache or compiled now. -/
+private def cachedRule (si : SpecInfo) (g : RWPApp) : AscendM (Option CachedRule) := do
+  let key := (si.declName, ExprPtr.mk g.instWPc, ExprPtr.mk g.instWPa)
+  if let some c := (← get).ruleCache[key]? then return some c
+  let some c ← compileRule si g | return none
+  modify fun s => { s with ruleCache := s.ruleCache.insert key c }
+  return some c
+
+/-- Assign a flex abstract slot `?m t₁ … tₖ` from the spec's template and rebuild the target
+with the slot beta-reduced, so pattern matching sees a rigid program. Returns the updated
+goal, or `none` when the slot is already rigid (nothing to do). -/
+private def fixAbstractSlot? (goal : MVarId) (g : RWPApp) (c : CachedRule) :
+    AscendM (Option (Option MVarId)) := do
+  let goalA ← instantiateMVarsIfMVarApp g.a
+  let .mvar mvarId := goalA.getAppFn | return some none
+  let ts := goalA.getAppArgs
+  if ts.isEmpty then return some none
+  let some tmpl := c.template? | return none
+  let (_, _, lam) ← openAbstractMVarsResult tmpl
+  unless lam.isLambda do return none
+  mvarId.assign lam
+  let a ← shareCommonInc (lam.beta ts)
+  let rhs := mkAppN g.head (g.args.set! 17 a)
+  let target := mkApp4 g.relHead g.relArgs[0]! g.relArgs[1]! g.pre rhs
+  return some (some (← goal.replaceTargetDefEq (← shareCommonInc target)))
+
+/-- Apply the registered rule `si` to a goal `pre ⊑ rwp γ a c Q E`. Returns the `pre ⊑ pre'`
+subgoal, or `none` (state rolled back) if the rule does not apply. -/
+def applyRule (goal : MVarId) (g : RWPApp) (si : SpecInfo) : AscendM (Option MVarId) := do
   commitWhenSome? do
-    let rule ← mkConstWithFreshMVarLevels spec.declName
-    -- Non-reducing: at the `Prop` lattice the `RTriple` conclusion would reduce to an
-    -- implication and the telescope would consume the precondition as a binder.
-    let (mvs, bis, concl) ← forallMetaTelescope (← inferType rule)
-    let some (relTy, rulePrf) ← conclusionProof rule mvs concl | return none
-    let some ruleRwp := parseRWP? relTy | return none
-    let goalA ← instantiateMVarsIfMVarApp g.a
-    if goalA.getAppFn.isMVar then
-      unless ← assignAbstractTemplate goalA ruleRwp.a (spec.avPositions.map (mvs[·]!)) do
-        return none
-    unless ← isDefEq ruleRwp.rhs g.rhs do return none
-    -- Instances the conclusion did not determine (e.g. `WPMonadExact`, `Frame`).
-    for mv in mvs, bi in bis do
-      if bi.isInstImplicit && !(← mv.mvarId!.isAssigned) then
-        mv.mvarId!.assign (← synthInstance (← instantiateMVars (← inferType mv)))
-    -- The subgoal embeds the rule's precondition, which the assignments above just filled in.
-    let pre' ← instantiateMVars ruleRwp.pre
-    let newTarget := mkApp4 g.relHead g.relArgs[0]! g.relArgs[1]! g.pre pre'
-    let ng ← mkFreshExprSyntheticOpaqueMVar newTarget
-    let relTrans := mkConst ``Lean.Order.PartialOrder.rel_trans g.relHead.constLevels!
-    goal.assign <| mkApp7 relTrans g.relArgs[0]! g.relArgs[1]! g.pre pre' g.rhs ng rulePrf
-    return some ng.mvarId!
+    let some c ← cachedRule si g | return none
+    let some goal? ← fixAbstractSlot? goal g c | return none
+    let goal := goal?.getD goal
+    let .goals [ng] ← c.rule.apply goal | return none
+    return some ng
 
 end Ascend

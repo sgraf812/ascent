@@ -8,7 +8,7 @@ which point the goal is emitted as a VC (with a `⊤ ⊑ ·` wrapper stripped at
 lattice, so VCs reach the user as bare propositions).
 -/
 
-open Lean Meta
+open Lean Meta Sym
 
 namespace Ascend
 
@@ -27,6 +27,7 @@ def emitVC (goal : MVarId) : AscendM Unit := do
 
 /-- Decompose `goal` to exhaustion, collecting VCs. -/
 def work (goal : MVarId) : AscendM Unit := do
+  let goal ← preprocessMVar goal
   let mut stack := #[goal]
   while let some goal := stack.back? do
     stack := stack.pop

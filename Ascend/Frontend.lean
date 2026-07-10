@@ -9,7 +9,7 @@ sealed (synthetic opaque) metavariable, which rule application would treat as ri
 frontend unseals it. With a concrete abstract program the same engine checks the refinement.
 -/
 
-open Lean Meta Elab
+open Lean Meta Sym Elab
 
 namespace Ascend
 
@@ -26,7 +26,7 @@ def unsealAbstractHole (goal : MVarId) : MetaM Unit := do
 def main (goal : MVarId) : MetaM (Array MVarId) := do
   unsealAbstractHole goal
   let ctx : Context := { specs := ← getSpecs }
-  (run goal).run ctx |>.run' {}
+  SymM.run <| (run goal).run ctx |>.run' {}
 
 @[inherit_doc main]
 syntax (name := ascendTac) "ascend" : tactic
