@@ -56,7 +56,7 @@ def driver (label : String) (stmt : Term) (unfold : List Name) (expected : Term)
   let expectedE ← Term.elabTermEnsuringType expected (← inferType (mkMVar aMVar))
   Term.synthesizeSyntheticMVarsNoPostponing
   let proof ← mkFreshExprSyntheticOpaqueMVar ty
-  let (goal, _unfoldMs) ← timeItMs <| SymM.run do
+  let (goal, unfoldMs) ← timeItMs <| SymM.run do
     let goal ← preprocessMVar proof.mvarId!
     let eqnss ← unfold.toArray.mapM fun n => getEqnsFor? n
     let thms := eqnss.flatMap (·.getD #[])
@@ -77,10 +77,10 @@ def driver (label : String) (stmt : Term) (unfold : List Name) (expected : Term)
   let (goldenOk, goldenMs) ← timeItMs do
     isDefEq (← instantiateMVars (mkMVar aMVar)) expectedE
   let (prf, instMs) ← timeItMs (instantiateMVars proof)
-  let prf := ShareCommon.shareCommon prf
+  let (prf, shareMs) ← timeItMs (do return ShareCommon.shareCommon prf)
   let (_, kernelMs) ← timeItMs (checkWithKernel prf)
   let pad := "".pushn ' ' (20 - min label.length 20)
-  let mut msg := s!"{label}:{pad}solve {solveMs} ms"
+  let mut msg := s!"{label}:{pad}unfold {unfoldMs} ms, solve {solveMs} ms"
   if let some dischargeMs := dischargeMs? then
     msg := msg ++ s!", {vcs.length} VCs: {dischargeMs} ms"
   else
@@ -88,7 +88,7 @@ def driver (label : String) (stmt : Term) (unfold : List Name) (expected : Term)
   msg := msg ++ s!", golden{if goldenOk then "" else " FAILED"} {goldenMs} ms"
   if instMs > 1000 then
     msg := msg ++ s!", instantiate {instMs} ms"
-  msg := msg ++ s!", kernel {kernelMs} ms"
+  msg := msg ++ s!", share {shareMs} ms, kernel {kernelMs} ms"
   IO.println msg
 
 /-- Run a benchmark family over `sizes`. `mkStmt`/`mkExpected` build the per-size statement and
