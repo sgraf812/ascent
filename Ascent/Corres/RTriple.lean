@@ -279,12 +279,21 @@ theorem RTriple.pure {AV CV : Type w} {Q : AV → CV → CPred} {E : Ξ} (av : A
     ⦃Q av cv⦄ (pure av : AM AV) ⊑[γ] (pure cv : CM CV) ⦃Q; E⦄ :=
   ⟨rwp_pure av cv⟩
 
+/-- The continuations' `rwp`, rebound as a coupling. `rwp_bind`'s rebinding as a combinator:
+a tactic that decomposes binds instantiates one short application per step instead of a fresh
+lambda. -/
+noncomputable def rwpCont {CV AV CV₂ AV₂ : Type w}
+    (γ : Concretization CPred APred CEPred AEPred)
+    (a₂ : AV → AM AV₂) (c₂ : CV → CM CV₂) (Q : AV₂ → CV₂ → CPred) (E : Ξ) :
+    AV → CV → CPred :=
+  fun av cv => rwp γ (a₂ av) (c₂ cv) Q E
+
 /-- The triple bind rule: the head's `rwp`, with the continuations' `rwp` rebound as its
 coupling, is the precondition. -/
 theorem RTriple.bind [Frame CPred] {CV AV CV₂ AV₂ : Type w}
     {a₁ : AM AV} {c₁ : CM CV} {a₂ : AV → AM AV₂} {c₂ : CV → CM CV₂}
     {Q : AV₂ → CV₂ → CPred} {E : Ξ} :
-    ⦃rwp γ a₁ c₁ (fun av cv => rwp γ (a₂ av) (c₂ cv) Q E) E⦄
+    ⦃rwp γ a₁ c₁ (rwpCont γ a₂ c₂ Q E) E⦄
       (a₁ >>= a₂) ⊑[γ] (c₁ >>= c₂) ⦃Q; E⦄ :=
   ⟨rwp_bind⟩
 

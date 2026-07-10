@@ -51,6 +51,17 @@ private def rtripleIntro? (goal : MVarId) (target : Expr) : AscendM (Option MVar
   let [goal] ← goal.applyConst ``Ascent.RTriple.intro | return none
   return some (← preprocessMVar goal)
 
+/-- Strategy: expand an applied rebound-coupling combinator, `rwpCont γ a₂ c₂ Q E v c`, to
+the continuation's `rwp`. The combinator form keeps rule-built goals lambda-free (a short
+application spine with a constant prefix instead of ~30 fresh nodes per bind). -/
+private def contExpand? (goal : MVarId) (relHead : Expr) (relArgs : Array Expr) :
+    AscendM (Option MVarId) := do
+  let rhs := relArgs[3]!
+  unless rhs.getAppFn.isConstOf ``Ascent.rwpCont do return none
+  let some rhs ← unfoldDefinition? rhs | return none
+  let target := mkApp4 relHead relArgs[0]! relArgs[1]! relArgs[2]! rhs.headBeta
+  return some (← setTargetRaw goal target)
+
 /-- Strategy: beta-reduce the right-hand side of the entailment; rebound couplings arrive as
 `(fun av cv => …) v c` after a leaf consumes them. -/
 private def rhsBeta? (goal : MVarId) (relHead : Expr) (relArgs : Array Expr) :
@@ -130,6 +141,7 @@ def solve (goal : MVarId) : AscendM SolveResult := goal.withContext do
   -- An assigned coupling slot arrives as `?Q v c`; substitute the head so beta reduction and
   -- the `rwp` parse below see the rebound continuation.
   let relArgs := relArgs.set! 3 (← instantiateHead relArgs[3]!)
+  if let some goal ← contExpand? goal relHead relArgs then return .goals [goal]
   if let some goal ← rhsBeta? goal relHead relArgs then return .goals [goal]
   if let some g := parseRWP? (mkApp4 relHead relArgs[0]! relArgs[1]! relArgs[2]! relArgs[3]!) then
     if let some goal ← progBeta? goal g then return .goals [goal]
