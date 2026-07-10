@@ -64,6 +64,44 @@ instances, `Ξ`, `HasEPost`, and `γ`. The program and value types (and with the
 instances) stay parametric, so one compiled rule serves every node of a chain. -/
 private def phasePositions : Array Nat := #[4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 16]
 
+/-- The hypothesis types of a curried `Prop`-lattice precondition: conjunctions split,
+implication hypotheses distribute over their branch's hypotheses, leaves become entailments
+`P' ⊑ leaf` (via `mkRel`). -/
+private partial def curryHyps (mkRel : Expr → Expr) (pre : Expr) : List Expr :=
+  if pre.isAppOfArity ``And 2 then
+    curryHyps mkRel pre.appFn!.appArg! ++ curryHyps mkRel pre.appArg!
+  else if pre.isArrow then
+    curryHyps mkRel pre.bindingBody! |>.map fun t =>
+      .forallE `a pre.bindingDomain! t .default
+  else
+    [mkRel pre]
+
+/-- The proof of `P' ⊑ pre` from the curried hypotheses, consuming them in `curryHyps` order:
+`prop_le_and` at conjunctions, `prop_le_imp` at implications (with the hypotheses applied to
+the introduced antecedent), the hypothesis itself at a leaf. -/
+private partial def buildPreProof (mkRel : Expr → Expr) (P' pre : Expr) (hyps : List Expr)
+    (curried : Bool) : AscendM (Expr × List Expr) := do
+  if curried && pre.isAppOfArity ``And 2 then
+    let A := pre.appFn!.appArg!
+    let B := pre.appArg!
+    let (pa, rest) ← buildPreProof mkRel P' A hyps curried
+    let (pb, rest) ← buildPreProof mkRel P' B rest curried
+    return (mkApp5 (mkConst ``Ascend.prop_le_and) P' A B pa pb, rest)
+  if curried && pre.isArrow then
+    let A := pre.bindingDomain!
+    let B := pre.bindingBody!
+    -- Only this branch's hypotheses receive the antecedent; later siblings stay untouched.
+    let n := (curryHyps id B).length
+    let (own, rest) := (hyps.take n, hyps.drop n)
+    let prf ← withLocalDeclD `a A fun a => do
+      let (pb, leftover) ← buildPreProof mkRel P' B (own.map (mkApp · a)) curried
+      unless leftover.isEmpty do throwError "ascend: precondition currying mismatch"
+      mkLambdaFVars #[a] pb
+    return (mkApp4 (mkConst ``Ascend.prop_le_imp) P' A B prf, rest)
+  match hyps with
+  | h :: rest => return (h, rest)
+  | [] => throwError "ascend: precondition currying mismatch"
+
 /-- Compile `spec` to apply-ready form against the phase of the goal `g`. -/
 private def compileRule (si : SpecInfo) (g : RWPApp) : AscendM (Option CachedRule) := do
   let rule ← mkConstWithFreshMVarLevels si.declName
@@ -94,15 +132,22 @@ private def compileRule (si : SpecInfo) (g : RWPApp) : AscendM (Option CachedRul
         mkLambdaFVars xs <| a.replace fun e => avMVars.idxOf? e |>.map (xs[·]!)
       -- Substitute eagerly: this is compile-time work, shared by all applications.
       pure (some (← abstractMVars (← instantiateMVars lam)))
-  -- The auxiliary theorem `∀ P', (P' ⊑ pre') → P' ⊑ rwp …`.
+  -- The auxiliary theorem `∀ P' h₁ … hₖ, P' ⊑ rwp …`, the precondition curried into the
+  -- hypotheses `hᵢ`.
   let relTy ← instantiateMVars relTy
   let some (relHead, relArgs) := parseRel? relTy | return none
-  let pre' := relArgs[2]!
-  let aux ← withLocalDeclD `P' (← instantiateMVars g.CPred) fun P' => do
-    withLocalDeclD `h (mkApp4 relHead relArgs[0]! relArgs[1]! P' pre') fun h => do
+  let pre' ← instantiateMVars relArgs[2]!
+  let carrier ← instantiateMVars g.CPred
+  let aux ← withLocalDeclD `P' carrier fun P' => do
+    let mkRel := fun pre => mkApp4 relHead relArgs[0]! relArgs[1]! P' pre
+    let hypTys := if carrier.isProp then curryHyps mkRel pre' else [mkRel pre']
+    let decls := hypTys.toArray.map fun t => (`h, fun (_ : Array Expr) => (pure t : AscendM Expr))
+    withLocalDeclsD decls fun hs => do
+      let (prePrf, rest) ← buildPreProof mkRel P' pre' hs.toList (carrier.isProp)
+      unless rest.isEmpty do throwError "ascend: precondition currying mismatch"
       let relTrans := mkConst ``Lean.Order.PartialOrder.rel_trans relHead.constLevels!
-      mkLambdaFVars #[P', h] <|
-        mkApp7 relTrans relArgs[0]! relArgs[1]! P' pre' relArgs[3]! h (← instantiateMVars prf)
+      mkLambdaFVars (#[P'] ++ hs) <|
+        mkApp7 relTrans relArgs[0]! relArgs[1]! P' pre' relArgs[3]! prePrf (← instantiateMVars prf)
   -- Substitute eagerly: this is compile-time work, shared by all applications.
   let res ← abstractMVars (← instantiateMVars aux)
   let rule ← mkBackwardRuleFromExpr res.expr res.paramNames.toList
@@ -138,18 +183,22 @@ private def fixAbstractSlot? (goal : MVarId) (g : RWPApp) (c : CachedRule) :
   unless lam.isLambda do return none
   mvarId.assign lam
   let a := lam.beta ts
-  let rhs := mkAppN g.head (g.args.set! 17 a)
+  -- The concrete slot gets the same once-per-leaf substitution as the values: rule
+  -- application leaves an assigned metavariable node per bind in it, and the `hasMVar` flags
+  -- of the whole prefix would defeat pruning in every later inspection.
+  let c ← instantiateMVars g.c
+  let rhs := mkAppN g.head (g.args.set! 17 a |>.set! 18 c)
   let target := mkApp4 g.relHead g.relArgs[0]! g.relArgs[1]! g.pre rhs
   return some (some (← setTargetRaw goal target))
 
-/-- Apply the registered rule `si` to a goal `pre ⊑ rwp γ a c Q E`. Returns the `pre ⊑ pre'`
-subgoal, or `none` (state rolled back) if the rule does not apply. -/
-def applyRule (goal : MVarId) (g : RWPApp) (si : SpecInfo) : AscendM (Option MVarId) := do
+/-- Apply the registered rule `si` to a goal `pre ⊑ rwp γ a c Q E`. Returns the curried
+precondition subgoals, or `none` (state rolled back) if the rule does not apply. -/
+def applyRule (goal : MVarId) (g : RWPApp) (si : SpecInfo) : AscendM (Option (List MVarId)) := do
   commitWhenSome? do
     let some c ← cachedRule si g | return none
     let some goal? ← fixAbstractSlot? goal g c | return none
     let goal := goal?.getD goal
-    let .goals [ng] ← c.rule.apply goal | return none
-    return some ng
+    let .goals ngs ← c.rule.apply goal | return none
+    return some ngs
 
 end Ascend

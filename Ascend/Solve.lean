@@ -72,41 +72,9 @@ private def applySpec (goal : MVarId) (g : RWPApp) : AscendM SolveResult := do
   let mut cands ← (← read).specs.getMatch g.c
   cands := cands.qsort fun s₁ s₂ => s₁.specificity > s₂.specificity
   for spec in cands do
-    if let some ng ← applyRule goal g spec then
-      return .goals [ng]
+    if let some ngs ← applyRule goal g spec then
+      return .goals ngs
   return .stop (.noSpecFound g.c)
-
-/-- Strategy: split a conjunction on the right, at the `Prop` lattice. The left conjunct is
-left raw (the strategies that inspect it substitute what they compare); the right conjunct
-carries the continuation and stays untouched. -/
-private def andSplit? (goal : MVarId) (relHead : Expr) (relArgs : Array Expr) :
-    AscendM (Option (List MVarId)) := do
-  let rhs := relArgs[3]!
-  unless rhs.isAppOfArity ``And 2 do return none
-  let pre := relArgs[2]!
-  -- Canonicalize the left conjunct once, at creation: the closing strategies compare it.
-  let A ← instantiateMVars rhs.getAppArgs[0]!
-  let B := rhs.getAppArgs[1]!
-  let ngA ← mkFreshExprSyntheticOpaqueMVar (mkApp4 relHead relArgs[0]! relArgs[1]! pre A)
-  let ngB ← mkFreshExprSyntheticOpaqueMVar (mkApp4 relHead relArgs[0]! relArgs[1]! pre B)
-  goal.assign (mkApp5 (mkConst ``Ascend.prop_le_and) pre A B ngA ngB)
-  return some [ngA.mvarId!, ngB.mvarId!]
-
-/-- Strategy: introduce an implication on the right, at the `Prop` lattice; the hypothesis
-(a guard, or an established coupling) reaches the context through `forallIntro?`. -/
-private def impIntro? (goal : MVarId) (relHead : Expr) (relArgs : Array Expr) :
-    AscendM (Option MVarId) := do
-  let rhs := relArgs[3]!
-  unless rhs.isArrow do return none
-  let pre := relArgs[2]!
-  -- Canonicalize the hypothesis once, at creation: it becomes a context entry the closing
-  -- strategies compare against.
-  let A ← instantiateMVars rhs.bindingDomain!
-  let B := rhs.bindingBody!
-  let inner := mkApp4 relHead relArgs[0]! relArgs[1]! pre B
-  let ng ← mkFreshExprSyntheticOpaqueMVar (← mkArrow A inner)
-  goal.assign (mkApp4 (mkConst ``Ascend.prop_le_imp) pre A B ng)
-  return some ng.mvarId!
 
 /-- Strategy: close a reflexive equation on the right. The compared sides are substituted:
 rule application binds by metavariable assignment, and comparison needs canonical forms. -/
@@ -146,8 +114,8 @@ private def isPropCarrier (carrier : Expr) : MetaM Bool := do
 /--
 One solve step, dispatching the strategies in order: introduce `∀`/implication targets, unfold
 an `RTriple` target, then on `pre ⊑ rhs` beta-reduce the right-hand side, decompose an `rwp`
-application through the registered specs, and decompose the `Prop`-lattice connectives of spec
-preconditions.
+application through the registered specs, and close residual `Prop`-lattice entailments (spec
+preconditions arrive already curried into subgoals by rule compilation).
 -/
 def solve (goal : MVarId) : AscendM SolveResult := goal.withContext do
   let target ← goal.getType
@@ -164,8 +132,6 @@ def solve (goal : MVarId) : AscendM SolveResult := goal.withContext do
     return ← applySpec goal g
   -- The carrier arrives as `Sort ?u` with `?u` assigned, from rules applied at fresh levels.
   if ← isPropCarrier relArgs[0]! then
-    if let some goals ← andSplit? goal relHead relArgs then return .goals goals
-    if let some goal ← impIntro? goal relHead relArgs then return .goals [goal]
     if let some _ ← eqRefl? goal relArgs then return .goals []
     if let some _ ← hypClose? goal relArgs then return .goals []
   return .stop (.noProgress relArgs[2]! relArgs[3]!)
