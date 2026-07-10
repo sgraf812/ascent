@@ -69,13 +69,6 @@ private def progBeta? (goal : MVarId) (g : RWPApp) : AscendM (Option MVarId) := 
 
 /-- Strategy: apply a registered spec for the program, most specific first. -/
 private def applySpec (goal : MVarId) (g : RWPApp) : AscendM SolveResult := do
-  -- A bind whose head matches a leaf spec applies as one fused rule per chain link.
-  if g.c.isAppOfArity ``Bind.bind 6 then
-    let mut heads ← (← read).specs.getMatch g.c.getAppArgs[4]!
-    heads := heads.qsort fun s₁ s₂ => s₁.specificity > s₂.specificity
-    for spec in heads do
-      if let some ngs ← applyRule goal g spec (fuseBind := true) then
-        return .goals ngs
   let mut cands ← (← read).specs.getMatch g.c
   cands := cands.qsort fun s₁ s₂ => s₁.specificity > s₂.specificity
   for spec in cands do

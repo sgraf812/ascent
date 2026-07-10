@@ -36,21 +36,6 @@ def runBaseline (sizes : List Nat) (showSynth := false) : MetaM Unit := do
 def solveEngine (_n : Nat) (goal : MVarId) : MetaM (List MVarId) :=
   return (← Ascend.main goal).toList
 
-def mkStmtR (n : Nat) : MetaM Term :=
-  `(⦃(⊤ : Prop)⦄ (?_ : UB Int) ⊑[γw] (chainR 7 $(quote n)) ⦃(⌜· = wordVal ·⌝)⦄)
-
-def mkExpectedR (n : Nat) : MetaM Term :=
-  `(chainRA (wordVal 7) $(quote n))
-
-def runEngineR (sizes : List Nat) (showSynth := false) : MetaM Unit := do
-  IO.println "=== WordAbsR ascend engine (right-nested, fused rules) ==="
-  runBench "WordAbsR" mkStmtR [``chainR] mkExpectedR solveEngine
-    (`(tactic| first
-        | (simp only [ofProp_prop_eq]; assumption)
-        | decide
-        | (simp only [wordVal, ofProp_prop_eq, UInt64.toNat_add] at *; omega))) sizes
-    (showSynth := showSynth)
-
 def runEngine (sizes : List Nat) (showSynth := false) : MetaM Unit := do
   IO.println "=== WordAbs ascend engine ==="
   runBench "WordAbs" mkStmt [``chainC] mkExpected solveEngine
@@ -70,7 +55,3 @@ set_option maxHeartbeats 10000000
 #eval runBaseline [10, 20, 50, 100, 200, 500, 1000, 2000, 5000]
 
 #eval runEngine [10, 20, 50, 100, 200, 500, 1000, 2000, 5000]
-
-#eval runEngineR [2] (showSynth := true)
-
-#eval runEngineR [10, 20, 50, 100, 200, 500, 1000, 2000, 5000]

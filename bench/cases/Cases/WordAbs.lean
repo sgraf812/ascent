@@ -82,18 +82,6 @@ theorem bindChain {CM AM : Type w → Type v} {CPred APred : Type w}
   RTriple.bind.weaken
     (PartialOrder.rel_trans h₁.le_rwp (rwp_mono_post fun av cv => (h₂ av cv).le_rwp))
 
-/-- The terminal return of a right-nested chain. A distinct constant: a raw `pure` of a
-sum-shaped value would be indistinguishable from an addition leaf, and the registry match is
-greedy. -/
-def ret (x : UInt64) : Id UInt64 := pure x
-
-/-- A coupled return: the terminal leaf of a right-nested chain, taking the abstract input as
-a variable pinned by the precondition. -/
-@[ascend] theorem termW_spec (av : Int) (cv : UInt64) {Q : Int → UInt64 → Prop}
-    {E : EPost.Nil} :
-    ⦃(av = wordVal cv ∧ Q av cv : Prop)⦄ (pure av : UB Int) ⊑[γw] (ret cv) ⦃Q; E⦄ :=
-  (RTriple.pure av cv).weaken fun hp => hp.2
-
 /-- The concrete chain: `n` dependent additions of the constant `c`. -/
 def chainC (c : UInt64) : Nat → Id UInt64
   | 0 => pure c
@@ -103,16 +91,5 @@ def chainC (c : UInt64) : Nat → Id UInt64
 def chainA (c : UInt64) : Nat → UB Int
   | 0 => pure (wordVal c)
   | n+1 => do let r ← chainA c n; UB.guardRet (r + wordVal c < 2 ^ 64) (r + wordVal c)
-
-/-- The right-nested variant: each bind's head is a leaf, the natural streaming form (and the
-shape the fused per-link rules fire on). -/
-def chainR (acc : UInt64) : Nat → Id UInt64
-  | 0 => ret acc
-  | n+1 => pure (acc + 7) >>= fun r => chainR r n
-
-/-- The expected abstract image of `chainR`, for the golden check. -/
-def chainRA (acc : Int) : Nat → UB Int
-  | 0 => pure acc
-  | n+1 => UB.guardRet (acc + wordVal 7 < 2 ^ 64) (acc + wordVal 7) >>= fun r => chainRA r n
 
 end AscendBench
