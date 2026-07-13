@@ -16,9 +16,9 @@ namespace Ascend
 def emitVC (goal : MVarId) : AscendM Unit := do
   let mut goal := goal
   let target ← instantiateMVars (← goal.getType)
-  if let some (_, relArgs) := parseRel? target then
-    if relArgs[0]!.isProp && relArgs[2]!.isAppOf ``Lean.Order.top then
-      let x := relArgs[3]!
+  if let some r := parseRel? target then
+    if r.carrier.isProp && r.pre.isAppOf ``Lean.Order.top then
+      let x := r.rhs
       let vc ← goal.withContext <| mkFreshExprSyntheticOpaqueMVar x
       goal.assign (mkApp2 (mkConst ``Lean.Order.top_le_prop) x vc)
       goal := vc.mvarId!

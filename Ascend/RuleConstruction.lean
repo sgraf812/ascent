@@ -144,19 +144,19 @@ private def compileRule (si : SpecInfo) (g : RWPApp) : AscendM (Option CachedRul
   -- The auxiliary theorem `∀ P' h₁ … hₖ, P' ⊑ rwp …`, the precondition curried into the
   -- hypotheses `hᵢ`.
   let relTy ← instantiateMVars relTy
-  let some (relHead, relArgs) := parseRel? relTy | return none
-  let pre' ← instantiateMVars relArgs[2]!
+  let some rel := parseRel? relTy | return none
+  let pre' ← instantiateMVars rel.pre
   let carrier ← instantiateMVars g.CPred
   let aux ← withLocalDeclD `P' carrier fun P' => do
-    let mkRel := fun pre => mkApp4 relHead relArgs[0]! relArgs[1]! P' pre
+    let mkRel := fun pre => mkApp4 rel.head rel.carrier rel.inst P' pre
     let hypTys := if carrier.isProp then curryHyps mkRel pre' else [mkRel pre']
     let decls := hypTys.toArray.map fun t => (`h, fun (_ : Array Expr) => (pure t : AscendM Expr))
     withLocalDeclsD decls fun hs => do
       let (prePrf, rest) ← buildPreProof mkRel P' pre' hs.toList (carrier.isProp)
       unless rest.isEmpty do throwError "ascend: precondition currying mismatch"
-      let relTrans := mkConst ``Lean.Order.PartialOrder.rel_trans relHead.constLevels!
+      let relTrans := mkConst ``Lean.Order.PartialOrder.rel_trans rel.head.constLevels!
       mkLambdaFVars (#[P'] ++ hs) <|
-        mkApp7 relTrans relArgs[0]! relArgs[1]! P' pre' relArgs[3]! prePrf (← instantiateMVars prf)
+        mkApp7 relTrans rel.carrier rel.inst P' pre' rel.rhs prePrf (← instantiateMVars prf)
   -- Substitute eagerly: this is compile-time work, shared by all applications.
   let res ← abstractMVars (← instantiateMVars aux)
   let rule ← mkBackwardRuleFromExpr res.expr res.paramNames.toList
@@ -197,8 +197,7 @@ private def fixAbstractSlot? (goal : MVarId) (g : RWPApp) (c : CachedRule) :
   -- of the whole prefix would defeat pruning in every later inspection.
   let c ← instantiateMVars g.c
   let rhs := mkAppN g.head (g.args.set! 17 a |>.set! 18 c)
-  let target := mkApp4 g.relHead g.relArgs[0]! g.relArgs[1]! g.pre rhs
-  return some (some (← setTargetRaw goal target))
+  return some (some (← setTargetRaw goal (g.rel.rebuild rhs)))
 
 /-- Apply the registered rule `si` to a goal `pre ⊑ rwp γ a c Q E`. Returns the curried
 precondition subgoals, or `none` (state rolled back) if the rule does not apply. -/
