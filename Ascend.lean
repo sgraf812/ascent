@@ -6,3 +6,4 @@ import Ascend.RuleConstruction
 import Ascend.Solve
 import Ascend.Driver
 import Ascend.Frontend
+import Ascend.Command

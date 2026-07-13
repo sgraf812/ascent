@@ -25,9 +25,8 @@ def emitVC (goal : MVarId) : AscendM Unit := do
   goal.setKind .syntheticOpaque
   modify fun s => { s with vcs := s.vcs.push goal }
 
-/-- Decompose `goal` to exhaustion, collecting VCs. -/
+/-- Decompose the preprocessed `goal` to exhaustion, collecting VCs. -/
 def work (goal : MVarId) : AscendM Unit := do
-  let goal ← preprocessMVar goal
   let mut stack := #[goal]
   while let some goal := stack.back? do
     stack := stack.pop
@@ -36,8 +35,21 @@ def work (goal : MVarId) : AscendM Unit := do
     | .stop (.noSpecFound c) => throwError "ascend: no spec found for program{indentExpr c}"
     | .stop _ => emitVC goal
 
-/-- Run the engine on `goal`. Returns the VCs, tagged `vc1`, `vc2`, …. -/
-def run (goal : MVarId) : AscendM (Array MVarId) := do
+/-- Rewrite the goal with the equational lemmas of `unfold`, exposing a concrete program given
+by definition (the tactic assumes an already-unfolded goal; the command unfolds here). -/
+def unfoldConcrete (goal : MVarId) (unfold : Array Name) : AscendM MVarId := do
+  if unfold.isEmpty then return goal
+  let eqns : Array (Option (Array Name)) ← unfold.mapM fun n => getEqnsFor? n
+  let thms := eqns.flatMap fun o => o.getD #[]
+  match ← Sym.simpGoal goal (← Sym.mkMethods thms) with
+  | .goal goal => return goal
+  | .noProgress => return goal
+  | .closed => throwError "ascend: unfolding {unfold} closed the goal"
+
+/-- Run the engine on `goal`, first preprocessing and unfolding the concrete definitions.
+Returns the VCs, tagged `vc1`, `vc2`, …. -/
+def run (goal : MVarId) (unfold : Array Name := #[]) : AscendM (Array MVarId) := do
+  let goal ← unfoldConcrete (← preprocessMVar goal) unfold
   work goal
   let vcs := (← get).vcs
   for h : i in [:vcs.size] do

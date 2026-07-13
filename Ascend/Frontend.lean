@@ -22,11 +22,15 @@ def unsealAbstractHole (goal : MVarId) : MetaM Unit := do
   if (← mvarId.getDecl).kind matches .syntheticOpaque then
     mvarId.setKind .natural
 
-/-- Run the engine on `goal`: unseal the abstract hole, decompose, return the VCs. -/
-def main (goal : MVarId) : MetaM (Array MVarId) := do
+/-- Run the engine on `goal`: unseal the abstract hole, decompose (unfolding the concrete
+definitions in `unfold` first), return the VCs. -/
+def mainWith (goal : MVarId) (unfold : Array Name) : MetaM (Array MVarId) := do
   unsealAbstractHole goal
   let ctx : Context := { specs := ← getSpecs }
-  SymM.run <| (run goal).run ctx |>.run' {}
+  SymM.run <| (run goal unfold).run ctx |>.run' {}
+
+/-- Run the engine on an already-unfolded `goal`. -/
+def main (goal : MVarId) : MetaM (Array MVarId) := mainWith goal #[]
 
 @[inherit_doc main]
 syntax (name := ascendTac) "ascend" : tactic
