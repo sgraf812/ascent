@@ -27,10 +27,19 @@ open Lean Meta Sym
 
 namespace Ascend
 
-/-- Replace `goal`'s target with the definitionally equal `target`, without reading the old
-target back: `MVarId.replaceTargetDefEq` instantiates it, which walks the goal's assigned
-synthesis metavariables. -/
-def setTargetRaw (goal : MVarId) (target : Expr) : MetaM MVarId := do
+/-- Sharing-preserving `instantiateMVarsIfMVarApp`: `Meta.instantiateMVarsIfMVarApp` returns
+un-interned nodes, breaking the `SymM` maximal-sharing invariant that later matching relies on.
+`Sym.instantiateMVarsS` re-interns; the `hasMVar` guard skips the traversal when nothing is
+assigned (`instantiateMVarsS` also short-circuits, but the head test is cheaper still). -/
+def instantiateMVarsIfMVarAppS (e : Expr) : SymM Expr := do
+  if e.getAppFn.isMVar then Sym.instantiateMVarsS e else return e
+
+/-- Replace `goal`'s target with the definitionally equal `target`, re-interning it so the
+`SymM` maximal-sharing invariant holds for the matcher. `shareCommonInc` interns only the fresh
+spine nodes; the shared children are looked up directly. Unlike `MVarId.replaceTargetDefEq`,
+the old target is not read back (which would walk the goal's assigned synthesis metavariables). -/
+def setTargetRaw (goal : MVarId) (target : Expr) : SymM MVarId := do
+  let target ← shareCommonInc target
   let ng ← mkFreshExprSyntheticOpaqueMVar target (← goal.getTag)
   goal.assign ng
   return ng.mvarId!
@@ -171,7 +180,7 @@ with the slot beta-reduced, so pattern matching sees a rigid program. Returns th
 goal, or `none` when the slot is already rigid (nothing to do). -/
 private def fixAbstractSlot? (goal : MVarId) (g : RWPApp) (c : CachedRule) :
     AscendM (Option (Option MVarId)) := do
-  let goalA ← instantiateMVarsIfMVarApp g.a
+  let goalA ← instantiateMVarsIfMVarAppS g.a
   let .mvar mvarId := goalA.getAppFn | return some none
   -- Values are substituted once, here, where they enter the goal: rule application binds by
   -- metavariable assignment, and every later inspection would otherwise re-walk the
