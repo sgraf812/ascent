@@ -144,17 +144,17 @@ private def compileRule (si : SpecInfo) (g : RWPApp) : AscendM (Option CachedRul
   -- The auxiliary theorem `∀ P' h₁ … hₖ, P' ⊑ rwp …`, the precondition curried into the
   -- hypotheses `hᵢ`.
   let relTy ← instantiateMVars relTy
-  let_expr Lean.Order.PartialOrder.rel relCarrier relInst rulePre ruleRhs := relTy | return none
+  let_expr rel@Lean.Order.PartialOrder.rel relCarrier relInst rulePre ruleRhs := relTy | return none
   let pre' ← instantiateMVars rulePre
   let carrier ← instantiateMVars g.CPred
   let aux ← withLocalDeclD `P' carrier fun P' => do
-    let mkRel := fun pre => mkApp4 relTy.getAppFn relCarrier relInst P' pre
+    let mkRel := fun pre => mkApp4 rel relCarrier relInst P' pre
     let hypTys := if carrier.isProp then curryHyps mkRel pre' else [mkRel pre']
     let decls := hypTys.toArray.map fun t => (`h, fun (_ : Array Expr) => (pure t : AscendM Expr))
     withLocalDeclsD decls fun hs => do
       let (prePrf, rest) ← buildPreProof mkRel P' pre' hs.toList (carrier.isProp)
       unless rest.isEmpty do throwError "ascend: precondition currying mismatch"
-      let relTrans := mkConst ``Lean.Order.PartialOrder.rel_trans relTy.getAppFn.constLevels!
+      let relTrans := mkConst ``Lean.Order.PartialOrder.rel_trans rel.constLevels!
       mkLambdaFVars (#[P'] ++ hs) <|
         mkApp7 relTrans relCarrier relInst P' pre' ruleRhs prePrf (← instantiateMVars prf)
   -- Substitute eagerly: this is compile-time work, shared by all applications.
@@ -197,9 +197,8 @@ private def fixAbstractSlot? (goal : MVarId) (g : RWPApp) (c : CachedRule) :
   -- of the whole prefix would defeat pruning in every later inspection.
   let c ← instantiateMVars g.c
   let rhs := mkAppN g.head (g.args.set! 17 a |>.set! 18 c)
-  let target ← goal.getType
-  let_expr Lean.Order.PartialOrder.rel carrier inst pre _ := target | return none
-  return some (some (← setTargetRaw goal (mkApp4 target.getAppFn carrier inst pre rhs)))
+  let_expr rel@Lean.Order.PartialOrder.rel carrier inst pre _ := ← goal.getType | return none
+  return some (some (← setTargetRaw goal (mkApp4 rel carrier inst pre rhs)))
 
 /-- Apply the registered rule `si` to a goal `pre ⊑ rwp γ a c Q E`. Returns the curried
 precondition subgoals, or `none` (state rolled back) if the rule does not apply. -/

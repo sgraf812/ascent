@@ -45,24 +45,24 @@ private def rtripleIntro? (goal : MVarId) (target : Expr) : AscendM (Option MVar
 the continuation's `rwp`. The combinator form keeps rule-built goals lambda-free (a short
 application spine with a constant prefix instead of ~30 fresh nodes per bind). -/
 private def contExpand? (goal : MVarId) (target : Expr) : AscendM (Option MVarId) := do
-  let_expr Lean.Order.PartialOrder.rel carrier inst pre rhs := target | return none
+  let_expr rel@Lean.Order.PartialOrder.rel carrier inst pre rhs := target | return none
   unless rhs.getAppFn.isConstOf ``Ascent.rwpCont do return none
   let some rhs ← unfoldDefinition? rhs | return none
-  return some (← setTargetRaw goal (mkApp4 target.getAppFn carrier inst pre rhs.headBeta))
+  return some (← setTargetRaw goal (mkApp4 rel carrier inst pre rhs.headBeta))
 
 /-- Strategy: beta-reduce the right-hand side of the entailment; rebound couplings arrive as
 `(fun av cv => …) v c` after a leaf consumes them. -/
 private def rhsBeta? (goal : MVarId) (target : Expr) : AscendM (Option MVarId) := do
-  let_expr Lean.Order.PartialOrder.rel carrier inst pre rhs := target | return none
+  let_expr rel@Lean.Order.PartialOrder.rel carrier inst pre rhs := target | return none
   unless rhs.getAppFn.isLambda do return none
-  return some (← setTargetRaw goal (mkApp4 target.getAppFn carrier inst pre rhs.headBeta))
+  return some (← setTargetRaw goal (mkApp4 rel carrier inst pre rhs.headBeta))
 
 /-- Strategy: beta-reduce the program head; continuations arrive as `c₂ cv`. -/
 private def progBeta? (goal : MVarId) (target : Expr) (g : RWPApp) : AscendM (Option MVarId) := do
   unless g.c.getAppFn.isLambda do return none
-  let_expr Lean.Order.PartialOrder.rel carrier inst pre _ := target | return none
+  let_expr rel@Lean.Order.PartialOrder.rel carrier inst pre _ := target | return none
   let rhs := mkAppN g.head (g.args.set! 18 g.c.headBeta)
-  return some (← setTargetRaw goal (mkApp4 target.getAppFn carrier inst pre rhs))
+  return some (← setTargetRaw goal (mkApp4 rel carrier inst pre rhs))
 
 /-- Strategy: apply a registered spec for the program, most specific first. -/
 private def applySpec (goal : MVarId) (g : RWPApp) : AscendM SolveResult := do
@@ -123,12 +123,12 @@ def solve (goal : MVarId) : AscendM SolveResult := goal.withContext do
   let target ← goal.getType
   if let some goal ← forallIntro? goal target then return .goals [goal]
   if let some goal ← rtripleIntro? goal target then return .goals [goal]
-  let_expr Lean.Order.PartialOrder.rel carrier inst pre rhs := target
+  let_expr rel@Lean.Order.PartialOrder.rel carrier inst pre rhs := target
     | return .stop (.noEntailment target)
   -- An assigned coupling slot arrives as `?Q v c`; substitute the head so beta reduction and
   -- the `rwp` parse below see the rebound continuation. Refresh the entailment with it.
   let rhs ← instantiateMVarsIfMVarAppS rhs
-  let target := mkApp4 target.getAppFn carrier inst pre rhs
+  let target := mkApp4 rel carrier inst pre rhs
   if let some goal ← contExpand? goal target then return .goals [goal]
   if let some goal ← rhsBeta? goal target then return .goals [goal]
   if let some g := parseRWP? rhs then
