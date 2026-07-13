@@ -118,7 +118,7 @@ private def compileRule (si : SpecInfo) (g : RWPApp) : AscendM (Option CachedRul
   -- implication and the telescope would consume the precondition as a binder.
   let (mvs, bis, concl) ← forallMetaTelescope (← Meta.inferType rule)
   let some (relTy, prf) ← conclusionProof rule mvs concl | return none
-  let some ruleRwp := parseRWP? relTy | return none
+  let some ruleRwp := parseRWP? relTy.appArg! | return none
   -- Pin the phase, and the monads (the proof-only instances depend on them).
   for i in phasePositions do
     unless ← isDefEqGuarded ruleRwp.args[i]! g.args[i]! do return none
@@ -144,19 +144,19 @@ private def compileRule (si : SpecInfo) (g : RWPApp) : AscendM (Option CachedRul
   -- The auxiliary theorem `∀ P' h₁ … hₖ, P' ⊑ rwp …`, the precondition curried into the
   -- hypotheses `hᵢ`.
   let relTy ← instantiateMVars relTy
-  let some rel := parseRel? relTy | return none
-  let pre' ← instantiateMVars rel.pre
+  let_expr Lean.Order.PartialOrder.rel relCarrier relInst rulePre ruleRhs := relTy | return none
+  let pre' ← instantiateMVars rulePre
   let carrier ← instantiateMVars g.CPred
   let aux ← withLocalDeclD `P' carrier fun P' => do
-    let mkRel := fun pre => mkApp4 rel.head rel.carrier rel.inst P' pre
+    let mkRel := fun pre => mkApp4 relTy.getAppFn relCarrier relInst P' pre
     let hypTys := if carrier.isProp then curryHyps mkRel pre' else [mkRel pre']
     let decls := hypTys.toArray.map fun t => (`h, fun (_ : Array Expr) => (pure t : AscendM Expr))
     withLocalDeclsD decls fun hs => do
       let (prePrf, rest) ← buildPreProof mkRel P' pre' hs.toList (carrier.isProp)
       unless rest.isEmpty do throwError "ascend: precondition currying mismatch"
-      let relTrans := mkConst ``Lean.Order.PartialOrder.rel_trans rel.head.constLevels!
+      let relTrans := mkConst ``Lean.Order.PartialOrder.rel_trans relTy.getAppFn.constLevels!
       mkLambdaFVars (#[P'] ++ hs) <|
-        mkApp7 relTrans rel.carrier rel.inst P' pre' rel.rhs prePrf (← instantiateMVars prf)
+        mkApp7 relTrans relCarrier relInst P' pre' ruleRhs prePrf (← instantiateMVars prf)
   -- Substitute eagerly: this is compile-time work, shared by all applications.
   let res ← abstractMVars (← instantiateMVars aux)
   let rule ← mkBackwardRuleFromExpr res.expr res.paramNames.toList
@@ -197,7 +197,9 @@ private def fixAbstractSlot? (goal : MVarId) (g : RWPApp) (c : CachedRule) :
   -- of the whole prefix would defeat pruning in every later inspection.
   let c ← instantiateMVars g.c
   let rhs := mkAppN g.head (g.args.set! 17 a |>.set! 18 c)
-  return some (some (← setTargetRaw goal (g.rel.rebuild rhs)))
+  let target ← goal.getType
+  let_expr Lean.Order.PartialOrder.rel carrier inst pre _ := target | return none
+  return some (some (← setTargetRaw goal (mkApp4 target.getAppFn carrier inst pre rhs)))
 
 /-- Apply the registered rule `si` to a goal `pre ⊑ rwp γ a c Q E`. Returns the curried
 precondition subgoals, or `none` (state rolled back) if the rule does not apply. -/

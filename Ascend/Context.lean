@@ -16,27 +16,9 @@ open Lean Meta Sym
 
 namespace Ascend
 
-/-- An entailment target `pre ⊑ rhs`, with the level-carrying head kept for rebuilds. -/
-structure RelApp where
-  /-- `PartialOrder.rel` applied to its universe level (retained so `rebuild` preserves it). -/
-  head : Expr
-  /-- The carrier lattice. -/
-  carrier : Expr
-  /-- The `PartialOrder` instance. -/
-  inst : Expr
-  /-- The precondition, left of `⊑`. -/
-  pre : Expr
-  /-- The right-hand side. -/
-  rhs : Expr
-
-/-- Rebuild the entailment with a new right-hand side, reusing the level-carrying head. -/
-def RelApp.rebuild (r : RelApp) (rhs : Expr) : Expr :=
-  mkApp4 r.head r.carrier r.inst r.pre rhs
-
-/-- A goal target of the form `pre ⊑ rwp γ a c Q E`, destructured. -/
+/-- The `rwp γ a c Q E` on the right of an entailment, destructured. The 21 arguments are too
+many for `let_expr`, so this carries them with named accessors. -/
 structure RWPApp where
-  /-- The entailment `pre ⊑ rwp …`. -/
-  rel : RelApp
   /-- The `rwp` head with its levels. -/
   head : Expr
   /-- The 21 `rwp` arguments. -/
@@ -44,8 +26,6 @@ structure RWPApp where
 
 namespace RWPApp
 
-def pre (g : RWPApp) : Expr := g.rel.pre
-def rhs (g : RWPApp) : Expr := g.rel.rhs
 /-- The abstract program type `AProg`, an application `AM AVal` for monadic programs. -/
 def AProg (g : RWPApp) : Expr := g.args[1]!
 /-- The concrete program type `CProg`. -/
@@ -63,19 +43,10 @@ def E (g : RWPApp) : Expr := g.args[20]!
 
 end RWPApp
 
-/-- Destructure an entailment target `pre ⊑ rhs`. -/
-def parseRel? (target : Expr) : Option RelApp := do
-  let (carrier, inst, pre, rhs) ← target.app4? ``Lean.Order.PartialOrder.rel
-  return { head := target.getAppFn, carrier, inst, pre, rhs }
-
-/-- Refine an entailment whose right-hand side is `rwp γ a c Q E`. -/
-def RelApp.toRWP? (r : RelApp) : Option RWPApp := do
-  guard <| r.rhs.isAppOfArity ``Ascent.rwp 21
-  return { rel := r, head := r.rhs.getAppFn, args := r.rhs.getAppArgs }
-
-/-- Destructure a target `pre ⊑ rwp γ a c Q E`. -/
-def parseRWP? (target : Expr) : Option RWPApp := do
-  (← parseRel? target).toRWP?
+/-- Destructure an `rwp γ a c Q E` application. -/
+def parseRWP? (rhs : Expr) : Option RWPApp := do
+  guard <| rhs.isAppOfArity ``Ascent.rwp 21
+  return { head := rhs.getAppFn, args := rhs.getAppArgs }
 
 /-- A spec compiled to apply-ready form against a phase. -/
 structure CachedRule where
