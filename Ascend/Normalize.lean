@@ -15,14 +15,18 @@ open Lean.Elab.Tactic.Do.Internal
 
 namespace Ascend
 
-/-- Apply a precondition-intro backward rule and introduce the lifted hypothesis, returning the
-new goal and the introduced fvar. -/
-def introPre (rule : BackwardRule) (goal : MVarId) : AscendM (MVarId × FVarId × Expr) := do
-  let .goals [goal] ← rule.apply goal | throwError "ascend: precondition intro rule did not apply"
-  let .goal decls goal ← Sym.intros goal | throwError "ascend: failed to intro lifted precondition"
-  let some fv := decls.back? | throwError "ascend: precondition intro produced no hypothesis"
+/-- Introduce the goal's leading binders, returning the innermost goal, the last introduced
+fvar, and its instantiated type (the freshly lifted hypothesis). -/
+def introLastHyp (goal : MVarId) : AscendM (MVarId × FVarId × Expr) := do
+  let .goal decls goal ← Sym.intros goal | throwError "ascend: failed to intro lifted hypothesis"
+  let some fv := decls.back? | throwError "ascend: intro produced no hypothesis"
   let ty ← goal.withContext do instantiateMVars (← fv.getType)
   return (goal, fv, ty)
+
+/-- Apply a precondition-intro backward rule and introduce the lifted hypothesis. -/
+def introPre (rule : BackwardRule) (goal : MVarId) : AscendM (MVarId × FVarId × Expr) := do
+  let .goals [goal] ← rule.apply goal | throwError "ascend: precondition intro rule did not apply"
+  introLastHyp goal
 
 /-- Cancel a redundant `P ⊓ ⊤` precondition via `meet_top_le_of_le`, leaving `P ⊑ rhs`. Such a
 precondition arises when `le_himp` splits `⊤ ⊑ a ⇨ b` into `a ⊓ ⊤ ⊑ b`. -/
@@ -77,7 +81,7 @@ hypothesis via `le_of_right`. -/
 def liftedHyp? (scope : Scope) (goal : MVarId) (α pre rhs : Expr) : AscendM (Option Unit) := do
   unless α.isProp do return none
   let some fv ← liftedPreFor? scope rhs | return none
-  goal.assign (← mkAppM ``Lean.Order.le_of_right #[pre, rhs, .fvar fv])
+  goal.assign (mkApp3 (mkConst ``Lean.Order.le_of_right) pre rhs (.fvar fv))
   return some ()
 
 /-- Close a bare `Prop` residual against the most recently lifted hypothesis. -/

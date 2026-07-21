@@ -59,7 +59,9 @@ private def rhsBeta? (rhs : Expr) : Option Expr :=
 private def progBeta? (g : RWPApp) : Option Expr :=
   if g.c.getAppFn.isLambda then some (g.withC g.c.headBeta) else none
 
-/-- Natural-notation strategy: split `P' ⊑ (A ∧ B)` at the `Prop` carrier via `prop_le_and`. -/
+/-- Natural-notation strategy: split `P' ⊑ (A ∧ B)` at the `Prop` carrier via `prop_le_and`.
+The lemma is applied by `assign`, not a pattern-matched backward rule: its `Prop` order instance
+is only definitionally equal to the goal's, which the matcher does not see through. -/
 private def andSplit? (goal : MVarId) (rel carrier inst pre rhs : Expr) :
     AscendM (Option (List MVarId)) := do
   unless carrier.isProp do return none
@@ -80,26 +82,15 @@ private def impIntro? (scope : Scope) (goal : MVarId) (rel carrier inst pre rhs 
   let hgoal ← mkFreshExprSyntheticOpaqueMVar
     (← shareCommonInc (.forallE `h a (mkApp4 rel carrier inst pre b) .default))
   goal.assign (mkApp4 (mkConst ``Ascend.prop_le_imp) pre a b hgoal)
-  let .goal decls g ← Sym.intros hgoal.mvarId! | return none
-  let some fv := decls.back? | return none
-  let ty ← g.withContext do instantiateMVars (← fv.getType)
+  let (g, fv, ty) ← introLastHyp hgoal.mvarId!
   return some ({ scope with lastLiftedPre? := some (fv, ty) }, [g])
 
-/-- Natural-notation strategy: close `P' ⊑ (a = a)` reflexively via `prop_le_eq_refl`. -/
+/-- Natural-notation strategy: close `P' ⊑ (a = a)` reflexively. -/
 private def eqReflClose? (goal : MVarId) (carrier pre rhs : Expr) : AscendM (Option Unit) := do
   unless carrier.isProp do return none
-  let some (α, l, r) := rhs.eq? | return none
+  let some (_, l, r) := rhs.eq? | return none
   unless ← isDefEqS l r do return none
-  goal.assign (mkApp3 (mkConst ``Ascend.prop_le_eq_refl [← Meta.getLevel α]) pre α l)
-  return some ()
-
-/-- Natural-notation strategy: close a residual `P' ⊑ φ` against the most recently lifted
-hypothesis via `prop_le_of` (the `O(1)` counterpart of `liftedHyp?` for raw `Prop` couplings). -/
-private def hypCloseLifted? (scope : Scope) (goal : MVarId) (carrier pre rhs : Expr) :
-    AscendM (Option Unit) := do
-  unless carrier.isProp do return none
-  let some fv ← liftedPreFor? scope rhs | return none
-  goal.assign (mkApp3 (mkConst ``Ascend.prop_le_of) pre rhs (.fvar fv))
+  goal.assign (mkApp3 (mkConst ``Lean.Order.le_of_right) pre rhs (← Meta.mkEqRefl l))
   return some ()
 
 /-- Strategy: apply a registered spec for the program, most specific first. -/
@@ -138,7 +129,6 @@ def solve (scope : Scope) (goal : MVarId) : AscendM SolveResult := goal.withCont
   if let some (scope, gs) ← impIntro? scope goal rel carrier inst pre rhs then return .goals scope gs
   if let some _ ← eqReflClose? goal carrier pre rhs then return .goals scope []
   if let some _ ← liftedHyp? scope goal carrier pre rhs then return .goals scope []
-  if let some _ ← hypCloseLifted? scope goal carrier pre rhs then return .goals scope []
   if let some g := parseRWP? rhs then
     if let some rhs' := progBeta? g then return ← reshape rhs'
     return ← applySpec scope goal g
