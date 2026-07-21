@@ -1,4 +1,5 @@
 import Ascend.Normalize
+import Ascend.Rules
 
 /-!
 # The main solve step
@@ -54,17 +55,52 @@ private def contExpand? (rhs : Expr) : AscendM (Option Expr) := do
 private def rhsBeta? (rhs : Expr) : Option Expr :=
   if rhs.getAppFn.isLambda then some rhs.headBeta else none
 
-/-- Reshape strategy: activate a pending sub-program hole. The abstract slot is headed by a
-let-bound fvar (introduced at rule application for a postponed sub-program); zeta-expand this one
-occurrence so the slot exposes the underlying web metavariable and becomes the active slot. -/
-private def holeZeta? (g : RWPApp) : AscendM (Option Expr) := do
-  let some fvarId := g.a.getAppFn.fvarId? | return none
-  let some val ← fvarId.getValue? | return none
-  return some (g.withA (mkAppN val g.a.getAppArgs))
-
 /-- Reshape strategy: beta-reduce the program head; continuations arrive as `c₂ cv`. -/
 private def progBeta? (g : RWPApp) : Option Expr :=
   if g.c.getAppFn.isLambda then some (g.withC g.c.headBeta) else none
+
+/-- Natural-notation strategy: split `P' ⊑ (A ∧ B)` at the `Prop` carrier via `prop_le_and`. -/
+private def andSplit? (goal : MVarId) (rel carrier inst pre rhs : Expr) :
+    AscendM (Option (List MVarId)) := do
+  unless carrier.isProp do return none
+  let_expr And a b := rhs | return none
+  let ha ← mkFreshExprSyntheticOpaqueMVar (← shareCommonInc (mkApp4 rel carrier inst pre a))
+  let hb ← mkFreshExprSyntheticOpaqueMVar (← shareCommonInc (mkApp4 rel carrier inst pre b))
+  goal.assign (mkApp5 (mkConst ``Ascend.prop_le_and) pre a b ha hb)
+  return some [ha.mvarId!, hb.mvarId!]
+
+/-- Natural-notation strategy: introduce the hypothesis of `P' ⊑ (A → B)` via `prop_le_imp`,
+recording it as the most recently lifted precondition for `O(1)` residual discharge. -/
+private def impIntro? (scope : Scope) (goal : MVarId) (rel carrier inst pre rhs : Expr) :
+    AscendM (Option (Scope × List MVarId)) := do
+  unless carrier.isProp do return none
+  unless rhs.isArrow do return none
+  let a := rhs.bindingDomain!
+  let b := rhs.bindingBody!
+  let hgoal ← mkFreshExprSyntheticOpaqueMVar
+    (← shareCommonInc (.forallE `h a (mkApp4 rel carrier inst pre b) .default))
+  goal.assign (mkApp4 (mkConst ``Ascend.prop_le_imp) pre a b hgoal)
+  let .goal decls g ← Sym.intros hgoal.mvarId! | return none
+  let some fv := decls.back? | return none
+  let ty ← g.withContext do instantiateMVars (← fv.getType)
+  return some ({ scope with lastLiftedPre? := some (fv, ty) }, [g])
+
+/-- Natural-notation strategy: close `P' ⊑ (a = a)` reflexively via `prop_le_eq_refl`. -/
+private def eqReflClose? (goal : MVarId) (carrier pre rhs : Expr) : AscendM (Option Unit) := do
+  unless carrier.isProp do return none
+  let some (α, l, r) := rhs.eq? | return none
+  unless ← isDefEqS l r do return none
+  goal.assign (mkApp3 (mkConst ``Ascend.prop_le_eq_refl [← Meta.getLevel α]) pre α l)
+  return some ()
+
+/-- Natural-notation strategy: close a residual `P' ⊑ φ` against the most recently lifted
+hypothesis via `prop_le_of` (the `O(1)` counterpart of `liftedHyp?` for raw `Prop` couplings). -/
+private def hypCloseLifted? (scope : Scope) (goal : MVarId) (carrier pre rhs : Expr) :
+    AscendM (Option Unit) := do
+  unless carrier.isProp do return none
+  let some fv ← liftedPreFor? scope rhs | return none
+  goal.assign (mkApp3 (mkConst ``Ascend.prop_le_of) pre rhs (.fvar fv))
+  return some ()
 
 /-- Strategy: apply a registered spec for the program, most specific first. -/
 private def applySpec (scope : Scope) (goal : MVarId) (g : RWPApp) : AscendM SolveResult := do
@@ -98,9 +134,12 @@ def solve (scope : Scope) (goal : MVarId) : AscendM SolveResult := goal.withCont
   if let some gs ← rfl? goal then return .goals scope gs
   if let some (scope, gs) ← normalizePre? scope goal carrier pre target then return .goals scope gs
   if let some gs ← splitLatticeOp? goal rhs then return .goals scope gs
+  if let some gs ← andSplit? goal rel carrier inst pre rhs then return .goals scope gs
+  if let some (scope, gs) ← impIntro? scope goal rel carrier inst pre rhs then return .goals scope gs
+  if let some _ ← eqReflClose? goal carrier pre rhs then return .goals scope []
   if let some _ ← liftedHyp? scope goal carrier pre rhs then return .goals scope []
+  if let some _ ← hypCloseLifted? scope goal carrier pre rhs then return .goals scope []
   if let some g := parseRWP? rhs then
-    if let some rhs' ← holeZeta? g then return ← reshape rhs'
     if let some rhs' := progBeta? g then return ← reshape rhs'
     return ← applySpec scope goal g
   return .stop (.noProgress pre rhs)

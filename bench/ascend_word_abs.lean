@@ -24,18 +24,17 @@ def mkStmt (n : Nat) : MetaM Term :=
 def mkExpected (n : Nat) : MetaM Term :=
   `(chainA 7 $(quote n))
 
-def solveBaseline (n : Nat) (goal : MVarId) : MetaM (List MVarId × (Expr → Expr)) := do
+def solveBaseline (n : Nat) (goal : MVarId) : MetaM (List MVarId) := do
   let stx ← chainProofStx n
-  return (← solveUsingTactic goal (← `(tactic| exact $stx)), id)
+  solveUsingTactic goal (← `(tactic| exact $stx))
 
 def runBaseline (sizes : List Nat) (showSynth := false) : MetaM Unit := do
   IO.println "=== WordAbs baseline (generated rule-chain term) ==="
   runBench "WordAbs" mkStmt [``chainC] mkExpected solveBaseline (`(tactic| grind)) sizes
     (showSynth := showSynth)
 
-def solveEngine (_n : Nat) (goal : MVarId) : MetaM (List MVarId × (Expr → Expr)) := do
-  let (vcs, finalize) ← Ascend.mainWith goal #[]
-  return (vcs.toList, finalize)
+def solveEngine (_n : Nat) (goal : MVarId) : MetaM (List MVarId) :=
+  return (← Ascend.mainWith goal #[]).toList
 
 def runEngine (sizes : List Nat) (showSynth := false) : MetaM Unit := do
   IO.println "=== WordAbs ascend engine ==="

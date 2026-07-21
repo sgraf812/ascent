@@ -38,7 +38,7 @@ elab_rules : command
         | none => #[]
       -- Convert: synthesize the abstract program into `?a`, proving `ty` modulo the VCs.
       let proof ← mkFreshExprSyntheticOpaqueMVar ty
-      let (vcs, finalize) ← mainWith proof.mvarId! unfoldNames
+      let vcs ← mainWith proof.mvarId! unfoldNames
       -- Discharge the verification conditions.
       for vc in vcs do
         let some tac := tac
@@ -60,6 +60,6 @@ elab_rules : command
         if e.isMVar && e.mvarId! == aId then some (mkConst name.getId) else none
       addDecl <| .thmDecl {
         name := name.getId ++ `refines, levelParams := [], type := thmTy,
-        value := finalize (← instantiateMVars proof) }
+        value := ← instantiateMVars proof }
 
 end Ascend

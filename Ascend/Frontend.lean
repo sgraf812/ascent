@@ -38,35 +38,18 @@ def shareCommonRules (br : VCGen.BackwardRules) : SymM VCGen.BackwardRules :=
   }
 
 /-- Run the engine on `goal`: unseal the abstract hole, decompose (unfolding the concrete
-definitions in `unfold` first), return the VCs and the proof finalizer. Proof terms reference
-the sub-program holes as fvars; the finalizer substitutes all of them at once with the
-synthesized programs (one pass), and must be applied to the fully instantiated proof. -/
-def mainWith (goal : MVarId) (unfold : Array Name) :
-    MetaM (Array MVarId × (Expr → Expr)) := do
+definitions in `unfold` first), and return the VCs. -/
+def mainWith (goal : MVarId) (unfold : Array Name) : MetaM (Array MVarId) := do
   unsealAbstractHole goal
   let specs ← getSpecs
   let latticeOps := Lean.Elab.Tactic.Do.Internal.VCGen.mkLatticeOpTable {}
   let rawRules ← Lean.Elab.Tactic.Do.Internal.VCGen.mkBackwardRules
   SymM.run do
-    let act : AscendM (Array MVarId × (Expr → Expr)) := do
-      let vcs ← run goal unfold
-      let holes := (← get).holes
-      -- The substituted programs are closed, so a direct pointer-cached replace suffices:
-      -- unlike `replaceFVars` (abstract, then instantiate), it is binder-depth-independent
-      -- and preserves the proof's sharing.
-      let mut map : Std.HashMap FVarId Expr := {}
-      for (f, m) in holes do
-        map := map.insert f (← instantiateMVars (mkMVar m))
-      let subst := map
-      pure (vcs, fun e => e.replace fun x => match x with
-        | .fvar id => subst[id]?
-        | _ => none)
     let ctx : Context := { specs, latticeOps, backwardRules := ← shareCommonRules rawRules }
-    act.run ctx |>.run' {}
+    (run goal unfold).run ctx |>.run' {}
 
-/-- Run the engine on an already-unfolded `goal`, dropping the proof finalizer (usable only
-when the program has no sequencing, so no sub-program holes arise). -/
-def main (goal : MVarId) : MetaM (Array MVarId) := (·.1) <$> mainWith goal #[]
+/-- Run the engine on an already-unfolded `goal`. -/
+def main (goal : MVarId) : MetaM (Array MVarId) := mainWith goal #[]
 
 @[inherit_doc main]
 syntax (name := ascendTac) "ascend" : tactic

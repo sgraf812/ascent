@@ -152,7 +152,7 @@ private def fixAbstractSlot? (goal : MVarId) (g : RWPApp) (c : CachedRule) :
   -- are the spec's synthesis holes. Three cases by param count against the flex arity `k`:
   --   • `n = k`: the params are value inputs (a leaf's coupled value); bind them to the args.
   --   • `n > k`: the params are sub-programs (`a₁`, `a₂` of a sequencing rule); each becomes a
-  --     web metavariable in the slot's assignment and a let-bound hole fvar in the target.
+  --     fresh web metavariable, carried in the target's program position and decomposed in turn.
   --   • `n < k`: a leaf reached under accumulated continuation binders; its `n` inputs are the
   --     `n` most-recent outputs, so project the params onto the last `n` flex binders (the
   --     do-block's lexical threading), dropping the ancestors it does not read.
@@ -166,12 +166,10 @@ private def fixAbstractSlot? (goal : MVarId) (g : RWPApp) (c : CachedRule) :
   let hasProg := binderTys.any (·.getForallBody.getAppFn == amHead)
   if ts.isEmpty && !hasProg then return some none
   if binderTys.size > ts.size then
-    -- Sub-program params at a lower-arity slot. The slot's value is assigned from web
-    -- metavariables `?hᵢ` (a closed assignment among metavariables, never entering a goal),
-    -- while the rebuilt target carries each program-typed param as an implementation-detail
-    -- let-bound hole `aᵢ := ?hᵢ`: pending sub-programs appear in goals as fvars, so targets
-    -- stay metavariable-free, and `holeZeta?` exposes `?hᵢ` once its hole reaches the
-    -- program slot.
+    -- Sub-program params at a lower-arity slot (`a₁`, `a₂` of a sequencing rule): the slot's
+    -- value binds each to a fresh web metavariable `?hᵢ`, which the rebuilt target carries in
+    -- the program position. Applying the rule leaves each `?hᵢ` as the flex slot of a subgoal,
+    -- decomposed in turn.
     let tsTypes ← ts.mapM fun t => Meta.inferType t
     let htys ← binderTys.mapM fun bty =>
       tsTypes.foldrM (init := bty) (fun t acc => mkArrow t acc)
@@ -179,28 +177,11 @@ private def fixAbstractSlot? (goal : MVarId) (g : RWPApp) (c : CachedRule) :
     let m ← Meta.withLocalDeclsD ((Array.range ts.size).map fun i => (`w, fun _ => pure tsTypes[i]!))
       fun ws => Meta.mkLambdaFVars ws (lamBody.instantiateRev (hs.map (mkAppN · ws)))
     mvarId.assign m
-    let mut lctx ← getLCtx
-    let mut repl : Array Expr := #[]
-    for i in [:hs.size] do
-      if binderTys[i]!.getForallBody.getAppFn == amHead then
-        let fvarId ← mkFreshFVarId
-        lctx := lctx.mkLetDecl fvarId ((`_hole).appendIndexAfter i) htys[i]! hs[i]! false
-          .implDetail
-        repl := repl.push (mkFVar fvarId)
-        modify fun s => { s with holes := s.holes.push (fvarId, hs[i]!.mvarId!) }
-      else
-        repl := repl.push hs[i]!
-    return ← Meta.withLCtx lctx (← Meta.getLocalInstances) do
-      let slot := lamBody.instantiateRev (repl.map (mkAppN · ts))
-      let c ← instantiateMVars g.c
-      let rhs := mkAppN g.head (g.args.set! 17 slot |>.set! 18 c)
-      let_expr rel@Lean.Order.PartialOrder.rel carrier inst pre _ := ← goal.getType | return none
-      let target ← shareCommonInc (mkApp4 rel carrier inst pre rhs)
-      let ng ← mkFreshExprSyntheticOpaqueMVar target (← goal.getTag)
-      -- The successor's proof mentions the hole fvars; the final proof replaces them all at
-      -- once with the instantiated web, so no per-level binder is materialized.
-      goal.assign ng
-      return some (some ng.mvarId!)
+    let slot := lamBody.instantiateRev (hs.map (mkAppN · ts))
+    let c ← instantiateMVars g.c
+    let rhs := mkAppN g.head (g.args.set! 17 slot |>.set! 18 c)
+    let_expr rel@Lean.Order.PartialOrder.rel carrier inst pre _ := ← goal.getType | return none
+    return some (some (← setTargetRaw goal (mkApp4 rel carrier inst pre rhs)))
   let a ←
     if binderTys.size == ts.size then
       mvarId.assign lam

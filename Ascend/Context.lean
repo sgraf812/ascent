@@ -43,8 +43,6 @@ def c (g : RWPApp) : Expr := g.args[18]!
 def Q (g : RWPApp) : Expr := g.args[19]!
 def E (g : RWPApp) : Expr := g.args[20]!
 
-/-- Rebuild the `rwp` application with the abstract program replaced. -/
-def withA (g : RWPApp) (a : Expr) : Expr := mkAppN g.head (g.args.set! 17 a)
 /-- Rebuild the `rwp` application with the concrete program replaced. -/
 def withC (g : RWPApp) (c : Expr) : Expr := mkAppN g.head (g.args.set! 18 c)
 
@@ -92,10 +90,6 @@ structure State where
   the rule bakes in the carrier and instances) and its argument count (which fixes the operand
   and state-argument slots). The split-rule construction is reused; only the cache is ours. -/
   latticeCache : Std.HashMap (ExprPtr × Nat) BackwardRule := {}
-  /-- The sub-program holes: each let-bound hole fvar paired with its web metavariable. Proof
-  terms reference the fvars; the final proof substitutes all of them at once with the
-  instantiated web (`Expr.replaceFVars`, one pass over the proof). -/
-  holes : Array (FVarId × MVarId) := #[]
 
 /-- Per-goal scope threaded through the worklist. Carries the most recently lifted pure
 precondition so a residual `⌜φ⌝` entailment discharges against it in `O(1)` (the coupling a leaf
