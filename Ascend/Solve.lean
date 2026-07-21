@@ -1,4 +1,4 @@
-import Ascend.RuleConstruction
+import Ascend.Normalize
 
 /-!
 # The main solve step
@@ -23,8 +23,8 @@ inductive StopReason where
 
 /-- The result of one solve step. -/
 inductive SolveResult where
-  /-- The goal was decomposed into these subgoals. -/
-  | goals (subgoals : List MVarId)
+  /-- The goal was decomposed into these subgoals, sharing `scope`. -/
+  | goals (scope : Scope) (subgoals : List MVarId)
   /-- No further progress; emit the goal as a VC. -/
   | stop (reason : StopReason)
 
@@ -41,103 +41,68 @@ private def rtripleIntro? (goal : MVarId) (target : Expr) : AscendM (Option MVar
   let [goal] ← goal.applyConst ``Ascent.RTriple.intro | return none
   return some (← preprocessMVar goal)
 
-/-- Strategy: expand an applied rebound-coupling combinator, `rwpCont γ a₂ c₂ Q E v c`, to
-the continuation's `rwp`. The combinator form keeps rule-built goals lambda-free (a short
+/-- Reshape strategy: expand an applied rebound-coupling combinator, `rwpCont γ a₂ c₂ Q E v c`,
+to the continuation's `rwp`. The combinator form keeps rule-built goals lambda-free (a short
 application spine with a constant prefix instead of ~30 fresh nodes per bind). -/
-private def contExpand? (goal : MVarId) (target : Expr) : AscendM (Option MVarId) := do
-  let_expr rel@Lean.Order.PartialOrder.rel carrier inst pre rhs := target | return none
+private def contExpand? (rhs : Expr) : AscendM (Option Expr) := do
   unless rhs.getAppFn.isConstOf ``Ascent.rwpCont do return none
   let some rhs ← unfoldDefinition? rhs | return none
-  return some (← setTargetRaw goal (mkApp4 rel carrier inst pre rhs.headBeta))
+  return some rhs.headBeta
 
-/-- Strategy: beta-reduce the right-hand side of the entailment; rebound couplings arrive as
+/-- Reshape strategy: beta-reduce the entailment's right-hand side; rebound couplings arrive as
 `(fun av cv => …) v c` after a leaf consumes them. -/
-private def rhsBeta? (goal : MVarId) (target : Expr) : AscendM (Option MVarId) := do
-  let_expr rel@Lean.Order.PartialOrder.rel carrier inst pre rhs := target | return none
-  unless rhs.getAppFn.isLambda do return none
-  return some (← setTargetRaw goal (mkApp4 rel carrier inst pre rhs.headBeta))
+private def rhsBeta? (rhs : Expr) : Option Expr :=
+  if rhs.getAppFn.isLambda then some rhs.headBeta else none
 
-/-- Strategy: beta-reduce the program head; continuations arrive as `c₂ cv`. -/
-private def progBeta? (goal : MVarId) (target : Expr) (g : RWPApp) : AscendM (Option MVarId) := do
-  unless g.c.getAppFn.isLambda do return none
-  let_expr rel@Lean.Order.PartialOrder.rel carrier inst pre _ := target | return none
-  let rhs := mkAppN g.head (g.args.set! 18 g.c.headBeta)
-  return some (← setTargetRaw goal (mkApp4 rel carrier inst pre rhs))
+/-- Reshape strategy: activate a pending sub-program hole. The abstract slot is headed by a
+let-bound fvar (introduced at rule application for a postponed sub-program); zeta-expand this one
+occurrence so the slot exposes the underlying web metavariable and becomes the active slot. -/
+private def holeZeta? (g : RWPApp) : AscendM (Option Expr) := do
+  let some fvarId := g.a.getAppFn.fvarId? | return none
+  let some val ← fvarId.getValue? | return none
+  return some (g.withA (mkAppN val g.a.getAppArgs))
+
+/-- Reshape strategy: beta-reduce the program head; continuations arrive as `c₂ cv`. -/
+private def progBeta? (g : RWPApp) : Option Expr :=
+  if g.c.getAppFn.isLambda then some (g.withC g.c.headBeta) else none
 
 /-- Strategy: apply a registered spec for the program, most specific first. -/
-private def applySpec (goal : MVarId) (g : RWPApp) : AscendM SolveResult := do
+private def applySpec (scope : Scope) (goal : MVarId) (g : RWPApp) : AscendM SolveResult := do
   let mut cands ← (← read).specs.getMatch g.c
   cands := cands.qsort fun s₁ s₂ => s₁.specificity > s₂.specificity
   for spec in cands do
     if let some ngs ← applyRule goal g spec then
-      return .goals ngs
+      return .goals scope ngs
   return .stop (.noSpecFound g.c)
 
-/-- Strategy: close a reflexive equation on the right. The compared sides are substituted:
-rule application binds by metavariable assignment, and comparison needs canonical forms. -/
-private def eqRefl? (goal : MVarId) (target : Expr) : AscendM (Option Unit) := do
-  let_expr Lean.Order.PartialOrder.rel _ _ pre rhs := target | return none
-  unless rhs.isAppOfArity ``Eq 3 do return none
-  let args ← rhs.getAppArgs.mapM (instantiateMVars ·)
-  -- One-point: a flex side is a synthesis choice pinned by this very equation.
-  if args[1]!.isMVar then
-    unless ← isDefEq args[1]! args[2]! do return none
-  else
-    unless isSameExpr args[1]! args[2]! || args[1]! == args[2]! do return none
-  let u ← Sym.getLevel args[0]!
-  goal.assign (mkApp3 (mkConst ``Ascend.prop_le_eq_refl [u]) pre args[0]! args[1]!)
-  return some ()
-
-/-- Strategy: close against a hypothesis, such as a coupling established by an earlier leaf.
-The compared propositions are substituted: comparison needs canonical forms. -/
-private def hypClose? (goal : MVarId) (target : Expr) : AscendM (Option Unit) := do
-  let_expr Lean.Order.PartialOrder.rel _ _ pre rhsRaw := target | return none
-  let rhs ← instantiateMVars rhsRaw
-  -- Most recent first, without materializing the context: the wanted coupling is typically
-  -- the last leaf's, the immediately preceding declaration.
-  let decls := (← getLCtx).decls
-  let mut found := none
-  for i in [:decls.size] do
-    if let some (some d) := decls[decls.size - 1 - i]? then
-      unless d.isImplementationDetail do
-        let ty ← instantiateMVars d.type
-        if isSameExpr ty rhs || ty == rhs then
-          found := some d
-          break
-  let some hyp := found | return none
-  goal.assign (mkApp3 (mkConst ``Ascend.prop_le_of) pre rhs hyp.toExpr)
-  return some ()
-
-/-- Whether the entailment carrier is `Prop`, seeing through an assigned level. -/
-private def isPropCarrier (carrier : Expr) : MetaM Bool := do
-  let .sort u := carrier | return false
-  return (← instantiateLevelMVars u).isZero
-
 /--
-One solve step, dispatching the strategies in order: introduce `∀`/implication targets, unfold
-an `RTriple` target, then on `pre ⊑ rhs` beta-reduce the right-hand side, decompose an `rwp`
-application through the registered specs, and close residual `Prop`-lattice entailments (spec
-preconditions arrive already curried into subgoals by rule compilation).
+One solve step. Shape the target to `pre ⊑ rhs` (introduce `∀` targets, unfold an `RTriple`),
+reshape the right-hand side (unfold a rebound coupling, beta-reduce), close reflexively, drive the
+precondition toward `⊤` lifting pure content into the context, decompose a lattice connective
+through the reused split rules, discharge a residual `⌜φ⌝` against the last lifted hypothesis, and
+otherwise decompose the `rwp` application through the registered specs.
 -/
-def solve (goal : MVarId) : AscendM SolveResult := goal.withContext do
+def solve (scope : Scope) (goal : MVarId) : AscendM SolveResult := goal.withContext do
   let target ← goal.getType
-  if let some goal ← forallIntro? goal target then return .goals [goal]
-  if let some goal ← rtripleIntro? goal target then return .goals [goal]
+  if let some goal ← forallIntro? goal target then return .goals scope [goal]
+  if let some goal ← rtripleIntro? goal target then return .goals scope [goal]
+  if let some _ ← liftedHypBare? scope goal target then return .goals scope []
   let_expr rel@Lean.Order.PartialOrder.rel carrier inst pre rhs := target
     | return .stop (.noEntailment target)
-  -- An assigned coupling slot arrives as `?Q v c`; substitute the head so beta reduction and
-  -- the `rwp` parse below see the rebound continuation. Refresh the entailment with it.
-  let rhs ← instantiateMVarsIfMVarAppS rhs
-  let target := mkApp4 rel carrier inst pre rhs
-  if let some goal ← contExpand? goal target then return .goals [goal]
-  if let some goal ← rhsBeta? goal target then return .goals [goal]
+  -- Rebuild the entailment with a reshaped right-hand side; the four reshapers only compute the
+  -- new `rhs`, so the destructure and `mkApp4` rebuild happen once, here.
+  let reshape (rhs' : Expr) : AscendM SolveResult := do
+    return .goals scope [← setTargetRaw goal (mkApp4 rel carrier inst pre rhs')]
+  if let some rhs' ← contExpand? rhs then return ← reshape rhs'
+  if let some rhs' := rhsBeta? rhs then return ← reshape rhs'
+  if let some gs ← rfl? goal then return .goals scope gs
+  if let some (scope, gs) ← normalizePre? scope goal carrier pre target then return .goals scope gs
+  if let some gs ← splitLatticeOp? goal rhs then return .goals scope gs
+  if let some _ ← liftedHyp? scope goal carrier pre rhs then return .goals scope []
   if let some g := parseRWP? rhs then
-    if let some goal ← progBeta? goal target g then return .goals [goal]
-    return ← applySpec goal g
-  -- The carrier arrives as `Sort ?u` with `?u` assigned, from rules applied at fresh levels.
-  if ← isPropCarrier carrier then
-    if let some _ ← eqRefl? goal target then return .goals []
-    if let some _ ← hypClose? goal target then return .goals []
+    if let some rhs' ← holeZeta? g then return ← reshape rhs'
+    if let some rhs' := progBeta? g then return ← reshape rhs'
+    return ← applySpec scope goal g
   return .stop (.noProgress pre rhs)
 
 end Ascend

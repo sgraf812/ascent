@@ -14,24 +14,17 @@ namespace Ascend
 
 /-- Emit `goal` as a VC, stripping a `(⊤ : Prop) ⊑ ·` wrapper. -/
 def emitVC (goal : MVarId) : AscendM Unit := do
-  let mut goal := goal
-  let target ← instantiateMVars (← goal.getType)
-  if let some (carrier, _, pre, rhs) := target.app4? ``Lean.Order.PartialOrder.rel then
-    if carrier.isProp && pre.isAppOf ``Lean.Order.top then
-      let x := rhs
-      let vc ← goal.withContext <| mkFreshExprSyntheticOpaqueMVar x
-      goal.assign (mkApp2 (mkConst ``Lean.Order.top_le_prop) x vc)
-      goal := vc.mvarId!
+  let goal ← elimTopPre goal
   goal.setKind .syntheticOpaque
   modify fun s => { s with vcs := s.vcs.push goal }
 
 /-- Decompose the preprocessed `goal` to exhaustion, collecting VCs. -/
 def work (goal : MVarId) : AscendM Unit := do
-  let mut stack := #[goal]
-  while let some goal := stack.back? do
+  let mut stack := #[(goal, ({} : Scope))]
+  while let some (goal, scope) := stack.back? do
     stack := stack.pop
-    match ← solve goal with
-    | .goals subgoals => stack := stack ++ subgoals.reverse
+    match ← solve scope goal with
+    | .goals scope subgoals => stack := stack ++ subgoals.reverse.map (·, scope)
     | .stop (.noSpecFound c) => throwError "ascend: no spec found for program{indentExpr c}"
     | .stop _ => emitVC goal
 

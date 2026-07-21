@@ -3,9 +3,10 @@ import Ascend.Frontend
 /-!
 # The `ascend_def` command
 
-`ascend_def a from ⦃P⦄ (_ : AM AV) ⊑[γ] c ⦃Q; E⦄ unfolding [c…] by tac` synthesizes the abstract
-program into a new definition `a`, then states and proves the refinement theorem `a.refines`
-against it, discharging the verification conditions with `tac`.
+`ascend_def a from ⦃P⦄ (_ : AM AV) ⊑[γ] c ⦃Q; E⦄ by tac` synthesizes the abstract program into a
+new definition `a`, then states and proves the refinement theorem `a.refines` against it,
+discharging the verification conditions with `tac`. The concrete program's head definition is
+unfolded to expose its structure.
 
 This is AutoCorres' convert/define split: the engine *converts* (synthesizes the body and its
 proof against the `_` hole), and the command *defines* (extracts the body into `a` and restates
@@ -17,13 +18,11 @@ open Lean Meta Sym Elab Command Term
 namespace Ascend
 
 syntax (name := ascendCmd) "ascend_def " ident " from " term
-  (" unfolding " "[" ident,* "]")? (" by " tacticSeq)? : command
+  (" by " tacticSeq)? : command
 
 elab_rules : command
-  | `(ascend_def $name from $stmt $[unfolding [$unfolds,*]]? $[by $tac:tacticSeq]?) =>
+  | `(ascend_def $name from $stmt $[by $tac:tacticSeq]?) =>
     liftTermElabM do
-      let unfoldNames ← (unfolds.getD {}).getElems.mapM fun id =>
-        realizeGlobalConstNoOverloadWithInfo id
       -- Elaborate the refinement statement; the `_` in the abstract-program position is the
       -- synthesis hole.
       let ty ← elabTerm stmt (mkSort .zero)
@@ -33,9 +32,13 @@ elab_rules : command
         throwError "ascend: the statement is not a refinement triple:{indentExpr ty}"
       let .mvar aId := ty.getAppArgs[13]!.getAppFn
         | throwError "ascend: the abstract program must be a hole `(_ : AM AV)`"
+      -- Unfold exactly the concrete program's head definition to expose its structure.
+      let unfoldNames := match ty.getAppArgs[14]!.getAppFn.constName? with
+        | some c => #[c]
+        | none => #[]
       -- Convert: synthesize the abstract program into `?a`, proving `ty` modulo the VCs.
       let proof ← mkFreshExprSyntheticOpaqueMVar ty
-      let vcs ← mainWith proof.mvarId! unfoldNames
+      let (vcs, finalize) ← mainWith proof.mvarId! unfoldNames
       -- Discharge the verification conditions.
       for vc in vcs do
         let some tac := tac
@@ -57,6 +60,6 @@ elab_rules : command
         if e.isMVar && e.mvarId! == aId then some (mkConst name.getId) else none
       addDecl <| .thmDecl {
         name := name.getId ++ `refines, levelParams := [], type := thmTy,
-        value := ← instantiateMVars proof }
+        value := finalize (← instantiateMVars proof) }
 
 end Ascend

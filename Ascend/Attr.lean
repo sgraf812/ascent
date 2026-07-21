@@ -66,8 +66,15 @@ def analyzeSpec (declName : Name) : MetaM (SpecInfo × Array (DiscrTree.Key)) :=
           must be Q-generalized:{indentExpr Q}"
     let ePosition? := xs.idxOf? E
     let cPositions ← mvarPositions xs c
-    let avPositions := (← mvarPositions xs a).filter fun i =>
-      !cPositions.contains i && i != qPosition && some i != ePosition?
+    -- Synthesis holes are the value inputs and the sub-programs of the abstract program; a
+    -- polymorphic rule (`bind`) also has its value types, monad, and instances free in the
+    -- abstract side, which are fixed by unification, not synthesized. Keep only positions
+    -- whose type is neither a class instance nor type-like (its `∀`-body a `Sort`).
+    let avPositions ← (← mvarPositions xs a).filterM fun i => do
+      unless !cPositions.contains i && i != qPosition && some i != ePosition? do return false
+      let ty ← inferType xs[i]!
+      if (← isClass? ty).isSome then return false
+      forallTelescopeReducing ty fun _ b => return !b.isSort
     let keys ← DiscrTree.mkPath c
     return ({ declName, avPositions, qPosition, ePosition?, specificity := keys.size }, keys)
 

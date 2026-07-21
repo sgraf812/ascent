@@ -50,7 +50,7 @@ Run one synthesis benchmark and print a measurement line.
 * `discharge`: tactic for the residual VCs (forced only when there are any).
 -/
 def driver (label : String) (stmt : Term) (unfold : List Name) (expected : Term)
-    (solve : MVarId → MetaM (List MVarId)) (discharge : MetaM (TSyntax `tactic))
+    (solve : MVarId → MetaM (List MVarId × (Expr → Expr))) (discharge : MetaM (TSyntax `tactic))
     (showSynth : Bool := false) : TermElabM Unit := do
   let (ty, aMVar) ← elabSynthGoal stmt
   let expectedE ← Term.elabTermEnsuringType expected (← inferType (mkMVar aMVar))
@@ -64,7 +64,7 @@ def driver (label : String) (stmt : Term) (unfold : List Name) (expected : Term)
     | .goal goal => return goal
     | .noProgress => throwError "no progress unfolding {unfold} in {goal}"
     | .closed => throwError "unfolding closed the goal"
-  let (vcs, solveMs) ← timeItMs (solve goal)
+  let ((vcs, finalize), solveMs) ← timeItMs (solve goal)
   let dischargeMs? ← OptionT.run do
     guard !vcs.isEmpty
     let tac ← discharge
@@ -77,6 +77,7 @@ def driver (label : String) (stmt : Term) (unfold : List Name) (expected : Term)
   let (goldenOk, goldenMs) ← timeItMs do
     isDefEq (← instantiateMVars (mkMVar aMVar)) expectedE
   let (prf, instMs) ← timeItMs (instantiateMVars proof)
+  let (prf, finMs) ← timeItMs (do return finalize prf)
   let (prf, shareMs) ← timeItMs (do return ShareCommon.shareCommon prf)
   let (_, kernelMs) ← timeItMs (checkWithKernel prf)
   let pad := "".pushn ' ' (20 - min label.length 20)
@@ -88,13 +89,15 @@ def driver (label : String) (stmt : Term) (unfold : List Name) (expected : Term)
   msg := msg ++ s!", golden{if goldenOk then "" else " FAILED"} {goldenMs} ms"
   if instMs > 1000 then
     msg := msg ++ s!", instantiate {instMs} ms"
+  if finMs > 1000 then
+    msg := msg ++ s!", finalize {finMs} ms"
   msg := msg ++ s!", share {shareMs} ms, kernel {kernelMs} ms"
   IO.println msg
 
 /-- Run a benchmark family over `sizes`. `mkStmt`/`mkExpected` build the per-size statement and
 expected program; `solve` gets the size for solvers that generate size-dependent proofs. -/
 def runBench (label : String) (mkStmt : Nat → MetaM Term) (unfold : List Name)
-    (mkExpected : Nat → MetaM Term) (solve : Nat → MVarId → MetaM (List MVarId))
+    (mkExpected : Nat → MetaM Term) (solve : Nat → MVarId → MetaM (List MVarId × (Expr → Expr)))
     (discharge : MetaM (TSyntax `tactic)) (sizes : List Nat) (showSynth : Bool := false) :
     MetaM Unit := do
   for n in sizes do

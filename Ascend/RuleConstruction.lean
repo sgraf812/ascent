@@ -1,5 +1,5 @@
 import Ascend.Context
-import Ascend.Rules
+import Ascent.Corres.RTriple
 
 /-!
 # Rule compilation and application
@@ -73,44 +73,6 @@ instances, `Ξ`, `HasEPost`, and `γ`. The program and value types (and with the
 instances) stay parametric, so one compiled rule serves every node of a chain. -/
 private def phasePositions : Array Nat := #[4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 16]
 
-/-- The hypothesis types of a curried `Prop`-lattice precondition: conjunctions split,
-implication hypotheses distribute over their branch's hypotheses, leaves become entailments
-`P' ⊑ leaf` (via `mkRel`). -/
-private partial def curryHyps (mkRel : Expr → Expr) (pre : Expr) : List Expr :=
-  if pre.isAppOfArity ``And 2 then
-    curryHyps mkRel pre.appFn!.appArg! ++ curryHyps mkRel pre.appArg!
-  else if pre.isArrow then
-    curryHyps mkRel pre.bindingBody! |>.map fun t =>
-      .forallE `a pre.bindingDomain! t .default
-  else
-    [mkRel pre]
-
-/-- The proof of `P' ⊑ pre` from the curried hypotheses, consuming them in `curryHyps` order:
-`prop_le_and` at conjunctions, `prop_le_imp` at implications (with the hypotheses applied to
-the introduced antecedent), the hypothesis itself at a leaf. -/
-private partial def buildPreProof (mkRel : Expr → Expr) (P' pre : Expr) (hyps : List Expr)
-    (curried : Bool) : AscendM (Expr × List Expr) := do
-  if curried && pre.isAppOfArity ``And 2 then
-    let A := pre.appFn!.appArg!
-    let B := pre.appArg!
-    let (pa, rest) ← buildPreProof mkRel P' A hyps curried
-    let (pb, rest) ← buildPreProof mkRel P' B rest curried
-    return (mkApp5 (mkConst ``Ascend.prop_le_and) P' A B pa pb, rest)
-  if curried && pre.isArrow then
-    let A := pre.bindingDomain!
-    let B := pre.bindingBody!
-    -- Only this branch's hypotheses receive the antecedent; later siblings stay untouched.
-    let n := (curryHyps id B).length
-    let (own, rest) := (hyps.take n, hyps.drop n)
-    let prf ← withLocalDeclD `a A fun a => do
-      let (pb, leftover) ← buildPreProof mkRel P' B (own.map (mkApp · a)) curried
-      unless leftover.isEmpty do throwError "ascend: precondition currying mismatch"
-      mkLambdaFVars #[a] pb
-    return (mkApp4 (mkConst ``Ascend.prop_le_imp) P' A B prf, rest)
-  match hyps with
-  | h :: rest => return (h, rest)
-  | [] => throwError "ascend: precondition currying mismatch"
-
 /-- Compile `spec` to apply-ready form against the phase of the goal `g`. -/
 private def compileRule (si : SpecInfo) (g : RWPApp) : AscendM (Option CachedRule) := do
   let rule ← mkConstWithFreshMVarLevels si.declName
@@ -141,22 +103,19 @@ private def compileRule (si : SpecInfo) (g : RWPApp) : AscendM (Option CachedRul
         mkLambdaFVars xs <| a.replace fun e => avMVars.idxOf? e |>.map (xs[·]!)
       -- Substitute eagerly: this is compile-time work, shared by all applications.
       pure (some (← abstractMVars (← instantiateMVars lam)))
-  -- The auxiliary theorem `∀ P' h₁ … hₖ, P' ⊑ rwp …`, the precondition curried into the
-  -- hypotheses `hᵢ`.
+  -- The auxiliary theorem `∀ P' (h : P' ⊑ pre'), P' ⊑ rwp …`, leaving the precondition entailment
+  -- as the sole subgoal; `solve` decomposes it through the lattice-connective split rules.
   let relTy ← instantiateMVars relTy
   let_expr rel@Lean.Order.PartialOrder.rel relCarrier relInst rulePre ruleRhs := relTy | return none
   let pre' ← instantiateMVars rulePre
   let carrier ← instantiateMVars g.CPred
+  -- The auxiliary theorem `∀ P' (h : P' ⊑ pre'), P' ⊑ rwp …`, leaving the precondition entailment
+  -- as the sole subgoal; `solve` decomposes it through the lattice-connective split rules.
   let aux ← withLocalDeclD `P' carrier fun P' => do
-    let mkRel := fun pre => mkApp4 rel relCarrier relInst P' pre
-    let hypTys := if carrier.isProp then curryHyps mkRel pre' else [mkRel pre']
-    let decls := hypTys.toArray.map fun t => (`h, fun (_ : Array Expr) => (pure t : AscendM Expr))
-    withLocalDeclsD decls fun hs => do
-      let (prePrf, rest) ← buildPreProof mkRel P' pre' hs.toList (carrier.isProp)
-      unless rest.isEmpty do throwError "ascend: precondition currying mismatch"
+    withLocalDeclD `h (mkApp4 rel relCarrier relInst P' pre') fun h => do
       let relTrans := mkConst ``Lean.Order.PartialOrder.rel_trans rel.constLevels!
-      mkLambdaFVars (#[P'] ++ hs) <|
-        mkApp7 relTrans relCarrier relInst P' pre' ruleRhs prePrf (← instantiateMVars prf)
+      mkLambdaFVars #[P', h] <|
+        mkApp7 relTrans relCarrier relInst P' pre' ruleRhs h (← instantiateMVars prf)
   -- Substitute eagerly: this is compile-time work, shared by all applications.
   let res ← abstractMVars (← instantiateMVars aux)
   let rule ← mkBackwardRuleFromExpr res.expr res.paramNames.toList
@@ -186,12 +145,75 @@ private def fixAbstractSlot? (goal : MVarId) (g : RWPApp) (c : CachedRule) :
   -- metavariable assignment, and every later inspection would otherwise re-walk the
   -- assigned-mvar chain. The previous leaf cleaned its prefix, so this is one layer per leaf.
   let ts ← goalA.getAppArgs.mapM (instantiateMVars ·)
-  if ts.isEmpty then return some none
-  let some tmpl := c.template? | return none
+  let some tmpl := c.template? | return (if ts.isEmpty then some none else none)
   let (_, _, lam) ← openAbstractMVarsResult tmpl
-  unless lam.isLambda do return none
-  mvarId.assign lam
-  let a := lam.beta ts
+  unless lam.isLambda do return (if ts.isEmpty then some none else none)
+  -- Assign the flex slot `?m t₁ … tₖ` from the template `fun p₁ … pₙ => body`, whose params
+  -- are the spec's synthesis holes. Three cases by param count against the flex arity `k`:
+  --   • `n = k`: the params are value inputs (a leaf's coupled value); bind them to the args.
+  --   • `n > k`: the params are sub-programs (`a₁`, `a₂` of a sequencing rule); each becomes a
+  --     web metavariable in the slot's assignment and a let-bound hole fvar in the target.
+  --   • `n < k`: a leaf reached under accumulated continuation binders; its `n` inputs are the
+  --     `n` most-recent outputs, so project the params onto the last `n` flex binders (the
+  --     do-block's lexical threading), dropping the ancestors it does not read.
+  let mut binderTys := #[]
+  let mut lamBody := lam
+  while lamBody.isLambda do
+    binderTys := binderTys.push lamBody.bindingDomain!
+    lamBody := lamBody.bindingBody!
+  -- A bare slot whose template has only value params is bound directly by the matcher.
+  let amHead := g.AProg.getAppFn
+  let hasProg := binderTys.any (·.getForallBody.getAppFn == amHead)
+  if ts.isEmpty && !hasProg then return some none
+  if binderTys.size > ts.size then
+    -- Sub-program params at a lower-arity slot. The slot's value is assigned from web
+    -- metavariables `?hᵢ` (a closed assignment among metavariables, never entering a goal),
+    -- while the rebuilt target carries each program-typed param as an implementation-detail
+    -- let-bound hole `aᵢ := ?hᵢ`: pending sub-programs appear in goals as fvars, so targets
+    -- stay metavariable-free, and `holeZeta?` exposes `?hᵢ` once its hole reaches the
+    -- program slot.
+    let tsTypes ← ts.mapM fun t => Meta.inferType t
+    let htys ← binderTys.mapM fun bty =>
+      tsTypes.foldrM (init := bty) (fun t acc => mkArrow t acc)
+    let hs ← htys.mapM fun hty => (Meta.mkFreshExprMVar (some hty) : MetaM Expr)
+    let m ← Meta.withLocalDeclsD ((Array.range ts.size).map fun i => (`w, fun _ => pure tsTypes[i]!))
+      fun ws => Meta.mkLambdaFVars ws (lamBody.instantiateRev (hs.map (mkAppN · ws)))
+    mvarId.assign m
+    let mut lctx ← getLCtx
+    let mut repl : Array Expr := #[]
+    for i in [:hs.size] do
+      if binderTys[i]!.getForallBody.getAppFn == amHead then
+        let fvarId ← mkFreshFVarId
+        lctx := lctx.mkLetDecl fvarId ((`_hole).appendIndexAfter i) htys[i]! hs[i]! false
+          .implDetail
+        repl := repl.push (mkFVar fvarId)
+        modify fun s => { s with holes := s.holes.push (fvarId, hs[i]!.mvarId!) }
+      else
+        repl := repl.push hs[i]!
+    return ← Meta.withLCtx lctx (← Meta.getLocalInstances) do
+      let slot := lamBody.instantiateRev (repl.map (mkAppN · ts))
+      let c ← instantiateMVars g.c
+      let rhs := mkAppN g.head (g.args.set! 17 slot |>.set! 18 c)
+      let_expr rel@Lean.Order.PartialOrder.rel carrier inst pre _ := ← goal.getType | return none
+      let target ← shareCommonInc (mkApp4 rel carrier inst pre rhs)
+      let ng ← mkFreshExprSyntheticOpaqueMVar target (← goal.getTag)
+      -- The successor's proof mentions the hole fvars; the final proof replaces them all at
+      -- once with the instantiated web, so no per-level binder is materialized.
+      goal.assign ng
+      return some (some ng.mvarId!)
+  let a ←
+    if binderTys.size == ts.size then
+      mvarId.assign lam
+      pure (lam.beta ts)
+    else
+      -- Value params under accumulated continuation binders: project onto the last binders.
+      let tsTypes ← ts.mapM fun t => Meta.inferType t
+      Meta.withLocalDeclsD ((Array.range ts.size).map fun i => (`w, fun _ => pure tsTypes[i]!))
+        fun ws => do
+          let body := lamBody.instantiateRev (ws.extract (ws.size - binderTys.size) ws.size)
+          let m ← Meta.mkLambdaFVars ws body
+          mvarId.assign m
+          pure (m.beta ts)
   -- The concrete slot gets the same once-per-leaf substitution as the values: rule
   -- application leaves an assigned metavariable node per bind in it, and the `hasMVar` flags
   -- of the whole prefix would defeat pruning in every later inspection.

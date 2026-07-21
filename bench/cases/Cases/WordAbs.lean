@@ -34,12 +34,14 @@ and the continuation receives the no-overflow guard and the *established* coupli
 as hypotheses, so downstream coupling obligations close by assumption instead of re-deriving
 the chain's arithmetic. -/
 @[ascend] theorem addW_spec (av : Int) (cv y : UInt64) {Q : Int → UInt64 → Prop} {E : EPost.Nil} :
-    ⦃(av = wordVal cv ∧
-        (av + wordVal y < 2 ^ 64 → av + wordVal y = wordVal (cv + y) →
+    ⦃(⌜av = wordVal cv⌝ ⊓
+        (⌜av + wordVal y < 2 ^ 64⌝ ⇨ ⌜av + wordVal y = wordVal (cv + y)⌝ ⇨
           Q (av + wordVal y) (cv + y)) : Prop)⦄
       (UB.guardRet (av + wordVal y < 2 ^ 64) (av + wordVal y))
       ⊑[γw] (pure (cv + y) : Id UInt64) ⦃Q; E⦄ := by
-  refine RTriple.guardRet _ _ fun hovf hp => hp.2 hovf ?_
+  refine RTriple.guardRet _ _ fun hovf hp => ?_
+  simp only [meet_prop_eq_and, himp_prop_eq_imp, ofProp_prop_eq] at hp
+  refine hp.2 hovf ?_
   obtain ⟨hav, -⟩ := hp
   subst hav
   show wordVal cv + wordVal y = wordVal (cv + y)
@@ -54,7 +56,7 @@ theorem refines_addW (av : Int) (cv y : UInt64) :
       (UB.guardRet (av + wordVal y < 2 ^ 64) (av + wordVal y))
       ⊑[γw] (pure (cv + y) : Id UInt64) ⦃(⌜· = wordVal ·⌝)⦄ := by
   refine (addW_spec av cv y).weaken ?_
-  simp only [ofProp_prop_eq]
+  simp only [meet_prop_eq_and, himp_prop_eq_imp, ofProp_prop_eq]
   intro hav
   exact ⟨hav, fun _ hcpl => hcpl⟩
 

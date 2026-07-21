@@ -87,13 +87,17 @@ noncomputable def Concretization.ePost {CPred APred : Type w} {CEPred AEPred : T
     (E : εa → εc → CPred) (Ea : EPost.Cons (εa → APred) ARest) :
     (γ.ePost E Ea).tail = (γ.ePred Ea).tail := rfl
 
+/-- A frame: meeting with any element preserves joins, so Heyting implication has a modus ponens
+(`meet_himp_le`) at every element. -/
+abbrev Frame (α : Type w) [Assertion α] : Prop := ∀ a : α, PreservesSup (meet a)
+
 /-- Meet distributes over indexed joins in a frame. -/
 theorem meet_iSup_le {l : Type w} [Assertion l] [Frame l] {ι : Sort _} (x : l) (f : ι → l) :
     x ⊓ iSup f ⊑ iSup fun i => x ⊓ f i :=
   PartialOrder.rel_trans
     (CompleteLattice.meet_mono_right (iSup_le _ _ fun i =>
       CompleteLattice.le_himp_of_meet_le_comm (le_iSup (fun i => x ⊓ f i) i)))
-    CompleteLattice.meet_himp_le
+    meet_himp_le
 
 section
 variable {CProg AProg : Type _} {CVal AVal : Type _}
@@ -166,7 +170,7 @@ theorem rwp_intro
       P ⊓ γ.pred (wp a Qa Ea) ⊑ wp c (γ.post Q Qa) (γ.ePost E Ea)) :
     P ⊑ rwp γ a c Q E :=
   le_iInf _ _ fun Qa => le_iInf _ _ fun Ea =>
-    himp_complete _ _ _ (PartialOrder.rel_trans CompleteLattice.meet_le_comm (h Qa Ea))
+    le_himp (PartialOrder.rel_trans CompleteLattice.meet_le_comm (h Qa Ea))
 
 /-- Elimination for `rwp`: instantiate the weakest precondition of refinement at an abstract
 postcondition pair. -/

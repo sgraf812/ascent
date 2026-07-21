@@ -1,8 +1,9 @@
-import Ascend.Rules
 import Ascend.Attr
 import Ascend.Registry
 import Ascend.Context
 import Ascend.RuleConstruction
+import Ascend.Lattice
+import Ascend.Normalize
 import Ascend.Solve
 import Ascend.Driver
 import Ascend.Frontend
