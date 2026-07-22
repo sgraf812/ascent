@@ -42,11 +42,13 @@ private def rtripleIntro? (goal : MVarId) (target : Expr) : AscendM (Option MVar
   let [goal] ← goal.applyConst ``Ascent.RTriple.intro | return none
   return some (← preprocessMVar goal)
 
-/-- Reshape strategy: expand an applied rebound-coupling combinator, `rwpCont γ a₂ c₂ Q E v c`,
-to the continuation's `rwp`. The combinator form keeps rule-built goals lambda-free (a short
-application spine with a constant prefix instead of ~30 fresh nodes per bind). -/
+/-- Reshape strategy: expand an applied rebound-coupling combinator to the continuation's `rwp`
+(`rwpCont γ a₂ c₂ Q E v c` on the value side, `rwpECont γ ah ch Q E ea ec` on the exception
+side). The combinator form keeps rule-built goals lambda-free (a short application spine with a
+constant prefix instead of ~30 fresh nodes per step). -/
 private def contExpand? (rhs : Expr) : AscendM (Option Expr) := do
-  unless rhs.getAppFn.isConstOf ``Ascent.rwpCont do return none
+  let fn := rhs.getAppFn
+  unless fn.isConstOf ``Ascent.rwpCont || fn.isConstOf ``Ascent.rwpECont do return none
   let some rhs ← unfoldDefinition? rhs | return none
   return some rhs.headBeta
 

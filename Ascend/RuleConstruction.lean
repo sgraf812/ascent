@@ -81,11 +81,13 @@ private def compileRule (si : SpecInfo) (g : RWPApp) : AscendM (Option CachedRul
   let (mvs, bis, concl) ← forallMetaTelescope (← Meta.inferType rule)
   let some (relTy, prf) ← conclusionProof rule mvs concl | return none
   let some ruleRwp := parseRWP? relTy.appArg! | return none
-  -- Pin the phase, and the monads (the proof-only instances depend on them).
+  -- Pin the phase, and the monads: the abstract/concrete program types are `M α`, so peel the
+  -- value type with `appFn!` to compare the monad `M` itself (`getAppFn` would over-strip a
+  -- parameterized monad like `Except ε` to its head).
   for i in phasePositions do
     unless ← isDefEqGuarded ruleRwp.args[i]! g.args[i]! do return none
-  unless ← isDefEqGuarded ruleRwp.AProg.getAppFn g.AProg.getAppFn do return none
-  unless ← isDefEqGuarded ruleRwp.CProg.getAppFn g.CProg.getAppFn do return none
+  unless ← isDefEqGuarded ruleRwp.AProg.appFn! g.AProg.appFn! do return none
+  unless ← isDefEqGuarded ruleRwp.CProg.appFn! g.CProg.appFn! do return none
   for mv in mvs, bi in bis do
     if bi.isInstImplicit && !(← mv.mvarId!.isAssigned) then
       mv.mvarId!.assign (← Meta.synthInstance (← instantiateMVars (← Meta.inferType mv)))

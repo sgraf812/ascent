@@ -414,6 +414,16 @@ variable {εa εc AV CV : Type}
   {γ : Concretization Prop Prop (EPost.Cons (εc → Prop) EPost.Nil)
     (EPost.Cons (εa → Prop) EPost.Nil)}
 
+/-- The handlers' `rwp`, rebound as an exception coupling. The exceptional mirror of `rwpCont`:
+a tactic that decomposes `tryCatch` instantiates one short application per step instead of a
+fresh lambda. -/
+noncomputable def rwpECont
+    (γ : Concretization Prop Prop (EPost.Cons (εc → Prop) EPost.Nil)
+      (EPost.Cons (εa → Prop) EPost.Nil))
+    (ah : εa → Except εa AV) (ch : εc → Except εc CV) (Q : AV → CV → Prop)
+    (E : εa → εc → Prop) : εa → εc → Prop :=
+  fun ea ec => rwp γ (ah ea) (ch ec) Q E
+
 /-- The triple throw rule: `throw` consumes the exception coupling. -/
 theorem RTriple.throw {Q : AV → CV → Prop} {E : εa → εc → Prop} (ea : εa) (ec : εc) :
     ⦃E ea ec⦄ (MonadExceptOf.throw ea : Except εa AV)
@@ -425,7 +435,7 @@ exception coupling, is the precondition. -/
 theorem RTriple.tryCatch {Q : AV → CV → Prop} {E : εa → εc → Prop}
     {ax : Except εa AV} {cx : Except εc CV}
     {ah : εa → Except εa AV} {ch : εc → Except εc CV} :
-    ⦃rwp γ ax cx Q (fun ea ec => rwp γ (ah ea) (ch ec) Q E)⦄
+    ⦃rwp γ ax cx Q (rwpECont γ ah ch Q E)⦄
       (MonadExceptOf.tryCatch ax ah) ⊑[γ] (MonadExceptOf.tryCatch cx ch) ⦃Q; E⦄ :=
   ⟨rwp_tryCatch⟩
 
