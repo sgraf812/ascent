@@ -97,10 +97,13 @@ instance : WPMonadExact UB Prop EPost.Nil where
   wp_bind_le := UB.wp_bind_le
 
 /-- `UB`'s `wp` is conjunctive. -/
-instance {α} : WPConjunctive (UB α) α Prop EPost.Nil where
-  wp_meet_wp_le x Q₁ Q₂ E := by
-    rw [show (Q₁ ⊓ Q₂) = fun v => Q₁ v ⊓ Q₂ v from funext fun v => meet_apply Q₁ Q₂ v]
-    exact UB.wp_meet x Q₁ Q₂ E
+instance {α} (x : UB α) : WPConjunctive x where
+  wp_meet_wp_le Q₁ Q₂ E₁ E₂ := by
+    cases x with
+    | none => exact meet_le_left _ _
+    | some a =>
+      rw [show (Q₁ ⊓ Q₂) = fun v => Q₁ v ⊓ Q₂ v from funext fun v => meet_apply Q₁ Q₂ v]
+      exact PartialOrder.rel_refl
 
 /-- A guarded pure value abstracts a pure value: under the guard, the precondition entails the
 coupling; on a failed guard the abstract program fails and the refinement is discharged

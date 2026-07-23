@@ -210,7 +210,7 @@ theorem RTriple.ite {cond : Prop} [Decidable cond] {a₁ a₂ : AProg} {c₁ c�
 
 /-- A concrete `wp` fact rides along in the value coupling: what the concrete program
 establishes on normal return strengthens the relational postcondition. -/
-theorem RTriple.conj_wp [Frame CPred] [WPConjunctive CProg CVal CPred CEPred]
+theorem RTriple.conj_wp [Frame CPred] [WPConjunctive c]
     {R : CVal → CPred} (h : ⦃P⦄ a ⊑[γ] c ⦃Q; E⦄) (hw : P ⊑ wp c R ⊥) :
     ⦃P⦄ a ⊑[γ] c ⦃fun av cv => Q av cv ⊓ R cv; E⦄ := by
   refine ⟨rwp_intro fun Qa Ea => ?_⟩
@@ -220,8 +220,9 @@ theorem RTriple.conj_wp [Frame CPred] [WPConjunctive CProg CVal CPred CEPred]
       (PartialOrder.rel_trans (meet_le_left _ _) (WP.wp_econs_bot_le c R _ hw))
   refine PartialOrder.rel_trans h1 ?_
   refine PartialOrder.rel_trans
-    (WPConjunctive.wp_meet_wp_le c (γ.post Q Qa) R (γ.ePost E Ea)) ?_
-  refine WP.wp_consequence c _ _ _ fun cv => ?_
+    (WPConjunctive.wp_meet_wp_le (γ.post Q Qa) R (γ.ePost E Ea) (γ.ePost E Ea)) ?_
+  refine WP.wp_consequence_econs c _ _ _ _ ?_ (meet_le_left _ _)
+  intro cv
   rw [meet_apply]
   refine PartialOrder.rel_trans CompleteLattice.meet_le_comm ?_
   refine PartialOrder.rel_trans

@@ -73,6 +73,12 @@ instances, `Ξ`, `HasEPost`, and `γ`. The program and value types (and with the
 instances) stay parametric, so one compiled rule serves every node of a chain. -/
 private def phasePositions : Array Nat := #[4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 16]
 
+/-- The monad of a program type `M α`: peel the value type. A program type that is not an
+application (an undetermined metavariable, or a non-monadic `WP` carrier) has no value type to
+peel and is compared whole. -/
+private def monadOf (progTy : Expr) : Expr :=
+  if progTy.isApp then progTy.appFn! else progTy
+
 /-- Compile `spec` to apply-ready form against the phase of the goal `g`. -/
 private def compileRule (si : SpecInfo) (g : RWPApp) : AscendM (Option CachedRule) := do
   let rule ← mkConstWithFreshMVarLevels si.declName
@@ -81,13 +87,13 @@ private def compileRule (si : SpecInfo) (g : RWPApp) : AscendM (Option CachedRul
   let (mvs, bis, concl) ← forallMetaTelescope (← Meta.inferType rule)
   let some (relTy, prf) ← conclusionProof rule mvs concl | return none
   let some ruleRwp := parseRWP? relTy.appArg! | return none
-  -- Pin the phase, and the monads: the abstract/concrete program types are `M α`, so peel the
-  -- value type with `appFn!` to compare the monad `M` itself (`getAppFn` would over-strip a
-  -- parameterized monad like `Except ε` to its head).
+  -- Pin the phase, and the monads: compare the monad `M` of each program type `M α` via
+  -- `monadOf` (peeling the value type), so a parameterized monad like `Except ε` is not
+  -- over-stripped to its head as `getAppFn` would.
   for i in phasePositions do
     unless ← isDefEqGuarded ruleRwp.args[i]! g.args[i]! do return none
-  unless ← isDefEqGuarded ruleRwp.AProg.appFn! g.AProg.appFn! do return none
-  unless ← isDefEqGuarded ruleRwp.CProg.appFn! g.CProg.appFn! do return none
+  unless ← isDefEqGuarded (monadOf ruleRwp.AProg) (monadOf g.AProg) do return none
+  unless ← isDefEqGuarded (monadOf ruleRwp.CProg) (monadOf g.CProg) do return none
   for mv in mvs, bi in bis do
     if bi.isInstImplicit && !(← mv.mvarId!.isAssigned) then
       mv.mvarId!.assign (← Meta.synthInstance (← instantiateMVars (← Meta.inferType mv)))
