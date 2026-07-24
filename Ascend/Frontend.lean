@@ -25,7 +25,7 @@ def unsealAbstractHole (goal : MVarId) : MetaM Unit := do
 open Lean.Elab.Tactic.Do.Internal in
 /-- Intern every backward rule's matching pattern, so apply-time unification is pointer-fast. -/
 def shareCommonRules (br : VCGen.BackwardRules) : SymM VCGen.BackwardRules :=
-  return {
+  return { br with
     tripleIntro := ← br.tripleIntro.shareCommon
     stateArgIntro := ← br.stateArgIntro.shareCommon
     propPreIntro := ← br.propPreIntro.shareCommon
