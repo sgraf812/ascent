@@ -75,9 +75,9 @@ theorem refines_whileLoop {Aσ Cσ : Type} (J : Aσ → Cσ → Prop)
     rw [wp_whileLoop]
     have hcc := hcond as cs hJ
     by_cases hc : acond as = true
-    · rw [if_pos hc] at hwp
+    · rw [ite_eq_left hc] at hwp
       have hcct : ccond cs = true := by rw [← hcc]; exact hc
-      rw [if_pos hcct]
+      rw [ite_eq_left hcct]
       have hsucc : wp abody (fun _ _ => True) E as :=
         WP.wp_consequence abody _ _ E (fun _ _ _ => trivial) as hwp
       have hcomb := wp_and_StateT abody _ _ E as hwp (hμ E as hc hsucc)
@@ -89,9 +89,9 @@ theorem refines_whileLoop {Aσ Cσ : Type} (J : Aσ → Cσ → Prop)
       obtain ⟨_, as', hJ', hwp', hlt'⟩ := hpost'
       exact ih as' cs' (Nat.lt_of_lt_of_le hlt' (Nat.lt_succ_iff.mp hlt)) hJ' hwp'
     · have hcf : acond as = false := by simp only [Bool.not_eq_true] at hc; exact hc
-      rw [if_neg (by rw [hcf]; simp)] at hwp
+      rw [ite_eq_right (by rw [hcf]; simp)] at hwp
       have hccf : ccond cs = false := by rw [← hcc]; exact hcf
-      rw [if_neg (by rw [hccf]; simp)]
+      rw [ite_eq_right (by rw [hccf]; simp)]
       simp only [relRef_post_top]
       exact ⟨(), as, hJ, hwp⟩
 

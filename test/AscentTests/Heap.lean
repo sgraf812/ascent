@@ -60,10 +60,10 @@ example (p q : Nat) :
   rw [wp_swapA, wp_swapC]
   intro h hpre
   by_cases hpq : p ≠ q
-  · rw [if_pos hpq] at hpre
+  · rw [ite_eq_left hpq] at hpre
     rw [swapImpl_eq_spec hpq]
     simp only [Concretization.post_pi, Concretization.id, id_eq,
       CompleteLattice.ofProp_apply, ofProp_prop_eq]
     exact ⟨⟨⟩, trivial, hpre⟩
-  · rw [if_neg hpq, bot_prop_eq] at hpre
+  · rw [ite_eq_right hpq, bot_prop_eq] at hpre
     exact hpre.elim

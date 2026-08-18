@@ -309,7 +309,7 @@ theorem refines_stepL2 (a b out : Addr) (n : USize) :
     simp only [hv1, hv2, hv3, Bool.and_true, Bool.and_false, bot_prop_eq, Bool.false_eq_true]
       at habs <;>
     (try exact habs.elim)
-  simp only [if_true] at habs
+  simp only [ite_true] at habs
   refine WP.wp_econs_bot stepL1 _ _ cs ?_
   have key : ⦃fun s => invL2 a b out n (i, cs.heap) s ∧ s.heap.valid (a + i.toNat) = true ∧
       s.heap.valid (b + i.toNat) = true ∧ s.heap.valid (out + i.toNat) = true⦄
@@ -337,7 +337,7 @@ theorem refines_L1L2 (a b out : Addr) (n : USize) :
     have hlt : i.toNat < n.toNat := USize.lt_iff_toNat_lt.mp (by simpa [guardL2] using hcond)
     split at hsucc
     · next hv =>
-      rw [if_pos hv]
+      rw [ite_eq_left hv]
       have hbound : i.toNat + 1 < 2 ^ System.Platform.numBits := by
         have := USize.toNat_lt_two_pow_numBits n; omega
       have heq : (i + 1).toNat = i.toNat + 1 := by
@@ -401,11 +401,11 @@ theorem zippedL3_body (a b : Array I) (k : Nat) (out : Array I) :
     rw [Array.getElem_setIfInBounds (by rw [zippedL3_size]; exact hi₂)]
     simp only [zippedL3, Array.getElem_ofFn]
     by_cases hik : k = i
-    · subst hik; rw [if_pos rfl, if_pos (by omega)]
-    · rw [if_neg hik]
+    · subst hik; rw [ite_eq_left rfl, ite_eq_left (by omega)]
+    · rw [ite_eq_right hik]
       by_cases hlt : i < k
-      · rw [if_pos hlt, if_pos (by omega)]
-      · rw [if_neg hlt, if_neg (by omega)]
+      · rw [ite_eq_left hlt, ite_eq_left (by omega)]
+      · rw [ite_eq_right hlt, ite_eq_right (by omega)]
 
 /-- The full closed form is the `zipWith`, when the arrays line up at length `n`. -/
 theorem zippedL3_full (a b : Array I) (n : Nat) (out : Array I)
@@ -418,7 +418,7 @@ theorem zippedL3_full (a b : Array I) (n : Nat) (out : Array I)
     have hia : i < a.size := by omega
     have hib : i < b.size := by omega
     simp only [zippedL3, Array.getElem_ofFn, Array.getElem_zipWith]
-    rw [if_pos (by omega)]; simp [Array.getD, hia, hib]
+    rw [ite_eq_left (by omega)]; simp [Array.getD, hia, hib]
 
 /-- The out-param counter-loop, started at `i` on `zippedL3 …ᵢ`, drives any postcondition of the final
 `zippedL3 …ₙ`. By induction on the remaining count. -/
@@ -434,7 +434,7 @@ theorem wp_realizeL3 (a b : Array I) (n : USize) (R : Array I → Prop) (E : EPo
     have hi : i.toNat = n.toNat := by omega
     have hcondF : ¬ (guardL3 n (i, zippedL3 a b i.toNat out₀) = true) := by
       simp only [guardL3, decide_eq_true_eq, USize.lt_iff_toNat_lt]; omega
-    rw [wp_whileLoop, if_neg hcondF, hi]; exact hR
+    rw [wp_whileLoop, ite_eq_right hcondF, hi]; exact hR
   | succ m ih =>
     intro i hm hle
     by_cases hlt : i.toNat < n.toNat
@@ -446,13 +446,13 @@ theorem wp_realizeL3 (a b : Array I) (n : USize) (R : Array I → Prop) (E : EPo
         simp only [guardL3, decide_eq_true_eq, USize.lt_iff_toNat_lt]; exact hlt
       have hcheck : i.toNat < a.size ∧ i.toNat < b.size ∧
           i.toNat < (zippedL3 a b i.toNat out₀).size := by simp only [zippedL3_size]; omega
-      rw [wp_whileLoop, if_pos hcond, wp_stepL3, if_pos hcheck,
+      rw [wp_whileLoop, ite_eq_left hcond, wp_stepL3, ite_eq_left hcheck,
         zippedL3_body a b i.toNat out₀, ← hsucc]
       exact ih (i + 1) (by omega) (by omega)
     · have hi : i.toNat = n.toNat := by omega
       have hcondF : ¬ (guardL3 n (i, zippedL3 a b i.toNat out₀) = true) := by
         simp only [guardL3, decide_eq_true_eq, USize.lt_iff_toNat_lt]; omega
-      rw [wp_whileLoop, if_neg hcondF, hi]; exact hR
+      rw [wp_whileLoop, ite_eq_right hcondF, hi]; exact hR
 
 @[simp] theorem slice_size (p : Addr) (n : Nat) (h : Heap) : (slice p n h).size = n := by simp [slice]
 
@@ -484,7 +484,7 @@ theorem slice_upd_ne (p : Addr) (n : Nat) (h : Heap) (q : Addr) (v : I)
   · simp
   · intro j hj₁ hj₂
     simp only [slice, Array.getElem_ofFn, Heap.upd_data]
-    rw [if_neg (hne j (by simpa using hj₂))]
+    rw [ite_eq_right (hne j (by simpa using hj₂))]
 
 theorem slice_upd_eq (out : Addr) (n : Nat) (h : Heap) (i : Nat) (v : I) :
     slice out n (h.upd (out + i) v) = (slice out n h).setIfInBounds i v := by
@@ -494,8 +494,8 @@ theorem slice_upd_eq (out : Addr) (n : Nat) (h : Heap) (i : Nat) (v : I) :
     rw [Array.getElem_setIfInBounds (show j < (slice out n h).size by simpa using hj₂)]
     simp only [slice, Array.getElem_ofFn, Heap.upd_data]
     by_cases hij : i = j
-    · subst hij; rw [if_pos rfl, if_pos rfl]
-    · rw [if_neg (by aomega), if_neg hij]
+    · subst hij; rw [ite_eq_left rfl, ite_eq_left rfl]
+    · rw [ite_eq_right (by aomega), ite_eq_right hij]
 
 /-- The body step corresponds: the heap load/store reflect to array get/set. `NoAlias` keeps the input
 slices fixed under the output write. -/
@@ -516,9 +516,9 @@ theorem refines_stepL3 (a b out : Addr) (n : USize) (a_arr b_arr : Array I)
   rw [wp_stepL2]
   simp only [relRef_post_top]
   by_cases hlt : i.toNat < n.toNat
-  · rw [if_pos (by rw [ha_sz, hb_sz, slice_size]; exact ⟨hlt, hlt, hlt⟩)] at habs
+  · rw [ite_eq_left (by rw [ha_sz, hb_sz, slice_size]; exact ⟨hlt, hlt, hlt⟩)] at habs
     have hv := hav i.toNat hlt
-    rw [if_pos (by rw [hv.1, hv.2.1, hv.2.2]; rfl)]
+    rw [ite_eq_left (by rw [hv.1, hv.2.1, hv.2.2]; rfl)]
     have hva : a_arr.getD i.toNat 0 = heap.data (a + i.toNat) := by
       rw [← hsa]; exact slice_getD a n.toNat heap i.toNat hlt
     have hvb : b_arr.getD i.toNat 0 = heap.data (b + i.toNat) := by
@@ -531,7 +531,7 @@ theorem refines_stepL3 (a b out : Addr) (n : USize) (a_arr b_arr : Array I)
     · rw [slice_upd_ne b n.toNat heap (out + i.toNat) _ (fun j hj => by
         have := (hd i.toNat j hlt hj).2; aomega), hsb]
     · exact hav
-  · rw [if_neg (by rw [ha_sz]; intro hcon; exact hlt hcon.1), bot_prop_eq] at habs
+  · rw [ite_eq_right (by rw [ha_sz]; intro hcon; exact hlt hcon.1), bot_prop_eq] at habs
     exact habs.elim
 
 theorem refines_L2L3 (a b out : Addr) (n : USize) (a_arr b_arr : Array I)
@@ -549,7 +549,7 @@ theorem refines_L2L3 (a b out : Addr) (n : USize) (a_arr b_arr : Array I)
     have hlt : i.toNat < n.toNat := USize.lt_iff_toNat_lt.mp (by simpa [guardL3] using hcond)
     split at hsucc
     · next hg =>
-      rw [if_pos hg]
+      rw [ite_eq_left hg]
       have hbound : i.toNat + 1 < 2 ^ System.Platform.numBits := by
         have := USize.toNat_lt_two_pow_numBits n; omega
       have heq : (i + 1).toNat = i.toNat + 1 := by
