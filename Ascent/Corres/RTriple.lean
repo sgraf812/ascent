@@ -27,7 +27,7 @@ collapse the scaffold inside the triple (`simp only [pure_bind]`), the judgment 
 predicate on program terms.
 -/
 
-open Std.Internal.Do Lean.Order
+open Std.WP Lean.Order
 
 namespace Ascent
 
@@ -95,8 +95,8 @@ abbrev Frame (α : Type w) [Assertion α] : Prop := ∀ a : α, PreservesSup (me
 theorem meet_iSup_le {l : Type w} [Assertion l] [Frame l] {ι : Sort _} (x : l) (f : ι → l) :
     x ⊓ iSup f ⊑ iSup fun i => x ⊓ f i :=
   PartialOrder.rel_trans
-    (CompleteLattice.meet_mono_right (iSup_le _ _ fun i =>
-      CompleteLattice.le_himp_of_meet_le_comm (le_iSup (fun i => x ⊓ f i) i)))
+    (meet_mono_right (iSup_le _ _ fun i =>
+      le_himp_of_meet_le_comm (le_iSup (fun i => x ⊓ f i) i)))
     meet_himp_le
 
 section
@@ -170,21 +170,21 @@ theorem rwp_intro
       P ⊓ γ.pred (wp a Qa Ea) ⊑ wp c (γ.post Q Qa) (γ.ePost E Ea)) :
     P ⊑ rwp γ a c Q E :=
   le_iInf _ _ fun Qa => le_iInf _ _ fun Ea =>
-    le_himp (PartialOrder.rel_trans CompleteLattice.meet_le_comm (h Qa Ea))
+    le_himp (PartialOrder.rel_trans meet_le_comm (h Qa Ea))
 
 /-- Elimination for `rwp`: instantiate the weakest precondition of refinement at an abstract
 postcondition pair. -/
 theorem rwp_transport [Frame CPred] (h : P ⊑ rwp γ a c Q E)
     (Qa : AVal → APred) (Ea : AEPred) :
     P ⊓ γ.pred (wp a Qa Ea) ⊑ wp c (γ.post Q Qa) (γ.ePost E Ea) :=
-  CompleteLattice.meet_le_of_le_himp
+  meet_le_of_le_himp
     (PartialOrder.rel_trans h (PartialOrder.rel_trans (iInf_le _ Qa) (iInf_le _ Ea)))
 
 /-- `rwp` is monotone in the value coupling. -/
 theorem rwp_mono_post [Frame CPred] {Q' : AVal → CVal → CPred}
     (hQ : ∀ av cv, Q av cv ⊑ Q' av cv) : rwp γ a c Q E ⊑ rwp γ a c Q' E := by
-  refine CompleteLattice.iInf_mono fun Qa => CompleteLattice.iInf_mono fun Ea => ?_
-  refine CompleteLattice.himp_mono PartialOrder.rel_refl ?_
+  refine iInf_mono fun Qa => iInf_mono fun Ea => ?_
+  refine himp_mono PartialOrder.rel_refl ?_
   refine WP.wp_consequence c _ _ _ ?_
   intro cv
   refine iSup_le _ _ fun av => ?_
@@ -224,7 +224,7 @@ theorem RTriple.conj_wp [Frame CPred] [WPConjunctive c]
   refine WP.wp_consequence_econs c _ _ _ _ ?_ (meet_le_left _ _)
   intro cv
   rw [meet_apply]
-  refine PartialOrder.rel_trans CompleteLattice.meet_le_comm ?_
+  refine PartialOrder.rel_trans meet_le_comm ?_
   refine PartialOrder.rel_trans
     (meet_iSup_le (R cv) fun av => Q av cv ⊓ γ.pred (Qa av)) ?_
   refine iSup_le _ _ fun av => ?_
@@ -266,7 +266,7 @@ theorem rwp_bind [Frame CPred] {CV AV CV₂ AV₂ : Type w}
     (PartialOrder.rel_trans (meet_le_right _ _)
       (γ.pred_mono ((‹WPMonadExact AM APred AEPred›).wp_bind_le a₁ a₂ Qa Ea)))) ?_
   refine PartialOrder.rel_trans
-    (CompleteLattice.meet_le_of_le_himp
+    (meet_le_of_le_himp
       (PartialOrder.rel_trans (iInf_le _ (fun av => wp (a₂ av) Qa Ea)) (iInf_le _ Ea))) ?_
   refine PartialOrder.rel_trans
     (WP.wp_consequence c₁ _
@@ -276,7 +276,7 @@ theorem rwp_bind [Frame CPred] {CV AV CV₂ AV₂ : Type w}
   intro cv
   show iSup (fun av => rwp γ (a₂ av) (c₂ cv) Q E ⊓ γ.pred (wp (a₂ av) Qa Ea)) ⊑ _
   refine iSup_le _ _ fun av => ?_
-  exact CompleteLattice.meet_le_of_le_himp
+  exact meet_le_of_le_himp
     (PartialOrder.rel_trans (iInf_le _ Qa) (iInf_le _ Ea))
 
 /-- The triple unit rule: `pure` consumes the value coupling. -/
@@ -342,7 +342,7 @@ theorem RTriple.comp
   have hb : γ₂.pred (wp a Qa Ea) ⊑
       wp b (γ₂.post (fun av bv => ⌜av = f₂ bv⌝) Qa) (γ₂.ePost E₂ Ea) := by
     have h := rwp_transport h₂.le_rwp Qa Ea
-    rwa [CompleteLattice.top_meet] at h
+    rwa [Lean.Order.top_meet] at h
   have hc := rwp_transport h₁.le_rwp (γ₂.post (fun av bv => ⌜av = f₂ bv⌝) Qa) (γ₂.ePost E₂ Ea)
   rw [hE Ea] at hc
   refine PartialOrder.rel_trans
@@ -384,7 +384,7 @@ theorem rwp_throw {Q : AV → CV → Prop} {E : εa → εc → Prop} (ea : εa)
         (MonadExceptOf.throw ec : Except εc CV) Q E := by
   refine rwp_intro fun Qa Ea => ?_
   simp only [WPMonad.wp_throw_Except_apply_eq, Concretization.ePost_cons_head]
-  exact CompleteLattice.le_iSup_of_le ea PartialOrder.rel_refl
+  exact le_iSup_of_le ea PartialOrder.rel_refl
 
 /-- The relational tryCatch law: `tryCatch` rebinds the relational exceptional postcondition
 with the handlers' `rwp`, exactly as `bind` rebinds the relational postcondition; the
@@ -397,7 +397,7 @@ theorem rwp_tryCatch {Q : AV → CV → Prop} {E : εa → εc → Prop}
   refine rwp_intro fun Qa Ea => ?_
   simp only [WPMonad.wp_tryCatch_Except_apply_eq]
   refine PartialOrder.rel_trans
-    (CompleteLattice.meet_le_of_le_himp
+    (meet_le_of_le_himp
       (PartialOrder.rel_trans (iInf_le _ Qa)
         (iInf_le _ (epost⟨fun ea => wp (ah ea) Qa Ea⟩)))) ?_
   refine WP.wp_consequence_econs cx _ _ _ _ PartialOrder.rel_refl ?_
@@ -405,7 +405,7 @@ theorem rwp_tryCatch {Q : AV → CV → Prop} {E : εa → εc → Prop}
   intro ec
   show iSup (fun ea => rwp γ (ah ea) (ch ec) Q E ⊓ γ.pred (wp (ah ea) Qa Ea)) ⊑ _
   refine iSup_le _ _ fun ea => ?_
-  exact CompleteLattice.meet_le_of_le_himp
+  exact meet_le_of_le_himp
     (PartialOrder.rel_trans (iInf_le _ Qa) (iInf_le _ Ea))
 
 end

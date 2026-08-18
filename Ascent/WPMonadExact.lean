@@ -1,4 +1,4 @@
-import Std.Internal.Do
+import Std.WP
 
 /-!
 # `WPMonadExact`: exact weakest-precondition monads
@@ -12,7 +12,7 @@ Instances cover the deterministic / demonic monads: the leaves `Id`, `Option`, `
 and the transformers `StateT`, `ExceptT`, `OptionT`, each transporting exactness from its base.
 -/
 
-open Std.Internal.Do Lean.Order
+open Std.WP Lean.Order
 
 namespace Ascent
 

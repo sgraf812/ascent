@@ -11,7 +11,7 @@ the `Scope` threading are ours.
 -/
 
 open Lean Meta Sym
-open Lean.Elab.Tactic.Do.Internal
+open Lean.Elab.Tactic
 
 namespace Ascend
 

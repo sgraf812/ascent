@@ -14,7 +14,7 @@ refinement holds (preserving `J`), and the body strictly decreases an abstract v
 strong induction on `μ`, unfolding both loops one step at a time.
 -/
 
-open Std.Internal.Do Lean.Order Ascent
+open Std.WP Lean.Order Ascent
 
 /-- A concretization from a state relation `J`: an abstract assertion `P` concretizes to "there is a
 `J`-related abstract state on which `P` holds". -/
@@ -61,7 +61,7 @@ theorem refines_whileLoop {Aσ Cσ : Type} (J : Aσ → Cσ → Prop)
       ⦃fun _ _ => ⊤⦄ := by
   refine ⟨rwp_intro fun Q E => ?_⟩
   intro cs hcs
-  simp only [top_meet, relRef_pred] at hcs
+  simp only [_root_.top_meet, relRef_pred] at hcs
   obtain ⟨as, hJ, hwp⟩ := hcs
   suffices H : ∀ n as cs, μ as < n → J as cs → wp (whileLoop acond abody) Q E as →
       wp (whileLoop ccond cbody) ((relRef J).post (fun _ _ => ⊤) Q) E cs by
@@ -82,7 +82,7 @@ theorem refines_whileLoop {Aσ Cσ : Type} (J : Aσ → Cσ → Prop)
         WP.wp_consequence abody _ _ E (fun _ _ _ => trivial) as hwp
       have hcomb := wp_and_StateT abody _ _ E as hwp (hμ E as hc hsucc)
       have hcb := (rwp_transport hbody.le_rwp (fun _ as' => wp (whileLoop acond abody) Q E as' ∧ μ as' < μ as) E)
-        cs (by simp only [top_meet, relRef_pred]; exact ⟨as, hJ, hcomb⟩)
+        cs (by simp only [_root_.top_meet, relRef_pred]; exact ⟨as, hJ, hcomb⟩)
       simp only [relRef_post_top] at hcb
       refine WP.wp_consequence cbody _ _ _ ?_ cs hcb
       intro _ cs' hpost'

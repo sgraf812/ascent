@@ -9,7 +9,7 @@ lattice-form `WPConjunctive` class, needed by `RTriple.conj_wp`, is provided for
 by the library instances (`StateT.instWPConjunctive` over `UB`'s).
 -/
 
-open Std.Internal.Do Lean.Order Ascent
+open Std.WP Lean.Order Ascent
 
 /-- `wp` of a `StateT σ UB` bind, pointwise in the state. -/
 theorem wp_bind_StateT {σ α β} (x : StateT σ UB α) (f : α → StateT σ UB β)

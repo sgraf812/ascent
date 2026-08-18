@@ -11,7 +11,7 @@ as `bind` rebinds the value coupling. A caught throw is the handler call (`refin
 and inequal throws admit no refinement under the diagonal exception coupling.
 -/
 
-open Std.Internal.Do Lean.Order Ascent
+open Std.WP Lean.Order Ascent
 
 namespace ThrowCatch
 
@@ -103,7 +103,7 @@ example : ¬ ⦃(⊤ : Prop)⦄ (pure 0 : Id Int)
     ⊑[fillAbs fun _ => ⊥] (MonadExceptOf.throw 3 : Except Nat Int) ⦃(⌜· = ·⌝)⦄ := by
   intro h
   have h2 := rwp_transport h.le_rwp (fun _ => True) EPost.Nil.mk
-  simp only [WPMonad.wp_throw_Except_apply_eq, Concretization.ePost_nil, top_meet,
+  simp only [WPMonad.wp_throw_Except_apply_eq, Concretization.ePost_nil, _root_.top_meet,
     WPMonadExact.wp_pure_eq] at h2
   have hfalse := h2 trivial
   rw [bot_prop_eq] at hfalse

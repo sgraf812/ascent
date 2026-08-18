@@ -1,5 +1,5 @@
 import Ascend.RuleConstruction
-import Lean.Elab.Tactic.Do.Internal.VCGen.LatticeOp
+import Lean.Elab.Tactic.VCGen.LatticeOp
 
 /-!
 # Lattice-connective decomposition
@@ -12,7 +12,7 @@ construction is reused verbatim from `vcgen` (`mkLatticeOpRule`, carrier-generic
 -/
 
 open Lean Meta Sym
-open Lean.Elab.Tactic.Do.Internal
+open Lean.Elab.Tactic
 
 namespace Ascend
 

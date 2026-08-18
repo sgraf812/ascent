@@ -1,4 +1,4 @@
-import Std.Internal.Do
+import Std.WP
 import Ascent.WPMonadExact
 
 /-!
@@ -10,7 +10,7 @@ pullback). The value-level coupling is a relational postcondition supplied per r
 (`Ascent.Corres.RTriple`); `Concretization.post` reifies it against an abstract postcondition.
 -/
 
-open Std.Internal.Do Lean.Order
+open Std.WP Lean.Order
 
 namespace Ascent
 
@@ -50,7 +50,7 @@ pullback. -/
     r.post (fun av cv => (⌜av = f cv⌝ : CPred)) Q = fun cv => r.pred (Q (f cv)) := by
   funext cv
   refine PartialOrder.rel_antisymm (iSup_le _ _ fun av => ?_) ?_
-  · exact CompleteLattice.ofProp_meet_le_left (by rintro rfl; exact PartialOrder.rel_refl)
+  · exact ofProp_meet_le_left (by rintro rfl; exact PartialOrder.rel_refl)
   · refine PartialOrder.rel_trans ?_
       (le_iSup (fun av => (⌜av = f cv⌝ : CPred) ⊓ r.pred (Q av)) (f cv))
     exact le_meet _ _ _ (le_ofProp _ _ rfl) PartialOrder.rel_refl

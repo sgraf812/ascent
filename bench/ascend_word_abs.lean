@@ -11,7 +11,7 @@ speed-of-light reference for the ascend engine on this family: measured cost is 
 unification, and kernel checking of the synthesized proof.
 -/
 
-open Lean Meta Elab Std.Internal.Do Lean.Order Ascent AscendBench
+open Lean Meta Elab Std.WP Lean.Order Ascent AscendBench
 
 /-- The rule-chain proof for `chainC 7 n`, as a term. -/
 partial def chainProofStx : Nat → MetaM Term

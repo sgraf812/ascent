@@ -11,7 +11,7 @@ program as a guard and is threaded by `wp`. On bad values the abstract program f
 discharging the refinement trivially.
 -/
 
-open Std.Internal.Do Lean.Order Ascent
+open Std.WP Lean.Order Ascent
 
 /-- The word-overflow `bind` that was impossible without guards: a second operation whose overflow
 depends on the first operation's *result*. The continuation guards on no-overflow, so the

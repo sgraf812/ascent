@@ -22,7 +22,7 @@ the AutoCorres-style levels L1 → L2 → L3 → L4: reflect the locals (L1 → 
 arrays (L2 → L3), realize the loop as a `zipWith` (L3 → L4), assemble the entry.
 -/
 
-open Std.Internal.Do Lean.Order Ascent
+open Std.WP Lean.Order Ascent
 
 set_option mvcgen.warning false
 
@@ -298,7 +298,7 @@ theorem refines_stepL2 (a b out : Addr) (n : USize) :
       ⦃fun _ _ => ⊤⦄ := by
   refine ⟨rwp_intro fun Q E => ?_⟩
   intro cs hpre
-  simp only [top_meet, relRef_pred] at hpre
+  simp only [_root_.top_meet, relRef_pred] at hpre
   obtain ⟨⟨i, h⟩, ⟨hh, hi, hn, ha, hb, hout⟩, habs⟩ := hpre
   subst hh
   rw [wp_stepL2] at habs
@@ -351,7 +351,7 @@ theorem refines_getSizeN (a b out : Addr) (n : USize) :
       ⊑[relRef (invL2 a b out n)] (getSize "n") ⦃(⌜· = ·⌝)⦄ := by
   refine ⟨rwp_intro fun Q E => ?_⟩
   intro cs hpre
-  simp only [top_meet, relRef_pred] at hpre
+  simp only [_root_.top_meet, relRef_pred] at hpre
   obtain ⟨⟨i, h⟩, hJ, habs⟩ := hpre
   simp only [StateT.wp_apply_eq, StateT.run_pure, UB.wp_pure_eq] at habs
   obtain ⟨hh, hi, hn, ha, hb, hout⟩ := hJ
@@ -505,7 +505,7 @@ theorem refines_stepL3 (a b out : Addr) (n : USize) (a_arr b_arr : Array I)
       ⊑[relRef (invL3 a b out n a_arr b_arr)] (stepL2 a b out) ⦃fun _ _ => ⊤⦄ := by
   refine ⟨rwp_intro fun Q E => ?_⟩
   intro ch hpre
-  simp only [top_meet, relRef_pred] at hpre
+  simp only [_root_.top_meet, relRef_pred] at hpre
   obtain ⟨⟨i, oa⟩, ⟨hc, ho, hsa, hsb, hav⟩, habs⟩ := hpre
   obtain ⟨ic, heap⟩ := ch
   simp only at hc ho hsa hsb hav
@@ -610,7 +610,7 @@ theorem refines_L3L4 (a b out : Addr) (n : USize) (a_arr b_arr : Array I)
     simp only [StateT.wp_apply_eq, StateT.run_pure, UB.wp_pure_eq]
     simpa using hsp
   have hcl := rwp_transport (refines_L1L3 a b out n a_arr b_arr hd).le_rwp (fun v p => Q v p.2) E s (by
-    simp only [top_meet, Concretization.comp, Function.comp, relRef_pred]
+    simp only [_root_.top_meet, Concretization.comp, Function.comp, relRef_pred]
     exact ⟨(0, s.heap), ⟨rfl, hloc⟩, (0, slice out n.toNat s.heap), ⟨rfl, rfl, hsa, hsb, hav⟩, hwp⟩)
   refine WP.wp_consequence (whileLoop guardL1 stepL1 >>= fun _ => getSize "n") _ _ _ ?_ s hcl
   intro cv s' hpost'
@@ -791,7 +791,7 @@ theorem refines_zip5 (a b out : Addr) (la lb : USize) (a_arr b_arr : Array I)
     simp only [purify_post, Concretization.post_eq, Concretization.ofStateRepr_pred]
   rw [zip5_post out (min la lb) Q]
   have hb' := rwp_transport (refines_purifyL4 a_arr b_arr (min la lb)).le_rwp Q E
-  rw [CompleteLattice.top_meet] at hb'
+  rw [Lean.Order.top_meet] at hb'
   have hc' := rwp_transport (refines_zip a b out la lb a_arr b_arr ha hb hd).le_rwp
     ((purify (Array I)).post purifyCouple Q) ((purify (Array I)).ePost .mk E)
   rw [hRHS] at hc'

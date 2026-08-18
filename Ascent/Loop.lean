@@ -8,7 +8,7 @@ Defined as a least fixpoint via `partial_fixpoint`: a non-terminating loop denot
 a loop is sound for total correctness (you must prove termination to prove anything).
 -/
 
-open Std.Internal.Do Lean.Order Ascent
+open Std.WP Lean.Order Ascent
 
 -- `UB` is `Option`; re-expose its flat-order CCPO and `MonoBind` so `partial_fixpoint` applies.
 instance {α} : PartialOrder (UB α) := inferInstanceAs (PartialOrder (Option α))

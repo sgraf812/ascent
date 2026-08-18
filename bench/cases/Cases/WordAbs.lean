@@ -18,7 +18,7 @@ previously coupled value, and the guard sits as a hypothesis of the continuation
 form `refines_addW` used by the hand-written baseline chain derives from it by weakening.
 -/
 
-open Std.Internal.Do Lean.Order Ascent
+open Std.WP Lean.Order Ascent
 
 namespace AscendBench
 

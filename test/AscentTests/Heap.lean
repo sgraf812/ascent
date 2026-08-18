@@ -12,7 +12,7 @@ the refinement is discharged trivially. This is the split-heap picture in miniat
 pointer (in)equality carrying the aliasing, no separation logic.
 -/
 
-open Std.Internal.Do Lean.Order Ascent
+open Std.WP Lean.Order Ascent
 
 /-- A heap: address to value. -/
 abbrev Heap := Nat → Int

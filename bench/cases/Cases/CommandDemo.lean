@@ -9,7 +9,7 @@ certified refinement theorem, and confirm the synthesized program is the hand-wr
 image. The concrete program's head definition is unfolded automatically.
 -/
 
-open Std.Internal.Do Lean.Order Ascent AscendBench
+open Std.WP Lean.Order Ascent AscendBench
 
 ascend_def chainA3 from
   ⦃(⊤ : Prop)⦄ (_ : UB Int) ⊑[γw] (chainC 7 3) ⦃(⌜· = wordVal ·⌝)⦄

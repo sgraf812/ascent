@@ -11,7 +11,7 @@ therefore carries the obligation that the concrete program never fails. A throwi
 admits no refinement.
 -/
 
-open Std.Internal.Do Lean.Order Ascent
+open Std.WP Lean.Order Ascent
 
 /-- Concrete failure monad of the type-strengthening phase. -/
 abbrev TS (σ : Type) := ExceptT Unit (StateT σ Id)

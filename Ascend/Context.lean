@@ -1,7 +1,7 @@
 import Lean
 import Ascend.Attr
-import Lean.Elab.Tactic.Do.Internal.VCGen.LatticeOp
-import Lean.Elab.Tactic.Do.Internal.VCGen.Entails
+import Lean.Elab.Tactic.VCGen.LatticeOp
+import Lean.Elab.Tactic.VCGen.Entails
 
 /-!
 # The engine monad and goal metadata
@@ -71,11 +71,11 @@ structure Context where
   /-- The lattice-connective split table (`⊓`, `⇨`, `⌜·⌝`, `⊤`, and the magic-wand residual),
   keyed by operator head. Reused from `vcgen`: `splitLatticeOp?` looks a residual precondition's
   head up here and builds its decomposition rule. -/
-  latticeOps : Std.HashMap Name Lean.Elab.Tactic.Do.Internal.VCGen.LatticeOp
+  latticeOps : Std.HashMap Name Lean.Elab.Tactic.VCGen.LatticeOp
   /-- Pre-built backward rules driving precondition normalization and discharge (strip `⊓ ⊤`,
   lift `⌜·⌝`/bare preconditions, close reflexively, strip the `⊤ ⊑` wrapper). Reused from
   `vcgen`. -/
-  backwardRules : Lean.Elab.Tactic.Do.Internal.VCGen.BackwardRules
+  backwardRules : Lean.Elab.Tactic.VCGen.BackwardRules
 
 /-- Mutable engine state. -/
 structure State where

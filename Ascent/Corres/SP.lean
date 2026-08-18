@@ -9,7 +9,7 @@ preserve nonempty meets of postconditions (`WPInfConjunctive`) and `P` to exclud
 (`P ⊑ wp x ⊤ E`); together they give the Galois connection `sp_le_iff`.
 -/
 
-open Std.Internal.Do Lean.Order
+open Std.WP Lean.Order
 
 universe i u v w z
 

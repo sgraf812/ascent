@@ -10,7 +10,7 @@ exactly as `bind`'s head and continuation. The concrete program catches a thrown
 identity handler; the synthesized abstract program mirrors it under the identity concretization.
 -/
 
-open Std.Internal.Do Lean.Order Ascent AscendBench
+open Std.WP Lean.Order Ascent AscendBench
 
 /-- The identity concretization over `Except Nat`, aligning the single exception layer. -/
 noncomputable def γe : Concretization Prop Prop EPost⟨Nat → Prop⟩ EPost⟨Nat → Prop⟩ :=

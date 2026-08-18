@@ -7,7 +7,7 @@ Mid-coupling forms of `RTriple.bind` for hand-written proofs: the head establish
 and the continuations correspond under it. Derived from the pre-form rule by weakening.
 -/
 
-open Std.Internal.Do Lean.Order
+open Std.WP Lean.Order
 
 namespace Ascent
 

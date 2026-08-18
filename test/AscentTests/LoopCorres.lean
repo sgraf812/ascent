@@ -7,7 +7,7 @@ A sanity check for `refines_whileLoop` (`Ascent.Corres.Loop`): a terminating cou
 refines itself.
 -/
 
-open Std.Internal.Do Lean.Order Ascent
+open Std.WP Lean.Order Ascent
 
 /-- A terminating countdown loop refines itself: the guards agree, the body refines itself,
 and the body strictly decreases the counter (used as the variant). -/

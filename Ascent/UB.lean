@@ -10,7 +10,7 @@ inside the abstract program and is threaded by `wp` through `bind`, rather than 
 on the relation.
 -/
 
-open Std.Internal.Do Lean.Order Ascent
+open Std.WP Lean.Order Ascent
 
 /-- `Option` reinterpreted so failure is undefined behavior: failure is `⊥`, not a handled exception. -/
 def UB (α : Type) := Option α
@@ -116,7 +116,7 @@ theorem Ascent.RTriple.guardRet {AV CV : Type} {g : Prop} [Decidable g] {P : Pro
   by_cases hg : g
   · rw [show UB.guardRet g a = Pure.pure a from by simp [UB.guardRet, hg]]
     show P ⊓ Qa a ⊑ (Concretization.id Prop EPost.Nil).post Q Qa c
-    refine CompleteLattice.le_iSup_of_le a ?_
+    refine le_iSup_of_le a ?_
     exact le_meet _ _ _ (PartialOrder.rel_trans (meet_le_left _ _) (h hg)) (meet_le_right _ _)
   · rw [show UB.guardRet g a = UB.fail from by simp [UB.guardRet, hg]]
     show P ⊓ (⊥ : Prop) ⊑ _

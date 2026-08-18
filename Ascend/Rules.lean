@@ -8,7 +8,7 @@ The engine applies these as backward steps when a registered spec's precondition
 the right-hand side of an entailment goal.
 -/
 
-open Lean.Order
+open Std.WP Lean.Order
 
 namespace Ascend
 

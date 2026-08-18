@@ -22,7 +22,7 @@ def unsealAbstractHole (goal : MVarId) : MetaM Unit := do
   if (← mvarId.getDecl).kind matches .syntheticOpaque then
     mvarId.setKind .natural
 
-open Lean.Elab.Tactic.Do.Internal in
+open Lean.Elab.Tactic in
 /-- Intern every backward rule's matching pattern, so apply-time unification is pointer-fast. -/
 def shareCommonRules (br : VCGen.BackwardRules) : SymM VCGen.BackwardRules :=
   return { br with
@@ -42,8 +42,8 @@ definitions in `unfold` first), and return the VCs. -/
 def mainWith (goal : MVarId) (unfold : Array Name) : MetaM (Array MVarId) := do
   unsealAbstractHole goal
   let specs ← getSpecs
-  let latticeOps := Lean.Elab.Tactic.Do.Internal.VCGen.mkLatticeOpTable {}
-  let rawRules ← Lean.Elab.Tactic.Do.Internal.VCGen.mkBackwardRules
+  let latticeOps := Lean.Elab.Tactic.VCGen.latticeOps
+  let rawRules ← Lean.Elab.Tactic.VCGen.mkBackwardRules
   SymM.run do
     let ctx : Context := { specs, latticeOps, backwardRules := ← shareCommonRules rawRules }
     (run goal unfold).run ctx |>.run' {}

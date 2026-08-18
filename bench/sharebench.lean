@@ -1,6 +1,6 @@
 import Cases.WordAbs
 import Driver
-open Lean Meta Elab Sym Std.Internal.Do Lean.Order Ascent AscendBench
+open Lean Meta Elab Sym Std.WP Lean.Order Ascent AscendBench
 
 set_option maxRecDepth 10000
 

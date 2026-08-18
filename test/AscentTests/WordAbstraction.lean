@@ -10,7 +10,7 @@ instance of `RTriple.pure_eq` whose value-equality hypothesis is the no-overflow
 side-condition, discharged by `omega`. A genuinely overflowing program admits no refinement.
 -/
 
-open Std.Internal.Do Lean.Order Ascent
+open Std.WP Lean.Order Ascent
 
 /-- The value abstraction underlying word abstraction. -/
 def wordVal : UInt64 → Int := fun w => (w.toNat : Int)

@@ -10,7 +10,7 @@ lifts the result `UInt64 ↝ Int`. The phases compose through `RTriple.comp`, yi
 refinement of the abstract integer-state program by the concrete failure-monad word program.
 -/
 
-open Std.Internal.Do Lean.Order Ascent
+open Std.WP Lean.Order Ascent
 
 /-- Word abstraction on the state monad: identity on assertions, values abstracted by `wordVal`. -/
 def wordAbstractionStateT : Concretization (Nat → Prop) (Nat → Prop) EPost.Nil EPost.Nil :=

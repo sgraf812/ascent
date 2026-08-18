@@ -13,7 +13,7 @@ side: the obligation to prove validity is what verifies the program never derefe
 pointer.
 -/
 
-open Std.Internal.Do Lean.Order Ascent
+open Std.WP Lean.Order Ascent
 
 /-- A heap: address to value, partial (`none` = unallocated / invalid). -/
 abbrev VHeap := Nat → Option Int
