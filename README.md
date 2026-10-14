@@ -8,14 +8,14 @@ Ascent is built on the `Std.WP` weakest-precondition metatheory of the Lean tool
 
 ## The judgment
 
-`⦃P⦄ a ⊑[γ] c ⦃Q; E⦄` states that under the precondition `P` on the concrete initial state,
+`⦃P⦄ c ⪯[γ] a ⦃Q; E⦄` states that under the precondition `P` on the concrete initial state,
 the concrete program `c` refines the abstract program `a`. The concretization
 `γ : Concretization` maps abstract assertions to concrete ones, the coupling `Q` relates
 abstract results to concrete results, and `E` relates thrown values. The triple is
-`P ⊑ wrp γ a c Q E`, where
+`P ⊑ wrp γ c a Q E`, where
 
 ```
-wrp γ a c Q E = ⨅ Qa Ea, γ.pred (wp a Qa Ea) ⇨ wp c (γ.post Q Qa) (γ.ePost E Ea)
+wrp γ c a Q E = ⨅ Qa Ea, γ.pred (wp a Qa Ea) ⇨ wp c (γ.post Q Qa) (γ.ePost E Ea)
 ```
 
 is the weakest refinement precondition: the weakest assertion under which every `wp` fact of
@@ -35,7 +35,7 @@ forward simulation proof applies, one program construct at a time.
 * `Ascent/WPMonadExact.lean`: monads whose `wp` computes `pure` and `bind` exactly, which the
   abstract side of a refinement needs.
 * `Ascend/`: the `ascend` tactic and the `ascend_def` command. On a goal
-  `⦃P⦄ (_ : AM AV) ⊑[γ] c ⦃Q; E⦄` the tactic computes the abstract program into the hole and
+  `⦃P⦄ c ⪯[γ] (_ : AM AV) ⦃Q; E⦄` the tactic computes the abstract program into the hole and
   proves the triple, leaving the verification conditions as goals. The command stores the
   abstract program as a definition `a` with the theorem `a.refines`. Rules are `Refinement`
   theorems registered with `@[ascend]`, keyed by the concrete program.

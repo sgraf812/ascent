@@ -52,7 +52,7 @@ theorem wp_swapA (p q : Nat) (Q : PUnit → Heap → Prop) (E : EPost.Nil) :
 
 /-- The read-both/write-both swap abstracts to the atomic spec under non-aliasing. -/
 example (p q : Nat) :
-    ⦃(⊤ : Heap → Prop)⦄ (swapA p q) ⊑[Concretization.id (Heap → Prop) EPost.Nil] (swapC p q)
+    ⦃(⊤ : Heap → Prop)⦄ (swapC p q) ⪯[Concretization.id (Heap → Prop) EPost.Nil] (swapA p q)
       ⦃(⌜· = ·⌝)⦄ := by
   refine ⟨wrp_intro fun Qa Ea => ?_⟩
   refine PartialOrder.rel_trans (meet_le_right _ _) ?_

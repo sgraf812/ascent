@@ -123,11 +123,11 @@ unsafe def benchT (label : String) (nodes reps : Nat) (mk : Nat → Expr) : IO U
 #eval show TermElabM _ from do
   -- Representative pieces from the WordAbs goals.
   let wrpApp ← Term.elabTerm (← `(wrp γw (pure 0 : UB Int) (pure 0 : Id UInt64)
-    (fun a b => ⌜a = wordVal b⌝) ⊥)) none
+    (fun c a => ⌜wordVal c = a⌝) ⊥)) none
   Term.synthesizeSyntheticMVarsNoPostponing
   let wrpApp ← instantiateMVars wrpApp
   let lam ← Term.elabTerm (← `(fun (av : Int) (cv : UInt64) =>
-    wrp γw (pure av : UB Int) (pure cv : Id UInt64) (fun a b => ⌜a = wordVal b⌝) ⊥)) none
+    wrp γw (pure cv : Id UInt64) (pure av : UB Int) (fun c a => ⌜wordVal c = a⌝) ⊥)) none
   Term.synthesizeSyntheticMVarsNoPostponing
   let lam ← instantiateMVars lam
   let eqE ← Term.elabTerm (← `((0 : Int) = wordVal 7)) none

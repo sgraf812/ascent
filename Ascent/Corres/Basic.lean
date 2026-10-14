@@ -35,24 +35,24 @@ namespace Concretization
 variable {CPred APred : Type w} {CEPred AEPred : Type w'}
   [Assertion CPred] [Assertion APred] [Assertion CEPred] [Assertion AEPred]
 
-/-- Postcondition concretization. The value coupling `couple av cv : CPred` relates an abstract value
-`av` to a concrete value `cv`; being a `CPred`, it may depend on the concrete state, which is what
-lets an out-parameter's final value be read off the exit state. For each concrete value the abstract
-postcondition is reified against the coupling and concretized. -/
+/-- Postcondition concretization. The value coupling `couple cv av : CPred` relates a concrete
+value `cv` to an abstract value `av`; being a `CPred`, it may depend on the concrete state, which
+is what lets an out-parameter's final value be read off the exit state. For each concrete value
+the abstract postcondition is reified against the coupling and concretized. -/
 noncomputable def post (r : Concretization CPred APred CEPred AEPred) {CVal AVal : Type _}
-    (couple : AVal → CVal → CPred) (Q : AVal → APred) : CVal → CPred :=
-  fun cv => iSup fun av => couple av cv ⊓ r.pred (Q av)
+    (couple : CVal → AVal → CPred) (Q : AVal → APred) : CVal → CPred :=
+  fun cv => iSup fun av => couple cv av ⊓ r.pred (Q av)
 
-/-- One-point rule: under a functional coupling `⌜· = f ·⌝` the reified `iSup` collapses to the
+/-- One-point rule: under a functional coupling `⌜f · = ·⌝` the reified `iSup` collapses to the
 pullback. -/
 @[simp] theorem post_eq (r : Concretization CPred APred CEPred AEPred) {CVal AVal : Type _}
     (f : CVal → AVal) (Q : AVal → APred) :
-    r.post (fun av cv => (⌜av = f cv⌝ : CPred)) Q = fun cv => r.pred (Q (f cv)) := by
+    r.post (fun cv av => (⌜f cv = av⌝ : CPred)) Q = fun cv => r.pred (Q (f cv)) := by
   funext cv
   refine PartialOrder.rel_antisymm (iSup_le _ _ fun av => ?_) ?_
   · exact ofProp_meet_le_left (by rintro rfl; exact PartialOrder.rel_refl)
   · refine PartialOrder.rel_trans ?_
-      (le_iSup (fun av => (⌜av = f cv⌝ : CPred) ⊓ r.pred (Q av)) (f cv))
+      (le_iSup (fun av => (⌜f cv = av⌝ : CPred) ⊓ r.pred (Q av)) (f cv))
     exact le_meet _ _ _ (le_ofProp _ _ rfl) PartialOrder.rel_refl
 
 /-- `post` in the `Prop` lattice, elementwise: some abstract value is coupled and satisfies the
@@ -60,16 +60,16 @@ concretized postcondition. -/
 theorem post_prop {APred : Type} {CEPred AEPred : Type w'}
     [Assertion APred] [Assertion CEPred] [Assertion AEPred]
     (r : Concretization Prop APred CEPred AEPred) {CVal AVal : Type _}
-    (couple : AVal → CVal → Prop) (Q : AVal → APred) (cv : CVal) :
-    r.post couple Q cv = ∃ av, couple av cv ∧ r.pred (Q av) := by
+    (couple : CVal → AVal → Prop) (Q : AVal → APred) (cv : CVal) :
+    r.post couple Q cv = ∃ av, couple cv av ∧ r.pred (Q av) := by
   simp only [Concretization.post, iSup_prop_eq_exists, meet_prop_eq_and]
 
 /-- `post` in a function lattice into `Prop`, elementwise. -/
 theorem post_pi {σ : Type} {APred : Type} {CEPred AEPred : Type w'}
     [Assertion APred] [Assertion CEPred] [Assertion AEPred]
     (r : Concretization (σ → Prop) APred CEPred AEPred) {CVal AVal : Type _}
-    (couple : AVal → CVal → σ → Prop) (Q : AVal → APred) (cv : CVal) (s : σ) :
-    r.post couple Q cv s = ∃ av, couple av cv s ∧ r.pred (Q av) s := by
+    (couple : CVal → AVal → σ → Prop) (Q : AVal → APred) (cv : CVal) (s : σ) :
+    r.post couple Q cv s = ∃ av, couple cv av s ∧ r.pred (Q av) s := by
   simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
     meet_prop_eq_and]
 
@@ -128,7 +128,7 @@ end Id
 An out-parameter is modelled as concrete *state*. When the concrete program is write-once (its
 result and final state do not depend on the initial state), that state can be read off the exit and
 returned as a pure *value*, eliminating the state monad. This is the terminal value coupling that
-the state-aware `couple` was introduced for: `purifyCouple av cv s := ⌜av = (cv, s)⌝` reads the entire
+the state-aware `couple` was introduced for: `purifyCouple cv av s := ⌜av = (cv, s)⌝` reads the entire
 final state into the second component of the abstract result. It is sound only here, at the end of
 the program, where there is no continuation whose control flow could depend on the read. -/
 
@@ -143,8 +143,8 @@ noncomputable def purify (σ : Type) : Concretization (σ → Prop) Prop EPost.N
   ePred_mono h := h
 
 /-- The terminal value coupling: `(cv, s)` abstracts a concrete return `cv` ending in state `s`. -/
-def purifyCouple {σ α : Type} : (α × σ) → α → (σ → Prop) :=
-  fun av cv s => av = (cv, s)
+def purifyCouple {σ α : Type} : α → (α × σ) → (σ → Prop) :=
+  fun cv av s => av = (cv, s)
 
 /-- Under `purifyCouple`, the postcondition concretization reads the final state into the result. -/
 @[simp] theorem purify_post {σ α : Type} (Q : (α × σ) → Prop) :

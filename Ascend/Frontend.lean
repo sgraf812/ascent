@@ -3,7 +3,7 @@ import Ascend.Driver
 /-!
 # The `ascend` tactic
 
-On a goal `⦃P⦄ ?a ⊑[γ] c ⦃Q; E⦄`, synthesizes the abstract program into `?a` while proving
+On a goal `⦃P⦄ c ⪯[γ] ?a ⦃Q; E⦄`, synthesizes the abstract program into `?a` while proving
 the triple, leaving the verification conditions as goals. A statement hole elaborates to a
 sealed (synthetic opaque) metavariable, which rule application would treat as rigid; the
 frontend unseals it. With a concrete abstract program the same engine checks the refinement.
@@ -17,7 +17,7 @@ namespace Ascend
 def unsealAbstractHole (goal : MVarId) : MetaM Unit := do
   let target ← goal.getType
   unless target.isAppOfArity ``Ascent.Refinement 22 do return
-  let a := target.getAppArgs[13]!
+  let a := target.getAppArgs[14]!
   let .mvar mvarId := a.getAppFn | return
   if (← mvarId.getDecl).kind matches .syntheticOpaque then
     mvarId.setKind .natural

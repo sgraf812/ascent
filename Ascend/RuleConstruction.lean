@@ -187,7 +187,7 @@ private def fixAbstractSlot? (goal : MVarId) (g : WRPApp) (c : CachedRule) :
     mvarId.assign m
     let slot := lamBody.instantiateRev (hs.map (mkAppN · ts))
     let c ← instantiateMVars g.c
-    let rhs := mkAppN g.head (g.args.set! 17 slot |>.set! 18 c)
+    let rhs := mkAppN g.head (g.args.set! 18 slot |>.set! 17 c)
     let_expr rel@Lean.Order.PartialOrder.rel carrier inst pre _ := ← goal.getType | return none
     return some (some (← setTargetRaw goal (mkApp4 rel carrier inst pre rhs)))
   let a ←
@@ -207,7 +207,7 @@ private def fixAbstractSlot? (goal : MVarId) (g : WRPApp) (c : CachedRule) :
   -- application leaves an assigned metavariable node per bind in it, and the `hasMVar` flags
   -- of the whole prefix would defeat pruning in every later inspection.
   let c ← instantiateMVars g.c
-  let rhs := mkAppN g.head (g.args.set! 17 a |>.set! 18 c)
+  let rhs := mkAppN g.head (g.args.set! 18 a |>.set! 17 c)
   let_expr rel@Lean.Order.PartialOrder.rel carrier inst pre _ := ← goal.getType | return none
   return some (some (← setTargetRaw goal (mkApp4 rel carrier inst pre rhs)))
 

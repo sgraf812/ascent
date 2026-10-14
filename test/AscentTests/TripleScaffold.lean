@@ -20,24 +20,24 @@ variable {CM AM : Type w → Type v} {CPred APred : Type w} {CEPred AEPred : Typ
   [HasEPost CPred APred CEPred AEPred Ξ]
   {γ : Concretization CPred APred CEPred AEPred}
   [Frame CPred] {CV AV CV₂ AV₂ : Type w} {P : CPred}
-  {a₁ : AM AV} {c₁ : CM CV} {a₂ : AV → AM AV₂} {c₂ : CV → CM CV₂}
-  {Q : AV₂ → CV₂ → CPred} {E : Ξ}
+  {c₁ : CM CV} {a₁ : AM AV} {c₂ : CV → CM CV₂} {a₂ : AV → AM AV₂}
+  {Q : CV₂ → AV₂ → CPred} {E : Ξ}
 
 /-- The bind rule at a mid coupling: the head establishes `R`, the continuations correspond
 under it. -/
-theorem Refinement.bind' {R : AV → CV → CPred}
-    (h₁ : ⦃P⦄ a₁ ⊑[γ] c₁ ⦃R; E⦄)
-    (h₂ : ∀ av cv, ⦃R av cv⦄ (a₂ av) ⊑[γ] (c₂ cv) ⦃Q; E⦄) :
-    ⦃P⦄ (a₁ >>= a₂) ⊑[γ] (c₁ >>= c₂) ⦃Q; E⦄ :=
+theorem Refinement.bind' {R : CV → AV → CPred}
+    (h₁ : ⦃P⦄ c₁ ⪯[γ] a₁ ⦃R; E⦄)
+    (h₂ : ∀ cv av, ⦃R cv av⦄ (c₂ cv) ⪯[γ] (a₂ av) ⦃Q; E⦄) :
+    ⦃P⦄ (c₁ >>= c₂) ⪯[γ] (a₁ >>= a₂) ⦃Q; E⦄ :=
   Refinement.bind.weaken
-    (PartialOrder.rel_trans h₁.le_wrp (wrp_mono_post fun av cv => (h₂ av cv).le_wrp))
+    (PartialOrder.rel_trans h₁.le_wrp (wrp_mono_post fun cv av => (h₂ cv av).le_wrp))
 
 /-- The bind rule at a functional head coupling: the continuations correspond at each concrete
 value and its coupled abstract value. -/
 theorem Refinement.bind_eq {f : CV → AV}
-    (h₁ : ⦃P⦄ a₁ ⊑[γ] c₁ ⦃fun av cv => ⌜av = f cv⌝; E⦄)
-    (h₂ : ∀ cv, ⦃(⊤ : CPred)⦄ (a₂ (f cv)) ⊑[γ] (c₂ cv) ⦃Q; E⦄) :
-    ⦃P⦄ (a₁ >>= a₂) ⊑[γ] (c₁ >>= c₂) ⦃Q; E⦄ :=
-  .bind' h₁ fun av cv => .of_prop fun h => by rw [h]; exact h₂ cv
+    (h₁ : ⦃P⦄ c₁ ⪯[γ] a₁ ⦃fun cv av => ⌜f cv = av⌝; E⦄)
+    (h₂ : ∀ cv, ⦃(⊤ : CPred)⦄ (c₂ cv) ⪯[γ] (a₂ (f cv)) ⦃Q; E⦄) :
+    ⦃P⦄ (c₁ >>= c₂) ⪯[γ] (a₁ >>= a₂) ⦃Q; E⦄ :=
+  .bind' h₁ fun cv av => .of_prop fun h => by rw [← h]; exact h₂ cv
 
 end Ascent

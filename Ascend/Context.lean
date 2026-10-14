@@ -38,13 +38,13 @@ def CPred (g : WRPApp) : Expr := g.args[4]!
 def instWPc (g : WRPApp) : Expr := g.args[13]!
 def instWPa (g : WRPApp) : Expr := g.args[14]!
 def γ (g : WRPApp) : Expr := g.args[16]!
-def a (g : WRPApp) : Expr := g.args[17]!
-def c (g : WRPApp) : Expr := g.args[18]!
+def a (g : WRPApp) : Expr := g.args[18]!
+def c (g : WRPApp) : Expr := g.args[17]!
 def Q (g : WRPApp) : Expr := g.args[19]!
 def E (g : WRPApp) : Expr := g.args[20]!
 
 /-- Rebuild the `wrp` application with the concrete program replaced. -/
-def withC (g : WRPApp) (c : Expr) : Expr := mkAppN g.head (g.args.set! 18 c)
+def withC (g : WRPApp) (c : Expr) : Expr := mkAppN g.head (g.args.set! 17 c)
 
 end WRPApp
 

@@ -24,11 +24,11 @@ def ctc : Except Nat Nat :=
   MonadExceptOf.tryCatch (MonadExceptOf.throw 5) (fun e => pure e)
 
 ascend_def atc from
-  ⦃(⊤ : Prop)⦄ (_ : Except Nat Nat) ⊑[γe] ctc ⦃(fun a c => ⌜a = c⌝); (fun ea ec => ⌜ea = ec⌝)⦄
+  ⦃(⊤ : Prop)⦄ ctc ⪯[γe] (_ : Except Nat Nat) ⦃(fun c a => ⌜c = a⌝); (fun ec ea => ⌜ec = ea⌝)⦄
   by first | rfl | (intro h; exact h) | simp_all
 
 /-- The command produced a refinement theorem against the synthesized constant. -/
-example : Refinement atc ctc γe ⊤ (fun a c => ⌜a = c⌝) (fun ea ec => ⌜ea = ec⌝) :=
+example : Refinement ctc atc γe ⊤ (fun c a => ⌜c = a⌝) (fun ec ea => ⌜ec = ea⌝) :=
   atc.refines
 
 /-- The synthesized program is the identity image of the concrete one. -/

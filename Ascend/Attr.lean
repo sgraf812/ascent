@@ -57,8 +57,8 @@ def analyzeSpec (declName : Name) : MetaM (SpecInfo × Array (DiscrTree.Key)) :=
     unless body.isAppOfArity ``Ascent.Refinement 22 do
       throwError "@[ascend]: conclusion of {declName} is not an Refinement application:{indentExpr body}"
     let args := body.getAppArgs
-    let a := args[13]!
-    let c := args[14]!
+    let c := args[13]!
+    let a := args[14]!
     let Q := args[20]!
     let E := args[21]!
     let some qPosition := xs.idxOf? Q

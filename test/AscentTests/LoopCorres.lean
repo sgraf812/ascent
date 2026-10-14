@@ -13,7 +13,7 @@ open Std.WP Lean.Order Ascent
 and the body strictly decreases the counter (used as the variant). -/
 example : ⦃(⊤ : Nat → Prop)⦄
     (whileLoop (fun n => decide (0 < n)) (fun n => pure ((), n - 1)))
-    ⊑[relRef (Eq : Nat → Nat → Prop)]
+    ⪯[relRef (Eq : Nat → Nat → Prop)]
     (whileLoop (fun n => decide (0 < n)) (fun n => pure ((), n - 1)))
     ⦃fun _ _ => ⊤⦄ := by
   apply refines_whileLoop (μ := id)

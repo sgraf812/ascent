@@ -3,7 +3,7 @@ import Ascend.Frontend
 /-!
 # The `ascend_def` command
 
-`ascend_def a from ⦃P⦄ (_ : AM AV) ⊑[γ] c ⦃Q; E⦄ by tac` synthesizes the abstract program into a
+`ascend_def a from ⦃P⦄ c ⪯[γ] (_ : AM AV) ⦃Q; E⦄ by tac` synthesizes the abstract program into a
 new definition `a`, then states and proves the refinement theorem `a.refines` against it,
 discharging the verification conditions with `tac`. The concrete program's head definition is
 unfolded to expose its structure.
@@ -30,10 +30,10 @@ elab_rules : command
       let ty ← instantiateMVars ty
       unless ty.isAppOfArity ``Ascent.Refinement 22 do
         throwError "ascend: the statement is not a refinement triple:{indentExpr ty}"
-      let .mvar aId := ty.getAppArgs[13]!.getAppFn
+      let .mvar aId := ty.getAppArgs[14]!.getAppFn
         | throwError "ascend: the abstract program must be a hole `(_ : AM AV)`"
       -- Unfold exactly the concrete program's head definition to expose its structure.
-      let unfoldNames := match ty.getAppArgs[14]!.getAppFn.constName? with
+      let unfoldNames := match ty.getAppArgs[13]!.getAppFn.constName? with
         | some c => #[c]
         | none => #[]
       -- Convert: synthesize the abstract program into `?a`, proving `ty` modulo the VCs.

@@ -110,8 +110,8 @@ coupling; on a failed guard the abstract program fails and the refinement is dis
 trivially. The no-overflow obligation lives in the guard `g`, threaded by `wp`, not in the
 precondition. -/
 theorem Ascent.Refinement.guardRet {AV CV : Type} {g : Prop} [Decidable g] {P : Prop}
-    {Q : AV → CV → Prop} (a : AV) (c : CV) (h : g → P ⊑ Q a c) :
-    ⦃P⦄ (UB.guardRet g a) ⊑[Concretization.id Prop EPost.Nil] (Pure.pure c : Id CV) ⦃Q⦄ := by
+    {Q : CV → AV → Prop} (c : CV) (a : AV) (h : g → P ⊑ Q c a) :
+    ⦃P⦄ (Pure.pure c : Id CV) ⪯[Concretization.id Prop EPost.Nil] (UB.guardRet g a) ⦃Q⦄ := by
   refine ⟨wrp_intro fun Qa Ea => ?_⟩
   by_cases hg : g
   · rw [show UB.guardRet g a = Pure.pure a from by simp [UB.guardRet, hg]]

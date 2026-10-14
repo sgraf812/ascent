@@ -16,10 +16,10 @@ open Lean Meta Elab Std.WP Lean.Order Ascent AscendBench
 /-- The rule-chain proof for `chainC 7 n`, as a term. -/
 partial def chainProofStx : Nat → MetaM Term
   | 0 => `(Refinement.pure_eq (f := wordVal) ⊤ _ rfl)
-  | n+1 => do `(bindChain $(← chainProofStx n) fun av cv => refines_addW av cv _)
+  | n+1 => do `(bindChain $(← chainProofStx n) fun cv av => refines_addW av cv _)
 
 def mkStmt (n : Nat) : MetaM Term :=
-  `(⦃(⊤ : Prop)⦄ (?_ : UB Int) ⊑[γw] (chainC 7 $(quote n)) ⦃(⌜· = wordVal ·⌝)⦄)
+  `(⦃(⊤ : Prop)⦄ (chainC 7 $(quote n)) ⪯[γw] (?_ : UB Int) ⦃(⌜wordVal · = ·⌝)⦄)
 
 def mkExpected (n : Nat) : MetaM Term :=
   `(chainA 7 $(quote n))
