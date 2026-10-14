@@ -5,7 +5,7 @@ import Cases.WordAbs
 # Guarded word abstraction, baseline measurements
 
 The baseline solver builds the rule-chain proof directly as a term (one `bindChain` per
-concrete bind, `refines_addW` at each leaf, `RTriple.pure_eq` at the seed) and elaborates it
+concrete bind, `refines_addW` at each leaf, `Refinement.pure_eq` at the seed) and elaborates it
 once with `exact`. It performs no search and no rule-database lookup, so it is the
 speed-of-light reference for the ascend engine on this family: measured cost is elaboration,
 unification, and kernel checking of the synthesized proof.
@@ -15,7 +15,7 @@ open Lean Meta Elab Std.WP Lean.Order Ascent AscendBench
 
 /-- The rule-chain proof for `chainC 7 n`, as a term. -/
 partial def chainProofStx : Nat → MetaM Term
-  | 0 => `(RTriple.pure_eq (f := wordVal) ⊤ _ rfl)
+  | 0 => `(Refinement.pure_eq (f := wordVal) ⊤ _ rfl)
   | n+1 => do `(bindChain $(← chainProofStx n) fun av cv => refines_addW av cv _)
 
 def mkStmt (n : Nat) : MetaM Term :=

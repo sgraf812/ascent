@@ -36,19 +36,19 @@ private def forallIntro? (goal : MVarId) (target : Expr) : AscendM (Option MVarI
   let .goal _ goal ← Sym.intros goal | return none
   return some goal
 
-/-- Strategy: unfold an `RTriple` target into its `le_rwp` field via the constructor. -/
+/-- Strategy: unfold a `Refinement` target into its `le_wrp` field via the constructor. -/
 private def rtripleIntro? (goal : MVarId) (target : Expr) : AscendM (Option MVarId) := do
-  unless target.isAppOfArity ``Ascent.RTriple 22 do return none
-  let [goal] ← goal.applyConst ``Ascent.RTriple.intro | return none
+  unless target.isAppOfArity ``Ascent.Refinement 22 do return none
+  let [goal] ← goal.applyConst ``Ascent.Refinement.intro | return none
   return some (← preprocessMVar goal)
 
-/-- Reshape strategy: expand an applied rebound-coupling combinator to the continuation's `rwp`
-(`rwpCont γ a₂ c₂ Q E v c` on the value side, `rwpECont γ ah ch Q E ea ec` on the exception
+/-- Reshape strategy: expand an applied rebound-coupling combinator to the continuation's `wrp`
+(`wrpCont γ a₂ c₂ Q E v c` on the value side, `wrpECont γ ah ch Q E ea ec` on the exception
 side). The combinator form keeps rule-built goals lambda-free (a short application spine with a
 constant prefix instead of ~30 fresh nodes per step). -/
 private def contExpand? (rhs : Expr) : AscendM (Option Expr) := do
   let fn := rhs.getAppFn
-  unless fn.isConstOf ``Ascent.rwpCont || fn.isConstOf ``Ascent.rwpECont do return none
+  unless fn.isConstOf ``Ascent.wrpCont || fn.isConstOf ``Ascent.wrpECont do return none
   let some rhs ← unfoldDefinition? rhs | return none
   return some rhs.headBeta
 
@@ -58,7 +58,7 @@ private def rhsBeta? (rhs : Expr) : Option Expr :=
   if rhs.getAppFn.isLambda then some rhs.headBeta else none
 
 /-- Reshape strategy: beta-reduce the program head; continuations arrive as `c₂ cv`. -/
-private def progBeta? (g : RWPApp) : Option Expr :=
+private def progBeta? (g : WRPApp) : Option Expr :=
   if g.c.getAppFn.isLambda then some (g.withC g.c.headBeta) else none
 
 /-- Natural-notation strategy: split `P' ⊑ (A ∧ B)` at the `Prop` carrier via `prop_le_and`.
@@ -96,7 +96,7 @@ private def eqReflClose? (goal : MVarId) (carrier pre rhs : Expr) : AscendM (Opt
   return some ()
 
 /-- Strategy: apply a registered spec for the program, most specific first. -/
-private def applySpec (scope : Scope) (goal : MVarId) (g : RWPApp) : AscendM SolveResult := do
+private def applySpec (scope : Scope) (goal : MVarId) (g : WRPApp) : AscendM SolveResult := do
   let mut cands ← (← read).specs.getMatch g.c
   cands := cands.qsort fun s₁ s₂ => s₁.specificity > s₂.specificity
   for spec in cands do
@@ -105,11 +105,11 @@ private def applySpec (scope : Scope) (goal : MVarId) (g : RWPApp) : AscendM Sol
   return .stop (.noSpecFound g.c)
 
 /--
-One solve step. Shape the target to `pre ⊑ rhs` (introduce `∀` targets, unfold an `RTriple`),
+One solve step. Shape the target to `pre ⊑ rhs` (introduce `∀` targets, unfold a `Refinement`),
 reshape the right-hand side (unfold a rebound coupling, beta-reduce), close reflexively, drive the
 precondition toward `⊤` lifting pure content into the context, decompose a lattice connective
 through the reused split rules, discharge a residual `⌜φ⌝` against the last lifted hypothesis, and
-otherwise decompose the `rwp` application through the registered specs.
+otherwise decompose the `wrp` application through the registered specs.
 -/
 def solve (scope : Scope) (goal : MVarId) : AscendM SolveResult := goal.withContext do
   let target ← goal.getType
@@ -131,7 +131,7 @@ def solve (scope : Scope) (goal : MVarId) : AscendM SolveResult := goal.withCont
   if let some (scope, gs) ← impIntro? scope goal rel carrier inst pre rhs then return .goals scope gs
   if let some _ ← eqReflClose? goal carrier pre rhs then return .goals scope []
   if let some _ ← liftedHyp? scope goal carrier pre rhs then return .goals scope []
-  if let some g := parseRWP? rhs then
+  if let some g := parseWRP? rhs then
     if let some rhs' := progBeta? g then return ← reshape rhs'
     return ← applySpec scope goal g
   return .stop (.noProgress pre rhs)

@@ -1,9 +1,9 @@
-import Ascent.Corres.RTriple
+import Ascent.Corres.Refinement
 
 /-!
 # Scaffold forms of the bind rule
 
-Mid-coupling forms of `RTriple.bind` for hand-written proofs: the head establishes a coupling
+Mid-coupling forms of `Refinement.bind` for hand-written proofs: the head establishes a coupling
 and the continuations correspond under it. Derived from the pre-form rule by weakening.
 -/
 
@@ -25,16 +25,16 @@ variable {CM AM : Type w → Type v} {CPred APred : Type w} {CEPred AEPred : Typ
 
 /-- The bind rule at a mid coupling: the head establishes `R`, the continuations correspond
 under it. -/
-theorem RTriple.bind' {R : AV → CV → CPred}
+theorem Refinement.bind' {R : AV → CV → CPred}
     (h₁ : ⦃P⦄ a₁ ⊑[γ] c₁ ⦃R; E⦄)
     (h₂ : ∀ av cv, ⦃R av cv⦄ (a₂ av) ⊑[γ] (c₂ cv) ⦃Q; E⦄) :
     ⦃P⦄ (a₁ >>= a₂) ⊑[γ] (c₁ >>= c₂) ⦃Q; E⦄ :=
-  RTriple.bind.weaken
-    (PartialOrder.rel_trans h₁.le_rwp (rwp_mono_post fun av cv => (h₂ av cv).le_rwp))
+  Refinement.bind.weaken
+    (PartialOrder.rel_trans h₁.le_wrp (wrp_mono_post fun av cv => (h₂ av cv).le_wrp))
 
 /-- The bind rule at a functional head coupling: the continuations correspond at each concrete
 value and its coupled abstract value. -/
-theorem RTriple.bind_eq {f : CV → AV}
+theorem Refinement.bind_eq {f : CV → AV}
     (h₁ : ⦃P⦄ a₁ ⊑[γ] c₁ ⦃fun av cv => ⌜av = f cv⌝; E⦄)
     (h₂ : ∀ cv, ⦃(⊤ : CPred)⦄ (a₂ (f cv)) ⊑[γ] (c₂ cv) ⦃Q; E⦄) :
     ⦃P⦄ (a₁ >>= a₂) ⊑[γ] (c₁ >>= c₂) ⦃Q; E⦄ :=

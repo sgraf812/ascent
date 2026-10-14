@@ -16,7 +16,7 @@ ascend_def chainA3 from
   by simp only [wordVal, UInt64.toNat_add] at * <;> omega
 
 /-- The command produced a refinement theorem against the synthesized constant. -/
-example : RTriple chainA3 (chainC 7 3) γw ⊤ (fun a c => ⌜a = wordVal c⌝) ⊥ := chainA3.refines
+example : Refinement chainA3 (chainC 7 3) γw ⊤ (fun a c => ⌜a = wordVal c⌝) ⊥ := chainA3.refines
 
 /-- The synthesized program is definitionally the hand-written image. -/
 example : chainA3 = chainA 7 3 := rfl

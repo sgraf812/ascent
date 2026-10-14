@@ -28,7 +28,7 @@ elab_rules : command
       let ty ← elabTerm stmt (mkSort .zero)
       Term.synthesizeSyntheticMVarsNoPostponing
       let ty ← instantiateMVars ty
-      unless ty.isAppOfArity ``Ascent.RTriple 22 do
+      unless ty.isAppOfArity ``Ascent.Refinement 22 do
         throwError "ascend: the statement is not a refinement triple:{indentExpr ty}"
       let .mvar aId := ty.getAppArgs[13]!.getAppFn
         | throwError "ascend: the abstract program must be a hole `(_ : AM AV)`"

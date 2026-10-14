@@ -1,12 +1,12 @@
-import Ascent.Corres.RTriple
+import Ascent.Corres.Refinement
 import Ascent.UB
 
 /-!
 # Exceptions: the refinement meaning of `throw` and `tryCatch`
 
 Over one exception layer, `throw` is `pure` into the exception barrel and `tryCatch` is `bind`
-on it: `RTriple.throw` consumes the exception coupling exactly as `RTriple.pure` consumes
-the value coupling, and `RTriple.tryCatch` rebinds it with the handlers' refinement exactly
+on it: `Refinement.throw` consumes the exception coupling exactly as `Refinement.pure` consumes
+the value coupling, and `Refinement.tryCatch` rebinds it with the handlers' refinement exactly
 as `bind` rebinds the value coupling. A caught throw is the handler call (`refines_catch_throw`),
 and inequal throws admit no refinement under the diagonal exception coupling.
 -/
@@ -25,32 +25,32 @@ abbrev exc : Concretization Prop Prop EE EE := Concretization.id Prop EE
 example {AV CV : Type} (e : Nat) (Q : AV → CV → Prop) :
     ⦃(⊤ : Prop)⦄ (MonadExceptOf.throw e : Except Nat AV)
       ⊑[exc] (MonadExceptOf.throw e : Except Nat CV) ⦃Q; (⌜· = ·⌝)⦄ :=
-  (RTriple.throw e e).weaken (le_ofProp _ _ rfl)
+  (Refinement.throw e e).weaken (le_ofProp _ _ rfl)
 
-/-- A `tryCatch` around matching throws runs the handlers: `rwp_throw` consumes the rebound
+/-- A `tryCatch` around matching throws runs the handlers: `wrp_throw` consumes the rebound
 exception coupling at the thrown codes, landing on the handlers' refinement. -/
 example {AV CV : Type} {P : Prop} (Q : AV → CV → Prop) (E : Nat → Nat → Prop)
     (ah : Nat → Except Nat AV) (ch : Nat → Except Nat CV)
     (h : ⦃P⦄ (ah 3) ⊑[exc] (ch 3) ⦃Q; E⦄) :
     ⦃P⦄ (MonadExceptOf.tryCatch (MonadExceptOf.throw 3) ah)
       ⊑[exc] (MonadExceptOf.tryCatch (MonadExceptOf.throw 3) ch) ⦃Q; E⦄ :=
-  RTriple.tryCatch.weaken (PartialOrder.rel_trans h.le_rwp (RTriple.throw (E := fun ea ec => rwp exc (ah ea) (ch ec) Q E) 3 3).le_rwp)
+  Refinement.tryCatch.weaken (PartialOrder.rel_trans h.le_wrp (Refinement.throw (E := fun ea ec => wrp exc (ah ea) (ch ec) Q E) 3 3).le_wrp)
 
 /-- A caught throw is the handler call: the `throw`/`tryCatch` round trip is erased. -/
 theorem refines_catch_throw {AV CV : Type} {P : Prop} {Q : AV → CV → Prop} {E : Nat → Nat → Prop}
     (e : Nat) {a : Except Nat AV} {ch : Nat → Except Nat CV}
     (h : ⦃P⦄ a ⊑[exc] (ch e) ⦃Q; E⦄) :
     ⦃P⦄ a ⊑[exc] (MonadExceptOf.tryCatch (MonadExceptOf.throw e) ch) ⦃Q; E⦄ := by
-  refine ⟨rwp_intro fun Qa Ea => ?_⟩
+  refine ⟨wrp_intro fun Qa Ea => ?_⟩
   simp only [WPMonad.wp_tryCatch_Except_apply_eq, WPMonad.wp_throw_Except_apply_eq]
-  exact rwp_transport h.le_rwp Qa Ea
+  exact wrp_transport h.le_wrp Qa Ea
 
 /-- Distinct throws admit no refinement under the diagonal exception coupling: the barrel
 distinguishes the thrown values. -/
 example : ¬ ⦃(⊤ : Prop)⦄ (MonadExceptOf.throw 0 : Except Nat Nat)
     ⊑[exc] (MonadExceptOf.throw 1 : Except Nat Nat) ⦃fun _ _ => ⊤; (⌜· = ·⌝)⦄ := by
   intro hsim
-  have H := rwp_transport hsim.le_rwp (fun _ => True) (epost⟨fun n => n = 0⟩)
+  have H := wrp_transport hsim.le_wrp (fun _ => True) (epost⟨fun n => n = 0⟩)
   simp only [WPMonad.wp_throw_Except_apply_eq, Concretization.ePost_cons_head,
     Concretization.post_prop, Concretization.id, id_eq, ofProp_prop_eq, meet_prop_eq_and,
     top_prop_eq, true_and] at H
@@ -59,7 +59,7 @@ example : ¬ ⦃(⊤ : Prop)⦄ (MonadExceptOf.throw 0 : Except Nat Nat)
 
 end ThrowCatch
 
-namespace RTripleValidation
+namespace RefinementValidation
 
 open Ascent
 
@@ -80,7 +80,7 @@ example (Q : Int → Int → Prop) :
     ⦃(⊤ : Prop)⦄ (MonadExceptOf.throw true : Except Bool Int)
       ⊑[errAbs] (MonadExceptOf.throw 3 : Except Nat Int)
       ⦃Q; fun ea ec => ⌜ea = decide (0 < ec)⌝⦄ :=
-  (RTriple.throw true 3).weaken (le_ofProp _ _ (by decide))
+  (Refinement.throw true 3).weaken (le_ofProp _ _ (by decide))
 
 /-- Concrete-only exception layer: the fill is phase data. `⊤` permits an unmatched concrete
 throw. -/
@@ -94,7 +94,7 @@ def fillAbs (fill : Nat → Prop) :
 example (Q : Int → Int → Prop) :
     ⦃(⊤ : Prop)⦄ (pure 0 : Id Int)
       ⊑[fillAbs fun _ => ⊤] (MonadExceptOf.throw 3 : Except Nat Int) ⦃Q⦄ := by
-  refine ⟨rwp_intro fun Qa Ea => ?_⟩
+  refine ⟨wrp_intro fun Qa Ea => ?_⟩
   simp only [WPMonad.wp_throw_Except_apply_eq, Concretization.ePost_nil]
   exact le_top _
 
@@ -102,11 +102,11 @@ example (Q : Int → Int → Prop) :
 example : ¬ ⦃(⊤ : Prop)⦄ (pure 0 : Id Int)
     ⊑[fillAbs fun _ => ⊥] (MonadExceptOf.throw 3 : Except Nat Int) ⦃(⌜· = ·⌝)⦄ := by
   intro h
-  have h2 := rwp_transport h.le_rwp (fun _ => True) EPost.Nil.mk
+  have h2 := wrp_transport h.le_wrp (fun _ => True) EPost.Nil.mk
   simp only [WPMonad.wp_throw_Except_apply_eq, Concretization.ePost_nil, _root_.top_meet,
     WPMonadExact.wp_pure_eq] at h2
   have hfalse := h2 trivial
   rw [bot_prop_eq] at hfalse
   exact hfalse
 
-end RTripleValidation
+end RefinementValidation

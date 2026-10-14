@@ -1,4 +1,4 @@
-import Ascent.Corres.RTriple
+import Ascent.Corres.Refinement
 
 /-!
 # Support lemmas applied by the ascend engine

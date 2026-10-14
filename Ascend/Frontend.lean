@@ -13,10 +13,10 @@ open Lean Meta Sym Elab
 
 namespace Ascend
 
-/-- Unseal the abstract-program hole of an `RTriple` goal so rule application can assign it. -/
+/-- Unseal the abstract-program hole of a `Refinement` goal so rule application can assign it. -/
 def unsealAbstractHole (goal : MVarId) : MetaM Unit := do
   let target ← goal.getType
-  unless target.isAppOfArity ``Ascent.RTriple 22 do return
+  unless target.isAppOfArity ``Ascent.Refinement 22 do return
   let a := target.getAppArgs[13]!
   let .mvar mvarId := a.getAppFn | return
   if (← mvarId.getDecl).kind matches .syntheticOpaque then

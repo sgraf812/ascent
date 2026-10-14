@@ -1,5 +1,5 @@
 import Ascend.Context
-import Ascent.Corres.RTriple
+import Ascent.Corres.Refinement
 
 /-!
 # Rule compilation and application
@@ -9,10 +9,10 @@ per goal by pattern matching, so no application-time work scales with the size o
 value terms.
 
 **Compilation** (`compileRule`, cached by spec name and the phase's `γ`): project
-the spec's `RTriple` conclusion through `le_rwp` to `pre' ⊑ rwp …`; pin the phase against the
-goal (the assertion lattices, `γ`, and the monads, read off the goal's `rwp` arguments);
+the spec's `Refinement` conclusion through `le_wrp` to `pre' ⊑ wrp …`; pin the phase against the
+goal (the assertion lattices, `γ`, and the monads, read off the goal's `wrp` arguments);
 synthesize the instances the conclusion does not determine; wrap the transitivity composition
-as the auxiliary theorem `∀ params P', (P' ⊑ pre') → P' ⊑ rwp …`; abstract the remaining
+as the auxiliary theorem `∀ params P', (P' ⊑ pre') → P' ⊑ wrp …`; abstract the remaining
 parameters (the value slots) into a `BackwardRule`.
 
 **Application** (`applyRule`): when the goal's abstract slot is a flex application
@@ -56,19 +56,19 @@ def commitWhenSome? (k : AscendM (Option α)) : AscendM (Option α) := do
     s.restore
     return none
 
-/-- The rule's conclusion as an entailment `pre' ⊑ rwp …` together with its proof: an
-`RTriple` conclusion projects through `le_rwp`. -/
+/-- The rule's conclusion as an entailment `pre' ⊑ wrp …` together with its proof: an
+`Refinement` conclusion projects through `le_wrp`. -/
 private def conclusionProof (rule : Expr) (mvs : Array Expr) (concl : Expr) :
     MetaM (Option (Expr × Expr)) := do
-  if concl.isAppOfArity ``Ascent.RTriple 22 then
-    let leRwp ← mkConstWithFreshMVarLevels ``Ascent.RTriple.le_rwp
-    let prf := mkAppN leRwp (concl.getAppArgs.push (mkAppN rule mvs))
+  if concl.isAppOfArity ``Ascent.Refinement 22 then
+    let leWrp ← mkConstWithFreshMVarLevels ``Ascent.Refinement.le_wrp
+    let prf := mkAppN leWrp (concl.getAppArgs.push (mkAppN rule mvs))
     return some (← Meta.inferType prf, prf)
   if concl.isAppOfArity ``Lean.Order.PartialOrder.rel 4 then
     return some (concl, mkAppN rule mvs)
   return none
 
-/-- The `rwp` argument positions that identify a phase: the assertion lattices and their
+/-- The `wrp` argument positions that identify a phase: the assertion lattices and their
 instances, `Ξ`, `HasEPost`, and `γ`. The program and value types (and with them the `WP`
 instances) stay parametric, so one compiled rule serves every node of a chain. -/
 private def phasePositions : Array Nat := #[4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 16]
@@ -80,20 +80,20 @@ private def monadOf (progTy : Expr) : Expr :=
   if progTy.isApp then progTy.appFn! else progTy
 
 /-- Compile `spec` to apply-ready form against the phase of the goal `g`. -/
-private def compileRule (si : SpecInfo) (g : RWPApp) : AscendM (Option CachedRule) := do
+private def compileRule (si : SpecInfo) (g : WRPApp) : AscendM (Option CachedRule) := do
   let rule ← mkConstWithFreshMVarLevels si.declName
-  -- Non-reducing: at the `Prop` lattice the `RTriple` conclusion would reduce to an
+  -- Non-reducing: at the `Prop` lattice the `Refinement` conclusion would reduce to an
   -- implication and the telescope would consume the precondition as a binder.
   let (mvs, bis, concl) ← forallMetaTelescope (← Meta.inferType rule)
   let some (relTy, prf) ← conclusionProof rule mvs concl | return none
-  let some ruleRwp := parseRWP? relTy.appArg! | return none
+  let some ruleWrp := parseWRP? relTy.appArg! | return none
   -- Pin the phase, and the monads: compare the monad `M` of each program type `M α` via
   -- `monadOf` (peeling the value type), so a parameterized monad like `Except ε` is not
   -- over-stripped to its head as `getAppFn` would.
   for i in phasePositions do
-    unless ← isDefEqGuarded ruleRwp.args[i]! g.args[i]! do return none
-  unless ← isDefEqGuarded (monadOf ruleRwp.AProg) (monadOf g.AProg) do return none
-  unless ← isDefEqGuarded (monadOf ruleRwp.CProg) (monadOf g.CProg) do return none
+    unless ← isDefEqGuarded ruleWrp.args[i]! g.args[i]! do return none
+  unless ← isDefEqGuarded (monadOf ruleWrp.AProg) (monadOf g.AProg) do return none
+  unless ← isDefEqGuarded (monadOf ruleWrp.CProg) (monadOf g.CProg) do return none
   for mv in mvs, bi in bis do
     if bi.isInstImplicit && !(← mv.mvarId!.isAssigned) then
       mv.mvarId!.assign (← Meta.synthInstance (← instantiateMVars (← Meta.inferType mv)))
@@ -107,17 +107,17 @@ private def compileRule (si : SpecInfo) (g : RWPApp) : AscendM (Option CachedRul
         let ty ← Meta.inferType av
         return (`x, fun (_ : Array Expr) => (pure ty : AscendM Expr))
       let lam ← withLocalDeclsD decls fun xs => do
-        let a ← instantiateMVars ruleRwp.a
+        let a ← instantiateMVars ruleWrp.a
         mkLambdaFVars xs <| a.replace fun e => avMVars.idxOf? e |>.map (xs[·]!)
       -- Substitute eagerly: this is compile-time work, shared by all applications.
       pure (some (← abstractMVars (← instantiateMVars lam)))
-  -- The auxiliary theorem `∀ P' (h : P' ⊑ pre'), P' ⊑ rwp …`, leaving the precondition entailment
+  -- The auxiliary theorem `∀ P' (h : P' ⊑ pre'), P' ⊑ wrp …`, leaving the precondition entailment
   -- as the sole subgoal; `solve` decomposes it through the lattice-connective split rules.
   let relTy ← instantiateMVars relTy
   let_expr rel@Lean.Order.PartialOrder.rel relCarrier relInst rulePre ruleRhs := relTy | return none
   let pre' ← instantiateMVars rulePre
   let carrier ← instantiateMVars g.CPred
-  -- The auxiliary theorem `∀ P' (h : P' ⊑ pre'), P' ⊑ rwp …`, leaving the precondition entailment
+  -- The auxiliary theorem `∀ P' (h : P' ⊑ pre'), P' ⊑ wrp …`, leaving the precondition entailment
   -- as the sole subgoal; `solve` decomposes it through the lattice-connective split rules.
   let aux ← withLocalDeclD `P' carrier fun P' => do
     withLocalDeclD `h (mkApp4 rel relCarrier relInst P' pre') fun h => do
@@ -135,7 +135,7 @@ private def compileRule (si : SpecInfo) (g : RWPApp) : AscendM (Option CachedRul
   return some { rule, template? }
 
 /-- The compiled rule for `spec` against the phase of `g`, from the cache or compiled now. -/
-private def cachedRule (si : SpecInfo) (g : RWPApp) : AscendM (Option CachedRule) := do
+private def cachedRule (si : SpecInfo) (g : WRPApp) : AscendM (Option CachedRule) := do
   let key := (si.declName, ExprPtr.mk g.γ)
   if let some c := (← get).ruleCache[key]? then return some c
   let some c ← compileRule si g | return none
@@ -145,7 +145,7 @@ private def cachedRule (si : SpecInfo) (g : RWPApp) : AscendM (Option CachedRule
 /-- Assign a flex abstract slot `?m t₁ … tₖ` from the spec's template and rebuild the target
 with the slot beta-reduced, so pattern matching sees a rigid program. Returns the updated
 goal, or `none` when the slot is already rigid (nothing to do). -/
-private def fixAbstractSlot? (goal : MVarId) (g : RWPApp) (c : CachedRule) :
+private def fixAbstractSlot? (goal : MVarId) (g : WRPApp) (c : CachedRule) :
     AscendM (Option (Option MVarId)) := do
   let goalA ← instantiateMVarsIfMVarAppS g.a
   let .mvar mvarId := goalA.getAppFn | return some none
@@ -211,9 +211,9 @@ private def fixAbstractSlot? (goal : MVarId) (g : RWPApp) (c : CachedRule) :
   let_expr rel@Lean.Order.PartialOrder.rel carrier inst pre _ := ← goal.getType | return none
   return some (some (← setTargetRaw goal (mkApp4 rel carrier inst pre rhs)))
 
-/-- Apply the registered rule `si` to a goal `pre ⊑ rwp γ a c Q E`. Returns the curried
+/-- Apply the registered rule `si` to a goal `pre ⊑ wrp γ a c Q E`. Returns the curried
 precondition subgoals, or `none` (state rolled back) if the rule does not apply. -/
-def applyRule (goal : MVarId) (g : RWPApp) (si : SpecInfo) : AscendM (Option (List MVarId)) := do
+def applyRule (goal : MVarId) (g : WRPApp) (si : SpecInfo) : AscendM (Option (List MVarId)) := do
   commitWhenSome? do
     let some c ← cachedRule si g | return none
     let some goal? ← fixAbstractSlot? goal g c | return none

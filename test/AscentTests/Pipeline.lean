@@ -6,7 +6,7 @@ import AscentTests.WordAbstraction
 
 A total, word-valued program in the failure monad is abstracted in two steps: type strengthening
 removes the failure layer (`ExceptT Unit (StateT σ Id) ↝ StateT σ Id`), then word abstraction
-lifts the result `UInt64 ↝ Int`. The phases compose through `RTriple.comp`, yielding a single
+lifts the result `UInt64 ↝ Int`. The phases compose through `Refinement.comp`, yielding a single
 refinement of the abstract integer-state program by the concrete failure-monad word program.
 -/
 
@@ -29,4 +29,4 @@ example : ⦃(⊤ : Nat → Prop)⦄ (pure ((10 : Int) + 20) : StateT Nat Id Int
   have hWA : ⦃(⊤ : Nat → Prop)⦄ (pure ((10 : Int) + 20) : StateT Nat Id Int)
       ⊑[wordAbstractionStateT] (pure ((10 : UInt64) + 20) : StateT Nat Id UInt64)
       ⦃(⌜· = wordVal ·⌝)⦄ := .pure_eq ⊤ _ (by decide)
-  exact RTriple.comp (fun _ => rfl) hWA (refines_lift _ _)
+  exact Refinement.comp (fun _ => rfl) hWA (refines_lift _ _)

@@ -5,7 +5,7 @@ import Ascent.UB
 
 The facts that make `StateT σ UB` a usable concrete monad for refinement: its `wp` reduces `bind`
 pointwise, and conjoins two established postconditions (`wp_and_StateT`). Conjunctivity as the
-lattice-form `WPConjunctive` class, needed by `RTriple.conj_wp`, is provided for `StateT σ UB`
+lattice-form `WPConjunctive` class, needed by `Refinement.conj_wp`, is provided for `StateT σ UB`
 by the library instances (`StateT.instWPConjunctive` over `UB`'s).
 -/
 

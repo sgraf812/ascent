@@ -1,10 +1,10 @@
 import Lean
-import Ascent.Corres.RTriple
+import Ascent.Corres.Refinement
 
 /-!
 # The ascend benchmark driver
 
-Runs one synthesis problem per size: elaborate an `RTriple` statement with a `?a` hole for the
+Runs one synthesis problem per size: elaborate a `Refinement` statement with a `?a` hole for the
 abstract program, unseal the hole to a natural metavariable, unfold the concrete program's
 definitions via `Sym.simp`, hand the goal to a solver, and measure each phase separately: solve
 time, VC count and discharge time, the golden `isDefEq` check of the synthesized program against
@@ -21,7 +21,7 @@ def timeItMs {α : Type} (k : MetaM α) : MetaM (α × Nat) := do
   let t1 ← IO.monoNanosNow
   return (a, (t1 - t0) / 1000000)
 
-/-- Elaborate a synthesis statement: an `RTriple` proposition with a single `?a` hole for the
+/-- Elaborate a synthesis statement: a `Refinement` proposition with a single `?a` hole for the
 abstract program. Returns the goal type and the hole, unsealed to a natural metavariable so that
 rule application can instantiate it. -/
 def elabSynthGoal (stmt : Term) : TermElabM (Expr × MVarId) := do
@@ -42,7 +42,7 @@ def solveUsingTactic (goal : MVarId) (tac : TSyntax `tactic) : MetaM (List MVarI
 /--
 Run one synthesis benchmark and print a measurement line.
 
-* `stmt`: the `RTriple` statement with its `?a` hole.
+* `stmt`: the `Refinement` statement with its `?a` hole.
 * `unfold`: definitions to unfold in the goal via `Sym.simp` (the concrete program's equations);
   unfolding is not measured.
 * `expected`: the expected abstract program, for the golden `isDefEq` check.

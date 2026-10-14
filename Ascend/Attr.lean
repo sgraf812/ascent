@@ -1,10 +1,10 @@
 import Lean
-import Ascent.Corres.RTriple
+import Ascent.Corres.Refinement
 
 /-!
 # The `@[ascend]` spec registry
 
-Registered specs are `RTriple` theorems in registry form: the coupling `Q` (and the exception
+Registered specs are `Refinement` theorems in registry form: the coupling `Q` (and the exception
 coupling `E`, when present) is a universally quantified variable, so the spec applies to any
 coupling by assignment, and the synthesis directives live in the abstract program and the
 precondition. Specs are keyed in a discrimination tree by their concrete program.
@@ -45,17 +45,17 @@ private def mvarPositions (xs : Array Expr) (e : Expr) : MetaM (Array Nat) := do
       acc := acc.push i
   return acc
 
-/-- Analyze a spec theorem: locate the `RTriple` conclusion, classify the telescope binders,
+/-- Analyze a spec theorem: locate the `Refinement` conclusion, classify the telescope binders,
 and compute the discrimination keys of the concrete program. The telescope is instantiated
 with metavariables so the keys index binders as wildcards, and non-reducing because at the
-`Prop` lattice `RTriple` would reduce to an implication whose precondition the telescope would
+`Prop` lattice `Refinement` would reduce to an implication whose precondition the telescope would
 consume as a binder. -/
 def analyzeSpec (declName : Name) : MetaM (SpecInfo × Array (DiscrTree.Key)) := do
   let info ← getConstInfo declName
   let (xs, _, body) ← forallMetaTelescope info.type
   do
-    unless body.isAppOfArity ``Ascent.RTriple 22 do
-      throwError "@[ascend]: conclusion of {declName} is not an RTriple application:{indentExpr body}"
+    unless body.isAppOfArity ``Ascent.Refinement 22 do
+      throwError "@[ascend]: conclusion of {declName} is not an Refinement application:{indentExpr body}"
     let args := body.getAppArgs
     let a := args[13]!
     let c := args[14]!
@@ -88,7 +88,7 @@ initialize ascendExt :
 
 initialize registerBuiltinAttribute {
   name := `ascend
-  descr := "registry of RTriple specs driving the ascend engine"
+  descr := "registry of Refinement specs driving the ascend engine"
   add := fun declName _stx kind => do
     let entry ← MetaM.run' (analyzeSpec declName)
     ascendExt.add entry kind

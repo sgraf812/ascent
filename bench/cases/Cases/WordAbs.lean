@@ -1,4 +1,4 @@
-import Ascent.Corres.RTriple
+import Ascent.Corres.Refinement
 import Ascent.UB
 import Ascend
 
@@ -39,7 +39,7 @@ the chain's arithmetic. -/
           Q (av + wordVal y) (cv + y)) : Prop)⦄
       (UB.guardRet (av + wordVal y < 2 ^ 64) (av + wordVal y))
       ⊑[γw] (pure (cv + y) : Id UInt64) ⦃Q; E⦄ := by
-  refine RTriple.guardRet _ _ fun hovf hp => hp.2 hovf ?_
+  refine Refinement.guardRet _ _ fun hovf hp => hp.2 hovf ?_
   obtain ⟨hav, -⟩ := hp
   subst hav
   show wordVal cv + wordVal y = wordVal (cv + y)
@@ -62,7 +62,7 @@ theorem refines_addW (av : Int) (cv y : UInt64) :
 chain. -/
 @[ascend] theorem pureW_spec (cv : UInt64) {Q : Int → UInt64 → Prop} {E : EPost.Nil} :
     ⦃Q (wordVal cv) cv⦄ (pure (wordVal cv) : UB Int) ⊑[γw] (pure cv : Id UInt64) ⦃Q; E⦄ :=
-  RTriple.pure _ _
+  Refinement.pure _ _
 
 /-- The mid-coupling bind form for the baseline chain: the head establishes `R`, the
 continuations correspond under it. -/
@@ -79,8 +79,8 @@ theorem bindChain {CM AM : Type w → Type v} {CPred APred : Type w}
     (h₁ : ⦃P⦄ a₁ ⊑[γ] c₁ ⦃R; E⦄)
     (h₂ : ∀ av cv, ⦃R av cv⦄ (a₂ av) ⊑[γ] (c₂ cv) ⦃Q; E⦄) :
     ⦃P⦄ (a₁ >>= a₂) ⊑[γ] (c₁ >>= c₂) ⦃Q; E⦄ :=
-  RTriple.bind.weaken
-    (PartialOrder.rel_trans h₁.le_rwp (rwp_mono_post fun av cv => (h₂ av cv).le_rwp))
+  Refinement.bind.weaken
+    (PartialOrder.rel_trans h₁.le_wrp (wrp_mono_post fun av cv => (h₂ av cv).le_wrp))
 
 /-- The concrete chain: `n` dependent additions of the constant `c`. -/
 def chainC (c : UInt64) : Nat → Id UInt64

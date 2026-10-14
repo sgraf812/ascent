@@ -1,4 +1,4 @@
-import Ascent.Corres.RTriple
+import Ascent.Corres.Refinement
 
 /-!
 # Word abstraction: `UInt64 ↝ Int`
@@ -6,7 +6,7 @@ import Ascent.Corres.RTriple
 Machine-word values are abstracted to mathematical integers. The assertion lattice is
 unchanged, so the concretization is `Concretization.id`; the abstraction lives entirely in the
 value coupling `⌜· = wordVal ·⌝`, supplied per triple. Each arithmetic refinement is an
-instance of `RTriple.pure_eq` whose value-equality hypothesis is the no-overflow
+instance of `Refinement.pure_eq` whose value-equality hypothesis is the no-overflow
 side-condition, discharged by `omega`. A genuinely overflowing program admits no refinement.
 -/
 
@@ -49,6 +49,6 @@ example (a b : UInt64) (h : b ≤ a) :
   omega
 
 /-- A genuinely overflowing addition has no word abstraction: the no-overflow equation that
-`RTriple.pure_eq` would demand is false, since `2^63 + 2^63` wraps to `0`. -/
+`Refinement.pure_eq` would demand is false, since `2^63 + 2^63` wraps to `0`. -/
 example : wordVal (2 ^ 63) + wordVal (2 ^ 63) ≠ wordVal ((2 ^ 63) + (2 ^ 63) : UInt64) := by
   native_decide

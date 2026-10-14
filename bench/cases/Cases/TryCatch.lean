@@ -17,7 +17,7 @@ noncomputable def γe : Concretization Prop Prop EPost⟨Nat → Prop⟩ EPost�
   Concretization.id Prop EPost⟨Nat → Prop⟩
 
 -- A `pure` leaf under the identity concretization, coupling by equality.
-attribute [local ascend] Ascent.RTriple.pure
+attribute [local ascend] Ascent.Refinement.pure
 
 /-- Catch a thrown value and return it: `tryCatch (throw 5) pure` evaluates to `.ok 5`. -/
 def ctc : Except Nat Nat :=
@@ -28,7 +28,7 @@ ascend_def atc from
   by first | rfl | (intro h; exact h) | simp_all
 
 /-- The command produced a refinement theorem against the synthesized constant. -/
-example : RTriple atc ctc γe ⊤ (fun a c => ⌜a = c⌝) (fun ea ec => ⌜ea = ec⌝) :=
+example : Refinement atc ctc γe ⊤ (fun a c => ⌜a = c⌝) (fun ea ec => ⌜ea = ec⌝) :=
   atc.refines
 
 /-- The synthesized program is the identity image of the concrete one. -/

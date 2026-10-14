@@ -1,37 +1,50 @@
 # Ascent
 
-Automatic abstraction of monadic programs with machine-checked correspondence proofs,
-in the style of AutoCorres, read as abstract interpretation. Built on the
-`Std.Internal.Do` weakest-precondition metatheory (`WP`, `PredTrans`, `Order`).
+Ascent climbs from a concrete program to an abstract one. Each step takes a program and
+produces a more abstract program together with a proof that the input refines the output.
+Every property proved of the abstract program transports to the concrete one.
 
-This is Phase A: the `Corres` metatheory and two worked refinement phases. The
-`mcorres`/`ascend` tactic that synthesizes abstractions automatically is future work.
+Ascent is built on the `Std.WP` weakest-precondition metatheory of the Lean toolchain.
 
-## Core
+## The judgment
 
-`Corres r γV a c` states that the abstract program `a` soundly abstracts the concrete
-program `c`: every property proved of `a` transports to `c`. It is the abstract-interpretation
-soundness statement `r.γP (wp a Q E) ⊑ wp c (r.γQ γV Q) (r.γE E)`, where `r : Refinement`
-carries the monad-level concretizations `γP`/`γE` and `γV` is the per-occurrence value
-abstraction.
+`⦃P⦄ a ⊑[γ] c ⦃Q; E⦄` states that under the precondition `P` on the concrete initial state,
+the concrete program `c` refines the abstract program `a`. The concretization
+`γ : Concretization` maps abstract assertions to concrete ones, the coupling `Q` relates
+abstract results to concrete results, and `E` relates thrown values. The triple is
+`P ⊑ wrp γ a c Q E`, where
 
-* `Ascent/Corres/Basic.lean` — `Refinement`, `Corres`, the `LawfulRefinement` class (the
-  `corres_pure`/`corres_bind` laws, keyed on the refinement) and the free structural lemmas.
-  `Corres` is a category: `corres_id` is the identity (`idRefinement`), `corres_comp` the
-  composition (`Refinement.comp`), exposed as a `Trans` instance for `calc`.
-  `LawfulRefinement.ofWPMorphism` builds the laws from a proof that the abstract `wp` is a
-  monad morphism (the common case); non-morphism abstractions provide a `LawfulRefinement`
-  directly.
-* `Ascent/Corres/TypeStrengthen.lean` — `ExceptT Unit (StateT σ Id) ↝ StateT σ Id`: a total
-  failure-monad program abstracts to the pure state monad (`corres_lift`).
-* `Ascent/Corres/WordAbstraction.lean` — `UInt64 ↝ Int`: value abstraction with no-overflow
-  side-conditions, on the identity refinement.
-* `test/` — worked example correspondences and negative tests (`lake test`).
+```
+wrp γ a c Q E = ⨅ Qa Ea, γ.pred (wp a Qa Ea) ⇨ wp c (γ.post Q Qa) (γ.ePost E Ea)
+```
+
+is the weakest refinement precondition: the weakest assertion under which every `wp` fact of
+`a` transports to `c`. The `pure`, `bind`, `throw` and `tryCatch` laws of `wrp` are the rules a
+forward simulation proof applies, one program construct at a time.
+
+## Modules
+
+* `Ascent/Corres/Basic.lean`: `Concretization`, its postcondition reification `post`, the
+  functional state abstraction `ofStateRepr`, purification, identity and composition.
+* `Ascent/Corres/Refinement.lean`: `wrp`, `Refinement`, the laws for `pure`, `bind`, `throw`
+  and `tryCatch`, composition of refinements, and purification of a write-once program.
+* `Ascent/Corres/Loop.lean`: the relational concretization `relRef` and the while-loop rule.
+* `Ascent/Corres/SP.lean`: strongest postconditions as the lower adjoint of `wp`.
+* `Ascent/UB.lean`, `Ascent/Loop.lean`: the undefined-behaviour effect, where a failed guard
+  has weakest precondition `⊥`, and the while loop as a least fixpoint in it.
+* `Ascent/WPMonadExact.lean`: monads whose `wp` computes `pure` and `bind` exactly, which the
+  abstract side of a refinement needs.
+* `Ascend/`: the `ascend` tactic and the `ascend_def` command. On a goal
+  `⦃P⦄ (_ : AM AV) ⊑[γ] c ⦃Q; E⦄` the tactic computes the abstract program into the hole and
+  proves the triple, leaving the verification conditions as goals. The command stores the
+  abstract program as a definition `a` with the theorem `a.refines`. Rules are `Refinement`
+  theorems registered with `@[ascend]`, keyed by the concrete program.
+* `test/`: worked refinements, the `zip_with_add` case study, and negative tests.
+* `bench/`: the synthesis benchmark harness.
 
 ## Build
 
-The `lean-toolchain` pins the local `lean4` toolchain, which ships the `Std.Internal.Do`
-metatheory (the per-program-type `WP` class). With that toolchain available to `elan`:
+`lean-toolchain` pins the nightly that ships `Std.WP`.
 
 ```
 lake build

@@ -7,7 +7,7 @@ import Ascent.WPMonadExact
 `Concretization` carries the monad-level concretizations `pred`/`ePred` (the AutoCorres
 state/exception abstraction; `Concretization.ofStateRepr` builds the common functional case as a
 pullback). The value-level coupling is a relational postcondition supplied per refinement triple
-(`Ascent.Corres.RTriple`); `Concretization.post` reifies it against an abstract postcondition.
+(`Ascent.Corres.Refinement`); `Concretization.post` reifies it against an abstract postcondition.
 -/
 
 open Std.WP Lean.Order
