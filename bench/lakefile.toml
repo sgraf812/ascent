@@ -13,7 +13,7 @@ srcDir = "lib"
 [[lean_lib]]
 name = "Cases"
 srcDir = "cases"
-globs = ["Cases.+"]
+globs = ["Cases.*"]
 
 [[lean_lib]]
 name = "Bench"
