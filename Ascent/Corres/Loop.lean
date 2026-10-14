@@ -19,7 +19,7 @@ open Std.WP Lean.Order Ascent
 /-- A concretization from a state relation `J`: an abstract assertion `P` concretizes to "there is a
 `J`-related abstract state on which `P` holds". -/
 def relRef {Aσ Cσ : Type} (J : Cσ → Aσ → Prop) :
-    Concretization (Cσ → Prop) (Aσ → Prop) EPost.Nil EPost.Nil where
+    Concretization (Cσ → Prop) (Aσ → Prop) EStack⟨⟩ EStack⟨⟩ where
   pred P := fun cs => ∃ as, J cs as ∧ P as
   ePred := id
   pred_mono h := fun _ ⟨as, hJ, hP⟩ => ⟨as, hJ, h as hP⟩
@@ -30,7 +30,7 @@ def relRef {Aσ Cσ : Type} (J : Cσ → Aσ → Prop) :
 
 /-- One-step unfolding of `whileLoop`'s `wp`. -/
 theorem wp_whileLoop {σ} (cond : σ → Bool) (body : StateT σ UB Unit)
-    (Q : Unit → σ → Prop) (E : EPost.Nil) (s : σ) :
+    (Q : Unit → σ → Prop) (E : EStack⟨⟩) (s : σ) :
     wp (whileLoop cond body) Q E s
       = if cond s then wp body (fun _ s' => wp (whileLoop cond body) Q E s') E s else Q () s := by
   rw [whileLoop, StateT.wp_apply_eq, StateT.run, loopFix]
@@ -55,7 +55,7 @@ theorem refines_whileLoop {Aσ Cσ : Type} (J : Cσ → Aσ → Prop)
     (μ : Aσ → Nat)
     (hcond : ∀ cs as, J cs as → ccond cs = acond as)
     (hbody : ⦃(⊤ : Cσ → Prop)⦄ cbody ⪯[relRef J] abody ⦃fun _ _ => ⊤⦄)
-    (hμ : ∀ (E : EPost.Nil) as, acond as = true → wp abody (fun _ _ => True) E as →
+    (hμ : ∀ (E : EStack⟨⟩) as, acond as = true → wp abody (fun _ _ => True) E as →
         wp abody (fun _ as' => μ as' < μ as) E as) :
     ⦃(⊤ : Cσ → Prop)⦄ (whileLoop ccond cbody) ⪯[relRef J] (whileLoop acond abody)
       ⦃fun _ _ => ⊤⦄ := by
@@ -79,12 +79,12 @@ theorem refines_whileLoop {Aσ Cσ : Type} (J : Cσ → Aσ → Prop)
       have hcct : ccond cs = true := by rw [hcc]; exact hc
       rw [ite_eq_left hcct]
       have hsucc : wp abody (fun _ _ => True) E as :=
-        WP.wp_consequence abody _ _ E (fun _ _ _ => trivial) as hwp
+        WP.wp_monotone_post (x := abody) (fun _ _ _ => trivial) as hwp
       have hcomb := wp_and_StateT abody _ _ E as hwp (hμ E as hc hsucc)
       have hcb := (wrp_transport hbody.le_wrp (fun _ as' => wp (whileLoop acond abody) Q E as' ∧ μ as' < μ as) E)
         cs (by simp only [_root_.top_meet, relRef_pred]; exact ⟨as, hJ, hcomb⟩)
       simp only [relRef_post_top] at hcb
-      refine WP.wp_consequence cbody _ _ _ ?_ cs hcb
+      refine WP.wp_monotone_post (x := cbody) ?_ cs hcb
       intro _ cs' hpost'
       obtain ⟨_, as', hJ', hwp', hlt'⟩ := hpost'
       exact ih as' cs' (Nat.lt_of_lt_of_le hlt' (Nat.lt_succ_iff.mp hlt)) hJ' hwp'
@@ -103,7 +103,7 @@ theorem refines_relEq_self {σ α} (P : σ → Prop) (a : StateT σ UB α) :
   intro cs hcs
   simp only [meet_apply, meet_prop_eq_and, relRef_pred] at hcs
   obtain ⟨-, as, rfl, hwp⟩ := hcs
-  refine WP.wp_consequence a Q _ E ?_ cs hwp
+  refine WP.wp_monotone_post (x := a) (post := Q) ?_ cs hwp
   intro cv cs' hq
   simp only [Concretization.post_eq, relRef_pred]
   exact ⟨cs', rfl, hq⟩

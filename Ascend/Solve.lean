@@ -92,7 +92,7 @@ private def eqReflClose? (goal : MVarId) (carrier pre rhs : Expr) : AscendM (Opt
   unless carrier.isProp do return none
   let some (_, l, r) := rhs.eq? | return none
   unless ← isDefEqS l r do return none
-  goal.assign (mkApp3 (mkConst ``Lean.Order.le_of_right) pre rhs (← Meta.mkEqRefl l))
+  goal.assign (mkApp3 (mkConst ``Lean.Order.le_prop_of_right) pre rhs (← Meta.mkEqRefl l))
   return some ()
 
 /-- Strategy: apply a registered spec for the program, most specific first. -/

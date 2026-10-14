@@ -24,7 +24,7 @@ arrays (L2 → L3), realize the loop as a `zipWith` (L3 → L4), assemble the en
 
 open Std.WP Lean.Order Ascent
 
-set_option mvcgen.warning false
+set_option experimental.vcgen true
 
 namespace Zip
 
@@ -214,7 +214,7 @@ local macro "aomega" : tactic => `(tactic| (unfold Addr at *; omega))
 
 /-- `getSize`'s `wp`, as a function of the state: reading a coupled `size_t` extracts its value,
 UB otherwise. -/
-theorem wp_getSize (x : Ident) (Q : USize → State → Prop) (E : EPost.Nil) (s : State) :
+theorem wp_getSize (x : Ident) (Q : USize → State → Prop) (E : EStack⟨⟩) (s : State) :
     wp (getSize x) Q E s = match s.locals x with | some (.size n) => Q n s | _ => (⊥ : Prop) := by
   rw [getSize, WPMonadExact.wp_bind_eq]
   simp only [StateT.wp_apply_eq, StateT.run, get, getThe, MonadStateOf.get, StateT.get, UB.wp_pure_eq]
@@ -228,7 +228,7 @@ theorem wp_getSize (x : Ident) (Q : USize → State → Prop) (E : EPost.Nil) (s
 
 /-- `getPtr`'s `wp`, as a function of the state: reading a coupled pointer extracts its address,
 UB otherwise. -/
-theorem wp_getPtr (x : Ident) (Q : Addr → State → Prop) (E : EPost.Nil) (s : State) :
+theorem wp_getPtr (x : Ident) (Q : Addr → State → Prop) (E : EStack⟨⟩) (s : State) :
     wp (getPtr x) Q E s = match s.locals x with | some (.ptr a) => Q a s | _ => (⊥ : Prop) := by
   rw [getPtr, WPMonadExact.wp_bind_eq]
   simp only [StateT.wp_apply_eq, StateT.run, get, getThe, MonadStateOf.get, StateT.get, UB.wp_pure_eq]
@@ -241,14 +241,14 @@ theorem wp_getPtr (x : Ident) (Q : Addr → State → Prop) (E : EPost.Nil) (s :
     | int i => simp [StateT.lift, liftM, monadLift, MonadLift.monadLift]
 
 /-- `setSize`'s `wp`: writing a `size_t` local updates just that local. -/
-theorem wp_setSize (x : Ident) (n : USize) (Q : Unit → State → Prop) (E : EPost.Nil) (s : State) :
+theorem wp_setSize (x : Ident) (n : USize) (Q : Unit → State → Prop) (E : EStack⟨⟩) (s : State) :
     wp (setSize x n) Q E s
       = Q () { s with locals := fun y => if y = x then some (.size n) else s.locals y } := by
   simp only [setSize, StateT.wp_apply_eq, StateT.run, modify, modifyGet, MonadStateOf.modifyGet,
     StateT.modifyGet, UB.wp_pure_eq]
 
 /-- `setSize`'s strongest postcondition: the image of `P` under the local update. -/
-theorem sp_setSize (x : Ident) (n : USize) (P : State → Prop) (E : EPost.Nil) :
+theorem sp_setSize (x : Ident) (n : USize) (P : State → Prop) (E : EStack⟨⟩) :
     sp (setSize x n) P E = fun _ s' =>
       ∃ s, P s ∧ s' = { s with locals := fun y => if y = x then some (.size n) else s.locals y } := by
   apply PartialOrder.rel_antisymm
@@ -264,7 +264,7 @@ theorem sp_setSize (x : Ident) (n : USize) (P : State → Prop) (E : EPost.Nil) 
 
 /-- `getSize`'s strongest postcondition, on a presence-guaranteeing precondition: the read value
 coupled to the local, state unchanged. -/
-theorem sp_getSize (x : Ident) (P : State → Prop) (E : EPost.Nil)
+theorem sp_getSize (x : Ident) (P : State → Prop) (E : EStack⟨⟩)
     (hdef : ∀ s, P s → ∃ v, s.locals x = some (.size v)) :
     sp (getSize x) P E = fun v s' => P s' ∧ s'.locals x = some (.size v) := by
   apply PartialOrder.rel_antisymm
@@ -283,7 +283,7 @@ theorem sp_getSize (x : Ident) (P : State → Prop) (E : EPost.Nil)
 
 /-- The abstract body's `wp`, as a function of the state (so it rewrites under the `∃` in the
 relational precondition). -/
-theorem wp_stepL2 (a b out : Addr) (Q : Unit → USize × Heap → Prop) (E : EPost.Nil)
+theorem wp_stepL2 (a b out : Addr) (Q : Unit → USize × Heap → Prop) (E : EStack⟨⟩)
     (p : USize × Heap) :
     wp (stepL2 a b out) Q E p =
       if p.2.valid (a + p.1.toNat) && p.2.valid (b + p.1.toNat) && p.2.valid (out + p.1.toNat) then
@@ -310,14 +310,14 @@ theorem refines_stepL2 (a b out : Addr) (n : USize) :
       at habs <;>
     (try exact habs.elim)
   simp only [ite_true] at habs
-  refine WP.wp_econs_bot stepL1 _ _ cs ?_
+  refine WP.wp_monotone_bot (x := stepL1) cs ?_
   have key : ⦃fun s => invL2 a b out n s (i, cs.heap) ∧ s.heap.valid (a + i.toNat) = true ∧
       s.heap.valid (b + i.toNat) = true ∧ s.heap.valid (out + i.toNat) = true⦄
       stepL1
       ⦃fun _ cs' => invL2 a b out n cs' (i + 1, cs'.heap) ∧ Q () (i + 1, cs'.heap)⦄ := by
     vcgen [stepL1]
     all_goals grind
-  refine WP.wp_consequence stepL1 _ _ ⊥ ?_ cs
+  refine WP.wp_monotone_post (x := stepL1) ?_ cs
     (key.le_wp cs ⟨⟨rfl, hi, hn, ha, hb, hout⟩, hv1, hv2, hv3⟩)
   rintro _ cs' ⟨h1, h2⟩
   exact ⟨(), _, h1, h2⟩
@@ -375,7 +375,7 @@ theorem Heap.ext {h₁ h₂ : Heap} (hd : h₁.data = h₂.data) (hv : h₁.vali
 
 @[simp] theorem Heap.upd_valid (h : Heap) (p : Addr) (v : I) : (h.upd p v).valid = h.valid := rfl
 
-theorem wp_stepL3 (a b : Array I) (Q : Unit → USize × Array I → Prop) (E : EPost.Nil)
+theorem wp_stepL3 (a b : Array I) (Q : Unit → USize × Array I → Prop) (E : EStack⟨⟩)
     (p : USize × Array I) :
     wp (stepL3 a b) Q E p =
       if p.1.toNat < a.size ∧ p.1.toNat < b.size ∧ p.1.toNat < p.2.size then
@@ -422,7 +422,7 @@ theorem zippedL3_full (a b : Array I) (n : Nat) (out : Array I)
 
 /-- The out-param counter-loop, started at `i` on `zippedL3 …ᵢ`, drives any postcondition of the final
 `zippedL3 …ₙ`. By induction on the remaining count. -/
-theorem wp_realizeL3 (a b : Array I) (n : USize) (R : Array I → Prop) (E : EPost.Nil)
+theorem wp_realizeL3 (a b : Array I) (n : USize) (R : Array I → Prop) (E : EStack⟨⟩)
     (out₀ : Array I) (ha : n.toNat ≤ a.size) (hb : n.toNat ≤ b.size) (hout : n.toNat ≤ out₀.size)
     (hR : R (zippedL3 a b n.toNat out₀)) :
     ∀ m : Nat, ∀ i : USize, n.toNat - i.toNat ≤ m → i.toNat ≤ n.toNat →
@@ -612,7 +612,7 @@ theorem refines_L3L4 (a b out : Addr) (n : USize) (a_arr b_arr : Array I)
   have hcl := wrp_transport (refines_L1L3 a b out n a_arr b_arr hd).le_wrp (fun v p => Q v p.2) E s (by
     simp only [_root_.top_meet, Concretization.comp, Function.comp, relRef_pred]
     exact ⟨(0, s.heap), ⟨rfl, hloc⟩, (0, slice out n.toNat s.heap), ⟨rfl, rfl, hsa, hsb, hav⟩, hwp⟩)
-  refine WP.wp_consequence (whileLoop guardL1 stepL1 >>= fun _ => getSize "n") _ _ _ ?_ s hcl
+  refine WP.wp_monotone_post (x := whileLoop guardL1 stepL1 >>= fun _ => getSize "n") ?_ s hcl
   intro cv s' hpost'
   simp only [Concretization.post_eq, Concretization.comp, Function.comp, relRef_pred] at hpost'
   obtain ⟨⟨ic, heap⟩, hlc, ⟨counter, oa⟩, hac, hQ⟩ := hpost'
@@ -651,7 +651,7 @@ theorem refines_setSize_st {X : Type} (f : Heap → X) (P : State → Prop) (x :
 private theorem getSize_couple_eq {P : State → Prop} {v : USize} :
     ∀ (cv av : USize), (fun s => P s ∧ av = v ∧ cv = v) ⊑ (⌜cv = av⌝ : State → Prop) :=
   fun cv av s h => by
-    simp only [CompleteLattice.ofProp_apply, ofProp_prop_eq]
+    simp only [CompleteLattice.ofProp_apply, CompleteLattice.ofProp_prop_eq]
     exact h.2.2.trans h.2.1.symm
 
 /-- Establish/consume through the inferred mid-coupling: `setSize` establishes the `"n"`
@@ -737,7 +737,7 @@ theorem refines_zip (a b out : Addr) (la lb : USize) (a_arr b_arr : Array I)
 
 /-- `zipL4`'s `wp`: the write-once spec returns `n` and leaves `Array.zipWith (· + ·)` in the state,
 independently of the initial state. -/
-theorem wp_zipL4 (a_arr b_arr : Array I) (n : USize) (Q : USize → Array I → Prop) (E : EPost.Nil)
+theorem wp_zipL4 (a_arr b_arr : Array I) (n : USize) (Q : USize → Array I → Prop) (E : EStack⟨⟩)
     (s : Array I) : wp (zipL4 a_arr b_arr n) Q E s = Q n (Array.zipWith (· + ·) a_arr b_arr) := by
   rw [zipL4, wp_bind_StateT]
   simp [StateT.wp_apply_eq, UB.wp_pure_eq]

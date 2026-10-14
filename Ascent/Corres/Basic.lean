@@ -50,10 +50,10 @@ pullback. -/
     r.post (fun cv av => (⌜f cv = av⌝ : CPred)) Q = fun cv => r.pred (Q (f cv)) := by
   funext cv
   refine PartialOrder.rel_antisymm (iSup_le _ _ fun av => ?_) ?_
-  · exact ofProp_meet_le_left (by rintro rfl; exact PartialOrder.rel_refl)
+  · exact CompleteLattice.ofProp_meet_le (by rintro rfl; exact PartialOrder.rel_refl)
   · refine PartialOrder.rel_trans ?_
       (le_iSup (fun av => (⌜f cv = av⌝ : CPred) ⊓ r.pred (Q av)) (f cv))
-    exact le_meet _ _ _ (le_ofProp _ _ rfl) PartialOrder.rel_refl
+    exact le_meet _ _ _ (CompleteLattice.le_ofProp _ _ rfl) PartialOrder.rel_refl
 
 /-- `post` in the `Prop` lattice, elementwise: some abstract value is coupled and satisfies the
 concretized postcondition. -/
@@ -74,11 +74,11 @@ theorem post_pi {σ : Type} {APred : Type} {CEPred AEPred : Type w'}
     meet_prop_eq_and]
 
 /-- The functional concretization from a state representation function `st : Cσ → Aσ`: the
-concretization is the pullback `st^*` (`pred P = P ∘ st`). Exception-free (`EPost.Nil`). This is
+concretization is the pullback `st^*` (`pred P = P ∘ st`). Exception-free (`EStack⟨⟩`). This is
 AutoCorres' functional state abstraction; the coupling side-condition lives in the `Corres`
 precondition `pre`, not here. -/
 def ofStateRepr {Cσ Aσ : Type w} (st : Cσ → Aσ) :
-    Concretization (Cσ → Prop) (Aσ → Prop) EPost.Nil EPost.Nil where
+    Concretization (Cσ → Prop) (Aσ → Prop) EStack⟨⟩ EStack⟨⟩ where
   pred P := fun cs => P (st cs)
   ePred := id
   pred_mono h := fun cs => h (st cs)
@@ -136,7 +136,7 @@ section Purify
 
 /-- Drops an abstract `Id` assertion (a `Prop`) to a constant concrete-state predicate. The exit
 read lives entirely in the value coupling `purifyCouple`. -/
-noncomputable def purify (σ : Type) : Concretization (σ → Prop) Prop EPost.Nil EPost.Nil where
+noncomputable def purify (σ : Type) : Concretization (σ → Prop) Prop EStack⟨⟩ EStack⟨⟩ where
   pred φ := fun _ => φ
   ePred := id
   pred_mono h := fun _ => h

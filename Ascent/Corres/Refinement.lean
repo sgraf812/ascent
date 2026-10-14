@@ -8,7 +8,7 @@ program `c` refines the abstract program `a` through `γ`: every `wp` fact of `a
 `c`. Each concrete outcome is coupled by `Q : CVal → AVal → CPred` to some abstract outcome
 (`∀∃`), and each thrown value by `E`, mirroring `wp x Q E`. `E`'s type `Ξ` is read off the
 barrel shapes by `HasEPost`, in two cases: an empty abstract barrel throws nothing, so there is
-nothing to couple (`Ξ := EPost.Nil`, barrels transported by `γ.ePred`); an aligned exception
+nothing to couple (`Ξ := EStack⟨⟩`, barrels transported by `γ.ePred`); an aligned exception
 layer couples the thrown values (`Ξ := εc → εa → CPred`, the coupling reified through `pred`,
 the exceptional mirror of `Concretization.post`).
 
@@ -45,16 +45,22 @@ class HasEPost (CPred : Type w) (APred : Type w) (CEPred : Type w') (AEPred : Ty
 transport is `ePred` (concrete-only layers are phase data, filled by `ePred`). -/
 instance {CPred APred : Type w} {CEPred : Type} [Assertion CPred] [Assertion APred]
     [Assertion CEPred] :
-    HasEPost CPred APred CEPred EPost.Nil EPost.Nil where
+    HasEPost CPred APred CEPred EStack⟨⟩ EStack⟨⟩ where
   ePost γ _ := γ.ePred
 
-/-- Aligned exception layers: the relational head is `post` at the exception values; deeper
-layers are concretized by `ePred`. -/
+/-- Aligned bare exception postconditions, as `Except ε` carries them: the relational
+postcondition is `post` at the exception values. -/
+noncomputable instance {CPred APred : Type w} {εc εa : Type u}
+    [Assertion CPred] [Assertion APred] :
+    HasEPost CPred APred (εc → CPred) (εa → APred) (εc → εa → CPred) where
+  ePost γ E Ea := γ.post E Ea
+
+/-- Aligned exception layers of a transformer stack: the relational head is `post` at the
+exception values; deeper layers are concretized by `ePred`. -/
 noncomputable instance {CPred APred : Type w} {εc εa : Type u} {CRest ARest : Type w'}
     [Assertion CPred] [Assertion APred] [Assertion CRest] [Assertion ARest] :
-    HasEPost CPred APred (EPost.Cons (εc → CPred) CRest) (EPost.Cons (εa → APred) ARest)
-      (εc → εa → CPred) where
-  ePost γ E Ea := ⟨γ.post E Ea.head, (γ.ePred Ea).tail⟩
+    HasEPost CPred APred ((εc → CPred) × CRest) ((εa → APred) × ARest) (εc → εa → CPred) where
+  ePost γ E Ea := (γ.post E Ea.1, (γ.ePred Ea).2)
 
 /-- The exceptional postcondition concretization: reify the relational exceptional
 postcondition against the abstract barrel. The exceptional mirror of `post`. -/
@@ -67,35 +73,35 @@ noncomputable def Concretization.ePost {CPred APred : Type w} {CEPred AEPred : T
 
 @[simp] theorem Concretization.ePost_nil {CPred APred : Type w} {CEPred : Type}
     [Assertion CPred] [Assertion APred] [Assertion CEPred]
-    (γ : Concretization CPred APred CEPred EPost.Nil) (E Ea : EPost.Nil) :
+    (γ : Concretization CPred APred CEPred EStack⟨⟩) (E Ea : EStack⟨⟩) :
     γ.ePost E Ea = γ.ePred Ea := rfl
+
+@[simp] theorem Concretization.ePost_fun {CPred APred : Type w} {εc εa : Type u}
+    [Assertion CPred] [Assertion APred]
+    (γ : Concretization CPred APred (εc → CPred) (εa → APred))
+    (E : εc → εa → CPred) (Ea : εa → APred) :
+    γ.ePost E Ea = γ.post E Ea := rfl
 
 @[simp] theorem Concretization.ePost_cons_head {CPred APred : Type w} {εc εa : Type u}
     {CRest ARest : Type w'}
     [Assertion CPred] [Assertion APred] [Assertion CRest] [Assertion ARest]
-    (γ : Concretization CPred APred (EPost.Cons (εc → CPred) CRest)
-      (EPost.Cons (εa → APred) ARest))
-    (E : εc → εa → CPred) (Ea : EPost.Cons (εa → APred) ARest) :
-    (γ.ePost E Ea).head = γ.post E Ea.head := rfl
+    (γ : Concretization CPred APred ((εc → CPred) × CRest) ((εa → APred) × ARest))
+    (E : εc → εa → CPred) (Ea : (εa → APred) × ARest) :
+    (γ.ePost E Ea).1 = γ.post E Ea.1 := rfl
 
 @[simp] theorem Concretization.ePost_cons_tail {CPred APred : Type w} {εc εa : Type u}
     {CRest ARest : Type w'}
     [Assertion CPred] [Assertion APred] [Assertion CRest] [Assertion ARest]
-    (γ : Concretization CPred APred (EPost.Cons (εc → CPred) CRest)
-      (EPost.Cons (εa → APred) ARest))
-    (E : εc → εa → CPred) (Ea : EPost.Cons (εa → APred) ARest) :
-    (γ.ePost E Ea).tail = (γ.ePred Ea).tail := rfl
+    (γ : Concretization CPred APred ((εc → CPred) × CRest) ((εa → APred) × ARest))
+    (E : εc → εa → CPred) (Ea : (εa → APred) × ARest) :
+    (γ.ePost E Ea).2 = (γ.ePred Ea).2 := rfl
 
-/-- A frame: meeting with any element preserves joins, so Heyting implication has a modus ponens
-(`meet_himp_le`) at every element. -/
-abbrev Frame (α : Type w) [Assertion α] : Prop := ∀ a : α, PreservesSup (meet a)
-
-/-- Meet distributes over indexed joins in a frame. -/
-theorem meet_iSup_le {l : Type w} [Assertion l] [Frame l] {ι : Sort _} (x : l) (f : ι → l) :
+/-- Meet distributes over indexed joins in a Heyting lattice. -/
+theorem meet_iSup_le {l : Type w} [Assertion l] [Heyting l] {ι : Sort _} (x : l) (f : ι → l) :
     x ⊓ iSup f ⊑ iSup fun i => x ⊓ f i :=
   PartialOrder.rel_trans
     (meet_mono_right (iSup_le _ _ fun i =>
-      le_himp_of_meet_le_comm (le_iSup (fun i => x ⊓ f i) i)))
+      le_himp_of_meet_le_left (le_iSup (fun i => x ⊓ f i) i)))
     meet_himp_le
 
 section
@@ -134,7 +140,7 @@ structure Refinement {CProg AProg : Type _} {CVal AVal : Type _}
   le_wrp : P ⊑ wrp γ c a Q E
 
 /-- Refinement triple notation without exception coupling (defaults to `⊥`: on coupled barrel
-shapes no concrete throw is matched, and an empty coupling telescope `EPost.Nil` has `⊥` as its
+shapes no concrete throw is matched, and an empty coupling telescope `EStack⟨⟩` has `⊥` as its
 sole element). -/
 scoped syntax:lead atomic("⦃ " term " ⦄ " term:max " ⪯[") term "] " term:max
   " ⦃ " term " ⦄" : term
@@ -171,22 +177,22 @@ theorem wrp_intro
       P ⊓ γ.pred (wp a Qa Ea) ⊑ wp c (γ.post Q Qa) (γ.ePost E Ea)) :
     P ⊑ wrp γ c a Q E :=
   le_iInf _ _ fun Qa => le_iInf _ _ fun Ea =>
-    le_himp (PartialOrder.rel_trans meet_le_comm (h Qa Ea))
+    le_himp_of_meet_le_left (PartialOrder.rel_trans meet_le_comm (h Qa Ea))
 
 /-- Elimination for `wrp`: instantiate the weakest refinement precondition at an abstract
 postcondition pair, transporting the `wp` fact of `a` to `c`. -/
-theorem wrp_transport [Frame CPred] (h : P ⊑ wrp γ c a Q E)
+theorem wrp_transport [Heyting CPred] (h : P ⊑ wrp γ c a Q E)
     (Qa : AVal → APred) (Ea : AEPred) :
     P ⊓ γ.pred (wp a Qa Ea) ⊑ wp c (γ.post Q Qa) (γ.ePost E Ea) :=
   meet_le_of_le_himp
     (PartialOrder.rel_trans h (PartialOrder.rel_trans (iInf_le _ Qa) (iInf_le _ Ea)))
 
 /-- `wrp` is monotone in the value coupling. -/
-theorem wrp_mono_post [Frame CPred] {Q' : CVal → AVal → CPred}
+theorem wrp_mono_post [Heyting CPred] {Q' : CVal → AVal → CPred}
     (hQ : ∀ cv av, Q cv av ⊑ Q' cv av) : wrp γ c a Q E ⊑ wrp γ c a Q' E := by
   refine iInf_mono fun Qa => iInf_mono fun Ea => ?_
   refine himp_mono PartialOrder.rel_refl ?_
-  refine WP.wp_consequence c _ _ _ ?_
+  refine WP.wp_monotone_post (x := c) ?_
   intro cv
   refine iSup_le _ _ fun av => ?_
   exact PartialOrder.rel_trans
@@ -194,14 +200,14 @@ theorem wrp_mono_post [Frame CPred] {Q' : CVal → AVal → CPred}
     (le_iSup (fun av' => Q' cv av' ⊓ γ.pred (Qa av')) av)
 
 /-- Weaken the value coupling. -/
-theorem Refinement.mono_post [Frame CPred] {Q' : CVal → AVal → CPred}
+theorem Refinement.mono_post [Heyting CPred] {Q' : CVal → AVal → CPred}
     (h : ⦃P⦄ c ⪯[γ] a ⦃Q; E⦄) (hQ : ∀ cv av, Q cv av ⊑ Q' cv av) : ⦃P⦄ c ⪯[γ] a ⦃Q'; E⦄ :=
   ⟨PartialOrder.rel_trans h.le_wrp (wrp_mono_post hQ)⟩
 
 /-- Consume a propositional precondition. -/
 theorem Refinement.of_prop {p : Prop} (h : p → ⦃(⊤ : CPred)⦄ c ⪯[γ] a ⦃Q; E⦄) :
     ⦃(⌜p⌝ : CPred)⦄ c ⪯[γ] a ⦃Q; E⦄ :=
-  ⟨ofProp_le _ _ fun hp => (h hp).le_wrp⟩
+  ⟨CompleteLattice.ofProp_le _ _ fun hp => (h hp).le_wrp⟩
 
 /-- Branch congruence on a shared condition. -/
 theorem Refinement.ite {cond : Prop} [Decidable cond] {c₁ c₂ : CProg} {a₁ a₂ : AProg}
@@ -211,18 +217,18 @@ theorem Refinement.ite {cond : Prop} [Decidable cond] {c₁ c₂ : CProg} {a₁ 
 
 /-- A concrete `wp` fact rides along in the value coupling: what the concrete program
 establishes on normal return strengthens the relational postcondition. -/
-theorem Refinement.conj_wp [Frame CPred] [WPConjunctive c]
+theorem Refinement.conj_wp [Heyting CPred] [WPConjunctive c]
     {R : CVal → CPred} (h : ⦃P⦄ c ⪯[γ] a ⦃Q; E⦄) (hw : P ⊑ wp c R ⊥) :
     ⦃P⦄ c ⪯[γ] a ⦃fun cv av => Q cv av ⊓ R cv; E⦄ := by
   refine ⟨wrp_intro fun Qa Ea => ?_⟩
   have h1 : P ⊓ γ.pred (wp a Qa Ea) ⊑
       wp c (γ.post Q Qa) (γ.ePost E Ea) ⊓ wp c R (γ.ePost E Ea) :=
     le_meet _ _ _ (wrp_transport h.le_wrp Qa Ea)
-      (PartialOrder.rel_trans (meet_le_left _ _) (WP.wp_econs_bot_le c R _ hw))
+      (PartialOrder.rel_trans (meet_le_left _ _) (WP.wp_monotone_bot_le c R _ hw))
   refine PartialOrder.rel_trans h1 ?_
   refine PartialOrder.rel_trans
     (WPConjunctive.wp_meet_wp_le (γ.post Q Qa) R (γ.ePost E Ea) (γ.ePost E Ea)) ?_
-  refine WP.wp_consequence_econs c _ _ _ _ ?_ (meet_le_left _ _)
+  refine WP.wp_monotone (x := c) ?_ (meet_le_left _ _)
   intro cv
   rw [meet_apply]
   refine PartialOrder.rel_trans meet_le_comm ?_
@@ -257,7 +263,7 @@ theorem wrp_pure {CV AV : Type w} {Q : CV → AV → CPred} {E : Ξ} (cv : CV) (
 
 /-- The relational bind law: `bind` rebinds the relational postcondition with the
 continuations' `wrp`; the relational exceptional postcondition threads. -/
-theorem wrp_bind [Frame CPred] {CV AV CV₂ AV₂ : Type w}
+theorem wrp_bind [Heyting CPred] {CV AV CV₂ AV₂ : Type w}
     {c₁ : CM CV} {a₁ : AM AV} {c₂ : CV → CM CV₂} {a₂ : AV → AM AV₂}
     {Q : CV₂ → AV₂ → CPred} {E : Ξ} :
     wrp γ c₁ a₁ (fun cv av => wrp γ (c₂ cv) (a₂ av) Q E) E ⊑
@@ -270,9 +276,8 @@ theorem wrp_bind [Frame CPred] {CV AV CV₂ AV₂ : Type w}
     (meet_le_of_le_himp
       (PartialOrder.rel_trans (iInf_le _ (fun av => wp (a₂ av) Qa Ea)) (iInf_le _ Ea))) ?_
   refine PartialOrder.rel_trans
-    (WP.wp_consequence c₁ _
-      (fun cv => wp (c₂ cv) (γ.post Q Qa) (γ.ePost E Ea))
-      (γ.ePost E Ea) ?_)
+    (WP.wp_monotone_post (x := c₁)
+      (post' := fun cv => wp (c₂ cv) (γ.post Q Qa) (γ.ePost E Ea)) ?_)
     (WPMonad.bind_le_wp_bind c₁ c₂ (γ.post Q Qa) (γ.ePost E Ea))
   intro cv
   show iSup (fun av => wrp γ (c₂ cv) (a₂ av) Q E ⊓ γ.pred (wp (a₂ av) Qa Ea)) ⊑ _
@@ -296,7 +301,7 @@ noncomputable def wrpCont {CV AV CV₂ AV₂ : Type w}
 
 /-- The triple bind rule: the head's `wrp`, with the continuations' `wrp` rebound as its
 coupling, is the precondition. -/
-theorem Refinement.bind [Frame CPred] {CV AV CV₂ AV₂ : Type w}
+theorem Refinement.bind [Heyting CPred] {CV AV CV₂ AV₂ : Type w}
     {c₁ : CM CV} {a₁ : AM AV} {c₂ : CV → CM CV₂} {a₂ : AV → AM AV₂}
     {Q : CV₂ → AV₂ → CPred} {E : Ξ} :
     ⦃wrp γ c₁ a₁ (wrpCont γ c₂ a₂ Q E) E⦄
@@ -307,7 +312,7 @@ theorem Refinement.bind [Frame CPred] {CV AV CV₂ AV₂ : Type w}
 theorem Refinement.pure_eq {CV AV : Type w} {f : CV → AV} {E : Ξ}
     (P : CPred) (cv : CV) {av : AV} (h : f cv = av) :
     ⦃P⦄ (Pure.pure cv : CM CV) ⪯[γ] (Pure.pure av : AM AV) ⦃fun cv av => ⌜f cv = av⌝; E⦄ :=
-  (Refinement.pure cv av).weaken (le_ofProp _ _ h)
+  (Refinement.pure cv av).weaken (CompleteLattice.le_ofProp _ _ h)
 
 end
 
@@ -324,7 +329,7 @@ variable {CProg BProg AProg : Type _} {CVal BVal AVal : Type _}
   [WP CProg CVal CPred CEPred] [WP BProg BVal BPred BEPred] [WP AProg AVal APred AEPred]
   [HasEPost CPred BPred CEPred BEPred Ξ₁] [HasEPost BPred APred BEPred AEPred Ξ₂]
   [HasEPost CPred APred CEPred AEPred Ξ]
-  [Frame BPred] [Frame CPred]
+  [Heyting BPred] [Heyting CPred]
 
 /-- Refinements at functional couplings compose through the composed concretization: the outer
 `pred` transports the middle refinement, `hE` aligns the barrel transports (definitional on
@@ -350,7 +355,7 @@ theorem Refinement.comp
     (le_meet _ _ _ (meet_le_left _ _)
       (PartialOrder.rel_trans (meet_le_right _ _) (γ₁.pred_mono hb))) ?_
   refine PartialOrder.rel_trans hc ?_
-  refine WP.wp_consequence c _ _ _ fun cv => ?_
+  refine WP.wp_monotone_post (x := c) fun cv => ?_
   simp only [Concretization.post_eq, Concretization.comp, Function.comp]
   exact PartialOrder.rel_refl
 
@@ -361,9 +366,9 @@ end Comp
 /-- A write-once concrete program (its result `v` and final state `w` are independent of the
 initial state) refines the pure return of its result and final state; the terminal coupling
 `purifyCouple` reads the exit state into the value. -/
-theorem Refinement.purify {CProg σ α : Type} [WP CProg α (σ → Prop) EPost.Nil]
+theorem Refinement.purify {CProg σ α : Type} [WP CProg α (σ → Prop) EStack⟨⟩]
     (c : CProg) (v : α) (w : σ)
-    (hc : ∀ (Q : α → σ → Prop) (E : EPost.Nil), (fun _ => Q v w) ⊑ wp c Q E) :
+    (hc : ∀ (Q : α → σ → Prop) (E : EStack⟨⟩), (fun _ => Q v w) ⊑ wp c Q E) :
     ⦃(⊤ : σ → Prop)⦄ c ⪯[Ascent.purify σ] (Pure.pure (v, w) : Id (α × σ)) ⦃purifyCouple⦄ := by
   refine ⟨wrp_intro fun Qa Ea => ?_⟩
   rw [purify_post]
@@ -374,8 +379,7 @@ theorem Refinement.purify {CProg σ α : Type} [WP CProg α (σ → Prop) EPost.
 
 section
 variable {εc εa CV AV : Type}
-  {γ : Concretization Prop Prop (EPost.Cons (εc → Prop) EPost.Nil)
-    (EPost.Cons (εa → Prop) EPost.Nil)}
+  {γ : Concretization Prop Prop (εc → Prop) (εa → Prop)}
 
 /-- The relational throw law: `throw` consumes the relational exceptional postcondition,
 exactly as `pure` consumes the relational postcondition. -/
@@ -384,7 +388,7 @@ theorem wrp_throw {Q : CV → AV → Prop} {E : εc → εa → Prop} (ec : εc)
       wrp γ (MonadExceptOf.throw ec : Except εc CV)
         (MonadExceptOf.throw ea : Except εa AV) Q E := by
   refine wrp_intro fun Qa Ea => ?_
-  simp only [WPMonad.wp_throw_Except_apply_eq, Concretization.ePost_cons_head]
+  simp only [WPMonad.wp_throw_Except_apply_eq, Concretization.ePost_fun]
   exact le_iSup_of_le ea PartialOrder.rel_refl
 
 /-- The relational tryCatch law: `tryCatch` rebinds the relational exceptional postcondition
@@ -400,9 +404,8 @@ theorem wrp_tryCatch {Q : CV → AV → Prop} {E : εc → εa → Prop}
   refine PartialOrder.rel_trans
     (meet_le_of_le_himp
       (PartialOrder.rel_trans (iInf_le _ Qa)
-        (iInf_le _ (epost⟨fun ea => wp (ah ea) Qa Ea⟩)))) ?_
-  refine WP.wp_consequence_econs cx _ _ _ _ PartialOrder.rel_refl ?_
-  refine EPost.Cons.mk_le _ _ _ ?_ PartialOrder.rel_refl
+        (iInf_le _ (fun ea => wp (ah ea) Qa Ea)))) ?_
+  refine WP.wp_monotone (x := cx) PartialOrder.rel_refl ?_
   intro ec
   show iSup (fun ea => wrp γ (ch ec) (ah ea) Q E ⊓ γ.pred (wp (ah ea) Qa Ea)) ⊑ _
   refine iSup_le _ _ fun ea => ?_
@@ -413,15 +416,13 @@ end
 
 section
 variable {εc εa CV AV : Type}
-  {γ : Concretization Prop Prop (EPost.Cons (εc → Prop) EPost.Nil)
-    (EPost.Cons (εa → Prop) EPost.Nil)}
+  {γ : Concretization Prop Prop (εc → Prop) (εa → Prop)}
 
 /-- The handlers' `wrp`, rebound as an exception coupling. The exceptional mirror of `wrpCont`:
 a tactic that decomposes `tryCatch` instantiates one short application per step instead of a
 fresh lambda. -/
 noncomputable def wrpECont
-    (γ : Concretization Prop Prop (EPost.Cons (εc → Prop) EPost.Nil)
-      (EPost.Cons (εa → Prop) EPost.Nil))
+    (γ : Concretization Prop Prop (εc → Prop) (εa → Prop))
     (ch : εc → Except εc CV) (ah : εa → Except εa AV) (Q : CV → AV → Prop)
     (E : εc → εa → Prop) : εc → εa → Prop :=
   fun ec ea => wrp γ (ch ec) (ah ea) Q E

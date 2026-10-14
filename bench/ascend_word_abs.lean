@@ -40,9 +40,9 @@ def runEngine (sizes : List Nat) (showSynth := false) : MetaM Unit := do
   IO.println "=== WordAbs ascend engine ==="
   runBench "WordAbs" mkStmt [``chainC] mkExpected solveEngine
     (`(tactic| first
-        | (simp only [ofProp_prop_eq]; assumption)
+        | (simp only [CompleteLattice.ofProp_prop_eq]; assumption)
         | decide
-        | (simp only [wordVal, ofProp_prop_eq, UInt64.toNat_add] at *; omega))) sizes
+        | (simp only [wordVal, CompleteLattice.ofProp_prop_eq, UInt64.toNat_add] at *; omega))) sizes
     (showSynth := showSynth)
 
 set_option maxRecDepth 100000

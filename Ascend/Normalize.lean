@@ -36,7 +36,7 @@ def stripMeetTopPre? (goal : MVarId) (pre : Expr) : AscendM (Option MVarId) := d
   let .goals [g] ← (← read).backwardRules.meetTop.apply goal | return none
   return some g
 
-/-- Lift an embedded pure precondition `⌜φ⌝` into the local context via `ofProp_le`, leaving `⊤`
+/-- Lift an embedded pure precondition `⌜φ⌝` into the local context via `CompleteLattice.ofProp_le`, leaving `⊤`
 as the residual precondition. -/
 def ofPropPreIntro? (goal : MVarId) (pre : Expr) : AscendM (Option (MVarId × FVarId × Expr)) := do
   let_expr Lean.Order.CompleteLattice.ofProp _ _ φ := pre | return none
@@ -77,11 +77,11 @@ def liftedPreFor? (scope : Scope) (rhs : Expr) : AscendM (Option FVarId) := do
   if ← isDefEqS ty rhs then return some fv else return none
 
 /-- Close a residual `pre ⊑ ⌜φ⌝` at the `Prop` carrier against the most recently lifted
-hypothesis via `le_of_right`. -/
+hypothesis via `le_prop_of_right`. -/
 def liftedHyp? (scope : Scope) (goal : MVarId) (α pre rhs : Expr) : AscendM (Option Unit) := do
   unless α.isProp do return none
   let some fv ← liftedPreFor? scope rhs | return none
-  goal.assign (mkApp3 (mkConst ``Lean.Order.le_of_right) pre rhs (.fvar fv))
+  goal.assign (mkApp3 (mkConst ``Lean.Order.le_prop_of_right) pre rhs (.fvar fv))
   return some ()
 
 /-- Close a bare `Prop` residual against the most recently lifted hypothesis. -/

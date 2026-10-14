@@ -25,7 +25,7 @@ def updV (p : Nat) (v : Option Int) (h : VHeap) : VHeap := fun a => if a = p the
   simp [updV]
 
 /-- `wp` over `StateT VHeap UB` runs the program and reads off the result. -/
-theorem wp_run {α} (x : StateT VHeap UB α) (Q : α → VHeap → Prop) (E : EPost.Nil) (h : VHeap) :
+theorem wp_run {α} (x : StateT VHeap UB α) (Q : α → VHeap → Prop) (E : EStack⟨⟩) (h : VHeap) :
     wp x Q E h = match x h with | some (a, h') => Q a h' | none => (⊥ : Prop) := by
   rw [show wp x Q E h = wp (x h) (fun p : α × VHeap => Q p.1 p.2) E from rfl]
   cases hx : x h <;> rfl
@@ -38,12 +38,12 @@ def storeV (p : Nat) (v : Int) : StateT VHeap UB PUnit :=
   fun h => (h p).map (fun _ => (⟨⟩, updV p (some v) h))
 
 /-- Loading guards on validity: an invalid address yields `⊥`. -/
-theorem wp_loadV (p : Nat) (Q : Int → VHeap → Prop) (E : EPost.Nil) :
+theorem wp_loadV (p : Nat) (Q : Int → VHeap → Prop) (E : EStack⟨⟩) :
     wp (loadV p) Q E = fun h => match h p with | some v => Q v h | none => (⊥ : Prop) := by
   funext h; rw [wp_run]; cases hp : h p <;> simp [loadV, hp]
 
 /-- Storing guards on validity. -/
-theorem wp_storeV (p : Nat) (v : Int) (Q : PUnit → VHeap → Prop) (E : EPost.Nil) :
+theorem wp_storeV (p : Nat) (v : Int) (Q : PUnit → VHeap → Prop) (E : EStack⟨⟩) :
     wp (storeV p v) Q E = fun h => match h p with
       | some _ => Q ⟨⟩ (updV p (some v) h) | none => (⊥ : Prop) := by
   funext h; rw [wp_run]; cases hp : h p <;> simp [storeV, hp]
@@ -52,7 +52,7 @@ theorem wp_storeV (p : Nat) (v : Int) (Q : PUnit → VHeap → Prop) (E : EPost.
 def incr (p : Nat) : StateT VHeap UB PUnit :=
   fun h => (h p).map (fun v => (⟨⟩, updV p (some (v + 1)) h))
 
-theorem wp_incr (p : Nat) (Q : PUnit → VHeap → Prop) (E : EPost.Nil) :
+theorem wp_incr (p : Nat) (Q : PUnit → VHeap → Prop) (E : EStack⟨⟩) :
     wp (incr p) Q E = fun h => match h p with
       | some v => Q ⟨⟩ (updV p (some (v + 1)) h) | none => (⊥ : Prop) := by
   funext h; rw [wp_run]; cases hp : h p <;> simp [incr, hp]
@@ -60,11 +60,11 @@ theorem wp_incr (p : Nat) (Q : PUnit → VHeap → Prop) (E : EPost.Nil) :
 /-- Functional correctness of `incr`, as a Hoare triple. The precondition `h p = some n` carries
 validity; the postcondition records the incremented value. -/
 example (p : Nat) (n : Int) :
-    (fun h => h p = some n) ⊑ wp (incr p) (fun _ h => h p = some (n + 1)) EPost.Nil.mk := by
+    (fun h => h p = some n) ⊑ wp (incr p) (fun _ h => h p = some (n + 1)) estack⟨⟩ := by
   rw [wp_incr]; intro h hpre; simp [hpre]
 
 /-- The validity obligation cannot be dropped: with a trivial precondition the triple is false,
 because `incr` fails on a heap where `p` is unallocated. -/
 example (p : Nat) :
-    ¬ ((fun _ => True) ⊑ wp (incr p) (fun _ _ => True) EPost.Nil.mk) := by
+    ¬ ((fun _ => True) ⊑ wp (incr p) (fun _ _ => True) estack⟨⟩) := by
   rw [wp_incr]; intro hT; have h0 := hT (fun _ => none) trivial; simp at h0

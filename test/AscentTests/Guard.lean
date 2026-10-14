@@ -19,7 +19,7 @@ refinement holds for every intermediate value. -/
 example (a b c : UInt64) (h1 : a.toNat + b.toNat < 2 ^ 64) :
     ⦃(⊤ : Prop)⦄
       (do let r ← pure (a + b); pure (r * c) : Id UInt64)
-      ⪯[Concretization.id Prop EPost.Nil]
+      ⪯[Concretization.id Prop EStack⟨⟩]
       (do let r ← pure (wordVal a + wordVal b)
           UB.guardRet (r * wordVal c < 2 ^ 64) (r * wordVal c) : UB Int)
       ⦃(⌜wordVal · = ·⌝)⦄ := by
@@ -27,7 +27,7 @@ example (a b c : UInt64) (h1 : a.toNat + b.toNat < 2 ^ 64) :
   · show wordVal (a + b) = wordVal a + wordVal b
     simp only [wordVal, UInt64.toNat_add, Nat.mod_eq_of_lt h1]
     omega
-  · refine .guardRet _ _ fun hovf => le_ofProp _ _ ?_
+  · refine .guardRet _ _ fun hovf => CompleteLattice.le_ofProp _ _ ?_
     show wordVal (cv * c) = wordVal cv * wordVal c
     have hlt : cv.toNat * c.toNat < 2 ^ 64 := by
       simp only [wordVal] at hovf; omega

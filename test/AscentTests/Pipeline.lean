@@ -13,8 +13,8 @@ refinement of the abstract integer-state program by the concrete failure-monad w
 open Std.WP Lean.Order Ascent
 
 /-- Word abstraction on the state monad: identity on assertions, values abstracted by `wordVal`. -/
-def wordAbstractionStateT : Concretization (Nat → Prop) (Nat → Prop) EPost.Nil EPost.Nil :=
-  Concretization.id (Nat → Prop) EPost.Nil
+def wordAbstractionStateT : Concretization (Nat → Prop) (Nat → Prop) EStack⟨⟩ EStack⟨⟩ :=
+  Concretization.id (Nat → Prop) EStack⟨⟩
 
 /-- The concrete program: a total word computation typed in the failure monad. -/
 def concWord : TS Nat UInt64 :=

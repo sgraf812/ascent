@@ -16,7 +16,7 @@ open Std.WP Lean.Order Ascent
 namespace ThrowCatch
 
 /-- One exception layer (`Nat`-valued exceptions) over pure values. -/
-abbrev EE := EPost.Cons (Nat → Prop) EPost.Nil
+abbrev EE := Nat → Prop
 
 /-- The identity concretization over the exception layer. -/
 abbrev exc : Concretization Prop Prop EE EE := Concretization.id Prop EE
@@ -25,7 +25,7 @@ abbrev exc : Concretization Prop Prop EE EE := Concretization.id Prop EE
 example {AV CV : Type} (e : Nat) (Q : CV → AV → Prop) :
     ⦃(⊤ : Prop)⦄ (MonadExceptOf.throw e : Except Nat CV)
       ⪯[exc] (MonadExceptOf.throw e : Except Nat AV) ⦃Q; (⌜· = ·⌝)⦄ :=
-  (Refinement.throw e e).weaken (le_ofProp _ _ rfl)
+  (Refinement.throw e e).weaken (CompleteLattice.le_ofProp _ _ rfl)
 
 /-- A `tryCatch` around matching throws runs the handlers: `wrp_throw` consumes the rebound
 exception coupling at the thrown codes, landing on the handlers' refinement. -/
@@ -50,9 +50,9 @@ distinguishes the thrown values. -/
 example : ¬ ⦃(⊤ : Prop)⦄ (MonadExceptOf.throw 1 : Except Nat Nat)
     ⪯[exc] (MonadExceptOf.throw 0 : Except Nat Nat) ⦃fun _ _ => ⊤; (⌜· = ·⌝)⦄ := by
   intro hsim
-  have H := wrp_transport hsim.le_wrp (fun _ => True) (epost⟨fun n => n = 0⟩)
-  simp only [WPMonad.wp_throw_Except_apply_eq, Concretization.ePost_cons_head,
-    Concretization.post_prop, Concretization.id, id_eq, ofProp_prop_eq, meet_prop_eq_and,
+  have H := wrp_transport hsim.le_wrp (fun _ => True) (fun n => n = 0)
+  simp only [WPMonad.wp_throw_Except_apply_eq, Concretization.ePost_fun,
+    Concretization.post_prop, Concretization.id, id_eq, CompleteLattice.ofProp_prop_eq, meet_prop_eq_and,
     top_prop_eq, true_and] at H
   obtain ⟨ea, h1, h0⟩ := H trivial
   omega
@@ -67,10 +67,9 @@ open Ascent
 
 /-- Error-code abstraction: Boolean abstract exceptions over numeric concrete codes; the
 concretization carries no exception structure of its own. -/
-def errAbs : Concretization Prop Prop (EPost.Cons (Nat → Prop) EPost.Nil)
-    (EPost.Cons (Bool → Prop) EPost.Nil) where
+def errAbs : Concretization Prop Prop (Nat → Prop) (Bool → Prop) where
   pred := _root_.id
-  ePred _ := epost⟨fun _ => ⊥⟩
+  ePred _ := fun _ => ⊥
   pred_mono h := h
   ePred_mono _ := PartialOrder.rel_refl
 
@@ -80,14 +79,14 @@ example (Q : Int → Int → Prop) :
     ⦃(⊤ : Prop)⦄ (MonadExceptOf.throw 3 : Except Nat Int)
       ⪯[errAbs] (MonadExceptOf.throw true : Except Bool Int)
       ⦃Q; fun ec ea => ⌜ea = decide (0 < ec)⌝⦄ :=
-  (Refinement.throw 3 true).weaken (le_ofProp _ _ (by decide))
+  (Refinement.throw 3 true).weaken (CompleteLattice.le_ofProp _ _ (by decide))
 
 /-- Concrete-only exception layer: the fill is phase data. `⊤` permits an unmatched concrete
 throw. -/
 def fillAbs (fill : Nat → Prop) :
-    Concretization Prop Prop (EPost.Cons (Nat → Prop) EPost.Nil) EPost.Nil where
+    Concretization Prop Prop (Nat → Prop) EStack⟨⟩ where
   pred := _root_.id
-  ePred _ := epost⟨fill⟩
+  ePred _ := fill
   pred_mono h := h
   ePred_mono _ := PartialOrder.rel_refl
 
@@ -96,16 +95,16 @@ example (Q : Int → Int → Prop) :
       ⪯[fillAbs fun _ => ⊤] (pure 0 : Id Int) ⦃Q⦄ := by
   refine ⟨wrp_intro fun Qa Ea => ?_⟩
   simp only [WPMonad.wp_throw_Except_apply_eq, Concretization.ePost_nil]
-  exact le_top _
+  exact le_top (α := Prop) _
 
 /-- The `⊥` fill forbids it: type strengthening as `ePred` data. -/
 example : ¬ ⦃(⊤ : Prop)⦄ (MonadExceptOf.throw 3 : Except Nat Int)
     ⪯[fillAbs fun _ => ⊥] (pure 0 : Id Int) ⦃(⌜· = ·⌝)⦄ := by
   intro h
-  have h2 := wrp_transport h.le_wrp (fun _ => True) EPost.Nil.mk
+  have h2 := wrp_transport h.le_wrp (fun _ => True) estack⟨⟩
   simp only [WPMonad.wp_throw_Except_apply_eq, Concretization.ePost_nil, _root_.top_meet,
     WPMonadExact.wp_pure_eq] at h2
-  have hfalse := h2 trivial
+  have hfalse : (⊥ : Prop) := h2 trivial
   rw [bot_prop_eq] at hfalse
   exact hfalse
 

@@ -19,7 +19,7 @@ variable {CM AM : Type w → Type v} {CPred APred : Type w} {CEPred AEPred : Typ
   [WPMonad CM CPred CEPred] [WPMonad AM APred AEPred] [WPMonadExact AM APred AEPred]
   [HasEPost CPred APred CEPred AEPred Ξ]
   {γ : Concretization CPred APred CEPred AEPred}
-  [Frame CPred] {CV AV CV₂ AV₂ : Type w} {P : CPred}
+  [Heyting CPred] {CV AV CV₂ AV₂ : Type w} {P : CPred}
   {c₁ : CM CV} {a₁ : AM AV} {c₂ : CV → CM CV₂} {a₂ : AV → AM AV₂}
   {Q : CV₂ → AV₂ → CPred} {E : Ξ}
 

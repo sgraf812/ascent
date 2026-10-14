@@ -48,22 +48,22 @@ theorem WPMonadExact.wp_bind_eq {m : Type u → Type v} {Pred : Type w} {EPred :
 
 /-! ## Leaf instances -/
 
-instance : WPMonadExact Id Prop EPost.Nil where
+instance : WPMonadExact Id Prop EStack⟨⟩ where
   wp_pure_le := fun _ _ _ => PartialOrder.rel_refl
   wp_bind_le := fun _ _ _ _ => PartialOrder.rel_refl
 
-instance : WPMonadExact Option.{u} Prop Prop where
+instance : WPMonadExact Option.{u} Prop (Unit → Prop) where
   wp_pure_le := fun _ _ _ => PartialOrder.rel_refl
   wp_bind_le := fun x _ _ _ => by cases x <;> exact PartialOrder.rel_refl
 
-instance {ε : Type u} : WPMonadExact (Except ε) Prop EPost⟨ε → Prop⟩ where
+instance {ε : Type u} : WPMonadExact (Except ε) Prop (ε → Prop) where
   wp_pure_le := fun _ _ _ => PartialOrder.rel_refl
   wp_bind_le := fun x _ _ _ => by cases x <;> exact PartialOrder.rel_refl
 
 instance {ε σ : Type} : WPMonadExact (EStateM ε σ) (σ → Prop) (ε → σ → Prop) where
   wp_pure_le := fun _ _ _ _ => PartialOrder.rel_refl
   wp_bind_le := fun x _ _ _ s => by
-    simp only [WP.wp, WP.wpTrans, bind, EStateM.bind]
+    simp only [WP.wp, WP.trans, bind, EStateM.bind]
     cases (x s) <;> exact PartialOrder.rel_refl
 
 /-! ## Transformer instances: exactness transports from the base monad -/
@@ -77,32 +77,32 @@ instance {σ : Type u} {m : Type u → Type v} {Pred : Type w} {EPred : Type v}
 
 instance {ε : Type u} {m : Type u → Type v} {Pred : Type w} {EPred : Type w'}
     [Monad m] [Assertion Pred] [Assertion EPred] [WPMonad m Pred EPred] [WPMonadExact m Pred EPred] :
-    WPMonadExact (ExceptT ε m) Pred (EPost.Cons (ε → Pred) EPred) where
+    WPMonadExact (ExceptT ε m) Pred ((ε → Pred) × EPred) where
   wp_pure_le a := fun post epost =>
-    WPMonadExact.wp_pure_le (m := m) (Except.ok a) (epost.pushExcept post) epost.tail
+    WPMonadExact.wp_pure_le (m := m) (Except.ok a) (pushExcept post epost.fst) epost.snd
   wp_bind_le x f := fun post epost => by
-    show wp (x >>= f).run (epost.pushExcept post) epost.tail ⊑ wp x.run _ epost.tail
+    show wp (x >>= f).run (pushExcept post epost.fst) epost.snd ⊑ wp x.run _ epost.snd
     apply PartialOrder.rel_trans
-      (WPMonadExact.wp_bind_le (m := m) x.run _ (epost.pushExcept post) epost.tail)
-    apply WP.wp_consequence
+      (WPMonadExact.wp_bind_le (m := m) x.run _ (pushExcept post epost.fst) epost.snd)
+    apply WP.wp_monotone_post
     intro r; cases r with
     | ok a => exact PartialOrder.rel_refl
     | error el =>
-      exact WPMonadExact.wp_pure_le (m := m) (Except.error el) (epost.pushExcept post) epost.tail
+      exact WPMonadExact.wp_pure_le (m := m) (Except.error el) (pushExcept post epost.fst) epost.snd
 
 instance {m : Type u → Type v} {Pred : Type u} {EPred : Type w'}
     [Monad m] [Assertion Pred] [Assertion EPred] [WPMonad m Pred EPred] [WPMonadExact m Pred EPred] :
-    WPMonadExact (OptionT m) Pred (EPost.Cons Pred EPred) where
+    WPMonadExact (OptionT m) Pred ((Unit → Pred) × EPred) where
   wp_pure_le a := fun post epost =>
-    WPMonadExact.wp_pure_le (m := m) (some a) (epost.pushOption post) epost.tail
+    WPMonadExact.wp_pure_le (m := m) (some a) (pushOption post epost.fst) epost.snd
   wp_bind_le x f := fun post epost => by
-    show wp (x >>= f).run (epost.pushOption post) epost.tail ⊑ wp x.run _ epost.tail
+    show wp (x >>= f).run (pushOption post epost.fst) epost.snd ⊑ wp x.run _ epost.snd
     apply PartialOrder.rel_trans
-      (WPMonadExact.wp_bind_le (m := m) x.run _ (epost.pushOption post) epost.tail)
-    apply WP.wp_consequence
+      (WPMonadExact.wp_bind_le (m := m) x.run _ (pushOption post epost.fst) epost.snd)
+    apply WP.wp_monotone_post
     intro r; cases r with
     | some a => exact PartialOrder.rel_refl
     | none =>
-      exact WPMonadExact.wp_pure_le (m := m) none (epost.pushOption post) epost.tail
+      exact WPMonadExact.wp_pure_le (m := m) none (pushOption post epost.fst) epost.snd
 
 end Ascent

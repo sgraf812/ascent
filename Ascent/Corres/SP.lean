@@ -31,7 +31,7 @@ variable {Prog : Type u} {Value : Type v} {Pred : Type w} {EPred : Type z}
 /-- The converse meet inequality, from monotonicity alone. -/
 theorem wp_iInf_le_iInf_wp {ι : Type i} (x : Prog) (Q : ι → Value → Pred) (E : EPred) :
     wp x (iInf Q) E ⊑ iInf (fun j => wp x (Q j) E) :=
-  le_iInf _ _ fun j => WP.wp_consequence x _ _ E (iInf_le Q j)
+  le_iInf _ _ fun j => WP.wp_monotone_post (x := x) (iInf_le Q j)
 
 /-- Strongest postcondition: the meet of all postconditions valid for `P` under `wp x · E`. -/
 noncomputable def sp (x : Prog) (P : Pred) (E : EPred) : Value → Pred :=
@@ -61,23 +61,23 @@ theorem le_wp_sp [WPInfConjunctive Prog Value Pred EPred] {x : Prog} {P : Pred} 
 /-- Failure-freedom is also necessary for the unit. -/
 theorem le_wp_top {x : Prog} {P : Pred} {E : EPred} (h : P ⊑ wp x (sp x P E) E) :
     P ⊑ wp x ⊤ E :=
-  PartialOrder.rel_trans h (WP.wp_consequence x _ _ E (le_top _))
+  PartialOrder.rel_trans h (WP.wp_monotone_post (x := x) (le_top _))
 
 /-- Failure-freedom from any valid postcondition. -/
 theorem le_wp_top_of_le_wp {x : Prog} {P : Pred} {Q : Value → Pred} {E : EPred}
     (h : P ⊑ wp x Q E) : P ⊑ wp x ⊤ E :=
-  PartialOrder.rel_trans h (WP.wp_consequence x Q ⊤ E (le_top _))
+  PartialOrder.rel_trans h (WP.wp_monotone_post (x := x) (le_top Q))
 
 /-- The Galois connection between `sp` and `wp`, on failure-free preconditions. -/
 theorem sp_le_iff [WPInfConjunctive Prog Value Pred EPred] {x : Prog} {P : Pred}
     {Q : Value → Pred} {E : EPred} (hdef : P ⊑ wp x ⊤ E) :
     sp x P E ⊑ Q ↔ P ⊑ wp x Q E :=
-  ⟨fun h => PartialOrder.rel_trans (le_wp_sp hdef) (WP.wp_consequence x _ _ E h), sp_le⟩
+  ⟨fun h => PartialOrder.rel_trans (le_wp_sp hdef) (WP.wp_monotone_post (x := x) h), sp_le⟩
 
 end
 
 /-- `UB`'s `wp` preserves nonempty meets: it is evaluation at the result, `⊥` on failure. -/
-instance {α : Type} : WPInfConjunctive (UB α) α Prop EPost.Nil where
+instance {α : Type} : WPInfConjunctive (UB α) α Prop EStack⟨⟩ where
   iInf_wp_le_wp_iInf := by
     intro ι hne x Q E
     cases x with
@@ -101,7 +101,7 @@ instance {m : Type u → Type v} {σ : Type u} {Pred : Type w} {EPred : Type z} 
     simp only [iInf_apply, StateT.wp_apply_eq]
     refine PartialOrder.rel_trans
       (WPInfConjunctive.iInf_wp_le_wp_iInf (x.run s) (fun j p => Q j p.1 p.2) E)
-      (WP.wp_consequence (x.run s) _ _ E ?_)
+      (WP.wp_monotone_post (x := x.run s) ?_)
     intro p
     simp only [iInf_apply]
     exact PartialOrder.rel_refl

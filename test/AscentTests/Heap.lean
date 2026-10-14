@@ -42,17 +42,17 @@ def swapA (p q : Nat) : StateT Heap UB PUnit :=
 def swapC (p q : Nat) : StateT Heap UB PUnit :=
   fun h => some (⟨⟩, swapImpl p q h)
 
-theorem wp_swapC (p q : Nat) (Q : PUnit → Heap → Prop) (E : EPost.Nil) :
+theorem wp_swapC (p q : Nat) (Q : PUnit → Heap → Prop) (E : EStack⟨⟩) :
     wp (swapC p q) Q E = fun h => Q ⟨⟩ (swapImpl p q h) := rfl
 
-theorem wp_swapA (p q : Nat) (Q : PUnit → Heap → Prop) (E : EPost.Nil) :
+theorem wp_swapA (p q : Nat) (Q : PUnit → Heap → Prop) (E : EStack⟨⟩) :
     wp (swapA p q) Q E = fun h => if p ≠ q then Q ⟨⟩ (swapSpec p q h) else ⊥ := by
   funext h
   simp only [swapA, StateT.wp_apply_eq, StateT.run, wp_ite, UB.wp_pure_eq, UB.wp_fail_eq]
 
 /-- The read-both/write-both swap abstracts to the atomic spec under non-aliasing. -/
 example (p q : Nat) :
-    ⦃(⊤ : Heap → Prop)⦄ (swapC p q) ⪯[Concretization.id (Heap → Prop) EPost.Nil] (swapA p q)
+    ⦃(⊤ : Heap → Prop)⦄ (swapC p q) ⪯[Concretization.id (Heap → Prop) EStack⟨⟩] (swapA p q)
       ⦃(⌜· = ·⌝)⦄ := by
   refine ⟨wrp_intro fun Qa Ea => ?_⟩
   refine PartialOrder.rel_trans (meet_le_right _ _) ?_
@@ -63,7 +63,7 @@ example (p q : Nat) :
   · rw [ite_eq_left hpq] at hpre
     rw [swapImpl_eq_spec hpq]
     simp only [Concretization.post_pi, Concretization.id, id_eq,
-      CompleteLattice.ofProp_apply, ofProp_prop_eq]
+      CompleteLattice.ofProp_apply, CompleteLattice.ofProp_prop_eq]
     exact ⟨⟨⟩, trivial, hpre⟩
   · rw [ite_eq_right hpq, bot_prop_eq] at hpre
     exact hpre.elim

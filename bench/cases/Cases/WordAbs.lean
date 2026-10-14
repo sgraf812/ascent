@@ -25,7 +25,7 @@ namespace AscendBench
 def wordVal : UInt64 → Int := fun w => (w.toNat : Int)
 
 /-- The word-abstraction phase: propositional assertions on both sides. -/
-def γw : Concretization Prop Prop EPost.Nil EPost.Nil := Concretization.id Prop EPost.Nil
+def γw : Concretization Prop Prop EStack⟨⟩ EStack⟨⟩ := Concretization.id Prop EStack⟨⟩
 
 /-- Adding a word to a coupled value is abstracted by the guarded integer sum. Registry form:
 Q-generalized, so the spec applies to any coupling by unification. The precondition carries the
@@ -33,7 +33,7 @@ synthesis directives and the coupling bookkeeping: `wordVal cv = av` pins the ab
 and the continuation receives the no-overflow guard and the *established* coupling of the sum
 as hypotheses, so downstream coupling obligations close by assumption instead of re-deriving
 the chain's arithmetic. -/
-@[ascend] theorem addW_spec (av : Int) (cv y : UInt64) {Q : UInt64 → Int → Prop} {E : EPost.Nil} :
+@[ascend] theorem addW_spec (av : Int) (cv y : UInt64) {Q : UInt64 → Int → Prop} {E : EStack⟨⟩} :
     ⦃(wordVal cv = av ∧
         (av + wordVal y < 2 ^ 64 → wordVal (cv + y) = av + wordVal y →
           Q (cv + y) (av + wordVal y)) : Prop)⦄
@@ -54,13 +54,13 @@ theorem refines_addW (av : Int) (cv y : UInt64) :
       (pure (cv + y) : Id UInt64)
       ⪯[γw] (UB.guardRet (av + wordVal y < 2 ^ 64) (av + wordVal y)) ⦃(⌜wordVal · = ·⌝)⦄ := by
   refine (addW_spec av cv y).weaken ?_
-  simp only [meet_prop_eq_and, himp_prop_eq_imp, ofProp_prop_eq]
+  simp only [CompleteLattice.ofProp_prop_eq]
   intro hav
   exact ⟨hav, fun _ hcpl => hcpl⟩
 
 /-- A pure word value is abstracted by its integer image. Registry form; the seed of every
 chain. -/
-@[ascend] theorem pureW_spec (cv : UInt64) {Q : UInt64 → Int → Prop} {E : EPost.Nil} :
+@[ascend] theorem pureW_spec (cv : UInt64) {Q : UInt64 → Int → Prop} {E : EStack⟨⟩} :
     ⦃Q cv (wordVal cv)⦄ (pure cv : Id UInt64) ⪯[γw] (pure (wordVal cv) : UB Int) ⦃Q; E⦄ :=
   Refinement.pure _ _
 
@@ -73,7 +73,7 @@ theorem bindChain {CM AM : Type w → Type v} {CPred APred : Type w}
     [WPMonad CM CPred CEPred] [WPMonad AM APred AEPred] [WPMonadExact AM APred AEPred]
     [HasEPost CPred APred CEPred AEPred Ξ]
     {γ : Concretization CPred APred CEPred AEPred}
-    [Frame CPred] {CV AV CV₂ AV₂ : Type w} {P : CPred}
+    [Heyting CPred] {CV AV CV₂ AV₂ : Type w} {P : CPred}
     {a₁ : AM AV} {c₁ : CM CV} {a₂ : AV → AM AV₂} {c₂ : CV → CM CV₂}
     {R : CV → AV → CPred} {Q : CV₂ → AV₂ → CPred} {E : Ξ}
     (h₁ : ⦃P⦄ c₁ ⪯[γ] a₁ ⦃R; E⦄)
