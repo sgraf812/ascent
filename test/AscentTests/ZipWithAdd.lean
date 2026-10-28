@@ -326,25 +326,11 @@ theorem refines_stepL2 (a b out : Addr) (n : USize) :
 theorem refines_L1L2 (a b out : Addr) (n : USize) :
     ⦃(⊤ : State → Prop)⦄ (whileLoop guardL1 stepL1)
       ⪯[ofStateRel (invL2 a b out n)] (whileLoop (guardL2 n) (stepL2 a b out)) ⦃fun _ _ => ⊤⦄ := by
-  apply refines_whileLoop (μ := fun p => n.toNat - p.1.toNat)
+  apply refines_whileLoop
   · -- guards agree under the state relation
     rintro s ⟨i, h⟩ ⟨hh, hi, hn, ha, hb, hout⟩
     simp [guardL2, guardL1, hi, hn]
   · exact refines_stepL2 a b out n
-  · -- the body decreases the variant on success
-    rintro E ⟨i, h⟩ hcond hsucc
-    simp only [stepL2, StateT.wp_apply_eq, StateT.run, wp_ite, UB.wp_pure_eq, UB.wp_fail_eq,
-      bot_prop_eq] at hsucc ⊢
-    have hlt : i.toNat < n.toNat := USize.lt_iff_toNat_lt.mp (by simpa [guardL2] using hcond)
-    split at hsucc
-    · next hv =>
-      rw [ite_eq_left hv]
-      have hbound : i.toNat + 1 < 2 ^ System.Platform.numBits := by
-        have := USize.toNat_lt_two_pow_numBits n; omega
-      have heq : (i + 1).toNat = i.toNat + 1 := by
-        rw [USize.toNat_add, USize.toNat_one]; exact Nat.mod_eq_of_lt hbound
-      omega
-    · exact hsucc.elim
 
 /-- `getSize "n"` (the `return n`) reads the related bound, abstracting to `pure n`. -/
 theorem refines_getSizeN (a b out : Addr) (n : USize) :
@@ -540,23 +526,11 @@ theorem refines_L2L3 (a b out : Addr) (n : USize) (a_arr b_arr : Array I)
     ⦃(⊤ : (USize × Heap) → Prop)⦄ (whileLoop (guardL2 n) (stepL2 a b out))
       ⪯[ofStateRel (invL3 a b out n a_arr b_arr)] (whileLoop (guardL3 n) (stepL3 a_arr b_arr))
       ⦃fun _ _ => ⊤⦄ := by
-  apply refines_whileLoop (μ := fun p => n.toNat - p.1.toNat)
+  apply refines_whileLoop
   · rintro ⟨ic, heap⟩ ⟨i, oa⟩ ⟨hc, _, _, _, _⟩
     simp only at hc; subst hc
     simp [guardL3, guardL2]
   · exact refines_stepL3 a b out n a_arr b_arr hd
-  · rintro E ⟨i, oa⟩ hcond hsucc
-    simp only [wp_stepL3, bot_prop_eq] at hsucc ⊢
-    have hlt : i.toNat < n.toNat := USize.lt_iff_toNat_lt.mp (by simpa [guardL3] using hcond)
-    split at hsucc
-    · next hg =>
-      rw [ite_eq_left hg]
-      have hbound : i.toNat + 1 < 2 ^ System.Platform.numBits := by
-        have := USize.toNat_lt_two_pow_numBits n; omega
-      have heq : (i + 1).toNat = i.toNat + 1 := by
-        rw [USize.toNat_add, USize.toNat_one]; exact Nat.mod_eq_of_lt hbound
-      omega
-    · exact hsucc.elim
 
 /-- The loop together with `return n`. -/
 theorem refines_L2L3_tail (a b out : Addr) (n : USize) (a_arr b_arr : Array I)

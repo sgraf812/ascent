@@ -79,6 +79,14 @@ def ofStateRel {Cσ Aσ : Type w} (J : Cσ → Aσ → Prop) : Concretization (C
 @[simp] theorem ofStateRel_pred {Cσ Aσ : Type w} (J : Cσ → Aσ → Prop) (P : Aσ → Prop) :
     (ofStateRel J).pred P = fun cs => ∃ as, J cs as ∧ P as := rfl
 
+theorem ofStateRel_pred_iSup {Cσ Aσ : Type w} (J : Cσ → Aσ → Prop) {ι : Type _}
+    (X : ι → Aσ → Prop) :
+    (ofStateRel J).pred (iSup X) ⊑ iSup fun i => (ofStateRel J).pred (X i) := by
+  rintro cs ⟨as, hJ, hX⟩
+  simp only [iSup_apply, iSup_prop_eq_exists] at hX ⊢
+  obtain ⟨i, hi⟩ := hX
+  exact ⟨i, as, hJ, hi⟩
+
 @[simp] theorem ofStateRel_post_top {Cσ Aσ : Type w} {CVal AVal : Type _} (J : Cσ → Aσ → Prop)
     (Qa : AVal → Aσ → Prop) :
     (ofStateRel J).post (fun (_ : CVal) (_ : AVal) => ⊤) Qa

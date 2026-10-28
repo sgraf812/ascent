@@ -3,23 +3,28 @@ import Ascent.Refinement.WhileLoop
 /-!
 # While-loop refinement: a worked example
 
-A sanity check for `refines_whileLoop` (`Ascent.Refinement.WhileLoop`): a terminating countdown loop
+A sanity check for `refines_whileLoop` (`Ascent.Refinement.WhileLoop`): a countdown loop
 refines itself.
 -/
 
 open Std.WP Lean.Order Ascent
 
-/-- A terminating countdown loop refines itself: the guards agree, the body refines itself,
-and the body strictly decreases the counter (used as the variant). -/
+/-- A countdown loop refines itself: the guards agree, and the body refines itself. -/
 example : ⦃(⊤ : Nat → Prop)⦄
     (whileLoop (fun n => decide (0 < n)) (fun n => pure ((), n - 1)))
     ⪯[Concretization.ofStateRel (Eq : Nat → Nat → Prop)]
     (whileLoop (fun n => decide (0 < n)) (fun n => pure ((), n - 1)))
     ⦃fun _ _ => ⊤⦄ := by
-  apply refines_whileLoop (μ := id)
+  apply refines_whileLoop
   · intro as cs h; subst h; rfl
   · exact (refines_relEq_self _ _).mono_post fun _ _ => le_top _
-  · intro E as h _
-    simp only [StateT.wp_apply_eq, StateT.run, UB.wp_pure_eq, id]
-    have : 0 < as := by simpa using h
-    omega
+
+/-- A loop that never terminates refines itself. -/
+example : ⦃(⊤ : Nat → Prop)⦄
+    (whileLoop (fun _ => true) (fun n => pure ((), n)))
+    ⪯[Concretization.ofStateRel (Eq : Nat → Nat → Prop)]
+    (whileLoop (fun _ => true) (fun n => pure ((), n)))
+    ⦃fun _ _ => ⊤⦄ := by
+  apply refines_whileLoop
+  · intro as cs h; subst h; rfl
+  · exact (refines_relEq_self _ _).mono_post fun _ _ => le_top _
