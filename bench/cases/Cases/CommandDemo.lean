@@ -1,5 +1,5 @@
 import Cases.WordAbs
-import Ascend
+import Ascent.Tactic
 
 /-!
 # The `ascend` command, end to end

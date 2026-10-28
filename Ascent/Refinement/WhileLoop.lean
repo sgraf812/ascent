@@ -1,5 +1,5 @@
-import Ascent.Loop
-import Ascent.Corres.StateT
+import Ascent.UB.WhileLoop
+import Ascent.UB.StateT
 
 /-!
 # A general while-loop refinement

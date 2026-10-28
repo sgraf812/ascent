@@ -24,17 +24,19 @@ forward simulation proof applies, one program construct at a time.
 
 ## Modules
 
-* `Ascent/Corres/Basic.lean`: `Concretization`, its postcondition reification `post`, the
-  functional state abstraction `ofStateRepr`, purification, identity and composition.
-* `Ascent/Corres/Refinement.lean`: `wrp`, `Refinement`, the laws for `pure`, `bind`, `throw`
-  and `tryCatch`, composition of refinements, and purification of a write-once program.
-* `Ascent/Corres/Loop.lean`: the relational concretization `relRef` and the while-loop rule.
-* `Ascent/Corres/SP.lean`: strongest postconditions as the lower adjoint of `wp`.
-* `Ascent/UB.lean`, `Ascent/Loop.lean`: the undefined-behaviour effect, where a failed guard
-  has weakest precondition `⊥`, and the while loop as a least fixpoint in it.
 * `Ascent/WPMonadExact.lean`: monads whose `wp` computes `pure` and `bind` exactly, which the
   abstract side of a refinement needs.
-* `Ascend/`: the `ascend` tactic and the `ascend_def` command. On a goal
+* `Ascent/UB.lean`, `Ascent/UB/WhileLoop.lean`, `Ascent/UB/StateT.lean`: the undefined-behaviour
+  effect, where a failed guard has weakest precondition `⊥`, the while loop as a least fixpoint
+  in it, and `wp` lemmas for `StateT σ UB`.
+* `Ascent/SP.lean`: strongest postconditions as the lower adjoint of `wp`.
+* `Ascent/Concretization.lean`: `Concretization`, its postcondition reification `post`, the
+  functional state abstraction `ofStateRepr`, purification, identity and composition.
+* `Ascent/Refinement.lean`: `wrp`, `Refinement`, the laws for `pure`, `bind`, `throw`
+  and `tryCatch`, composition of refinements, and purification of a write-once program.
+* `Ascent/Refinement/WhileLoop.lean`: the relational concretization `relRef` and the while-loop
+  rule.
+* `Ascent/Tactic/`: the `ascend` tactic and the `ascend_def` command. On a goal
   `⦃P⦄ c ⪯[γ] (_ : AM AV) ⦃Q; E⦄` the tactic computes the abstract program into the hole and
   proves the triple, leaving the verification conditions as goals. The command stores the
   abstract program as a definition `a` with the theorem `a.refines`. Rules are `Refinement`

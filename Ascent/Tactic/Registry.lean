@@ -1,4 +1,4 @@
-import Ascend.Attr
+import Ascent.Tactic.Attr
 
 /-!
 # Structural rules of the registry
@@ -10,10 +10,10 @@ that serves the leaves. `tryCatch` is decomposed identically on the exception si
 synthesized as sub-program holes exactly as bind's continuation.
 -/
 
-namespace Ascend
+namespace Ascent.Tactic
 
 attribute [ascend] Ascent.Refinement.bind
 attribute [ascend] Ascent.Refinement.tryCatch
 attribute [ascend] Ascent.Refinement.throw
 
-end Ascend
+end Ascent.Tactic

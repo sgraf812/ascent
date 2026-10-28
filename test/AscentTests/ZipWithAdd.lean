@@ -1,7 +1,7 @@
-import Ascent.Corres.Loop
-import Ascent.Corres.SP
+import Ascent.Refinement.WhileLoop
+import Ascent.SP
 import AscentTests.TripleScaffold
-import Ascent.Corres.Refinement
+import Ascent.Refinement
 import Std.Tactic.Do
 
 /-!

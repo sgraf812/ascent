@@ -1,4 +1,4 @@
-import Ascent.Corres.Basic
+import Ascent.Concretization
 
 /-!
 # `wrp`: the weakest refinement precondition

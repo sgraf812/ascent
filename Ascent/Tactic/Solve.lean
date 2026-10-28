@@ -1,5 +1,5 @@
-import Ascend.Normalize
-import Ascend.Rules
+import Ascent.Tactic.Normalize
+import Ascent.Tactic.Rules
 
 /-!
 # The main solve step
@@ -11,7 +11,7 @@ reports why no further progress is possible. Each strategy is a small function r
 
 open Lean Meta Sym
 
-namespace Ascend
+namespace Ascent.Tactic
 
 /-- Why no further progress is possible on the current goal. -/
 inductive StopReason where
@@ -70,7 +70,7 @@ private def andSplit? (goal : MVarId) (rel carrier inst pre rhs : Expr) :
   let_expr And a b := rhs | return none
   let ha ← mkFreshExprSyntheticOpaqueMVar (← shareCommonInc (mkApp4 rel carrier inst pre a))
   let hb ← mkFreshExprSyntheticOpaqueMVar (← shareCommonInc (mkApp4 rel carrier inst pre b))
-  goal.assign (mkApp5 (mkConst ``Ascend.prop_le_and) pre a b ha hb)
+  goal.assign (mkApp5 (mkConst ``Ascent.Tactic.prop_le_and) pre a b ha hb)
   return some [ha.mvarId!, hb.mvarId!]
 
 /-- Natural-notation strategy: introduce the hypothesis of `P' ⊑ (A → B)` via `prop_le_imp`,
@@ -83,7 +83,7 @@ private def impIntro? (scope : Scope) (goal : MVarId) (rel carrier inst pre rhs 
   let b := rhs.bindingBody!
   let hgoal ← mkFreshExprSyntheticOpaqueMVar
     (← shareCommonInc (.forallE `h a (mkApp4 rel carrier inst pre b) .default))
-  goal.assign (mkApp4 (mkConst ``Ascend.prop_le_imp) pre a b hgoal)
+  goal.assign (mkApp4 (mkConst ``Ascent.Tactic.prop_le_imp) pre a b hgoal)
   let (g, fv, ty) ← introLastHyp hgoal.mvarId!
   return some ({ scope with lastLiftedPre? := some (fv, ty) }, [g])
 
@@ -136,4 +136,4 @@ def solve (scope : Scope) (goal : MVarId) : AscendM SolveResult := goal.withCont
     return ← applySpec scope goal g
   return .stop (.noProgress pre rhs)
 
-end Ascend
+end Ascent.Tactic

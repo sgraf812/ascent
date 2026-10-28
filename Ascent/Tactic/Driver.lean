@@ -1,4 +1,4 @@
-import Ascend.Solve
+import Ascent.Tactic.Solve
 
 /-!
 # The worklist driver
@@ -10,7 +10,7 @@ lattice, so VCs reach the user as bare propositions).
 
 open Lean Meta Sym
 
-namespace Ascend
+namespace Ascent.Tactic
 
 /-- Emit `goal` as a VC, stripping a `(⊤ : Prop) ⊑ ·` wrapper. -/
 def emitVC (goal : MVarId) : AscendM Unit := do
@@ -49,4 +49,4 @@ def run (goal : MVarId) (unfold : Array Name := #[]) : AscendM (Array MVarId) :=
     vcs[i].setTag (Name.mkSimple s!"vc{i + 1}")
   return vcs
 
-end Ascend
+end Ascent.Tactic

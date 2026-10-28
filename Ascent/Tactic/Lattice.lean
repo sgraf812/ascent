@@ -1,4 +1,4 @@
-import Ascend.RuleConstruction
+import Ascent.Tactic.RuleConstruction
 import Lean.Elab.Tactic.VCGen.LatticeOp
 
 /-!
@@ -14,7 +14,7 @@ construction is reused verbatim from `vcgen` (`mkLatticeOpRule`, carrier-generic
 open Lean Meta Sym
 open Lean.Elab.Tactic
 
-namespace Ascend
+namespace Ascent.Tactic
 
 /-- The lattice-split rule for the connective heading `rhs`, from the cache or built now (via the
 reused `mkLatticeOpRule`) and interned. Keyed on the constant prefix and argument count, so every
@@ -36,4 +36,4 @@ def splitLatticeOp? (goal : MVarId) (rhs : Expr) : AscendM (Option (List MVarId)
   | .goals gs => return some gs
   | _ => return none
 
-end Ascend
+end Ascent.Tactic

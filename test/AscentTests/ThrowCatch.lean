@@ -1,4 +1,4 @@
-import Ascent.Corres.Refinement
+import Ascent.Refinement
 import Ascent.UB
 
 /-!

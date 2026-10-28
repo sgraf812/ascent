@@ -1,12 +1,9 @@
 name = "ascent"
-defaultTargets = ["Ascent", "Ascend"]
+defaultTargets = ["Ascent"]
 testDriver = "AscentTests"
 
 [[lean_lib]]
 name = "Ascent"
-
-[[lean_lib]]
-name = "Ascend"
 precompileModules = true
 
 [[lean_lib]]

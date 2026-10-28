@@ -1,4 +1,4 @@
-import Ascent.Corres.Refinement
+import Ascent.Refinement
 
 /-!
 # Word abstraction: `UInt64 ↝ Int`

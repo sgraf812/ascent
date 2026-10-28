@@ -1,5 +1,5 @@
 import Cases.WordAbs
-import Ascend
+import Ascent.Tactic
 
 /-!
 # `tryCatch` synthesis, end to end

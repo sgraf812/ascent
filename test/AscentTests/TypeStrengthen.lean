@@ -1,5 +1,5 @@
 import AscentTests.TripleScaffold
-import Ascent.Corres.Refinement
+import Ascent.Refinement
 
 /-!
 # Type strengthening: `ExceptT Unit (StateT σ Id) ↝ StateT σ Id`

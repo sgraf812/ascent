@@ -7,7 +7,7 @@ import Ascent.WPMonadExact
 `Concretization` carries the monad-level concretizations `pred`/`ePosts` (the AutoCorres
 state/exception abstraction; `Concretization.ofStateRepr` builds the common functional case as a
 pullback). The value-level coupling is a relational postcondition supplied per refinement triple
-(`Ascent.Corres.Refinement`); `Concretization.post` reifies it against an abstract postcondition.
+(`Ascent.Refinement`); `Concretization.post` reifies it against an abstract postcondition.
 -/
 
 open Std.WP Lean.Order
@@ -75,7 +75,7 @@ theorem post_pi {σ : Type} {APred : Type} {CEPosts AEPosts : Type w'}
 
 /-- The functional concretization from a state representation function `st : Cσ → Aσ`: the
 concretization is the pullback `st^*` (`pred P = P ∘ st`). Exception-free (`EStack⟨⟩`). This is
-AutoCorres' functional state abstraction; the coupling side-condition lives in the `Corres`
+AutoCorres' functional state abstraction; the coupling side-condition lives in the `Refinement`
 precondition `pre`, not here. -/
 def ofStateRepr {Cσ Aσ : Type w} (st : Cσ → Aσ) :
     Concretization (Cσ → Prop) (Aσ → Prop) EStack⟨⟩ EStack⟨⟩ where

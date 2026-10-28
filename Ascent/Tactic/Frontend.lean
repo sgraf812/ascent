@@ -1,4 +1,4 @@
-import Ascend.Driver
+import Ascent.Tactic.Driver
 
 /-!
 # The `ascend` tactic
@@ -11,7 +11,7 @@ frontend unseals it. With a concrete abstract program the same engine checks the
 
 open Lean Meta Sym Elab
 
-namespace Ascend
+namespace Ascent.Tactic
 
 /-- Unseal the abstract-program hole of a `Refinement` goal so rule application can assign it. -/
 def unsealAbstractHole (goal : MVarId) : MetaM Unit := do
@@ -59,4 +59,4 @@ elab_rules : tactic
     let vcs ← main (← Tactic.getMainGoal)
     Tactic.replaceMainGoal vcs.toList
 
-end Ascend
+end Ascent.Tactic

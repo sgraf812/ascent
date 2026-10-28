@@ -1,9 +1,9 @@
-import Ascent.Corres.Loop
+import Ascent.Refinement.WhileLoop
 
 /-!
 # While-loop refinement: a worked example
 
-A sanity check for `refines_whileLoop` (`Ascent.Corres.Loop`): a terminating countdown loop
+A sanity check for `refines_whileLoop` (`Ascent.Refinement.WhileLoop`): a terminating countdown loop
 refines itself.
 -/
 

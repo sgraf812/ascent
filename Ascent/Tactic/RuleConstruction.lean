@@ -1,5 +1,5 @@
-import Ascend.Context
-import Ascent.Corres.Refinement
+import Ascent.Tactic.Context
+import Ascent.Refinement
 
 /-!
 # Rule compilation and application
@@ -25,7 +25,7 @@ leaves the precondition entailment `pre ⊑ pre'` as the sole subgoal.
 
 open Lean Meta Sym
 
-namespace Ascend
+namespace Ascent.Tactic
 
 /-- Sharing-preserving `instantiateMVarsIfMVarApp`: `Meta.instantiateMVarsIfMVarApp` returns
 un-interned nodes, breaking the `SymM` maximal-sharing invariant that later matching relies on.
@@ -221,4 +221,4 @@ def applyRule (goal : MVarId) (g : WRPApp) (si : SpecInfo) : AscendM (Option (Li
     let .goals ngs ← c.rule.apply goal | return none
     return some ngs
 
-end Ascend
+end Ascent.Tactic

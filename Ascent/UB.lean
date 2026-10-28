@@ -1,4 +1,4 @@
-import Ascent.Corres.Refinement
+import Ascent.Refinement
 
 /-!
 # The `UB` (undefined-behavior) effect

@@ -1,8 +1,9 @@
 import Ascent.WPMonadExact
-import Ascent.Corres.Basic
 import Ascent.UB
-import Ascent.Loop
-import Ascent.Corres.StateT
-import Ascent.Corres.SP
-import Ascent.Corres.Refinement
-import Ascent.Corres.Loop
+import Ascent.UB.WhileLoop
+import Ascent.UB.StateT
+import Ascent.SP
+import Ascent.Concretization
+import Ascent.Refinement
+import Ascent.Refinement.WhileLoop
+import Ascent.Tactic

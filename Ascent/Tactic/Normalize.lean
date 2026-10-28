@@ -1,4 +1,4 @@
-import Ascend.Lattice
+import Ascent.Tactic.Lattice
 
 /-!
 # Precondition normalization and lifted-hypothesis discharge
@@ -13,7 +13,7 @@ the `Scope` threading are ours.
 open Lean Meta Sym
 open Lean.Elab.Tactic
 
-namespace Ascend
+namespace Ascent.Tactic
 
 /-- Introduce the goal's leading binders, returning the innermost goal, the last introduced
 fvar, and its instantiated type (the freshly lifted hypothesis). -/
@@ -105,4 +105,4 @@ def elimTopPre (goal : MVarId) : AscendM MVarId := do
   | .goals [g] => return g
   | _ => return goal
 
-end Ascend
+end Ascent.Tactic

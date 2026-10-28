@@ -1,5 +1,5 @@
 import Lean
-import Ascend.Attr
+import Ascent.Tactic.Attr
 import Lean.Elab.Tactic.VCGen.LatticeOp
 import Lean.Elab.Tactic.VCGen.Entails
 
@@ -16,7 +16,7 @@ closed under every decomposition step it performs.
 
 open Lean Meta Sym
 
-namespace Ascend
+namespace Ascent.Tactic
 
 /-- The `wrp γ a c Q E` on the right of an entailment, destructured. The 21 arguments are too
 many for `let_expr`, so this carries them with named accessors. -/
@@ -101,4 +101,4 @@ structure Scope where
 
 abbrev AscendM := ReaderT Context (StateRefT State SymM)
 
-end Ascend
+end Ascent.Tactic

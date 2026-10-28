@@ -1,5 +1,5 @@
 import Lean
-import Ascent.Corres.Refinement
+import Ascent.Refinement
 
 /-!
 # The `@[ascend]` spec registry
@@ -20,7 +20,7 @@ Registration records the telescope positions the engine instantiates at applicat
 
 open Lean Meta
 
-namespace Ascend
+namespace Ascent.Tactic
 
 /-- A registered `@[ascend]` spec. -/
 structure SpecInfo where
@@ -98,4 +98,4 @@ initialize registerBuiltinAttribute {
 def getSpecs : CoreM (DiscrTree SpecInfo) :=
   return ascendExt.getState (← getEnv)
 
-end Ascend
+end Ascent.Tactic

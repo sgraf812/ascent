@@ -1,4 +1,4 @@
-import Ascend.Frontend
+import Ascent.Tactic.Frontend
 
 /-!
 # The `ascend_def` command
@@ -15,7 +15,7 @@ the refinement against the new constant, which holds definitionally).
 
 open Lean Meta Sym Elab Command Term
 
-namespace Ascend
+namespace Ascent.Tactic
 
 syntax (name := ascendCmd) "ascend_def " ident " from " term
   (" by " tacticSeq)? : command
@@ -62,4 +62,4 @@ elab_rules : command
         name := name.getId ++ `refines, levelParams := [], type := thmTy,
         value := ← instantiateMVars proof }
 
-end Ascend
+end Ascent.Tactic

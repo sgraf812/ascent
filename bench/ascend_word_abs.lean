@@ -34,7 +34,7 @@ def runBaseline (sizes : List Nat) (showSynth := false) : MetaM Unit := do
     (showSynth := showSynth)
 
 def solveEngine (_n : Nat) (goal : MVarId) : MetaM (List MVarId) :=
-  return (← Ascend.mainWith goal #[]).toList
+  return (← Ascent.Tactic.mainWith goal #[]).toList
 
 def runEngine (sizes : List Nat) (showSynth := false) : MetaM Unit := do
   IO.println "=== WordAbs ascend engine ==="

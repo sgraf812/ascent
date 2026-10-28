@@ -1,6 +1,6 @@
-import Ascent.Corres.Refinement
+import Ascent.Refinement
 import Ascent.UB
-import Ascend
+import Ascent.Tactic
 
 /-!
 # Guarded word abstraction: the first synthesis family

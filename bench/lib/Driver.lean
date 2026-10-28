@@ -1,5 +1,5 @@
 import Lean
-import Ascent.Corres.Refinement
+import Ascent.Refinement
 
 /-!
 # The ascend benchmark driver
