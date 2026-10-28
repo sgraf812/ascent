@@ -579,7 +579,7 @@ theorem refines_L1L3 (a b out : Addr) (n : USize) (a_arr b_arr : Array I)
       (whileLoop (guardL3 n) (stepL3 a_arr b_arr) >>= fun _ => pure n)
       ⦃(⌜· = ·⌝)⦄ :=
   Refinement.comp (f₁ := id) (f₂ := id) (fun _ => rfl)
-    (refines_L2L3_tail a b out n a_arr b_arr hd) (refines_L1L2_tail a b out n)
+    (Concretization.meet_pred_le_pred_top_meet _ _) (refines_L2L3_tail a b out n a_arr b_arr hd) (refines_L1L2_tail a b out n)
 
 /-- Under the loop-entry couplings (`i = 0`, the bound and pointers, the input slices, validity and
 non-aliasing), the concrete loop+`return n` abstracts to `zipL4`. The counter is started at `0` from
@@ -793,7 +793,7 @@ theorem refines_zip5 (a b out : Addr) (la lb : USize) (a_arr b_arr : Array I)
   have hb' := wrp_transport (refines_purifyL4 a_arr b_arr (min la lb)).le_wrp Q E
   rw [Lean.Order.top_meet] at hb'
   have hc' := wrp_transport (refines_zip a b out la lb a_arr b_arr ha hb hd).le_wrp
-    ((purify (Array I)).post purifyCouple Q) (HasEPost.ePosts (purify (Array I)) .mk E)
+    ((purify (Array I)).post purifyCouple Q) (EPostsCoupling.ePosts (purify (Array I)) .mk E)
   rw [hRHS] at hc'
   refine PartialOrder.rel_trans (le_meet _ _ _ (meet_le_left _ _)
     (PartialOrder.rel_trans (meet_le_right _ _)

@@ -19,7 +19,7 @@ refinement holds for every intermediate value. -/
 example (a b c : UInt64) (h1 : a.toNat + b.toNat < 2 ^ 64) :
     ⦃(⊤ : Prop)⦄
       (do let r ← pure (a + b); pure (r * c) : Id UInt64)
-      ⪯[Concretization.id Prop EStack⟨⟩]
+      ⪯[Concretization.id Prop]
       (do let r ← pure (wordVal a + wordVal b)
           UB.guardRet (r * wordVal c < 2 ^ 64) (r * wordVal c) : UB Int)
       ⦃(⌜wordVal · = ·⌝)⦄ := by

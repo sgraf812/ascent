@@ -14,11 +14,9 @@ open Std.WP Lean.Order Ascent
 
 /-- The concretization of a state relation `J`: `pred P cs = ∃ as, J cs as ∧ P as`. -/
 def relRef {Aσ Cσ : Type} (J : Cσ → Aσ → Prop) :
-    Concretization (Cσ → Prop) (Aσ → Prop) EStack⟨⟩ EStack⟨⟩ where
+    Concretization (Cσ → Prop) (Aσ → Prop) where
   pred P := fun cs => ∃ as, J cs as ∧ P as
-  ePosts := id
   pred_mono h := fun _ ⟨as, hJ, hP⟩ => ⟨as, hJ, h as hP⟩
-  ePosts_mono h := h
 
 @[simp] theorem relRef_pred {Aσ Cσ} (J : Cσ → Aσ → Prop) (P : Aσ → Prop) :
     (relRef J).pred P = fun cs => ∃ as, J cs as ∧ P as := rfl

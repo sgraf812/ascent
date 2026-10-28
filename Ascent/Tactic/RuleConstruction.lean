@@ -69,7 +69,7 @@ private def conclusionProof (rule : Expr) (mvs : Array Expr) (concl : Expr) :
   return none
 
 /-- The `wrp` argument positions that identify a phase: the assertion lattices and their
-instances, `Ξ`, `HasEPost`, and `γ`. The program and value types (and with them the `WP`
+instances, `Ξ`, `EPostsCoupling`, and `γ`. The program and value types (and with them the `WP`
 instances) stay parametric, so one compiled rule serves every node of a chain. -/
 private def phasePositions : Array Nat := #[4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 16]
 

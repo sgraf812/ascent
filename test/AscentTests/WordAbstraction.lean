@@ -16,8 +16,8 @@ open Std.WP Lean.Order Ascent
 def wordVal : UInt64 → Int := fun w => (w.toNat : Int)
 
 /-- The word-abstraction concretization on pure computations: identity on assertions. -/
-def wordAbstraction : Concretization Prop Prop EStack⟨⟩ EStack⟨⟩ :=
-  Concretization.id Prop EStack⟨⟩
+def wordAbstraction : Concretization Prop Prop :=
+  Concretization.id Prop
 
 
 /-- Addition abstracts to integer addition when it does not overflow. -/

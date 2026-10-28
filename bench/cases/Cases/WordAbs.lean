@@ -25,7 +25,7 @@ namespace AscendBench
 def wordVal : UInt64 → Int := fun w => (w.toNat : Int)
 
 /-- The word-abstraction phase: propositional assertions on both sides. -/
-def γw : Concretization Prop Prop EStack⟨⟩ EStack⟨⟩ := Concretization.id Prop EStack⟨⟩
+def γw : Concretization Prop Prop := Concretization.id Prop
 
 /-- Adding a word to a coupled value is abstracted by the guarded integer sum. Registry form:
 Q-generalized, so the spec applies to any coupling by unification. The precondition carries the
@@ -71,8 +71,8 @@ theorem bindChain {CM AM : Type w → Type v} {CPred APred : Type w}
     [Monad CM] [Monad AM]
     [Assertion CPred] [Assertion APred] [Assertion CEPosts] [Assertion AEPosts]
     [WPMonad CM CPred CEPosts] [WPMonad AM APred AEPosts] [WPMonadExact AM APred AEPosts]
-    [HasEPost CPred APred CEPosts AEPosts Ξ]
-    {γ : Concretization CPred APred CEPosts AEPosts}
+    [EPostsCoupling CPred APred CEPosts AEPosts Ξ]
+    {γ : Concretization CPred APred}
     [Heyting CPred] {CV AV CV₂ AV₂ : Type w} {P : CPred}
     {a₁ : AM AV} {c₁ : CM CV} {a₂ : AV → AM AV₂} {c₂ : CV → CM CV₂}
     {R : CV → AV → CPred} {Q : CV₂ → AV₂ → CPred} {E : Ξ}

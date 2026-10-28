@@ -15,7 +15,7 @@ abstract results to concrete results, and `E` relates thrown values. The triple 
 `P ⊑ wrp γ c a Q E`, where
 
 ```
-wrp γ c a Q E = ⨅ Qa Ea, γ.pred (wp a Qa Ea) ⇨ wp c (γ.post Q Qa) (γ.ePost E Ea)
+wrp γ c a Q E = ⨅ Qa Ea, γ.pred (wp a Qa Ea) ⇨ wp c (γ.post Q Qa) (EPostsCoupling.ePosts γ E Ea)
 ```
 
 is the weakest refinement precondition: the weakest assertion under which every `wp` fact of
@@ -32,10 +32,11 @@ forward simulation proof applies, one program construct at a time.
 * `Ascent/SP.lean`: strongest postconditions as the lower adjoint of `wp`.
 * `Ascent/Concretization.lean`: `Concretization`, its postcondition reification `post`, the
   functional state abstraction `ofStateRepr`, purification, identity and composition.
-* `Ascent/EPosts.lean`: `HasEPost`, the type of the exception coupling for a pair of exception
-  stacks.
-* `Ascent/Refinement.lean`: `wrp`, `Refinement`, the laws for `pure`, `bind`, `throw`
-  and `tryCatch`, composition of refinements, and purification of a write-once program.
+* `Ascent/EPostsCoupling.lean`: `EPostsCoupling`, the type of exception couplings for a pair of
+  exception stacks.
+* `Ascent/WRP.lean`: `wrp` and its laws for `pure`, `bind`, `throw` and `tryCatch`.
+* `Ascent/Refinement.lean`: `Refinement`, its notation, the triple forms of the laws,
+  composition of refinements, and purification of a write-once program.
 * `Ascent/Refinement/WhileLoop.lean`: the relational concretization `relRef` and the while-loop
   rule.
 * `Ascent/Tactic/`: the `ascend` tactic and the `ascend_def` command. On a goal

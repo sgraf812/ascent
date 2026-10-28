@@ -4,11 +4,10 @@ import Ascent.Refinement
 /-!
 # Type strengthening: `ExceptT Unit (StateT σ Id) ↝ StateT σ Id`
 
-A total computation typed in the failure monad is abstracted to one in the pure state monad.
-The assertion lattice is unchanged (`pred = id`); the abstraction forbids failure by sending the
-trivial abstract exception postcondition to `⊥` on the failure barrel. A refinement proof
-therefore carries the obligation that the concrete program never fails. A throwing program
-admits no refinement.
+A total computation in the failure monad refines the same computation in the state monad. The
+concretization is `Concretization.id`. The concrete exception layer has no abstract counterpart,
+so the exception coupling is a postcondition on the concrete failure, and the default `⊥` forbids
+it. A program that throws refines no program in the state monad.
 -/
 
 open Std.WP Lean.Order Ascent
@@ -16,24 +15,16 @@ open Std.WP Lean.Order Ascent
 /-- Concrete failure monad of the type-strengthening phase. -/
 abbrev TS (σ : Type) := ExceptT Unit (StateT σ Id)
 
-/-- The type-strengthening concretization: identity on state assertions, failure forbidden. -/
-def typeStrengthen (σ : Type) :
-    Concretization (σ → Prop) (σ → Prop) ((Unit → σ → Prop) × EStack⟨⟩) EStack⟨⟩ where
-  pred := id
-  ePosts := fun _ => estack⟨fun _ => (⊥ : σ → Prop)⟩
-  pred_mono h := h
-  ePosts_mono _ := PartialOrder.rel_refl
-
 /-- A total state computation abstracts its lift into the failure monad: the never-fails
-obligation is discharged by the `⊥` failure barrel in `typeStrengthen`. -/
+obligation is the default exception coupling `⊥`. -/
 theorem refines_lift {σ α : Type} (P : σ → Prop) (x : StateT σ Id α) :
-    ⦃P⦄ (MonadLift.monadLift x : TS σ α) ⪯[typeStrengthen σ] x ⦃(⌜· = ·⌝)⦄ := by
+    ⦃P⦄ (MonadLift.monadLift x : TS σ α) ⪯[Concretization.id (σ → Prop)] x ⦃(⌜· = ·⌝)⦄ := by
   refine ⟨wrp_intro fun Qa Ea => ?_⟩
-  have hQ : (typeStrengthen σ).post (fun cv av => ⌜cv = av⌝) Qa = Qa := by
-    funext cv; simp only [Concretization.post_eq, typeStrengthen, id_eq]
+  have hQ : (Concretization.id (σ → Prop)).post (fun cv av => ⌜cv = av⌝) Qa = Qa := by
+    funext cv; simp only [Concretization.post_eq, Concretization.id, id_eq]
   rw [hQ]
   refine PartialOrder.rel_trans (meet_le_right _ _) ?_
-  exact WPMonad.le_wp_monadLift_ExceptT_apply x Qa (estack⟨fun _ => (⊥ : σ → Prop)⟩)
+  exact WPMonad.le_wp_monadLift_ExceptT_apply (ε := Unit) x Qa _
 
 /-- Abstract (total) increment in the state monad. -/
 def absInc : StateT Nat Id Nat := do
@@ -48,52 +39,42 @@ def concInc : TS Nat Nat := do
   pure x
 
 /-- The total failure-monad program abstracts to the pure state program. -/
-example : ⦃(⊤ : Nat → Prop)⦄ concInc ⪯[typeStrengthen Nat] absInc ⦃(⌜· = ·⌝)⦄ := by
+example : ⦃(⊤ : Nat → Prop)⦄ concInc ⪯[Concretization.id (Nat → Prop)] absInc ⦃(⌜· = ·⌝)⦄ := by
   unfold absInc concInc
   refine .bind_eq (refines_lift _ _) fun x => ?_
   refine .bind_eq (refines_lift _ _) fun _ => ?_
   exact .pure_eq _ _ rfl
 
-/-- A program that can fail has no type strengthening: `throw` forces the forbidden failure
-barrel, so it refines no total abstraction. -/
+/-- A program that throws refines no program in the state monad. -/
 example : ¬ ⦃(⊤ : Nat → Prop)⦄ (throw () : TS Nat Nat)
-    ⪯[typeStrengthen Nat] (pure 0 : StateT Nat Id Nat) ⦃(⌜· = ·⌝)⦄ := by
+    ⪯[Concretization.id (Nat → Prop)] (pure 0 : StateT Nat Id Nat) ⦃(⌜· = ·⌝)⦄ := by
   intro hsim
   have H := wrp_transport hsim.le_wrp (fun _ _ => True) estack⟨⟩
   have hthrow : wp (throw () : TS Nat Nat)
-      ((typeStrengthen Nat).post (fun cv av => ⌜cv = av⌝) (fun _ _ => True))
-      (HasEPost.ePosts (typeStrengthen Nat) .mk estack⟨⟩) = (⊥ : Nat → Prop) := by
-    simp [typeStrengthen, HasEPost.ePosts_nil, ExceptT.wp_apply_eq,
+      ((Concretization.id (Nat → Prop)).post (fun cv av => ⌜cv = av⌝) (fun _ _ => True))
+      (EPostsCoupling.ePosts (CEPosts := EStack⟨Unit → Nat → Prop⟩) (Concretization.id (Nat → Prop)) ⊥ estack⟨⟩) = (⊥ : Nat → Prop) := by
+    simp [Concretization.id, EPostsCoupling.ePosts_cons_fill, ExceptT.wp_apply_eq,
       WPMonadExact.wp_pure_eq]
-  have hpure : (typeStrengthen Nat).pred
+  have hpure : (Concretization.id (Nat → Prop)).pred
       (wp (pure 0 : StateT Nat Id Nat) (fun _ _ => True) estack⟨⟩) = (fun _ => True) := by
-    simp [typeStrengthen, WPMonadExact.wp_pure_eq]
+    simp [Concretization.id, WPMonadExact.wp_pure_eq]
   rw [hthrow, hpure] at H
   have hfalse := H 0
   simp at hfalse
 
 /-! ## Option-monad strengthening: `OptionT (StateT σ Id) ↝ StateT σ Id`
 
-The same phase for the canonical AutoCorres failure monad, where failure carries no payload, so
-the forbidden barrel is a single `⊥` (rather than a function of the error value). -/
+The same phase for `OptionT`, the failure monad of AutoCorres. -/
 
 /-- Concrete option failure monad. -/
 abbrev OptS (σ : Type) := OptionT (StateT σ Id)
 
-/-- The option-strengthening concretization: identity on state assertions, failure (`none`) forbidden. -/
-def optionStrengthen (σ : Type) :
-    Concretization (σ → Prop) (σ → Prop) ((Unit → σ → Prop) × EStack⟨⟩) EStack⟨⟩ where
-  pred := id
-  ePosts := fun _ => estack⟨fun _ => (⊥ : σ → Prop)⟩
-  pred_mono h := h
-  ePosts_mono _ := PartialOrder.rel_refl
-
 /-- A total state computation abstracts its lift into the option monad. -/
 theorem refines_liftOption {σ α : Type} (P : σ → Prop) (x : StateT σ Id α) :
-    ⦃P⦄ (MonadLift.monadLift x : OptS σ α) ⪯[optionStrengthen σ] x ⦃(⌜· = ·⌝)⦄ := by
+    ⦃P⦄ (MonadLift.monadLift x : OptS σ α) ⪯[Concretization.id (σ → Prop)] x ⦃(⌜· = ·⌝)⦄ := by
   refine ⟨wrp_intro fun Qa Ea => ?_⟩
-  have hQ : (optionStrengthen σ).post (fun cv av => ⌜cv = av⌝) Qa = Qa := by
-    funext cv; simp only [Concretization.post_eq, optionStrengthen, id_eq]
+  have hQ : (Concretization.id (σ → Prop)).post (fun cv av => ⌜cv = av⌝) Qa = Qa := by
+    funext cv; simp only [Concretization.post_eq, Concretization.id, id_eq]
   rw [hQ]
   refine PartialOrder.rel_trans (meet_le_right _ _) ?_
   exact WPMonad.le_wp_monadLift_OptionT_apply x
@@ -104,7 +85,7 @@ def concIncOpt : OptS Nat Nat := do
   MonadLift.monadLift (set (x + 1) : StateT Nat Id PUnit)
   pure x
 
-example : ⦃(⊤ : Nat → Prop)⦄ concIncOpt ⪯[optionStrengthen Nat] absInc ⦃(⌜· = ·⌝)⦄ := by
+example : ⦃(⊤ : Nat → Prop)⦄ concIncOpt ⪯[Concretization.id (Nat → Prop)] absInc ⦃(⌜· = ·⌝)⦄ := by
   unfold absInc concIncOpt
   refine .bind_eq (refines_liftOption _ _) fun x => ?_
   refine .bind_eq (refines_liftOption _ _) fun _ => ?_

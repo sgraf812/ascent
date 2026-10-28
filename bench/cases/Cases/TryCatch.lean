@@ -13,8 +13,8 @@ identity handler; the synthesized abstract program mirrors it under the identity
 open Std.WP Lean.Order Ascent AscendBench
 
 /-- The identity concretization over `Except Nat`, aligning the single exception layer. -/
-noncomputable def γe : Concretization Prop Prop (Nat → Prop) (Nat → Prop) :=
-  Concretization.id Prop (Nat → Prop)
+noncomputable def γe : Concretization Prop Prop :=
+  Concretization.id Prop
 
 -- A `pure` leaf under the identity concretization, coupling by equality.
 attribute [local ascend] Ascent.Refinement.pure

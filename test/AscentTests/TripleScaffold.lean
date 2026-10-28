@@ -17,8 +17,8 @@ variable {CM AM : Type w → Type v} {CPred APred : Type w} {CEPosts AEPosts : T
   [Monad CM] [Monad AM]
   [Assertion CPred] [Assertion APred] [Assertion CEPosts] [Assertion AEPosts]
   [WPMonad CM CPred CEPosts] [WPMonad AM APred AEPosts] [WPMonadExact AM APred AEPosts]
-  [HasEPost CPred APred CEPosts AEPosts Ξ]
-  {γ : Concretization CPred APred CEPosts AEPosts}
+  [EPostsCoupling CPred APred CEPosts AEPosts Ξ]
+  {γ : Concretization CPred APred}
   [Heyting CPred] {CV AV CV₂ AV₂ : Type w} {P : CPred}
   {c₁ : CM CV} {a₁ : AM AV} {c₂ : CV → CM CV₂} {a₂ : AV → AM AV₂}
   {Q : CV₂ → AV₂ → CPred} {E : Ξ}

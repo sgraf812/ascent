@@ -98,11 +98,11 @@ instance {α} (x : UB α) : WPConjunctive x where
 
 theorem Ascent.Refinement.guardRet {AV CV : Type} {g : Prop} [Decidable g] {P : Prop}
     {Q : CV → AV → Prop} (c : CV) (a : AV) (h : g → P ⊑ Q c a) :
-    ⦃P⦄ (Pure.pure c : Id CV) ⪯[Concretization.id Prop EStack⟨⟩] (UB.guardRet g a) ⦃Q⦄ := by
+    ⦃P⦄ (Pure.pure c : Id CV) ⪯[Concretization.id Prop] (UB.guardRet g a) ⦃Q⦄ := by
   refine ⟨wrp_intro fun Qa Ea => ?_⟩
   by_cases hg : g
   · rw [show UB.guardRet g a = Pure.pure a from by simp [UB.guardRet, hg]]
-    show P ⊓ Qa a ⊑ (Concretization.id Prop EStack⟨⟩).post Q Qa c
+    show P ⊓ Qa a ⊑ (Concretization.id Prop).post Q Qa c
     refine le_iSup_of_le a ?_
     exact le_meet _ _ _ (PartialOrder.rel_trans (meet_le_left _ _) (h hg)) (meet_le_right _ _)
   · rw [show UB.guardRet g a = UB.fail from by simp [UB.guardRet, hg]]

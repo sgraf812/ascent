@@ -4,9 +4,8 @@ import Ascent.WPMonadExact
 /-!
 # Concretization
 
-A `Concretization CPred APred CEPosts AEPosts` maps abstract assertions to concrete ones:
-`pred : APred → CPred` on assertions and `ePosts : AEPosts → CEPosts` on exception
-postconditions. Both maps are monotone.
+A `Concretization CPred APred` is a monotone map `pred : APred → CPred` from abstract assertions
+to concrete assertions.
 
 Example. `ofStateRepr st` for `st : Cσ → Aσ` has `pred P cs = P (st cs)`. Under it the abstract
 assertion `fun as => as.1 < 10` becomes `fun cs => (st cs).1 < 10`.
@@ -21,32 +20,26 @@ open Std.WP Lean.Order
 
 namespace Ascent
 
-universe u v w w'
+universe u v w
 
-/-- Maps abstract assertions to concrete assertions. -/
-structure Concretization (CPred : Type w) (APred : Type w) (CEPosts : Type w') (AEPosts : Type w')
-    [Assertion CPred] [Assertion APred] [Assertion CEPosts] [Assertion AEPosts] where
+/-- A monotone map from abstract assertions to concrete assertions. -/
+structure Concretization (CPred : Type w) (APred : Type w) [Assertion CPred] [Assertion APred] where
   /-- The concrete assertion for an abstract assertion. -/
   pred : APred → CPred
-  /-- The concrete exception postconditions for abstract ones. -/
-  ePosts : AEPosts → CEPosts
   /-- `pred` is monotone. -/
   pred_mono : ∀ {p q : APred}, p ⊑ q → pred p ⊑ pred q
-  /-- `ePosts` is monotone. -/
-  ePosts_mono : ∀ {p q : AEPosts}, p ⊑ q → ePosts p ⊑ ePosts q
 
 namespace Concretization
 
-variable {CPred APred : Type w} {CEPosts AEPosts : Type w'}
-  [Assertion CPred] [Assertion APred] [Assertion CEPosts] [Assertion AEPosts]
+variable {CPred APred : Type w} [Assertion CPred] [Assertion APred]
 
 /-- The concrete postcondition for the coupling `couple` and the abstract postcondition `Q`:
 `post couple Q cv = ⨆ av, couple cv av ⊓ pred (Q av)`. -/
-noncomputable def post (r : Concretization CPred APred CEPosts AEPosts) {CVal AVal : Type _}
+noncomputable def post (r : Concretization CPred APred) {CVal AVal : Type _}
     (couple : CVal → AVal → CPred) (Q : AVal → APred) : CVal → CPred :=
   fun cv => iSup fun av => couple cv av ⊓ r.pred (Q av)
 
-@[simp] theorem post_eq (r : Concretization CPred APred CEPosts AEPosts) {CVal AVal : Type _}
+@[simp] theorem post_eq (r : Concretization CPred APred) {CVal AVal : Type _}
     (f : CVal → AVal) (Q : AVal → APred) :
     r.post (fun cv av => (⌜f cv = av⌝ : CPred)) Q = fun cv => r.pred (Q (f cv)) := by
   funext cv
@@ -56,68 +49,39 @@ noncomputable def post (r : Concretization CPred APred CEPosts AEPosts) {CVal AV
       (le_iSup (fun av => (⌜f cv = av⌝ : CPred) ⊓ r.pred (Q av)) (f cv))
     exact le_meet _ _ _ (CompleteLattice.le_ofProp _ _ rfl) PartialOrder.rel_refl
 
-theorem post_prop {APred : Type} {CEPosts AEPosts : Type w'}
-    [Assertion APred] [Assertion CEPosts] [Assertion AEPosts]
-    (r : Concretization Prop APred CEPosts AEPosts) {CVal AVal : Type _}
+theorem post_prop {APred : Type} [Assertion APred]
+    (r : Concretization Prop APred) {CVal AVal : Type _}
     (couple : CVal → AVal → Prop) (Q : AVal → APred) (cv : CVal) :
     r.post couple Q cv = ∃ av, couple cv av ∧ r.pred (Q av) := by
   simp only [Concretization.post, iSup_prop_eq_exists, meet_prop_eq_and]
 
-theorem post_pi {σ : Type} {APred : Type} {CEPosts AEPosts : Type w'}
-    [Assertion APred] [Assertion CEPosts] [Assertion AEPosts]
-    (r : Concretization (σ → Prop) APred CEPosts AEPosts) {CVal AVal : Type _}
+theorem post_pi {σ : Type} {APred : Type} [Assertion APred]
+    (r : Concretization (σ → Prop) APred) {CVal AVal : Type _}
     (couple : CVal → AVal → σ → Prop) (Q : AVal → APred) (cv : CVal) (s : σ) :
     r.post couple Q cv s = ∃ av, couple cv av s ∧ r.pred (Q av) s := by
   simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
     meet_prop_eq_and]
 
-/-- The concretization of a state representation `st : Cσ → Aσ`: `pred P cs = P (st cs)`. No
-exceptions. -/
-def ofStateRepr {Cσ Aσ : Type w} (st : Cσ → Aσ) :
-    Concretization (Cσ → Prop) (Aσ → Prop) EStack⟨⟩ EStack⟨⟩ where
+/-- The concretization of a state representation `st : Cσ → Aσ`: `pred P cs = P (st cs)`. -/
+def ofStateRepr {Cσ Aσ : Type w} (st : Cσ → Aσ) : Concretization (Cσ → Prop) (Aσ → Prop) where
   pred P := fun cs => P (st cs)
-  ePosts := id
   pred_mono h := fun cs => h (st cs)
-  ePosts_mono h := h
 
 @[simp] theorem ofStateRepr_pred {Cσ Aσ : Type w} (st : Cσ → Aσ) (P : Aσ → Prop) :
     (ofStateRepr st).pred P = fun cs => P (st cs) := rfl
 
-end Concretization
-
-/-! ## Composition -/
-
-section Comp
-
-variable {CPred BPred APred : Type w} {CEPosts BEPosts AEPosts : Type w'}
-  [Assertion CPred] [Assertion BPred] [Assertion APred]
-  [Assertion CEPosts] [Assertion BEPosts] [Assertion AEPosts]
-
 /-- Composition: `(r₁.comp r₂).pred = r₁.pred ∘ r₂.pred`. -/
-def Concretization.comp (r₁ : Concretization CPred BPred CEPosts BEPosts)
-    (r₂ : Concretization BPred APred BEPosts AEPosts) : Concretization CPred APred CEPosts AEPosts where
+def comp {BPred : Type w} [Assertion BPred] (r₁ : Concretization CPred BPred)
+    (r₂ : Concretization BPred APred) : Concretization CPred APred where
   pred := r₁.pred ∘ r₂.pred
-  ePosts := r₁.ePosts ∘ r₂.ePosts
   pred_mono h := r₁.pred_mono (r₂.pred_mono h)
-  ePosts_mono h := r₁.ePosts_mono (r₂.ePosts_mono h)
 
-end Comp
-
-/-! ## Identity -/
-
-section Id
-
-variable {Pred : Type w} {EPosts : Type w'} [Assertion Pred] [Assertion EPosts]
-
-/-- The identity on both assertion types. -/
-def Concretization.id (Pred : Type w) (EPosts : Type w') [Assertion Pred] [Assertion EPosts] :
-    Concretization Pred Pred EPosts EPosts where
+/-- The identity concretization. -/
+def id (Pred : Type w) [Assertion Pred] : Concretization Pred Pred where
   pred := _root_.id
-  ePosts := _root_.id
   pred_mono h := h
-  ePosts_mono h := h
 
-end Id
+end Concretization
 
 /-! ## Purification
 
@@ -128,11 +92,9 @@ refines `pure (v, w) : Id (α × σ)`. The coupling `purifyCouple cv av s` holds
 section Purify
 
 /-- The concretization from `Prop` to `σ → Prop`: `pred φ = fun _ => φ`. -/
-noncomputable def purify (σ : Type) : Concretization (σ → Prop) Prop EStack⟨⟩ EStack⟨⟩ where
+noncomputable def purify (σ : Type) : Concretization (σ → Prop) Prop where
   pred φ := fun _ => φ
-  ePosts := id
   pred_mono h := fun _ => h
-  ePosts_mono h := h
 
 /-- The coupling that reads the final state into the abstract result. -/
 def purifyCouple {σ α : Type} : α → (α × σ) → (σ → Prop) :=

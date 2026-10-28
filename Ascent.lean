@@ -4,7 +4,8 @@ import Ascent.UB.WhileLoop
 import Ascent.UB.StateT
 import Ascent.SP
 import Ascent.Concretization
-import Ascent.EPosts
+import Ascent.EPostsCoupling
+import Ascent.WRP
 import Ascent.Refinement
 import Ascent.Refinement.WhileLoop
 import Ascent.Tactic
