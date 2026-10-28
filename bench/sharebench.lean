@@ -149,10 +149,10 @@ unsafe def benchT (label : String) (nodes reps : Nat) (mk : Nat → Expr) : IO U
     -- 2. Full 21-node spine rebuild (mkAppN style).
     bench "wrp spine (full mkAppN)" 25 20000 fun i =>
       mkAppN wrpApp.getAppFn ((wrpApp.getAppArgs.set! 17 (fresh aSlot i)))
-    -- 3. The rebound coupling lambda, fresh values inside.
+    -- 3. The rebound relation lambda, fresh values inside.
     bench "rebound lambda" 30 20000 fun i => fresh lam i
-    -- 4. Small coupling prop.
-    bench "coupling eq" 6 20000 fun i => fresh eqE i
+    -- 4. Small relation prop.
+    bench "relation eq" 6 20000 fun i => fresh eqE i
     -- 5. Already shared: zero fresh nodes, pure invocation overhead.
     let shared ← shareCommonInc wrpApp
     bench "already shared (0 fresh nodes)" 1 20000 fun _ => shared

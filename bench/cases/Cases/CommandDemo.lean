@@ -22,7 +22,7 @@ example : Refinement (chainC 7 3) chainA3 γw ⊤ (fun c a => ⌜wordVal c = a�
 example : chainA3 = chainA 7 3 := rfl
 
 /-- A natural right-nested `do`-block: each addition reads the immediately preceding output. The
-engine threads the coupled value through the continuation lexically, so the synthesized program
+engine threads the related value through the continuation lexically, so the synthesized program
 is a chain of guarded sums with no residual holes. -/
 def prog : Id UInt64 := do let a ← pure (7 : UInt64); let b ← pure (a + 7); pure (b + 7)
 

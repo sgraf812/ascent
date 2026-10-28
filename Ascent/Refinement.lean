@@ -8,7 +8,7 @@ program `c` refines the abstract program `a`. The notation is `⦃P⦄ c ⪯[γ]
 `⦃P⦄ c ⪯[γ] a ⦃Q⦄` sets `E := ⊥`.
 
 The triple forms of the `wrp` laws carry the rebound `wrp` in the precondition, so they apply to
-every coupling by instantiation.
+every return relation by instantiation.
 -/
 
 open Std.WP Lean.Order
@@ -19,18 +19,18 @@ universe u v w w'
 
 /-- The refinement triple `P ⊑ wrp γ c a Q E`, written `⦃P⦄ c ⪯[γ] a ⦃Q; E⦄`. -/
 structure Refinement {CProg AProg : Type _} {CVal AVal : Type _}
-    {CPred APred : Type w} {CEPosts AEPosts : Type w'} {Ξ : Type u}
+    {CPred APred : Type w} {CEPosts AEPosts : Type w'} {ERels : Type u}
     [Assertion CPred] [Assertion APred] [Assertion CEPosts] [Assertion AEPosts]
     (c : CProg) (a : AProg)
     [WP CProg CVal CPred CEPosts] [WP AProg AVal APred AEPosts]
     (γ : Concretization CPred APred)
-    [EPostsCoupling CPred APred CEPosts AEPosts Ξ]
-    (P : CPred) (Q : CVal → AVal → CPred) (E : Ξ) : Prop where
+    [EPostsConcretization CPred APred CEPosts AEPosts ERels]
+    (P : CPred) (Q : CVal → AVal → CPred) (E : ERels) : Prop where
   intro ::
   /-- The precondition entails the weakest refinement precondition. -/
   le_wrp : P ⊑ wrp γ c a Q E
 
-/-- The triple without an exception coupling. `E` is `⊥`. -/
+/-- The triple without an exception relation. `E` is `⊥`. -/
 scoped syntax:lead atomic("⦃ " term " ⦄ " term:max " ⪯[") term "] " term:max
   " ⦃ " term " ⦄" : term
 
@@ -44,13 +44,13 @@ scoped macro_rules
 
 section
 variable {CProg AProg : Type _} {CVal AVal : Type _}
-  {CPred APred : Type w} {CEPosts AEPosts : Type w'} {Ξ : Type u}
+  {CPred APred : Type w} {CEPosts AEPosts : Type w'} {ERels : Type u}
   [Assertion CPred] [Assertion APred] [Assertion CEPosts] [Assertion AEPosts]
   [WP CProg CVal CPred CEPosts] [WP AProg AVal APred AEPosts]
-  [EPostsCoupling CPred APred CEPosts AEPosts Ξ]
+  [EPostsConcretization CPred APred CEPosts AEPosts ERels]
 
 variable {γ : Concretization CPred APred} {P : CPred}
-  {c : CProg} {a : AProg} {Q : CVal → AVal → CPred} {E : Ξ}
+  {c : CProg} {a : AProg} {Q : CVal → AVal → CPred} {E : ERels}
 
 theorem Refinement.weaken {P' : CPred}
     (h : ⦃P⦄ c ⪯[γ] a ⦃Q; E⦄) (hP : P' ⊑ P) : ⦃P'⦄ c ⪯[γ] a ⦃Q; E⦄ :=
@@ -74,12 +74,14 @@ theorem Refinement.conj_wp [Heyting CPred] [WPConjunctive c]
     ⦃P⦄ c ⪯[γ] a ⦃fun cv av => Q cv av ⊓ R cv; E⦄ := by
   refine ⟨wrp_intro fun Qa Ea => ?_⟩
   have h1 : P ⊓ γ.pred (wp a Qa Ea) ⊑
-      wp c (γ.post Q Qa) (EPostsCoupling.ePosts γ E Ea) ⊓ wp c R (EPostsCoupling.ePosts γ E Ea) :=
+      wp c (γ.post Q Qa) (EPostsConcretization.ePosts γ E Ea) ⊓
+        wp c R (EPostsConcretization.ePosts γ E Ea) :=
     le_meet _ _ _ (wrp_transport h.le_wrp Qa Ea)
       (PartialOrder.rel_trans (meet_le_left _ _) (WP.wp_monotone_bot_le c R _ hw))
   refine PartialOrder.rel_trans h1 ?_
   refine PartialOrder.rel_trans
-    (WPConjunctive.wp_meet_wp_le (γ.post Q Qa) R (EPostsCoupling.ePosts γ E Ea) (EPostsCoupling.ePosts γ E Ea)) ?_
+    (WPConjunctive.wp_meet_wp_le (γ.post Q Qa) R (EPostsConcretization.ePosts γ E Ea)
+      (EPostsConcretization.ePosts γ E Ea)) ?_
   refine WP.wp_monotone (x := c) ?_ (meet_le_left _ _)
   intro cv
   rw [meet_apply]
@@ -96,25 +98,26 @@ theorem Refinement.conj_wp [Heyting CPred] [WPConjunctive c]
 end
 
 section
-variable {CM AM : Type w → Type v} {CPred APred : Type w} {CEPosts AEPosts : Type w'} {Ξ : Type u}
+variable {CM AM : Type w → Type v} {CPred APred : Type w} {CEPosts AEPosts : Type w'}
+  {ERels : Type u}
   [Monad CM] [Monad AM]
   [Assertion CPred] [Assertion APred] [Assertion CEPosts] [Assertion AEPosts]
   [WPMonad CM CPred CEPosts] [WPMonad AM APred AEPosts] [WPMonadExact AM APred AEPosts]
-  [EPostsCoupling CPred APred CEPosts AEPosts Ξ]
+  [EPostsConcretization CPred APred CEPosts AEPosts ERels]
   {γ : Concretization CPred APred}
 
-theorem Refinement.pure {CV AV : Type w} {Q : CV → AV → CPred} {E : Ξ} (cv : CV) (av : AV) :
+theorem Refinement.pure {CV AV : Type w} {Q : CV → AV → CPred} {E : ERels} (cv : CV) (av : AV) :
     ⦃Q cv av⦄ (pure cv : CM CV) ⪯[γ] (pure av : AM AV) ⦃Q; E⦄ :=
   ⟨wrp_pure cv av⟩
 
 theorem Refinement.bind [Heyting CPred] {CV AV CV₂ AV₂ : Type w}
     {c₁ : CM CV} {a₁ : AM AV} {c₂ : CV → CM CV₂} {a₂ : AV → AM AV₂}
-    {Q : CV₂ → AV₂ → CPred} {E : Ξ} :
+    {Q : CV₂ → AV₂ → CPred} {E : ERels} :
     ⦃wrp γ c₁ a₁ (wrpCont γ c₂ a₂ Q E) E⦄
       (c₁ >>= c₂) ⪯[γ] (a₁ >>= a₂) ⦃Q; E⦄ :=
   ⟨wrp_bind⟩
 
-theorem Refinement.pure_eq {CV AV : Type w} {f : CV → AV} {E : Ξ}
+theorem Refinement.pure_eq {CV AV : Type w} {f : CV → AV} {E : ERels}
     (P : CPred) (cv : CV) {av : AV} (h : f cv = av) :
     ⦃P⦄ (Pure.pure cv : CM CV) ⪯[γ] (Pure.pure av : AM AV) ⦃fun cv av => ⌜f cv = av⌝; E⦄ :=
   (Refinement.pure cv av).weaken (CompleteLattice.le_ofProp _ _ h)
@@ -128,21 +131,23 @@ universe u₁ u₂
 
 variable {CProg BProg AProg : Type _} {CVal BVal AVal : Type _}
   {CPred BPred APred : Type w} {CEPosts BEPosts AEPosts : Type w'}
-  {Ξ₁ : Type u₁} {Ξ₂ : Type u₂} {Ξ : Type u}
+  {ERels₁ : Type u₁} {ERels₂ : Type u₂} {ERels : Type u}
   [Assertion CPred] [Assertion BPred] [Assertion APred]
   [Assertion CEPosts] [Assertion BEPosts] [Assertion AEPosts]
   [WP CProg CVal CPred CEPosts] [WP BProg BVal BPred BEPosts] [WP AProg AVal APred AEPosts]
-  [EPostsCoupling CPred BPred CEPosts BEPosts Ξ₁] [EPostsCoupling BPred APred BEPosts AEPosts Ξ₂]
-  [EPostsCoupling CPred APred CEPosts AEPosts Ξ]
+  [EPostsConcretization CPred BPred CEPosts BEPosts ERels₁]
+  [EPostsConcretization BPred APred BEPosts AEPosts ERels₂]
+  [EPostsConcretization CPred APred CEPosts AEPosts ERels]
   [Heyting BPred] [Heyting CPred]
 
 theorem Refinement.comp
     {γ₁ : Concretization CPred BPred} {γ₂ : Concretization BPred APred}
-    {f₁ : CVal → BVal} {f₂ : BVal → AVal} {E₁ : Ξ₁} {E₂ : Ξ₂} {E : Ξ} {P : CPred} {P_B : BPred}
+    {f₁ : CVal → BVal} {f₂ : BVal → AVal} {E₁ : ERels₁} {E₂ : ERels₂} {E : ERels}
+    {P : CPred} {P_B : BPred}
     {c : CProg} {b : BProg} {a : AProg}
-    (hE : ∀ Ea : AEPosts, EPostsCoupling.ePosts (CEPosts := CEPosts) γ₁ E₁
-        (EPostsCoupling.ePosts (CEPosts := BEPosts) γ₂ E₂ Ea)
-      = EPostsCoupling.ePosts (CEPosts := CEPosts) (γ₁.comp γ₂) E Ea)
+    (hE : ∀ Ea : AEPosts, EPostsConcretization.ePosts (CEPosts := CEPosts) γ₁ E₁
+        (EPostsConcretization.ePosts (CEPosts := BEPosts) γ₂ E₂ Ea)
+      = EPostsConcretization.ePosts (CEPosts := CEPosts) (γ₁.comp γ₂) E Ea)
     (hP : ∀ X, P ⊓ γ₁.pred X ⊑ γ₁.pred (P_B ⊓ X))
     (h₂ : ⦃P_B⦄ b ⪯[γ₂] a ⦃fun bv av => ⌜f₂ bv = av⌝; E₂⦄)
     (h₁ : ⦃P⦄ c ⪯[γ₁] b ⦃fun cv bv => ⌜f₁ cv = bv⌝; E₁⦄) :
@@ -150,7 +155,7 @@ theorem Refinement.comp
   refine ⟨wrp_intro fun Qa Ea => ?_⟩
   have hb := wrp_transport h₂.le_wrp Qa Ea
   have hc := wrp_transport h₁.le_wrp (γ₂.post (fun bv av => ⌜f₂ bv = av⌝) Qa)
-    (EPostsCoupling.ePosts (CEPosts := BEPosts) γ₂ E₂ Ea)
+    (EPostsConcretization.ePosts (CEPosts := BEPosts) γ₂ E₂ Ea)
   rw [hE Ea] at hc
   refine PartialOrder.rel_trans
     (le_meet _ _ _ (meet_le_left _ _)
@@ -173,7 +178,7 @@ end Comp
 theorem Refinement.purify {CProg σ α : Type} [WP CProg α (σ → Prop) EStack⟨⟩]
     (c : CProg) (v : α) (w : σ)
     (hc : ∀ (Q : α → σ → Prop) (E : EStack⟨⟩), (fun _ => Q v w) ⊑ wp c Q E) :
-    ⦃(⊤ : σ → Prop)⦄ c ⪯[Ascent.purify σ] (Pure.pure (v, w) : Id (α × σ)) ⦃purifyCouple⦄ := by
+    ⦃(⊤ : σ → Prop)⦄ c ⪯[Ascent.purify σ] (Pure.pure (v, w) : Id (α × σ)) ⦃purifyRel⦄ := by
   refine ⟨wrp_intro fun Qa Ea => ?_⟩
   rw [purify_post]
   refine PartialOrder.rel_trans (meet_le_right _ _) ?_

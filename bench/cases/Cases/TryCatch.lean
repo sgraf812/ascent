@@ -16,7 +16,7 @@ open Std.WP Lean.Order Ascent AscendBench
 noncomputable def γe : Concretization Prop Prop :=
   Concretization.id Prop
 
--- A `pure` leaf under the identity concretization, coupling by equality.
+-- A `pure` leaf under the identity concretization, related by equality.
 attribute [local ascend] Ascent.Refinement.pure
 
 /-- Catch a thrown value and return it: `tryCatch (throw 5) pure` evaluates to `.ok 5`. -/

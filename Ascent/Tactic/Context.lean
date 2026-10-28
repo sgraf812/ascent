@@ -92,8 +92,8 @@ structure State where
   latticeCache : Std.HashMap (ExprPtr × Nat) BackwardRule := {}
 
 /-- Per-goal scope threaded through the worklist. Carries the most recently lifted pure
-precondition so a residual `⌜φ⌝` entailment discharges against it in `O(1)` (the coupling a leaf
-needs is the one its predecessor just established), rather than searching the local context. -/
+precondition so a residual `⌜φ⌝` entailment discharges against it in `O(1)` (the return relation
+a leaf needs is the one its predecessor just established), rather than searching the local context. -/
 structure Scope where
   /-- The most recently lifted pure precondition: its fvar paired with its instantiated type, so
   a residual `⌜φ⌝` discharges against it without re-reading and re-instantiating the type. -/

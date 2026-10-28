@@ -4,9 +4,9 @@ import Ascent.UB
 /-!
 # Exceptions: the refinement meaning of `throw` and `tryCatch`
 
-`Refinement.throw` consumes the exception coupling as `Refinement.pure` consumes the value
-coupling. `Refinement.tryCatch` rebinds the exception coupling with the `wrp` of the handlers as
-`Refinement.bind` rebinds the value coupling with the `wrp` of the continuations.
+`Refinement.throw` consumes the exception relation as `Refinement.pure` consumes the return
+relation. `Refinement.tryCatch` rebinds the exception relation with the `wrp` of the handlers as
+`Refinement.bind` rebinds the return relation with the `wrp` of the continuations.
 -/
 
 open Std.WP Lean.Order Ascent
@@ -19,14 +19,14 @@ abbrev EE := Nat → Prop
 /-- The identity concretization over the exception layer. -/
 abbrev exc : Concretization Prop Prop := Concretization.id Prop
 
-/-- `throw` abstracts `throw` at equal codes: the diagonal exception coupling is consumed. -/
+/-- `throw` abstracts `throw` at equal codes: the diagonal exception relation is consumed. -/
 example {AV CV : Type} (e : Nat) (Q : CV → AV → Prop) :
     ⦃(⊤ : Prop)⦄ (MonadExceptOf.throw e : Except Nat CV)
       ⪯[exc] (MonadExceptOf.throw e : Except Nat AV) ⦃Q; (⌜· = ·⌝)⦄ :=
   (Refinement.throw e e).weaken (CompleteLattice.le_ofProp _ _ rfl)
 
 /-- A `tryCatch` around matching throws runs the handlers: `wrp_throw` consumes the rebound
-exception coupling at the thrown codes, landing on the handlers' refinement. -/
+exception relation at the thrown codes, landing on the handlers' refinement. -/
 example {AV CV : Type} {P : Prop} (Q : CV → AV → Prop) (E : Nat → Nat → Prop)
     (ah : Nat → Except Nat AV) (ch : Nat → Except Nat CV)
     (h : ⦃P⦄ (ch 3) ⪯[exc] (ah 3) ⦃Q; E⦄) :
@@ -43,12 +43,12 @@ theorem refines_catch_throw {AV CV : Type} {P : Prop} {Q : CV → AV → Prop} {
   simp only [WPMonad.wp_tryCatch_Except_apply_eq, WPMonad.wp_throw_Except_apply_eq]
   exact wrp_transport h.le_wrp Qa Ea
 
-/-- Distinct throws admit no refinement under the exception coupling `⌜· = ·⌝`. -/
+/-- Distinct throws admit no refinement under the exception relation `⌜· = ·⌝`. -/
 example : ¬ ⦃(⊤ : Prop)⦄ (MonadExceptOf.throw 1 : Except Nat Nat)
     ⪯[exc] (MonadExceptOf.throw 0 : Except Nat Nat) ⦃fun _ _ => ⊤; (⌜· = ·⌝)⦄ := by
   intro hsim
   have H := wrp_transport hsim.le_wrp (fun _ => True) (fun n => n = 0)
-  simp only [WPMonad.wp_throw_Except_apply_eq, EPostsCoupling.ePosts_fun,
+  simp only [WPMonad.wp_throw_Except_apply_eq, EPostsConcretization.ePosts_fun,
     Concretization.post_prop, Concretization.id, id_eq, CompleteLattice.ofProp_prop_eq, meet_prop_eq_and,
     top_prop_eq, true_and] at H
   obtain ⟨ea, h1, h0⟩ := H trivial
@@ -60,10 +60,10 @@ namespace RefinementValidation
 
 open Ascent
 
-/-! ## Exception couplings between different exception types -/
+/-! ## Exception relations between different exception types -/
 
-/-- Throwing errno `3` abstracts to throwing `true` under the code coupling, supplied as the
-exception coupling. -/
+/-- Throwing errno `3` abstracts to throwing `true` under the code relation, supplied as the
+exception relation. -/
 example (Q : Int → Int → Prop) :
     ⦃(⊤ : Prop)⦄ (MonadExceptOf.throw 3 : Except Nat Int)
       ⪯[Concretization.id Prop] (MonadExceptOf.throw true : Except Bool Int)
@@ -76,15 +76,15 @@ example (Q : Int → Int → Prop) :
     ⦃(⊤ : Prop)⦄ (MonadExceptOf.throw 3 : Except Nat Int)
       ⪯[Concretization.id Prop] (pure 0 : Id Int) ⦃Q; fun _ => ⊤⦄ := by
   refine ⟨wrp_intro fun Qa Ea => ?_⟩
-  simp only [WPMonad.wp_throw_Except_apply_eq, EPostsCoupling.ePosts_fill]
+  simp only [WPMonad.wp_throw_Except_apply_eq, EPostsConcretization.ePosts_fill]
   exact le_top (α := Prop) _
 
-/-- The default coupling `⊥` forbids every concrete throw. -/
+/-- The default exception relation `⊥` forbids every concrete throw. -/
 example : ¬ ⦃(⊤ : Prop)⦄ (MonadExceptOf.throw 3 : Except Nat Int)
     ⪯[Concretization.id Prop] (pure 0 : Id Int) ⦃(⌜· = ·⌝)⦄ := by
   intro h
   have h2 := wrp_transport h.le_wrp (fun _ => True) estack⟨⟩
-  simp only [WPMonad.wp_throw_Except_apply_eq, EPostsCoupling.ePosts_fill, _root_.top_meet,
+  simp only [WPMonad.wp_throw_Except_apply_eq, EPostsConcretization.ePosts_fill, _root_.top_meet,
     WPMonadExact.wp_pure_eq] at h2
   have hfalse : (⊥ : Nat → Prop) 3 := h2 trivial
   rw [bot_apply, bot_prop_eq] at hfalse

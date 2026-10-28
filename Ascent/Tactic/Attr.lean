@@ -4,14 +4,14 @@ import Ascent.Refinement
 /-!
 # The `@[ascend]` spec registry
 
-Registered specs are `Refinement` theorems in registry form: the coupling `Q` (and the exception
-coupling `E`, when present) is a universally quantified variable, so the spec applies to any
-coupling by assignment, and the synthesis directives live in the abstract program and the
+Registered specs are `Refinement` theorems in registry form: the return relation `Q` (and the
+exception relation `E`, when present) is a universally quantified variable, so the spec applies
+to any return relation by assignment, and the synthesis directives live in the abstract program and the
 precondition. Specs are keyed in a discrimination tree by their concrete program.
 
 Registration records the telescope positions the engine instantiates at application time:
 
-* `qPosition`/`ePosition?`: the coupling slots, assigned the goal's couplings (auto-framing).
+* `qPosition`/`ePosition?`: the relation slots, assigned the goal's relations (auto-framing).
 * `avPositions`: the abstract-input variables, those occurring in the abstract program but not
   in the concrete one. At application the goal's abstract slot is `?m t₁ … tₖ`; the engine pins
   the k abstract inputs to the `tᵢ` and assigns `?m` the spec's abstract program with the
@@ -27,9 +27,9 @@ structure SpecInfo where
   declName : Name
   /-- Telescope positions of the abstract-input variables, in binder order. -/
   avPositions : Array Nat
-  /-- Telescope position of the coupling variable `Q`. -/
+  /-- Telescope position of the return relation variable `Q`. -/
   qPosition : Nat
-  /-- Telescope position of the exception coupling `E`, when it is a variable. -/
+  /-- Telescope position of the exception relation `E`, when it is a variable. -/
   ePosition? : Option Nat
   /-- Discrimination-key count, a specificity proxy: candidates are tried most specific
   first, so a `pure (_ + _)` spec beats a bare `pure _` spec on an addition. -/
@@ -62,7 +62,7 @@ def analyzeSpec (declName : Name) : MetaM (SpecInfo × Array (DiscrTree.Key)) :=
     let Q := args[20]!
     let E := args[21]!
     let some qPosition := xs.idxOf? Q
-      | throwError "@[ascend]: the coupling of {declName} is not a variable; registry specs \
+      | throwError "@[ascend]: the return relation of {declName} is not a variable; registry specs \
           must be Q-generalized:{indentExpr Q}"
     let ePosition? := xs.idxOf? E
     let cPositions ← mvarPositions xs c

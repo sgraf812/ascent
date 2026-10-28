@@ -42,7 +42,7 @@ private def rtripleIntro? (goal : MVarId) (target : Expr) : AscendM (Option MVar
   let [goal] ← goal.applyConst ``Ascent.Refinement.intro | return none
   return some (← preprocessMVar goal)
 
-/-- Reshape strategy: expand an applied rebound-coupling combinator to the continuation's `wrp`
+/-- Reshape strategy: expand an applied rebound-relation combinator to the continuation's `wrp`
 (`wrpCont γ a₂ c₂ Q E v c` on the value side, `wrpECont γ ah ch Q E ea ec` on the exception
 side). The combinator form keeps rule-built goals lambda-free (a short application spine with a
 constant prefix instead of ~30 fresh nodes per step). -/
@@ -52,7 +52,7 @@ private def contExpand? (rhs : Expr) : AscendM (Option Expr) := do
   let some rhs ← unfoldDefinition? rhs | return none
   return some rhs.headBeta
 
-/-- Reshape strategy: beta-reduce the entailment's right-hand side; rebound couplings arrive as
+/-- Reshape strategy: beta-reduce the entailment's right-hand side; rebound relations arrive as
 `(fun av cv => …) v c` after a leaf consumes them. -/
 private def rhsBeta? (rhs : Expr) : Option Expr :=
   if rhs.getAppFn.isLambda then some rhs.headBeta else none
@@ -106,7 +106,7 @@ private def applySpec (scope : Scope) (goal : MVarId) (g : WRPApp) : AscendM Sol
 
 /--
 One solve step. Shape the target to `pre ⊑ rhs` (introduce `∀` targets, unfold a `Refinement`),
-reshape the right-hand side (unfold a rebound coupling, beta-reduce), close reflexively, drive the
+reshape the right-hand side (unfold a rebound relation, beta-reduce), close reflexively, drive the
 precondition toward `⊤` lifting pure content into the context, decompose a lattice connective
 through the reused split rules, discharge a residual `⌜φ⌝` against the last lifted hypothesis, and
 otherwise decompose the `wrp` application through the registered specs.

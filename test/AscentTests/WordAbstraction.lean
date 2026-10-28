@@ -5,7 +5,7 @@ import Ascent.Refinement
 
 Machine-word values are abstracted to mathematical integers. The assertion lattice is
 unchanged, so the concretization is `Concretization.id`; the abstraction lives entirely in the
-value coupling `⌜wordVal · = ·⌝`, supplied per triple. Each arithmetic refinement is an
+return relation `⌜wordVal · = ·⌝`, supplied per triple. Each arithmetic refinement is an
 instance of `Refinement.pure_eq` whose value-equality hypothesis is the no-overflow
 side-condition, discharged by `omega`. A genuinely overflowing program admits no refinement.
 -/

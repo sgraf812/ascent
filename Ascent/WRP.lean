@@ -1,4 +1,4 @@
-import Ascent.EPostsCoupling
+import Ascent.EPostsConcretization
 
 /-!
 # The weakest refinement precondition
@@ -7,12 +7,14 @@ import Ascent.EPostsCoupling
 the abstract program `a`:
 
 ```
-wrp γ c a Q E = ⨅ Qa Ea, γ.pred (wp a Qa Ea) ⇨ wp c (γ.post Q Qa) (EPostsCoupling.ePosts γ E Ea)
+wrp γ c a Q E =
+  ⨅ Qa Ea, γ.pred (wp a Qa Ea) ⇨ wp c (γ.post Q Qa) (EPostsConcretization.ePosts γ E Ea)
 ```
 
 For every abstract postcondition `Qa` and exception postconditions `Ea`, if `a` establishes
-them, then `c` establishes their concretization. `Q : CVal → AVal → CPred` couples returned
-values, and `E` couples thrown values.
+them, then `c` establishes their concretization. The return relation
+`Q : CVal → AVal → CPred` relates returned values, and the exception relation `E` relates thrown
+values.
 
 The laws of `wrp` follow the laws of `wp`. `wrp_pure` consumes `Q`, and `wrp_bind` rebinds `Q`
 with the `wrp` of the continuations. `wrp_throw` consumes `E`, and `wrp_tryCatch` rebinds `E`
@@ -34,40 +36,40 @@ theorem meet_iSup_le {l : Type w} [Assertion l] [Heyting l] {ι : Sort _} (x : l
 
 section
 variable {CProg AProg : Type _} {CVal AVal : Type _}
-  {CPred APred : Type w} {CEPosts AEPosts : Type w'} {Ξ : Type u}
+  {CPred APred : Type w} {CEPosts AEPosts : Type w'} {ERels : Type u}
   [Assertion CPred] [Assertion APred] [Assertion CEPosts] [Assertion AEPosts]
   [WP CProg CVal CPred CEPosts] [instA : WP AProg AVal APred AEPosts]
-  [EPostsCoupling CPred APred CEPosts AEPosts Ξ]
+  [EPostsConcretization CPred APred CEPosts AEPosts ERels]
 
 /-- The weakest concrete assertion under which `c` refines `a`: every `wp` fact of `a`
 transports to `c` through `γ`, `Q` and `E`. -/
 noncomputable def wrp (γ : Concretization CPred APred)
-    (c : CProg) (a : AProg) (Q : CVal → AVal → CPred) (E : Ξ) : CPred :=
+    (c : CProg) (a : AProg) (Q : CVal → AVal → CPred) (E : ERels) : CPred :=
   iInf fun Qa : AVal → APred => iInf fun Ea : AEPosts =>
-    γ.pred (wp a Qa Ea) ⇨ wp c (γ.post Q Qa) (EPostsCoupling.ePosts γ E Ea)
+    γ.pred (wp a Qa Ea) ⇨ wp c (γ.post Q Qa) (EPostsConcretization.ePosts γ E Ea)
 
 end
 
 section
 variable {CProg AProg : Type _} {CVal AVal : Type _}
-  {CPred APred : Type w} {CEPosts AEPosts : Type w'} {Ξ : Type u}
+  {CPred APred : Type w} {CEPosts AEPosts : Type w'} {ERels : Type u}
   [Assertion CPred] [Assertion APred] [Assertion CEPosts] [Assertion AEPosts]
   [WP CProg CVal CPred CEPosts] [instA : WP AProg AVal APred AEPosts]
-  [EPostsCoupling CPred APred CEPosts AEPosts Ξ]
+  [EPostsConcretization CPred APred CEPosts AEPosts ERels]
 
 variable {γ : Concretization CPred APred} {P : CPred}
-  {c : CProg} {a : AProg} {Q : CVal → AVal → CPred} {E : Ξ}
+  {c : CProg} {a : AProg} {Q : CVal → AVal → CPred} {E : ERels}
 
 theorem wrp_intro
     (h : ∀ (Qa : AVal → APred) (Ea : AEPosts),
-      P ⊓ γ.pred (wp a Qa Ea) ⊑ wp c (γ.post Q Qa) (EPostsCoupling.ePosts γ E Ea)) :
+      P ⊓ γ.pred (wp a Qa Ea) ⊑ wp c (γ.post Q Qa) (EPostsConcretization.ePosts γ E Ea)) :
     P ⊑ wrp γ c a Q E :=
   le_iInf _ _ fun Qa => le_iInf _ _ fun Ea =>
     le_himp_of_meet_le_left (PartialOrder.rel_trans meet_le_comm (h Qa Ea))
 
 theorem wrp_transport [Heyting CPred] (h : P ⊑ wrp γ c a Q E)
     (Qa : AVal → APred) (Ea : AEPosts) :
-    P ⊓ γ.pred (wp a Qa Ea) ⊑ wp c (γ.post Q Qa) (EPostsCoupling.ePosts γ E Ea) :=
+    P ⊓ γ.pred (wp a Qa Ea) ⊑ wp c (γ.post Q Qa) (EPostsConcretization.ePosts γ E Ea) :=
   meet_le_of_le_himp
     (PartialOrder.rel_trans h (PartialOrder.rel_trans (iInf_le _ Qa) (iInf_le _ Ea)))
 
@@ -90,25 +92,26 @@ theorem wrp_anti [Heyting CPred] {W : WP AProg AVal APred AEPosts}
 end
 
 section
-variable {CM AM : Type w → Type v} {CPred APred : Type w} {CEPosts AEPosts : Type w'} {Ξ : Type u}
+variable {CM AM : Type w → Type v} {CPred APred : Type w} {CEPosts AEPosts : Type w'}
+  {ERels : Type u}
   [Monad CM] [Monad AM]
   [Assertion CPred] [Assertion APred] [Assertion CEPosts] [Assertion AEPosts]
   [WPMonad CM CPred CEPosts] [WPMonad AM APred AEPosts] [WPMonadExact AM APred AEPosts]
-  [EPostsCoupling CPred APred CEPosts AEPosts Ξ]
+  [EPostsConcretization CPred APred CEPosts AEPosts ERels]
   {γ : Concretization CPred APred}
 
-theorem wrp_pure {CV AV : Type w} {Q : CV → AV → CPred} {E : Ξ} (cv : CV) (av : AV) :
+theorem wrp_pure {CV AV : Type w} {Q : CV → AV → CPred} {E : ERels} (cv : CV) (av : AV) :
     Q cv av ⊑ wrp γ (pure cv : CM CV) (pure av : AM AV) Q E := by
   refine wrp_intro fun Qa Ea => ?_
   refine PartialOrder.rel_trans (le_meet _ _ _ (meet_le_left _ _)
     (PartialOrder.rel_trans (meet_le_right _ _)
       (γ.pred_mono ((‹WPMonadExact AM APred AEPosts›).wp_pure_le av Qa Ea)))) ?_
   exact PartialOrder.rel_trans (le_iSup (fun av' => Q cv av' ⊓ γ.pred (Qa av')) av)
-    (WPMonad.pure_le_wp_pure cv (γ.post Q Qa) (EPostsCoupling.ePosts γ E Ea))
+    (WPMonad.pure_le_wp_pure cv (γ.post Q Qa) (EPostsConcretization.ePosts γ E Ea))
 
 theorem wrp_bind [Heyting CPred] {CV AV CV₂ AV₂ : Type w}
     {c₁ : CM CV} {a₁ : AM AV} {c₂ : CV → CM CV₂} {a₂ : AV → AM AV₂}
-    {Q : CV₂ → AV₂ → CPred} {E : Ξ} :
+    {Q : CV₂ → AV₂ → CPred} {E : ERels} :
     wrp γ c₁ a₁ (fun cv av => wrp γ (c₂ cv) (a₂ av) Q E) E ⊑
       wrp γ (c₁ >>= c₂) (a₁ >>= a₂) Q E := by
   refine wrp_intro fun Qa Ea => ?_
@@ -120,18 +123,18 @@ theorem wrp_bind [Heyting CPred] {CV AV CV₂ AV₂ : Type w}
       (PartialOrder.rel_trans (iInf_le _ (fun av => wp (a₂ av) Qa Ea)) (iInf_le _ Ea))) ?_
   refine PartialOrder.rel_trans
     (WP.wp_monotone_post (x := c₁)
-      (post' := fun cv => wp (c₂ cv) (γ.post Q Qa) (EPostsCoupling.ePosts γ E Ea)) ?_)
-    (WPMonad.bind_le_wp_bind c₁ c₂ (γ.post Q Qa) (EPostsCoupling.ePosts γ E Ea))
+      (post' := fun cv => wp (c₂ cv) (γ.post Q Qa) (EPostsConcretization.ePosts γ E Ea)) ?_)
+    (WPMonad.bind_le_wp_bind c₁ c₂ (γ.post Q Qa) (EPostsConcretization.ePosts γ E Ea))
   intro cv
   show iSup (fun av => wrp γ (c₂ cv) (a₂ av) Q E ⊓ γ.pred (wp (a₂ av) Qa Ea)) ⊑ _
   refine iSup_le _ _ fun av => ?_
   exact meet_le_of_le_himp
     (PartialOrder.rel_trans (iInf_le _ Qa) (iInf_le _ Ea))
 
-/-- The `wrp` of the continuations `c₂` and `a₂`, as a coupling on their inputs. -/
+/-- The `wrp` of the continuations `c₂` and `a₂`, as a return relation on their inputs. -/
 noncomputable def wrpCont {CV AV CV₂ AV₂ : Type w}
     (γ : Concretization CPred APred)
-    (c₂ : CV → CM CV₂) (a₂ : AV → AM AV₂) (Q : CV₂ → AV₂ → CPred) (E : Ξ) :
+    (c₂ : CV → CM CV₂) (a₂ : AV → AM AV₂) (Q : CV₂ → AV₂ → CPred) (E : ERels) :
     CV → AV → CPred :=
   fun cv av => wrp γ (c₂ cv) (a₂ av) Q E
 
@@ -148,7 +151,7 @@ theorem wrp_throw {Q : CV → AV → Prop} {E : εc → εa → Prop} (ec : εc)
       wrp γ (MonadExceptOf.throw ec : Except εc CV)
         (MonadExceptOf.throw ea : Except εa AV) Q E := by
   refine wrp_intro fun Qa Ea => ?_
-  simp only [WPMonad.wp_throw_Except_apply_eq, EPostsCoupling.ePosts_fun]
+  simp only [WPMonad.wp_throw_Except_apply_eq, EPostsConcretization.ePosts_fun]
   exact le_iSup_of_le ea PartialOrder.rel_refl
 
 theorem wrp_tryCatch {Q : CV → AV → Prop} {E : εc → εa → Prop}
@@ -169,7 +172,7 @@ theorem wrp_tryCatch {Q : CV → AV → Prop} {E : εc → εa → Prop}
   exact meet_le_of_le_himp
     (PartialOrder.rel_trans (iInf_le _ Qa) (iInf_le _ Ea))
 
-/-- The `wrp` of the handlers `ch` and `ah`, as a coupling on thrown values. -/
+/-- The `wrp` of the handlers `ch` and `ah`, as an exception relation on thrown values. -/
 noncomputable def wrpECont
     (γ : Concretization Prop Prop)
     (ch : εc → Except εc CV) (ah : εa → Except εa AV) (Q : CV → AV → Prop)

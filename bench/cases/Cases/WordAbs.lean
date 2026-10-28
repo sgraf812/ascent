@@ -6,16 +6,16 @@ import Ascent.Tactic
 # Guarded word abstraction: the first synthesis family
 
 The scaling family for ascend: a chain of `n` dependent `UInt64` additions in `Id` is abstracted
-to a guarded `Int` chain in `UB`, coupled by `⌜wordVal · = ·⌝`. The synthesized program differs
+to a guarded `Int` chain in `UB`, related by `⌜wordVal · = ·⌝`. The synthesized program differs
 structurally from the concrete one: each addition acquires a no-overflow guard that rides in the
 abstract program and is threaded by `wp`. This is AutoCorres' word-abstraction phase in
 miniature, built from `bind`/`pure`/leaf rules only.
 
-The registry form `addW_spec` is Q-generalized: it applies to any coupling by unification, so
+The registry form `addW_spec` is Q-generalized: it applies to any return relation by unification, so
 the goal's rebound continuation rides through untouched (auto-framing). Its precondition carries
-the synthesis directives: the coupling conjunct `wordVal cv = av` pins the abstract input to the
-previously coupled value, and the guard sits as a hypothesis of the continuation. The coupling
-form `refines_addW` used by the hand-written baseline chain derives from it by weakening.
+the synthesis directives: the relation conjunct `wordVal cv = av` pins the abstract input to the
+previously related value, and the guard sits as a hypothesis of the continuation. The
+fixed-relation form `refines_addW` used by the hand-written baseline chain derives from it by weakening.
 -/
 
 open Std.WP Lean.Order Ascent
@@ -27,11 +27,11 @@ def wordVal : UInt64 → Int := fun w => (w.toNat : Int)
 /-- The word-abstraction phase: propositional assertions on both sides. -/
 def γw : Concretization Prop Prop := Concretization.id Prop
 
-/-- Adding a word to a coupled value is abstracted by the guarded integer sum. Registry form:
-Q-generalized, so the spec applies to any coupling by unification. The precondition carries the
-synthesis directives and the coupling bookkeeping: `wordVal cv = av` pins the abstract input,
-and the continuation receives the no-overflow guard and the *established* coupling of the sum
-as hypotheses, so downstream coupling obligations close by assumption instead of re-deriving
+/-- Adding a word to a related value is abstracted by the guarded integer sum. Registry form:
+Q-generalized, so the spec applies to any return relation by unification. The precondition
+carries the synthesis directives and the relation bookkeeping: `wordVal cv = av` pins the abstract input,
+and the continuation receives the no-overflow guard and the *established* relation of the sum
+as hypotheses, so downstream relation obligations close by assumption instead of re-deriving
 the chain's arithmetic. -/
 @[ascend] theorem addW_spec (av : Int) (cv y : UInt64) {Q : UInt64 → Int → Prop} {E : EStack⟨⟩} :
     ⦃(wordVal cv = av ∧
@@ -47,8 +47,8 @@ the chain's arithmetic. -/
   simp only [wordVal, UInt64.toNat_add, Nat.mod_eq_of_lt h]
   omega
 
-/-- The coupling form of `addW_spec`, for the hand-written baseline chain: under the no-overflow
-guard, the sum stays coupled. -/
+/-- The fixed-relation form of `addW_spec`, for the hand-written baseline chain: under the
+no-overflow guard, the sum stays related. -/
 theorem refines_addW (av : Int) (cv y : UInt64) :
     ⦃(⌜wordVal cv = av⌝ : Prop)⦄
       (pure (cv + y) : Id UInt64)
@@ -64,18 +64,18 @@ chain. -/
     ⦃Q cv (wordVal cv)⦄ (pure cv : Id UInt64) ⪯[γw] (pure (wordVal cv) : UB Int) ⦃Q; E⦄ :=
   Refinement.pure _ _
 
-/-- The mid-coupling bind form for the baseline chain: the head establishes `R`, the
+/-- The intermediate-relation bind form for the baseline chain: the head establishes `R`, the
 continuations correspond under it. -/
 theorem bindChain {CM AM : Type w → Type v} {CPred APred : Type w}
-    {CEPosts AEPosts : Type w'} {Ξ : Type u}
+    {CEPosts AEPosts : Type w'} {ERels : Type u}
     [Monad CM] [Monad AM]
     [Assertion CPred] [Assertion APred] [Assertion CEPosts] [Assertion AEPosts]
     [WPMonad CM CPred CEPosts] [WPMonad AM APred AEPosts] [WPMonadExact AM APred AEPosts]
-    [EPostsCoupling CPred APred CEPosts AEPosts Ξ]
+    [EPostsConcretization CPred APred CEPosts AEPosts ERels]
     {γ : Concretization CPred APred}
     [Heyting CPred] {CV AV CV₂ AV₂ : Type w} {P : CPred}
     {a₁ : AM AV} {c₁ : CM CV} {a₂ : AV → AM AV₂} {c₂ : CV → CM CV₂}
-    {R : CV → AV → CPred} {Q : CV₂ → AV₂ → CPred} {E : Ξ}
+    {R : CV → AV → CPred} {Q : CV₂ → AV₂ → CPred} {E : ERels}
     (h₁ : ⦃P⦄ c₁ ⪯[γ] a₁ ⦃R; E⦄)
     (h₂ : ∀ cv av, ⦃R cv av⦄ (c₂ cv) ⪯[γ] (a₂ av) ⦃Q; E⦄) :
     ⦃P⦄ (c₁ >>= c₂) ⪯[γ] (a₁ >>= a₂) ⦃Q; E⦄ :=

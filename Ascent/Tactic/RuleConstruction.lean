@@ -19,7 +19,7 @@ parameters (the value slots) into a `BackwardRule`.
 `?m t₁ … tₖ`, first assign `?m` the spec's abstract template (a lambda over its abstract
 inputs, other parameters fresh) and rebuild the target with the application beta-reduced, so
 the slot is rigid. Then `BackwardRule.apply` matches the conclusion — binding the value slots,
-the couplings (auto-framing), and any goal-side metavariables by match-unification — and
+the relations (auto-framing), and any goal-side metavariables by match-unification — and
 leaves the precondition entailment `pre ⊑ pre'` as the sole subgoal.
 -/
 
@@ -69,8 +69,8 @@ private def conclusionProof (rule : Expr) (mvs : Array Expr) (concl : Expr) :
   return none
 
 /-- The `wrp` argument positions that identify a phase: the assertion lattices and their
-instances, `Ξ`, `EPostsCoupling`, and `γ`. The program and value types (and with them the `WP`
-instances) stay parametric, so one compiled rule serves every node of a chain. -/
+instances, `ERels`, `EPostsConcretization`, and `γ`. The program and value types (and with them the
+`WP` instances) stay parametric, so one compiled rule serves every node of a chain. -/
 private def phasePositions : Array Nat := #[4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 16]
 
 /-- The monad of a program type `M α`: peel the value type. A program type that is not an
@@ -158,7 +158,7 @@ private def fixAbstractSlot? (goal : MVarId) (g : WRPApp) (c : CachedRule) :
   unless lam.isLambda do return (if ts.isEmpty then some none else none)
   -- Assign the flex slot `?m t₁ … tₖ` from the template `fun p₁ … pₙ => body`, whose params
   -- are the spec's synthesis holes. Three cases by param count against the flex arity `k`:
-  --   • `n = k`: the params are value inputs (a leaf's coupled value); bind them to the args.
+  --   • `n = k`: the params are value inputs (a leaf's related value); bind them to the args.
   --   • `n > k`: the params are sub-programs (`a₁`, `a₂` of a sequencing rule); each becomes a
   --     fresh web metavariable, carried in the target's program position and decomposed in turn.
   --   • `n < k`: a leaf reached under accumulated continuation binders; its `n` inputs are the
