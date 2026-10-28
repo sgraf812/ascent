@@ -21,9 +21,9 @@ open Std.WP Lean.Order Ascent
 def relRef {Aσ Cσ : Type} (J : Cσ → Aσ → Prop) :
     Concretization (Cσ → Prop) (Aσ → Prop) EStack⟨⟩ EStack⟨⟩ where
   pred P := fun cs => ∃ as, J cs as ∧ P as
-  ePred := id
+  ePosts := id
   pred_mono h := fun _ ⟨as, hJ, hP⟩ => ⟨as, hJ, h as hP⟩
-  ePred_mono h := h
+  ePosts_mono h := h
 
 @[simp] theorem relRef_pred {Aσ Cσ} (J : Cσ → Aσ → Prop) (P : Aσ → Prop) :
     (relRef J).pred P = fun cs => ∃ as, J cs as ∧ P as := rfl

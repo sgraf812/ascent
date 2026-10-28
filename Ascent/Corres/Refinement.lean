@@ -8,7 +8,7 @@ program `c` refines the abstract program `a` through `γ`: every `wp` fact of `a
 `c`. Each concrete outcome is coupled by `Q : CVal → AVal → CPred` to some abstract outcome
 (`∀∃`), and each thrown value by `E`, mirroring `wp x Q E`. `E`'s type `Ξ` is read off the
 barrel shapes by `HasEPost`, in two cases: an empty abstract barrel throws nothing, so there is
-nothing to couple (`Ξ := EStack⟨⟩`, barrels transported by `γ.ePred`); an aligned exception
+nothing to couple (`Ξ := EStack⟨⟩`, barrels transported by `γ.ePosts`); an aligned exception
 layer couples the thrown values (`Ξ := εc → εa → CPred`, the coupling reified through `pred`,
 the exceptional mirror of `Concretization.post`).
 
@@ -35,18 +35,18 @@ universe u v w w'
 /-- The type `Ξ` of the exception coupling, read off the pair of barrel shapes, and its
 transport into the concrete barrel. Two cases: an empty abstract barrel throws nothing, so
 there is nothing to couple; an aligned exception layer couples the thrown values. -/
-class HasEPost (CPred : Type w) (APred : Type w) (CEPred : Type w') (AEPred : Type w')
+class HasEPost (CPred : Type w) (APred : Type w) (CEPosts : Type w') (AEPosts : Type w')
     (Ξ : outParam (Type u))
-    [Assertion CPred] [Assertion APred] [Assertion CEPred] [Assertion AEPred] where
+    [Assertion CPred] [Assertion APred] [Assertion CEPosts] [Assertion AEPosts] where
   /-- The exceptional mirror of `post`. -/
-  ePost : Concretization CPred APred CEPred AEPred → Ξ → AEPred → CEPred
+  ePost : Concretization CPred APred CEPosts AEPosts → Ξ → AEPosts → CEPosts
 
 /-- An empty abstract barrel throws nothing, so there is nothing to couple: the barrel
-transport is `ePred` (concrete-only layers are phase data, filled by `ePred`). -/
-instance {CPred APred : Type w} {CEPred : Type} [Assertion CPred] [Assertion APred]
-    [Assertion CEPred] :
-    HasEPost CPred APred CEPred EStack⟨⟩ EStack⟨⟩ where
-  ePost γ _ := γ.ePred
+transport is `ePosts` (concrete-only layers are phase data, filled by `ePosts`). -/
+instance {CPred APred : Type w} {CEPosts : Type} [Assertion CPred] [Assertion APred]
+    [Assertion CEPosts] :
+    HasEPost CPred APred CEPosts EStack⟨⟩ EStack⟨⟩ where
+  ePost γ _ := γ.ePosts
 
 /-- Aligned bare exception postconditions, as `Except ε` carries them: the relational
 postcondition is `post` at the exception values. -/
@@ -56,25 +56,25 @@ noncomputable instance {CPred APred : Type w} {εc εa : Type u}
   ePost γ E Ea := γ.post E Ea
 
 /-- Aligned exception layers of a transformer stack: the relational head is `post` at the
-exception values; deeper layers are concretized by `ePred`. -/
+exception values; deeper layers are concretized by `ePosts`. -/
 noncomputable instance {CPred APred : Type w} {εc εa : Type u} {CRest ARest : Type w'}
     [Assertion CPred] [Assertion APred] [Assertion CRest] [Assertion ARest] :
     HasEPost CPred APred ((εc → CPred) × CRest) ((εa → APred) × ARest) (εc → εa → CPred) where
-  ePost γ E Ea := (γ.post E Ea.1, (γ.ePred Ea).2)
+  ePost γ E Ea := (γ.post E Ea.1, (γ.ePosts Ea).2)
 
 /-- The exceptional postcondition concretization: reify the relational exceptional
 postcondition against the abstract barrel. The exceptional mirror of `post`. -/
-noncomputable def Concretization.ePost {CPred APred : Type w} {CEPred AEPred : Type w'}
+noncomputable def Concretization.ePost {CPred APred : Type w} {CEPosts AEPosts : Type w'}
     {Ξ : Type u}
-    [Assertion CPred] [Assertion APred] [Assertion CEPred] [Assertion AEPred]
-    [HasEPost CPred APred CEPred AEPred Ξ]
-    (γ : Concretization CPred APred CEPred AEPred) (E : Ξ) (Ea : AEPred) : CEPred :=
+    [Assertion CPred] [Assertion APred] [Assertion CEPosts] [Assertion AEPosts]
+    [HasEPost CPred APred CEPosts AEPosts Ξ]
+    (γ : Concretization CPred APred CEPosts AEPosts) (E : Ξ) (Ea : AEPosts) : CEPosts :=
   HasEPost.ePost γ E Ea
 
-@[simp] theorem Concretization.ePost_nil {CPred APred : Type w} {CEPred : Type}
-    [Assertion CPred] [Assertion APred] [Assertion CEPred]
-    (γ : Concretization CPred APred CEPred EStack⟨⟩) (E Ea : EStack⟨⟩) :
-    γ.ePost E Ea = γ.ePred Ea := rfl
+@[simp] theorem Concretization.ePost_nil {CPred APred : Type w} {CEPosts : Type}
+    [Assertion CPred] [Assertion APred] [Assertion CEPosts]
+    (γ : Concretization CPred APred CEPosts EStack⟨⟩) (E Ea : EStack⟨⟩) :
+    γ.ePost E Ea = γ.ePosts Ea := rfl
 
 @[simp] theorem Concretization.ePost_fun {CPred APred : Type w} {εc εa : Type u}
     [Assertion CPred] [Assertion APred]
@@ -94,7 +94,7 @@ noncomputable def Concretization.ePost {CPred APred : Type w} {CEPred AEPred : T
     [Assertion CPred] [Assertion APred] [Assertion CRest] [Assertion ARest]
     (γ : Concretization CPred APred ((εc → CPred) × CRest) ((εa → APred) × ARest))
     (E : εc → εa → CPred) (Ea : (εa → APred) × ARest) :
-    (γ.ePost E Ea).2 = (γ.ePred Ea).2 := rfl
+    (γ.ePost E Ea).2 = (γ.ePosts Ea).2 := rfl
 
 /-- Meet distributes over indexed joins in a Heyting lattice. -/
 theorem meet_iSup_le {l : Type w} [Assertion l] [Heyting l] {ι : Sort _} (x : l) (f : ι → l) :
@@ -106,19 +106,19 @@ theorem meet_iSup_le {l : Type w} [Assertion l] [Heyting l] {ι : Sort _} (x : l
 
 section
 variable {CProg AProg : Type _} {CVal AVal : Type _}
-  {CPred APred : Type w} {CEPred AEPred : Type w'} {Ξ : Type u}
-  [Assertion CPred] [Assertion APred] [Assertion CEPred] [Assertion AEPred]
-  [WP CProg CVal CPred CEPred] [WP AProg AVal APred AEPred]
-  [HasEPost CPred APred CEPred AEPred Ξ]
+  {CPred APred : Type w} {CEPosts AEPosts : Type w'} {Ξ : Type u}
+  [Assertion CPred] [Assertion APred] [Assertion CEPosts] [Assertion AEPosts]
+  [WP CProg CVal CPred CEPosts] [WP AProg AVal APred AEPosts]
+  [HasEPost CPred APred CEPosts AEPosts Ξ]
 
 /-- The weakest refinement precondition: the weakest assertion on the concrete initial state
 under which `c` refines `a` through `γ`. Every `wp` fact of `a` transports to `c`, coupling each
 concrete outcome to some abstract outcome (`∀∃`).
 The constant-through-a-proof data (instances, `γ`) comes first, so occurrences share a common
 prefix under manipulation by a tactic. -/
-noncomputable def wrp (γ : Concretization CPred APred CEPred AEPred)
+noncomputable def wrp (γ : Concretization CPred APred CEPosts AEPosts)
     (c : CProg) (a : AProg) (Q : CVal → AVal → CPred) (E : Ξ) : CPred :=
-  iInf fun Qa : AVal → APred => iInf fun Ea : AEPred =>
+  iInf fun Qa : AVal → APred => iInf fun Ea : AEPosts =>
     γ.pred (wp a Qa Ea) ⇨ wp c (γ.post Q Qa) (γ.ePost E Ea)
 
 end
@@ -128,12 +128,12 @@ program `a` through `γ`, with value coupling `Q` and exception coupling `E`. Th
 mirrors `Triple`: the programs come first and the instances as late as possible, so that
 elaborating an application pins the assertion lattices before `γ` and `Ξ` before `E`. -/
 structure Refinement {CProg AProg : Type _} {CVal AVal : Type _}
-    {CPred APred : Type w} {CEPred AEPred : Type w'} {Ξ : Type u}
-    [Assertion CPred] [Assertion APred] [Assertion CEPred] [Assertion AEPred]
+    {CPred APred : Type w} {CEPosts AEPosts : Type w'} {Ξ : Type u}
+    [Assertion CPred] [Assertion APred] [Assertion CEPosts] [Assertion AEPosts]
     (c : CProg) (a : AProg)
-    [WP CProg CVal CPred CEPred] [WP AProg AVal APred AEPred]
-    (γ : Concretization CPred APred CEPred AEPred)
-    [HasEPost CPred APred CEPred AEPred Ξ]
+    [WP CProg CVal CPred CEPosts] [WP AProg AVal APred AEPosts]
+    (γ : Concretization CPred APred CEPosts AEPosts)
+    [HasEPost CPred APred CEPosts AEPosts Ξ]
     (P : CPred) (Q : CVal → AVal → CPred) (E : Ξ) : Prop where
   intro ::
   /-- The precondition entails the weakest refinement precondition. -/
@@ -155,12 +155,12 @@ scoped macro_rules
 
 section
 variable {CProg AProg : Type _} {CVal AVal : Type _}
-  {CPred APred : Type w} {CEPred AEPred : Type w'} {Ξ : Type u}
-  [Assertion CPred] [Assertion APred] [Assertion CEPred] [Assertion AEPred]
-  [WP CProg CVal CPred CEPred] [WP AProg AVal APred AEPred]
-  [HasEPost CPred APred CEPred AEPred Ξ]
+  {CPred APred : Type w} {CEPosts AEPosts : Type w'} {Ξ : Type u}
+  [Assertion CPred] [Assertion APred] [Assertion CEPosts] [Assertion AEPosts]
+  [WP CProg CVal CPred CEPosts] [WP AProg AVal APred AEPosts]
+  [HasEPost CPred APred CEPosts AEPosts Ξ]
 
-variable {γ : Concretization CPred APred CEPred AEPred} {P : CPred}
+variable {γ : Concretization CPred APred CEPosts AEPosts} {P : CPred}
   {c : CProg} {a : AProg} {Q : CVal → AVal → CPred} {E : Ξ}
 
 /-- Weaken the precondition. -/
@@ -173,7 +173,7 @@ weakest refinement precondition. This is the forward simulation condition: from 
 state satisfying `P` and an abstract postcondition `Qa` that `a` establishes, `c` establishes the
 reification of `Qa` through `Q` and `γ`. -/
 theorem wrp_intro
-    (h : ∀ (Qa : AVal → APred) (Ea : AEPred),
+    (h : ∀ (Qa : AVal → APred) (Ea : AEPosts),
       P ⊓ γ.pred (wp a Qa Ea) ⊑ wp c (γ.post Q Qa) (γ.ePost E Ea)) :
     P ⊑ wrp γ c a Q E :=
   le_iInf _ _ fun Qa => le_iInf _ _ fun Ea =>
@@ -182,7 +182,7 @@ theorem wrp_intro
 /-- Elimination for `wrp`: instantiate the weakest refinement precondition at an abstract
 postcondition pair, transporting the `wp` fact of `a` to `c`. -/
 theorem wrp_transport [Heyting CPred] (h : P ⊑ wrp γ c a Q E)
-    (Qa : AVal → APred) (Ea : AEPred) :
+    (Qa : AVal → APred) (Ea : AEPosts) :
     P ⊓ γ.pred (wp a Qa Ea) ⊑ wp c (γ.post Q Qa) (γ.ePost E Ea) :=
   meet_le_of_le_himp
     (PartialOrder.rel_trans h (PartialOrder.rel_trans (iInf_le _ Qa) (iInf_le _ Ea)))
@@ -244,12 +244,12 @@ theorem Refinement.conj_wp [Heyting CPred] [WPConjunctive c]
 end
 
 section
-variable {CM AM : Type w → Type v} {CPred APred : Type w} {CEPred AEPred : Type w'} {Ξ : Type u}
+variable {CM AM : Type w → Type v} {CPred APred : Type w} {CEPosts AEPosts : Type w'} {Ξ : Type u}
   [Monad CM] [Monad AM]
-  [Assertion CPred] [Assertion APred] [Assertion CEPred] [Assertion AEPred]
-  [WPMonad CM CPred CEPred] [WPMonad AM APred AEPred] [WPMonadExact AM APred AEPred]
-  [HasEPost CPred APred CEPred AEPred Ξ]
-  {γ : Concretization CPred APred CEPred AEPred}
+  [Assertion CPred] [Assertion APred] [Assertion CEPosts] [Assertion AEPosts]
+  [WPMonad CM CPred CEPosts] [WPMonad AM APred AEPosts] [WPMonadExact AM APred AEPosts]
+  [HasEPost CPred APred CEPosts AEPosts Ξ]
+  {γ : Concretization CPred APred CEPosts AEPosts}
 
 /-- The relational unit law: `pure` consumes the relational postcondition. -/
 theorem wrp_pure {CV AV : Type w} {Q : CV → AV → CPred} {E : Ξ} (cv : CV) (av : AV) :
@@ -257,7 +257,7 @@ theorem wrp_pure {CV AV : Type w} {Q : CV → AV → CPred} {E : Ξ} (cv : CV) (
   refine wrp_intro fun Qa Ea => ?_
   refine PartialOrder.rel_trans (le_meet _ _ _ (meet_le_left _ _)
     (PartialOrder.rel_trans (meet_le_right _ _)
-      (γ.pred_mono ((‹WPMonadExact AM APred AEPred›).wp_pure_le av Qa Ea)))) ?_
+      (γ.pred_mono ((‹WPMonadExact AM APred AEPosts›).wp_pure_le av Qa Ea)))) ?_
   exact PartialOrder.rel_trans (le_iSup (fun av' => Q cv av' ⊓ γ.pred (Qa av')) av)
     (WPMonad.pure_le_wp_pure cv (γ.post Q Qa) (γ.ePost E Ea))
 
@@ -271,7 +271,7 @@ theorem wrp_bind [Heyting CPred] {CV AV CV₂ AV₂ : Type w}
   refine wrp_intro fun Qa Ea => ?_
   refine PartialOrder.rel_trans (le_meet _ _ _ (meet_le_left _ _)
     (PartialOrder.rel_trans (meet_le_right _ _)
-      (γ.pred_mono ((‹WPMonadExact AM APred AEPred›).wp_bind_le a₁ a₂ Qa Ea)))) ?_
+      (γ.pred_mono ((‹WPMonadExact AM APred AEPosts›).wp_bind_le a₁ a₂ Qa Ea)))) ?_
   refine PartialOrder.rel_trans
     (meet_le_of_le_himp
       (PartialOrder.rel_trans (iInf_le _ (fun av => wp (a₂ av) Qa Ea)) (iInf_le _ Ea))) ?_
@@ -294,7 +294,7 @@ theorem Refinement.pure {CV AV : Type w} {Q : CV → AV → CPred} {E : Ξ} (cv 
 a tactic that decomposes binds instantiates one short application per step instead of a fresh
 lambda. -/
 noncomputable def wrpCont {CV AV CV₂ AV₂ : Type w}
-    (γ : Concretization CPred APred CEPred AEPred)
+    (γ : Concretization CPred APred CEPosts AEPosts)
     (c₂ : CV → CM CV₂) (a₂ : AV → AM AV₂) (Q : CV₂ → AV₂ → CPred) (E : Ξ) :
     CV → AV → CPred :=
   fun cv av => wrp γ (c₂ cv) (a₂ av) Q E
@@ -322,13 +322,13 @@ section Comp
 universe u₁ u₂
 
 variable {CProg BProg AProg : Type _} {CVal BVal AVal : Type _}
-  {CPred BPred APred : Type w} {CEPred BEPred AEPred : Type w'}
+  {CPred BPred APred : Type w} {CEPosts BEPosts AEPosts : Type w'}
   {Ξ₁ : Type u₁} {Ξ₂ : Type u₂} {Ξ : Type u}
   [Assertion CPred] [Assertion BPred] [Assertion APred]
-  [Assertion CEPred] [Assertion BEPred] [Assertion AEPred]
-  [WP CProg CVal CPred CEPred] [WP BProg BVal BPred BEPred] [WP AProg AVal APred AEPred]
-  [HasEPost CPred BPred CEPred BEPred Ξ₁] [HasEPost BPred APred BEPred AEPred Ξ₂]
-  [HasEPost CPred APred CEPred AEPred Ξ]
+  [Assertion CEPosts] [Assertion BEPosts] [Assertion AEPosts]
+  [WP CProg CVal CPred CEPosts] [WP BProg BVal BPred BEPosts] [WP AProg AVal APred AEPosts]
+  [HasEPost CPred BPred CEPosts BEPosts Ξ₁] [HasEPost BPred APred BEPosts AEPosts Ξ₂]
+  [HasEPost CPred APred CEPosts AEPosts Ξ]
   [Heyting BPred] [Heyting CPred]
 
 /-- Refinements at functional couplings compose through the composed concretization: the outer
@@ -336,8 +336,8 @@ variable {CProg BProg AProg : Type _} {CVal BVal AVal : Type _}
 delegating shapes). The middle refinement holds unconditionally; a middle-lattice precondition
 has no transport into the concrete lattice. -/
 theorem Refinement.comp
-    {γ₁ : Concretization CPred BPred CEPred BEPred}
-    {γ₂ : Concretization BPred APred BEPred AEPred}
+    {γ₁ : Concretization CPred BPred CEPosts BEPosts}
+    {γ₂ : Concretization BPred APred BEPosts AEPosts}
     {f₁ : CVal → BVal} {f₂ : BVal → AVal} {E₁ : Ξ₁} {E₂ : Ξ₂} {E : Ξ} {P : CPred}
     {c : CProg} {b : BProg} {a : AProg}
     (hE : ∀ Ea, γ₁.ePost E₁ (γ₂.ePost E₂ Ea) = (γ₁.comp γ₂).ePost E Ea)

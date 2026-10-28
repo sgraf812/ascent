@@ -22,26 +22,26 @@ universe u v w w'
 `pure`/`bind`, so the two together compute them. The abstract side of `wrp` needs this, since its
 `wp` is decomposed out of the precondition. A mixin over `WPMonad` rather than an extension, so it
 never participates in `WP` synthesis. -/
-class WPMonadExact (m : Type u → Type v) (Pred : Type w) (EPred : Type w')
-    [Monad m] [Assertion Pred] [Assertion EPred] [WPMonad m Pred EPred] : Prop where
+class WPMonadExact (m : Type u → Type v) (Pred : Type w) (EPosts : Type w')
+    [Monad m] [Assertion Pred] [Assertion EPosts] [WPMonad m Pred EPosts] : Prop where
   /-- `wp` upper-bounds the postcondition on `pure`. -/
-  wp_pure_le {α : Type u} (a : α) (post : α → Pred) (epost : EPred) :
+  wp_pure_le {α : Type u} (a : α) (post : α → Pred) (epost : EPosts) :
     wp (pure a : m α) post epost ⊑ post a
   /-- `wp` upper-bounds the `bind` decomposition. -/
-  wp_bind_le {α β : Type u} (x : m α) (f : α → m β) (post : β → Pred) (epost : EPred) :
+  wp_bind_le {α β : Type u} (x : m α) (f : α → m β) (post : β → Pred) (epost : EPosts) :
     wp (x >>= f) post epost ⊑ wp x (fun a => wp (f a) post epost) epost
 
 /-- Exact `wp` computes `pure`. -/
-theorem WPMonadExact.wp_pure_eq {m : Type u → Type v} {Pred : Type w} {EPred : Type w'}
-    [Monad m] [Assertion Pred] [Assertion EPred] [WPMonad m Pred EPred] [WPMonadExact m Pred EPred]
-    {α} (a : α) (post : α → Pred) (epost : EPred) :
+theorem WPMonadExact.wp_pure_eq {m : Type u → Type v} {Pred : Type w} {EPosts : Type w'}
+    [Monad m] [Assertion Pred] [Assertion EPosts] [WPMonad m Pred EPosts] [WPMonadExact m Pred EPosts]
+    {α} (a : α) (post : α → Pred) (epost : EPosts) :
     wp (pure a : m α) post epost = post a :=
   PartialOrder.rel_antisymm (WPMonadExact.wp_pure_le a post epost) (WPMonad.pure_le_wp_pure a post epost)
 
 /-- Exact `wp` computes `bind`. -/
-theorem WPMonadExact.wp_bind_eq {m : Type u → Type v} {Pred : Type w} {EPred : Type w'}
-    [Monad m] [Assertion Pred] [Assertion EPred] [WPMonad m Pred EPred] [WPMonadExact m Pred EPred]
-    {α β} (x : m α) (f : α → m β) (post : β → Pred) (epost : EPred) :
+theorem WPMonadExact.wp_bind_eq {m : Type u → Type v} {Pred : Type w} {EPosts : Type w'}
+    [Monad m] [Assertion Pred] [Assertion EPosts] [WPMonad m Pred EPosts] [WPMonadExact m Pred EPosts]
+    {α β} (x : m α) (f : α → m β) (post : β → Pred) (epost : EPosts) :
     wp (x >>= f) post epost = wp x (fun a => wp (f a) post epost) epost :=
   PartialOrder.rel_antisymm (WPMonadExact.wp_bind_le x f post epost)
     (WPMonad.bind_le_wp_bind x f post epost)
@@ -68,16 +68,16 @@ instance {ε σ : Type} : WPMonadExact (EStateM ε σ) (σ → Prop) (ε → σ 
 
 /-! ## Transformer instances: exactness transports from the base monad -/
 
-instance {σ : Type u} {m : Type u → Type v} {Pred : Type w} {EPred : Type v}
-    [Monad m] [Assertion Pred] [Assertion EPred] [WPMonad m Pred EPred] [WPMonadExact m Pred EPred] :
-    WPMonadExact (StateT σ m) (σ → Pred) EPred where
+instance {σ : Type u} {m : Type u → Type v} {Pred : Type w} {EPosts : Type v}
+    [Monad m] [Assertion Pred] [Assertion EPosts] [WPMonad m Pred EPosts] [WPMonadExact m Pred EPosts] :
+    WPMonadExact (StateT σ m) (σ → Pred) EPosts where
   wp_pure_le a := fun post epost s =>
     WPMonadExact.wp_pure_le (m := m) (a, s) (fun p => post p.1 p.2) epost
   wp_bind_le x f := fun _ _ _ => by apply WPMonadExact.wp_bind_le
 
-instance {ε : Type u} {m : Type u → Type v} {Pred : Type w} {EPred : Type w'}
-    [Monad m] [Assertion Pred] [Assertion EPred] [WPMonad m Pred EPred] [WPMonadExact m Pred EPred] :
-    WPMonadExact (ExceptT ε m) Pred ((ε → Pred) × EPred) where
+instance {ε : Type u} {m : Type u → Type v} {Pred : Type w} {EPosts : Type w'}
+    [Monad m] [Assertion Pred] [Assertion EPosts] [WPMonad m Pred EPosts] [WPMonadExact m Pred EPosts] :
+    WPMonadExact (ExceptT ε m) Pred ((ε → Pred) × EPosts) where
   wp_pure_le a := fun post epost =>
     WPMonadExact.wp_pure_le (m := m) (Except.ok a) (pushExcept post epost.fst) epost.snd
   wp_bind_le x f := fun post epost => by
@@ -90,9 +90,9 @@ instance {ε : Type u} {m : Type u → Type v} {Pred : Type w} {EPred : Type w'}
     | error el =>
       exact WPMonadExact.wp_pure_le (m := m) (Except.error el) (pushExcept post epost.fst) epost.snd
 
-instance {m : Type u → Type v} {Pred : Type u} {EPred : Type w'}
-    [Monad m] [Assertion Pred] [Assertion EPred] [WPMonad m Pred EPred] [WPMonadExact m Pred EPred] :
-    WPMonadExact (OptionT m) Pred ((Unit → Pred) × EPred) where
+instance {m : Type u → Type v} {Pred : Type u} {EPosts : Type w'}
+    [Monad m] [Assertion Pred] [Assertion EPosts] [WPMonad m Pred EPosts] [WPMonadExact m Pred EPosts] :
+    WPMonadExact (OptionT m) Pred ((Unit → Pred) × EPosts) where
   wp_pure_le a := fun post epost =>
     WPMonadExact.wp_pure_le (m := m) (some a) (pushOption post epost.fst) epost.snd
   wp_bind_le x f := fun post epost => by

@@ -20,9 +20,9 @@ abbrev TS (σ : Type) := ExceptT Unit (StateT σ Id)
 def typeStrengthen (σ : Type) :
     Concretization (σ → Prop) (σ → Prop) ((Unit → σ → Prop) × EStack⟨⟩) EStack⟨⟩ where
   pred := id
-  ePred := fun _ => estack⟨fun _ => (⊥ : σ → Prop)⟩
+  ePosts := fun _ => estack⟨fun _ => (⊥ : σ → Prop)⟩
   pred_mono h := h
-  ePred_mono _ := PartialOrder.rel_refl
+  ePosts_mono _ := PartialOrder.rel_refl
 
 /-- A total state computation abstracts its lift into the failure monad: the never-fails
 obligation is discharged by the `⊥` failure barrel in `typeStrengthen`. -/
@@ -84,9 +84,9 @@ abbrev OptS (σ : Type) := OptionT (StateT σ Id)
 def optionStrengthen (σ : Type) :
     Concretization (σ → Prop) (σ → Prop) ((Unit → σ → Prop) × EStack⟨⟩) EStack⟨⟩ where
   pred := id
-  ePred := fun _ => estack⟨fun _ => (⊥ : σ → Prop)⟩
+  ePosts := fun _ => estack⟨fun _ => (⊥ : σ → Prop)⟩
   pred_mono h := h
-  ePred_mono _ := PartialOrder.rel_refl
+  ePosts_mono _ := PartialOrder.rel_refl
 
 /-- A total state computation abstracts its lift into the option monad. -/
 theorem refines_liftOption {σ α : Type} (P : σ → Prop) (x : StateT σ Id α) :

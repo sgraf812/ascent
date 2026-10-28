@@ -69,9 +69,9 @@ open Ascent
 concretization carries no exception structure of its own. -/
 def errAbs : Concretization Prop Prop (Nat → Prop) (Bool → Prop) where
   pred := _root_.id
-  ePred _ := fun _ => ⊥
+  ePosts _ := fun _ => ⊥
   pred_mono h := h
-  ePred_mono _ := PartialOrder.rel_refl
+  ePosts_mono _ := PartialOrder.rel_refl
 
 /-- Throwing errno `3` abstracts to throwing `true` under the code coupling, supplied as the
 exception coupling. -/
@@ -86,9 +86,9 @@ throw. -/
 def fillAbs (fill : Nat → Prop) :
     Concretization Prop Prop (Nat → Prop) EStack⟨⟩ where
   pred := _root_.id
-  ePred _ := fill
+  ePosts _ := fill
   pred_mono h := h
-  ePred_mono _ := PartialOrder.rel_refl
+  ePosts_mono _ := PartialOrder.rel_refl
 
 example (Q : Int → Int → Prop) :
     ⦃(⊤ : Prop)⦄ (MonadExceptOf.throw 3 : Except Nat Int)
@@ -97,7 +97,7 @@ example (Q : Int → Int → Prop) :
   simp only [WPMonad.wp_throw_Except_apply_eq, Concretization.ePost_nil]
   exact le_top (α := Prop) _
 
-/-- The `⊥` fill forbids it: type strengthening as `ePred` data. -/
+/-- The `⊥` fill forbids it: type strengthening as `ePosts` data. -/
 example : ¬ ⦃(⊤ : Prop)⦄ (MonadExceptOf.throw 3 : Except Nat Int)
     ⪯[fillAbs fun _ => ⊥] (pure 0 : Id Int) ⦃(⌜· = ·⌝)⦄ := by
   intro h

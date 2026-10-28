@@ -67,12 +67,12 @@ chain. -/
 /-- The mid-coupling bind form for the baseline chain: the head establishes `R`, the
 continuations correspond under it. -/
 theorem bindChain {CM AM : Type w → Type v} {CPred APred : Type w}
-    {CEPred AEPred : Type w'} {Ξ : Type u}
+    {CEPosts AEPosts : Type w'} {Ξ : Type u}
     [Monad CM] [Monad AM]
-    [Assertion CPred] [Assertion APred] [Assertion CEPred] [Assertion AEPred]
-    [WPMonad CM CPred CEPred] [WPMonad AM APred AEPred] [WPMonadExact AM APred AEPred]
-    [HasEPost CPred APred CEPred AEPred Ξ]
-    {γ : Concretization CPred APred CEPred AEPred}
+    [Assertion CPred] [Assertion APred] [Assertion CEPosts] [Assertion AEPosts]
+    [WPMonad CM CPred CEPosts] [WPMonad AM APred AEPosts] [WPMonadExact AM APred AEPosts]
+    [HasEPost CPred APred CEPosts AEPosts Ξ]
+    {γ : Concretization CPred APred CEPosts AEPosts}
     [Heyting CPred] {CV AV CV₂ AV₂ : Type w} {P : CPred}
     {a₁ : AM AV} {c₁ : CM CV} {a₂ : AV → AM AV₂} {c₂ : CV → CM CV₂}
     {R : CV → AV → CPred} {Q : CV₂ → AV₂ → CPred} {E : Ξ}

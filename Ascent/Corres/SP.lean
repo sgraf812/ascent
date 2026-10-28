@@ -18,40 +18,40 @@ namespace Ascent
 /-- `wp x` preserves nonempty meets of postconditions. Strengthens `WPConjunctive` from binary
 to indexed meets; holds for deterministic and demonically nondeterministic interpretations. -/
 class WPInfConjunctive (Prog : Type u) (Value : outParam (Type v)) (Pred : outParam (Type w))
-    (EPred : outParam (Type z)) [Assertion Pred] [Assertion EPred]
-    [WP Prog Value Pred EPred] : Prop where
+    (EPosts : outParam (Type z)) [Assertion Pred] [Assertion EPosts]
+    [WP Prog Value Pred EPosts] : Prop where
   /-- A nonempty meet of `wp`s maps below the `wp` of the meet. -/
   iInf_wp_le_wp_iInf {ι : Type (max v w)} [Nonempty ι] (x : Prog) (Q : ι → Value → Pred)
-    (E : EPred) : iInf (fun j => wp x (Q j) E) ⊑ wp x (iInf Q) E
+    (E : EPosts) : iInf (fun j => wp x (Q j) E) ⊑ wp x (iInf Q) E
 
 section
-variable {Prog : Type u} {Value : Type v} {Pred : Type w} {EPred : Type z}
-  [Assertion Pred] [Assertion EPred] [WP Prog Value Pred EPred]
+variable {Prog : Type u} {Value : Type v} {Pred : Type w} {EPosts : Type z}
+  [Assertion Pred] [Assertion EPosts] [WP Prog Value Pred EPosts]
 
 /-- The converse meet inequality, from monotonicity alone. -/
-theorem wp_iInf_le_iInf_wp {ι : Type i} (x : Prog) (Q : ι → Value → Pred) (E : EPred) :
+theorem wp_iInf_le_iInf_wp {ι : Type i} (x : Prog) (Q : ι → Value → Pred) (E : EPosts) :
     wp x (iInf Q) E ⊑ iInf (fun j => wp x (Q j) E) :=
   le_iInf _ _ fun j => WP.wp_monotone_post (x := x) (iInf_le Q j)
 
 /-- Strongest postcondition: the meet of all postconditions valid for `P` under `wp x · E`. -/
-noncomputable def sp (x : Prog) (P : Pred) (E : EPred) : Value → Pred :=
+noncomputable def sp (x : Prog) (P : Pred) (E : EPosts) : Value → Pred :=
   iInf fun Q : {Q : Value → Pred // P ⊑ wp x Q E} => Q.val
 
 /-- Counit: `sp x P E` is below every postcondition valid for `P`. -/
-theorem sp_le {x : Prog} {P : Pred} {Q : Value → Pred} {E : EPred} (h : P ⊑ wp x Q E) :
+theorem sp_le {x : Prog} {P : Pred} {Q : Value → Pred} {E : EPosts} (h : P ⊑ wp x Q E) :
     sp x P E ⊑ Q :=
   iInf_le (fun Q : {Q : Value → Pred // P ⊑ wp x Q E} => Q.val) ⟨Q, h⟩
 
 /-- Greatest-lower-bound introduction: below every valid postcondition means below `sp`. -/
-theorem le_sp {x : Prog} {P : Pred} {R : Value → Pred} {E : EPred}
+theorem le_sp {x : Prog} {P : Pred} {R : Value → Pred} {E : EPosts}
     (h : ∀ Q : Value → Pred, P ⊑ wp x Q E → R ⊑ Q) : R ⊑ sp x P E :=
   le_iInf _ _ fun Q => h Q.val Q.property
 
-theorem sp_mono {x : Prog} {P P' : Pred} {E : EPred} (h : P' ⊑ P) : sp x P' E ⊑ sp x P E :=
+theorem sp_mono {x : Prog} {P P' : Pred} {E : EPosts} (h : P' ⊑ P) : sp x P' E ⊑ sp x P E :=
   le_sp fun _ hQ => sp_le (PartialOrder.rel_trans h hQ)
 
 /-- Unit: on a failure-free precondition, `P` entails the `wp` of its strongest postcondition. -/
-theorem le_wp_sp [WPInfConjunctive Prog Value Pred EPred] {x : Prog} {P : Pred} {E : EPred}
+theorem le_wp_sp [WPInfConjunctive Prog Value Pred EPosts] {x : Prog} {P : Pred} {E : EPosts}
     (hdef : P ⊑ wp x ⊤ E) : P ⊑ wp x (sp x P E) E :=
   have : Nonempty {Q : Value → Pred // P ⊑ wp x Q E} := ⟨⟨⊤, hdef⟩⟩
   PartialOrder.rel_trans (le_iInf _ _ fun Q => Q.property)
@@ -59,18 +59,18 @@ theorem le_wp_sp [WPInfConjunctive Prog Value Pred EPred] {x : Prog} {P : Pred} 
       (fun Q : {Q : Value → Pred // P ⊑ wp x Q E} => Q.val) E)
 
 /-- Failure-freedom is also necessary for the unit. -/
-theorem le_wp_top {x : Prog} {P : Pred} {E : EPred} (h : P ⊑ wp x (sp x P E) E) :
+theorem le_wp_top {x : Prog} {P : Pred} {E : EPosts} (h : P ⊑ wp x (sp x P E) E) :
     P ⊑ wp x ⊤ E :=
   PartialOrder.rel_trans h (WP.wp_monotone_post (x := x) (le_top _))
 
 /-- Failure-freedom from any valid postcondition. -/
-theorem le_wp_top_of_le_wp {x : Prog} {P : Pred} {Q : Value → Pred} {E : EPred}
+theorem le_wp_top_of_le_wp {x : Prog} {P : Pred} {Q : Value → Pred} {E : EPosts}
     (h : P ⊑ wp x Q E) : P ⊑ wp x ⊤ E :=
   PartialOrder.rel_trans h (WP.wp_monotone_post (x := x) (le_top Q))
 
 /-- The Galois connection between `sp` and `wp`, on failure-free preconditions. -/
-theorem sp_le_iff [WPInfConjunctive Prog Value Pred EPred] {x : Prog} {P : Pred}
-    {Q : Value → Pred} {E : EPred} (hdef : P ⊑ wp x ⊤ E) :
+theorem sp_le_iff [WPInfConjunctive Prog Value Pred EPosts] {x : Prog} {P : Pred}
+    {Q : Value → Pred} {E : EPosts} (hdef : P ⊑ wp x ⊤ E) :
     sp x P E ⊑ Q ↔ P ⊑ wp x Q E :=
   ⟨fun h => PartialOrder.rel_trans (le_wp_sp hdef) (WP.wp_monotone_post (x := x) h), sp_le⟩
 
@@ -92,10 +92,10 @@ instance {α : Type} : WPInfConjunctive (UB α) α Prop EStack⟨⟩ where
       exact PartialOrder.rel_refl
 
 /-- `StateT` lifts meet preservation from its base monad. -/
-instance {m : Type u → Type v} {σ : Type u} {Pred : Type w} {EPred : Type z} {α : Type u}
-    [Monad m] [Assertion Pred] [Assertion EPred] [WPMonad m Pred EPred]
-    [WPInfConjunctive (m (α × σ)) (α × σ) Pred EPred] :
-    WPInfConjunctive (StateT σ m α) α (σ → Pred) EPred where
+instance {m : Type u → Type v} {σ : Type u} {Pred : Type w} {EPosts : Type z} {α : Type u}
+    [Monad m] [Assertion Pred] [Assertion EPosts] [WPMonad m Pred EPosts]
+    [WPInfConjunctive (m (α × σ)) (α × σ) Pred EPosts] :
+    WPInfConjunctive (StateT σ m α) α (σ → Pred) EPosts where
   iInf_wp_le_wp_iInf := by
     intro ι hne x Q E s
     simp only [iInf_apply, StateT.wp_apply_eq]

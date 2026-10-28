@@ -85,9 +85,9 @@ end UB
 
 /-- `wp` distributes over `if`. Stated generally; `simp` cannot derive this from `apply_ite`
 because the `ite` is a nested argument of `wp` rather than its sole argument. -/
-@[simp] theorem wp_ite {Prog Value Pred EPred} [Assertion Pred] [Assertion EPred]
-    [WP Prog Value Pred EPred] (c : Prop) [Decidable c]
-    (a b : Prog) (post : Value → Pred) (epost : EPred) :
+@[simp] theorem wp_ite {Prog Value Pred EPosts} [Assertion Pred] [Assertion EPosts]
+    [WP Prog Value Pred EPosts] (c : Prop) [Decidable c]
+    (a b : Prog) (post : Value → Pred) (epost : EPosts) :
     wp (if c then a else b) post epost = if c then wp a post epost else wp b post epost := by
   split <;> rfl
 
