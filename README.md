@@ -32,6 +32,8 @@ forward simulation proof applies, one program construct at a time.
 * `Ascent/SP.lean`: strongest postconditions as the lower adjoint of `wp`.
 * `Ascent/Concretization.lean`: `Concretization`, its postcondition reification `post`, the
   functional state abstraction `ofStateRepr`, purification, identity and composition.
+* `Ascent/EPosts.lean`: `HasEPost`, the type of the exception coupling for a pair of exception
+  stacks.
 * `Ascent/Refinement.lean`: `wrp`, `Refinement`, the laws for `pure`, `bind`, `throw`
   and `tryCatch`, composition of refinements, and purification of a write-once program.
 * `Ascent/Refinement/WhileLoop.lean`: the relational concretization `relRef` and the while-loop

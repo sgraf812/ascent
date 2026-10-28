@@ -2,22 +2,17 @@ import Ascent.UB.WhileLoop
 import Ascent.UB.StateT
 
 /-!
-# A general while-loop refinement
+# Refinement of `while` loops
 
-The loop body mutates the loop counter, so a *fixed* state coupling cannot span the loop. The
-refinement is therefore stated against a **relational** concretization `relRef J`, where
-`J : Cσ → Aσ → Prop` couples a concrete and an abstract state. The relation is invariant across
-iterations even though the coupled *values* change.
-
-`refines_whileLoop` reduces a loop refinement to: the guards agree under `J`, the body
-refinement holds (preserving `J`), and the body strictly decreases an abstract variant `μ`. It is proved by
-strong induction on `μ`, unfolding both loops one step at a time.
+`relRef J` is the concretization of a state relation `J : Cσ → Aσ → Prop`:
+`pred P cs = ∃ as, J cs as ∧ P as`. `refines_whileLoop` reduces the refinement of two loops
+under `relRef J` to the refinement of their bodies, given that the conditions agree on
+`J`-related states and that a variant `μ` decreases on the abstract body.
 -/
 
 open Std.WP Lean.Order Ascent
 
-/-- A concretization from a state relation `J`: an abstract assertion `P` concretizes to "there is a
-`J`-related abstract state on which `P` holds". -/
+/-- The concretization of a state relation `J`: `pred P cs = ∃ as, J cs as ∧ P as`. -/
 def relRef {Aσ Cσ : Type} (J : Cσ → Aσ → Prop) :
     Concretization (Cσ → Prop) (Aσ → Prop) EStack⟨⟩ EStack⟨⟩ where
   pred P := fun cs => ∃ as, J cs as ∧ P as
@@ -28,7 +23,6 @@ def relRef {Aσ Cσ : Type} (J : Cσ → Aσ → Prop) :
 @[simp] theorem relRef_pred {Aσ Cσ} (J : Cσ → Aσ → Prop) (P : Aσ → Prop) :
     (relRef J).pred P = fun cs => ∃ as, J cs as ∧ P as := rfl
 
-/-- One-step unfolding of `whileLoop`'s `wp`. -/
 theorem wp_whileLoop {σ} (cond : σ → Bool) (body : StateT σ UB Unit)
     (Q : Unit → σ → Prop) (E : EStack⟨⟩) (s : σ) :
     wp (whileLoop cond body) Q E s
@@ -36,8 +30,6 @@ theorem wp_whileLoop {σ} (cond : σ → Bool) (body : StateT σ UB Unit)
   rw [whileLoop, StateT.wp_apply_eq, StateT.run, loopFix]
   simp only [wp_ite, UB.wp_bind_eq, UB.wp_pure_eq, StateT.wp_apply_eq, StateT.run]
 
-/-- The `⊤`-coupling `post` collapse for `relRef`: some coupled abstract state satisfies the
-postcondition at some abstract value. -/
 @[simp] theorem relRef_post_top {Aσ Cσ AV CV : Type} (J : Cσ → Aσ → Prop) (Q : AV → Aσ → Prop) :
     (relRef J).post (fun (_ : CV) (_ : AV) => ⊤) Q
       = fun (_ : CV) cs => ∃ av as, J cs as ∧ Q av as := by
@@ -45,10 +37,6 @@ postcondition at some abstract value. -/
   simp only [Concretization.post, relRef_pred, iSup_apply, meet_apply, top_apply,
     iSup_prop_eq_exists, meet_prop_eq_and, top_prop_eq, true_and]
 
-/-- The loop refinement: under a state relation `J`, if the guards agree, the body refinement
-holds (preserving `J`), and the body strictly decreases an abstract variant `μ`, then the loop
-refinement holds. The loops return no value, so there is no value coupling. By strong induction
-on `μ`. -/
 theorem refines_whileLoop {Aσ Cσ : Type} (J : Cσ → Aσ → Prop)
     (ccond : Cσ → Bool) (cbody : StateT Cσ UB Unit)
     (acond : Aσ → Bool) (abody : StateT Aσ UB Unit)
@@ -95,8 +83,6 @@ theorem refines_whileLoop {Aσ Cσ : Type} (J : Cσ → Aσ → Prop)
       simp only [relRef_post_top]
       exact ⟨(), as, hJ, hwp⟩
 
-/-- Any program refines itself under the identity (`Eq`) state relation: `relRef Eq` recovers
-the ordinary `wp`, since `post id Q` is `Q` up to the existential witness. -/
 theorem refines_relEq_self {σ α} (P : σ → Prop) (a : StateT σ UB α) :
     ⦃P⦄ a ⪯[relRef (Eq : σ → σ → Prop)] a ⦃fun cv av => ⌜cv = av⌝⦄ := by
   refine ⟨wrp_intro fun Q E => ?_⟩

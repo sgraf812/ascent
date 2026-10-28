@@ -62,8 +62,8 @@ example : ¬ ⦃(⊤ : Nat → Prop)⦄ (throw () : TS Nat Nat)
   have H := wrp_transport hsim.le_wrp (fun _ _ => True) estack⟨⟩
   have hthrow : wp (throw () : TS Nat Nat)
       ((typeStrengthen Nat).post (fun cv av => ⌜cv = av⌝) (fun _ _ => True))
-      ((typeStrengthen Nat).ePost .mk estack⟨⟩) = (⊥ : Nat → Prop) := by
-    simp [typeStrengthen, Concretization.ePost_nil, ExceptT.wp_apply_eq,
+      (HasEPost.ePosts (typeStrengthen Nat) .mk estack⟨⟩) = (⊥ : Nat → Prop) := by
+    simp [typeStrengthen, HasEPost.ePosts_nil, ExceptT.wp_apply_eq,
       WPMonadExact.wp_pure_eq]
   have hpure : (typeStrengthen Nat).pred
       (wp (pure 0 : StateT Nat Id Nat) (fun _ _ => True) estack⟨⟩) = (fun _ => True) := by

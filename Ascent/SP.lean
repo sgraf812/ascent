@@ -1,12 +1,11 @@
 import Ascent.UB
 
 /-!
-# Strongest postconditions from `wp`
+# Strongest postconditions
 
-`sp x P E` is the meet of all postconditions valid for the precondition `P`: the lower adjoint
-of `wp x · E`. The counit `sp_le` holds unconditionally. The unit `le_wp_sp` needs `wp` to
-preserve nonempty meets of postconditions (`WPInfConjunctive`) and `P` to exclude failure
-(`P ⊑ wp x ⊤ E`); together they give the Galois connection `sp_le_iff`.
+`sp x P E` is the meet of all postconditions `Q` with `P ⊑ wp x Q E`. It is the lower adjoint
+of `wp x · E` on preconditions that exclude failure, `P ⊑ wp x ⊤ E`, when `wp x` preserves
+nonempty meets (`WPInfConjunctive`). The Galois connection is `sp_le_iff`.
 -/
 
 open Std.WP Lean.Order
@@ -15,12 +14,11 @@ universe i u v w z
 
 namespace Ascent
 
-/-- `wp x` preserves nonempty meets of postconditions. Strengthens `WPConjunctive` from binary
-to indexed meets; holds for deterministic and demonically nondeterministic interpretations. -/
+/-- `wp x` preserves nonempty meets of postconditions. -/
 class WPInfConjunctive (Prog : Type u) (Value : outParam (Type v)) (Pred : outParam (Type w))
     (EPosts : outParam (Type z)) [Assertion Pred] [Assertion EPosts]
     [WP Prog Value Pred EPosts] : Prop where
-  /-- A nonempty meet of `wp`s maps below the `wp` of the meet. -/
+  /-- A nonempty meet of `wp`s is below the `wp` of the meet. -/
   iInf_wp_le_wp_iInf {ι : Type (max v w)} [Nonempty ι] (x : Prog) (Q : ι → Value → Pred)
     (E : EPosts) : iInf (fun j => wp x (Q j) E) ⊑ wp x (iInf Q) E
 
@@ -28,21 +26,18 @@ section
 variable {Prog : Type u} {Value : Type v} {Pred : Type w} {EPosts : Type z}
   [Assertion Pred] [Assertion EPosts] [WP Prog Value Pred EPosts]
 
-/-- The converse meet inequality, from monotonicity alone. -/
 theorem wp_iInf_le_iInf_wp {ι : Type i} (x : Prog) (Q : ι → Value → Pred) (E : EPosts) :
     wp x (iInf Q) E ⊑ iInf (fun j => wp x (Q j) E) :=
   le_iInf _ _ fun j => WP.wp_monotone_post (x := x) (iInf_le Q j)
 
-/-- Strongest postcondition: the meet of all postconditions valid for `P` under `wp x · E`. -/
+/-- The meet of all postconditions `Q` with `P ⊑ wp x Q E`. -/
 noncomputable def sp (x : Prog) (P : Pred) (E : EPosts) : Value → Pred :=
   iInf fun Q : {Q : Value → Pred // P ⊑ wp x Q E} => Q.val
 
-/-- Counit: `sp x P E` is below every postcondition valid for `P`. -/
 theorem sp_le {x : Prog} {P : Pred} {Q : Value → Pred} {E : EPosts} (h : P ⊑ wp x Q E) :
     sp x P E ⊑ Q :=
   iInf_le (fun Q : {Q : Value → Pred // P ⊑ wp x Q E} => Q.val) ⟨Q, h⟩
 
-/-- Greatest-lower-bound introduction: below every valid postcondition means below `sp`. -/
 theorem le_sp {x : Prog} {P : Pred} {R : Value → Pred} {E : EPosts}
     (h : ∀ Q : Value → Pred, P ⊑ wp x Q E → R ⊑ Q) : R ⊑ sp x P E :=
   le_iInf _ _ fun Q => h Q.val Q.property
@@ -50,7 +45,6 @@ theorem le_sp {x : Prog} {P : Pred} {R : Value → Pred} {E : EPosts}
 theorem sp_mono {x : Prog} {P P' : Pred} {E : EPosts} (h : P' ⊑ P) : sp x P' E ⊑ sp x P E :=
   le_sp fun _ hQ => sp_le (PartialOrder.rel_trans h hQ)
 
-/-- Unit: on a failure-free precondition, `P` entails the `wp` of its strongest postcondition. -/
 theorem le_wp_sp [WPInfConjunctive Prog Value Pred EPosts] {x : Prog} {P : Pred} {E : EPosts}
     (hdef : P ⊑ wp x ⊤ E) : P ⊑ wp x (sp x P E) E :=
   have : Nonempty {Q : Value → Pred // P ⊑ wp x Q E} := ⟨⟨⊤, hdef⟩⟩
@@ -58,17 +52,14 @@ theorem le_wp_sp [WPInfConjunctive Prog Value Pred EPosts] {x : Prog} {P : Pred}
     (WPInfConjunctive.iInf_wp_le_wp_iInf x
       (fun Q : {Q : Value → Pred // P ⊑ wp x Q E} => Q.val) E)
 
-/-- Failure-freedom is also necessary for the unit. -/
 theorem le_wp_top {x : Prog} {P : Pred} {E : EPosts} (h : P ⊑ wp x (sp x P E) E) :
     P ⊑ wp x ⊤ E :=
   PartialOrder.rel_trans h (WP.wp_monotone_post (x := x) (le_top _))
 
-/-- Failure-freedom from any valid postcondition. -/
 theorem le_wp_top_of_le_wp {x : Prog} {P : Pred} {Q : Value → Pred} {E : EPosts}
     (h : P ⊑ wp x Q E) : P ⊑ wp x ⊤ E :=
   PartialOrder.rel_trans h (WP.wp_monotone_post (x := x) (le_top Q))
 
-/-- The Galois connection between `sp` and `wp`, on failure-free preconditions. -/
 theorem sp_le_iff [WPInfConjunctive Prog Value Pred EPosts] {x : Prog} {P : Pred}
     {Q : Value → Pred} {E : EPosts} (hdef : P ⊑ wp x ⊤ E) :
     sp x P E ⊑ Q ↔ P ⊑ wp x Q E :=
@@ -76,7 +67,6 @@ theorem sp_le_iff [WPInfConjunctive Prog Value Pred EPosts] {x : Prog} {P : Pred
 
 end
 
-/-- `UB`'s `wp` preserves nonempty meets: it is evaluation at the result, `⊥` on failure. -/
 instance {α : Type} : WPInfConjunctive (UB α) α Prop EStack⟨⟩ where
   iInf_wp_le_wp_iInf := by
     intro ι hne x Q E
@@ -91,7 +81,6 @@ instance {α : Type} : WPInfConjunctive (UB α) α Prop EStack⟨⟩ where
       simp only [UB.wp_pure_eq, iInf_apply]
       exact PartialOrder.rel_refl
 
-/-- `StateT` lifts meet preservation from its base monad. -/
 instance {m : Type u → Type v} {σ : Type u} {Pred : Type w} {EPosts : Type z} {α : Type u}
     [Monad m] [Assertion Pred] [Assertion EPosts] [WPMonad m Pred EPosts]
     [WPInfConjunctive (m (α × σ)) (α × σ) Pred EPosts] :

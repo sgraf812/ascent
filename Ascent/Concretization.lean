@@ -2,12 +2,19 @@ import Std.WP
 import Ascent.WPMonadExact
 
 /-!
-# `Concretization`: monad-level abstraction of assertions
+# Concretization
 
-`Concretization` carries the monad-level concretizations `pred`/`ePosts` (the AutoCorres
-state/exception abstraction; `Concretization.ofStateRepr` builds the common functional case as a
-pullback). The value-level coupling is a relational postcondition supplied per refinement triple
-(`Ascent.Refinement`); `Concretization.post` reifies it against an abstract postcondition.
+A `Concretization CPred APred CEPosts AEPosts` maps abstract assertions to concrete ones:
+`pred : APred → CPred` on assertions and `ePosts : AEPosts → CEPosts` on exception
+postconditions. Both maps are monotone.
+
+Example. `ofStateRepr st` for `st : Cσ → Aσ` has `pred P cs = P (st cs)`. Under it the abstract
+assertion `fun as => as.1 < 10` becomes `fun cs => (st cs).1 < 10`.
+
+`post` extends `pred` to postconditions on values. For a coupling `Q : CVal → AVal → CPred` and
+an abstract postcondition `Qa : AVal → APred`, `post Q Qa cv = ⨆ av, Q cv av ⊓ pred (Qa av)`:
+some abstract value is coupled to `cv` and satisfies `Qa`. For a functional coupling
+`⌜f cv = av⌝` this is `pred (Qa (f cv))` (`post_eq`).
 -/
 
 open Std.WP Lean.Order
@@ -16,14 +23,12 @@ namespace Ascent
 
 universe u v w w'
 
-/-- Monad-level concretizations of normal and exceptional assertions, mapping an abstract `WP`
-setup's predicates into a concrete one's. The value-level coupling is supplied per refinement
-triple. -/
+/-- Maps abstract assertions to concrete assertions. -/
 structure Concretization (CPred : Type w) (APred : Type w) (CEPosts : Type w') (AEPosts : Type w')
     [Assertion CPred] [Assertion APred] [Assertion CEPosts] [Assertion AEPosts] where
-  /-- Concretization of normal assertions. -/
+  /-- The concrete assertion for an abstract assertion. -/
   pred : APred → CPred
-  /-- Concretization of exceptional assertions. -/
+  /-- The concrete exception postconditions for abstract ones. -/
   ePosts : AEPosts → CEPosts
   /-- `pred` is monotone. -/
   pred_mono : ∀ {p q : APred}, p ⊑ q → pred p ⊑ pred q
@@ -35,16 +40,12 @@ namespace Concretization
 variable {CPred APred : Type w} {CEPosts AEPosts : Type w'}
   [Assertion CPred] [Assertion APred] [Assertion CEPosts] [Assertion AEPosts]
 
-/-- Postcondition concretization. The value coupling `couple cv av : CPred` relates a concrete
-value `cv` to an abstract value `av`; being a `CPred`, it may depend on the concrete state, which
-is what lets an out-parameter's final value be read off the exit state. For each concrete value
-the abstract postcondition is reified against the coupling and concretized. -/
+/-- The concrete postcondition for the coupling `couple` and the abstract postcondition `Q`:
+`post couple Q cv = ⨆ av, couple cv av ⊓ pred (Q av)`. -/
 noncomputable def post (r : Concretization CPred APred CEPosts AEPosts) {CVal AVal : Type _}
     (couple : CVal → AVal → CPred) (Q : AVal → APred) : CVal → CPred :=
   fun cv => iSup fun av => couple cv av ⊓ r.pred (Q av)
 
-/-- One-point rule: under a functional coupling `⌜f · = ·⌝` the reified `iSup` collapses to the
-pullback. -/
 @[simp] theorem post_eq (r : Concretization CPred APred CEPosts AEPosts) {CVal AVal : Type _}
     (f : CVal → AVal) (Q : AVal → APred) :
     r.post (fun cv av => (⌜f cv = av⌝ : CPred)) Q = fun cv => r.pred (Q (f cv)) := by
@@ -55,8 +56,6 @@ pullback. -/
       (le_iSup (fun av => (⌜f cv = av⌝ : CPred) ⊓ r.pred (Q av)) (f cv))
     exact le_meet _ _ _ (CompleteLattice.le_ofProp _ _ rfl) PartialOrder.rel_refl
 
-/-- `post` in the `Prop` lattice, elementwise: some abstract value is coupled and satisfies the
-concretized postcondition. -/
 theorem post_prop {APred : Type} {CEPosts AEPosts : Type w'}
     [Assertion APred] [Assertion CEPosts] [Assertion AEPosts]
     (r : Concretization Prop APred CEPosts AEPosts) {CVal AVal : Type _}
@@ -64,7 +63,6 @@ theorem post_prop {APred : Type} {CEPosts AEPosts : Type w'}
     r.post couple Q cv = ∃ av, couple cv av ∧ r.pred (Q av) := by
   simp only [Concretization.post, iSup_prop_eq_exists, meet_prop_eq_and]
 
-/-- `post` in a function lattice into `Prop`, elementwise. -/
 theorem post_pi {σ : Type} {APred : Type} {CEPosts AEPosts : Type w'}
     [Assertion APred] [Assertion CEPosts] [Assertion AEPosts]
     (r : Concretization (σ → Prop) APred CEPosts AEPosts) {CVal AVal : Type _}
@@ -73,10 +71,8 @@ theorem post_pi {σ : Type} {APred : Type} {CEPosts AEPosts : Type w'}
   simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
     meet_prop_eq_and]
 
-/-- The functional concretization from a state representation function `st : Cσ → Aσ`: the
-concretization is the pullback `st^*` (`pred P = P ∘ st`). Exception-free (`EStack⟨⟩`). This is
-AutoCorres' functional state abstraction; the coupling side-condition lives in the `Refinement`
-precondition `pre`, not here. -/
+/-- The concretization of a state representation `st : Cσ → Aσ`: `pred P cs = P (st cs)`. No
+exceptions. -/
 def ofStateRepr {Cσ Aσ : Type w} (st : Cσ → Aσ) :
     Concretization (Cσ → Prop) (Aσ → Prop) EStack⟨⟩ EStack⟨⟩ where
   pred P := fun cs => P (st cs)
@@ -89,7 +85,7 @@ def ofStateRepr {Cσ Aσ : Type w} (st : Cσ → Aσ) :
 
 end Concretization
 
-/-! ## Composition of refinements -/
+/-! ## Composition -/
 
 section Comp
 
@@ -97,7 +93,7 @@ variable {CPred BPred APred : Type w} {CEPosts BEPosts AEPosts : Type w'}
   [Assertion CPred] [Assertion BPred] [Assertion APred]
   [Assertion CEPosts] [Assertion BEPosts] [Assertion AEPosts]
 
-/-- Compose refinements `C ← B` and `B ← A` into `C ← A`. -/
+/-- Composition: `(r₁.comp r₂).pred = r₁.pred ∘ r₂.pred`. -/
 def Concretization.comp (r₁ : Concretization CPred BPred CEPosts BEPosts)
     (r₂ : Concretization BPred APred BEPosts AEPosts) : Concretization CPred APred CEPosts AEPosts where
   pred := r₁.pred ∘ r₂.pred
@@ -107,13 +103,13 @@ def Concretization.comp (r₁ : Concretization CPred BPred CEPosts BEPosts)
 
 end Comp
 
-/-! ## Identity concretization -/
+/-! ## Identity -/
 
 section Id
 
 variable {Pred : Type w} {EPosts : Type w'} [Assertion Pred] [Assertion EPosts]
 
-/-- The concretization that is the identity on both assertion lattices. -/
+/-- The identity on both assertion types. -/
 def Concretization.id (Pred : Type w) (EPosts : Type w') [Assertion Pred] [Assertion EPosts] :
     Concretization Pred Pred EPosts EPosts where
   pred := _root_.id
@@ -123,30 +119,25 @@ def Concretization.id (Pred : Type w) (EPosts : Type w') [Assertion Pred] [Asser
 
 end Id
 
-/-! ## Purification: dropping the state monad
+/-! ## Purification
 
-An out-parameter is modelled as concrete *state*. When the concrete program is write-once (its
-result and final state do not depend on the initial state), that state can be read off the exit and
-returned as a pure *value*, eliminating the state monad. This is the terminal value coupling that
-the state-aware `couple` was introduced for: `purifyCouple cv av s := ⌜av = (cv, s)⌝` reads the entire
-final state into the second component of the abstract result. It is sound only here, at the end of
-the program, where there is no continuation whose control flow could depend on the read. -/
+A program in `StateT σ Id` whose result and final state do not depend on the initial state
+refines `pure (v, w) : Id (α × σ)`. The coupling `purifyCouple cv av s` holds when
+`av = (cv, s)`: the final state becomes the second component of the abstract result. -/
 
 section Purify
 
-/-- Drops an abstract `Id` assertion (a `Prop`) to a constant concrete-state predicate. The exit
-read lives entirely in the value coupling `purifyCouple`. -/
+/-- The concretization from `Prop` to `σ → Prop`: `pred φ = fun _ => φ`. -/
 noncomputable def purify (σ : Type) : Concretization (σ → Prop) Prop EStack⟨⟩ EStack⟨⟩ where
   pred φ := fun _ => φ
   ePosts := id
   pred_mono h := fun _ => h
   ePosts_mono h := h
 
-/-- The terminal value coupling: `(cv, s)` abstracts a concrete return `cv` ending in state `s`. -/
+/-- The coupling that reads the final state into the abstract result. -/
 def purifyCouple {σ α : Type} : α → (α × σ) → (σ → Prop) :=
   fun cv av s => av = (cv, s)
 
-/-- Under `purifyCouple`, the postcondition concretization reads the final state into the result. -/
 @[simp] theorem purify_post {σ α : Type} (Q : (α × σ) → Prop) :
     (purify σ).post purifyCouple Q = fun cv s => Q (cv, s) := by
   funext cv s

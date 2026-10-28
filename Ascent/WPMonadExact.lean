@@ -1,15 +1,17 @@
 import Std.WP
 
 /-!
-# `WPMonadExact`: exact weakest-precondition monads
+# Exact weakest preconditions
 
-`WPMonad` makes a monad's `wp` *sound*: it lower-bounds the postcondition on `pure` and the
-decomposition on `bind`. `WPMonadExact` adds the matching upper bounds, so `wp` *computes* `pure`
-and `bind`. The abstract side of a refinement proof needs this, since its `wp` is decomposed out of
-the precondition.
+`WPMonad` states that `wp` is sound for `pure` and `bind`:
+`post a ⊑ wp (pure a) post eposts` and
+`wp x (fun a => wp (f a) post eposts) eposts ⊑ wp (x >>= f) post eposts`.
+`WPMonadExact` adds the converse inequalities. Together they compute `wp` on `pure` and `bind`
+(`wp_pure_eq`, `wp_bind_eq`).
 
-Instances cover the deterministic / demonic monads: the leaves `Id`, `Option`, `Except`, `EStateM`,
-and the transformers `StateT`, `ExceptT`, `OptionT`, each transporting exactness from its base.
+The abstract program of a refinement needs this. Its `wp` is a hypothesis in `wrp`, so the
+laws of `pure` and `bind` are used in the converse direction. Instances exist for `Id`,
+`Option`, `Except`, `EStateM`, `StateT`, `ExceptT` and `OptionT`.
 -/
 
 open Std.WP Lean.Order
@@ -18,35 +20,28 @@ namespace Ascent
 
 universe u v w w'
 
-/-- The weakest-precondition interpretation is exact: beyond `WPMonad` soundness it also upper-bounds
-`pure`/`bind`, so the two together compute them. The abstract side of `wrp` needs this, since its
-`wp` is decomposed out of the precondition. A mixin over `WPMonad` rather than an extension, so it
-never participates in `WP` synthesis. -/
+/-- The converse of the `WPMonad` laws. With them, `wp` computes `pure` and `bind`. -/
 class WPMonadExact (m : Type u → Type v) (Pred : Type w) (EPosts : Type w')
     [Monad m] [Assertion Pred] [Assertion EPosts] [WPMonad m Pred EPosts] : Prop where
-  /-- `wp` upper-bounds the postcondition on `pure`. -/
+  /-- `wp (pure a)` is below the postcondition at `a`. -/
   wp_pure_le {α : Type u} (a : α) (post : α → Pred) (epost : EPosts) :
     wp (pure a : m α) post epost ⊑ post a
-  /-- `wp` upper-bounds the `bind` decomposition. -/
+  /-- `wp (x >>= f)` is below the composition of the two `wp`s. -/
   wp_bind_le {α β : Type u} (x : m α) (f : α → m β) (post : β → Pred) (epost : EPosts) :
     wp (x >>= f) post epost ⊑ wp x (fun a => wp (f a) post epost) epost
 
-/-- Exact `wp` computes `pure`. -/
 theorem WPMonadExact.wp_pure_eq {m : Type u → Type v} {Pred : Type w} {EPosts : Type w'}
     [Monad m] [Assertion Pred] [Assertion EPosts] [WPMonad m Pred EPosts] [WPMonadExact m Pred EPosts]
     {α} (a : α) (post : α → Pred) (epost : EPosts) :
     wp (pure a : m α) post epost = post a :=
   PartialOrder.rel_antisymm (WPMonadExact.wp_pure_le a post epost) (WPMonad.pure_le_wp_pure a post epost)
 
-/-- Exact `wp` computes `bind`. -/
 theorem WPMonadExact.wp_bind_eq {m : Type u → Type v} {Pred : Type w} {EPosts : Type w'}
     [Monad m] [Assertion Pred] [Assertion EPosts] [WPMonad m Pred EPosts] [WPMonadExact m Pred EPosts]
     {α β} (x : m α) (f : α → m β) (post : β → Pred) (epost : EPosts) :
     wp (x >>= f) post epost = wp x (fun a => wp (f a) post epost) epost :=
   PartialOrder.rel_antisymm (WPMonadExact.wp_bind_le x f post epost)
     (WPMonad.bind_le_wp_bind x f post epost)
-
-/-! ## Leaf instances -/
 
 instance : WPMonadExact Id Prop EStack⟨⟩ where
   wp_pure_le := fun _ _ _ => PartialOrder.rel_refl
@@ -65,8 +60,6 @@ instance {ε σ : Type} : WPMonadExact (EStateM ε σ) (σ → Prop) (ε → σ 
   wp_bind_le := fun x _ _ _ s => by
     simp only [WP.wp, WP.trans, bind, EStateM.bind]
     cases (x s) <;> exact PartialOrder.rel_refl
-
-/-! ## Transformer instances: exactness transports from the base monad -/
 
 instance {σ : Type u} {m : Type u → Type v} {Pred : Type w} {EPosts : Type v}
     [Monad m] [Assertion Pred] [Assertion EPosts] [WPMonad m Pred EPosts] [WPMonadExact m Pred EPosts] :

@@ -51,7 +51,7 @@ example : ¬ ⦃(⊤ : Prop)⦄ (MonadExceptOf.throw 1 : Except Nat Nat)
     ⪯[exc] (MonadExceptOf.throw 0 : Except Nat Nat) ⦃fun _ _ => ⊤; (⌜· = ·⌝)⦄ := by
   intro hsim
   have H := wrp_transport hsim.le_wrp (fun _ => True) (fun n => n = 0)
-  simp only [WPMonad.wp_throw_Except_apply_eq, Concretization.ePost_fun,
+  simp only [WPMonad.wp_throw_Except_apply_eq, HasEPost.ePosts_fun,
     Concretization.post_prop, Concretization.id, id_eq, CompleteLattice.ofProp_prop_eq, meet_prop_eq_and,
     top_prop_eq, true_and] at H
   obtain ⟨ea, h1, h0⟩ := H trivial
@@ -94,7 +94,7 @@ example (Q : Int → Int → Prop) :
     ⦃(⊤ : Prop)⦄ (MonadExceptOf.throw 3 : Except Nat Int)
       ⪯[fillAbs fun _ => ⊤] (pure 0 : Id Int) ⦃Q⦄ := by
   refine ⟨wrp_intro fun Qa Ea => ?_⟩
-  simp only [WPMonad.wp_throw_Except_apply_eq, Concretization.ePost_nil]
+  simp only [WPMonad.wp_throw_Except_apply_eq, HasEPost.ePosts_nil]
   exact le_top (α := Prop) _
 
 /-- The `⊥` fill forbids it: type strengthening as `ePosts` data. -/
@@ -102,7 +102,7 @@ example : ¬ ⦃(⊤ : Prop)⦄ (MonadExceptOf.throw 3 : Except Nat Int)
     ⪯[fillAbs fun _ => ⊥] (pure 0 : Id Int) ⦃(⌜· = ·⌝)⦄ := by
   intro h
   have h2 := wrp_transport h.le_wrp (fun _ => True) estack⟨⟩
-  simp only [WPMonad.wp_throw_Except_apply_eq, Concretization.ePost_nil, _root_.top_meet,
+  simp only [WPMonad.wp_throw_Except_apply_eq, HasEPost.ePosts_nil, _root_.top_meet,
     WPMonadExact.wp_pure_eq] at h2
   have hfalse : (⊥ : Prop) := h2 trivial
   rw [bot_prop_eq] at hfalse
