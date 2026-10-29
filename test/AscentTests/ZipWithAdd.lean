@@ -49,6 +49,15 @@ inductive Value                               -- minimal untyped value domain (c
   | ptr  (a : Addr)
   | size (n : USize)
 
+/-- The `size_t` payload of a value, and `0` for the other values. -/
+def Value.toSize : Value → USize
+  | .size n => n
+  | _ => 0
+
+@[simp, vcgen_simp] theorem Value.toSize_size (n : USize) : (Value.size n).toSize = n := rfl
+
+attribute [vcgen_simp] Option.getD_some Option.some.injEq Value.size.injEq exists_eq'
+
 abbrev Locals := Ident → Option Value
 
 structure State where
@@ -181,11 +190,6 @@ and the end-to-end `refines_zip`. -/
 /-- `omega`, after exposing `Addr` as `Nat` (this toolchain's `omega` does not unfold the abbrev). -/
 local macro "aomega" : tactic => `(tactic| (unfold Addr at *; omega))
 
-@[spec] theorem getSize_spec (x : Ident) (post : USize → State → Prop) :
-    ⦃fun s => wp (Prog := M USize) (match s.locals x with | some (.size v) => pure v | _ => UB.fail) post ⊥ s⦄ getSize x ⦃post⦄ := by
-  vcgen (stepLimit := 3) [getSize]
-  assumption
-
 @[spec] theorem getPtr_spec (x : Ident) (post : Addr → State → Prop) :
     ⦃fun s => wp (Prog := M Addr) (match s.locals x with | some (.ptr a) => pure a | _ => UB.fail)
       post ⊥ s⦄ getPtr x ⦃post⦄ := by
@@ -226,6 +230,13 @@ theorem wp_getSize (x : Ident) (Q : USize → State → Prop) (E : EStack⟨⟩)
     | size n => rfl
     | ptr a => simp [StateT.lift, liftM, monadLift, MonadLift.monadLift]
     | int i => simp [StateT.lift, liftM, monadLift, MonadLift.monadLift]
+
+@[spec] theorem getSize_spec (x : Ident) (post : USize → State → Prop) :
+    ⦃fun s => (∃ n, s.locals x = some (.size n)) ∧ post ((s.locals x).getD (.size 0)).toSize s⦄
+      getSize x ⦃post⦄ := by
+  refine ⟨fun s ⟨⟨n, hn⟩, h⟩ => ?_⟩
+  rw [wp_getSize, hn]
+  simpa [hn] using h
 
 /-- `getPtr`'s `wp`, as a function of the state: reading a present pointer extracts its address,
 UB otherwise. -/
@@ -317,7 +328,7 @@ theorem refines_stepL2 (a b out : Addr) (n : USize) :
       stepL1
       ⦃fun _ cs' => invL2 a b out n cs' (i + 1, cs'.heap) ∧ Q () (i + 1, cs'.heap)⦄ := by
     vcgen [stepL1]
-    all_goals grind
+    all_goals grind [Value.toSize]
   refine WP.wp_monotone_post (x := stepL1) ?_ cs
     (key.le_wp cs ⟨⟨rfl, hi, hn, ha, hb, hout⟩, hv1, hv2, hv3⟩)
   rintro _ cs' ⟨h1, h2⟩

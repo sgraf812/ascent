@@ -10,10 +10,11 @@ that the engine does not yet synthesize asserts the failure with `fail_if_succes
 docstring names the gap. When the gap closes, the entry fails and becomes a check of the
 synthesized program against the hand-written one.
 
-The entries that remain open share one gap. A read goes through `vcgen`'s split of the match on
-`s.locals x`, which introduces the read value as a fresh variable `n` with an equation
-hypothesis. The abstract value is then the VC `n = ?m`, and `?m` must be an in-scope term equal
-to `n`: `v` in C1, `min la lb` in C2, `n` in C3.
+The `getSize` spec states the presence of the local as a VC `∃ n, s.locals x = some (.size n)`,
+and it reads the value as the term `((s.locals x).getD (.size 0)).toSize`. After a write, `simp`
+reduces this term to the written value. The entries that remain open share one gap. A hypothesis
+`s.locals x = some (.size n)` from the precondition or from the state relation does not rewrite
+the read value to `n`, so the abstract value mentions the concrete state `s`.
 -/
 
 open Std.WP Lean.Order Ascent Ascent.Concretization Zip
@@ -51,18 +52,16 @@ abbrev γh : Concretization (State → Prop) (Heap → Prop) := ofStateRepr Stat
       ⊑ wrp (ofStateRel J) (getSize x) (pure av : StateT Aσ UB USize) Q E :=
   wrp_read_rel J _ av Q E
 
-/-- C1: a write of `"n"` followed by its read. Expected: `pure v`. Open: the read value. -/
-example (v : USize) : True := by
-  fail_if_success
-    have : { a : StateT Heap UB USize //
-        ⦃(⊤ : State → Prop)⦄ (setSize "n" v >>= fun _ => getSize "n") ⪯[γh] a ⦃(⌜· = ·⌝)⦄ } := by
-      apply Subtype.mk
-      ascend'
-      done
-  trivial
+/-- C1: a write of `"n"` followed by its read. -/
+def c1 (v : USize) : { a : StateT Heap UB USize //
+    ⦃(⊤ : State → Prop)⦄ (setSize "n" v >>= fun _ => getSize "n") ⪯[γh] a ⦃(⌜· = ·⌝)⦄ } := by
+  apply Subtype.mk
+  ascend'
+
+example (v : USize) : (c1 v).1 = pure v := rfl
 
 /-- C2: the entry prefix of `zipL1`, under the entry precondition on the length locals.
-Expected: `pure (min la lb)`. Open: the read value. -/
+Expected: `pure (min la lb)`. Open: the read values of `"len_a"` and `"len_b"`. -/
 example (la lb : USize) : True := by
   fail_if_success
     have : { a : StateT Heap UB USize //
@@ -80,7 +79,7 @@ example (la lb : USize) : True := by
   trivial
 
 /-- C3: `refines_getSizeN`, the `return n` of the loop phase under the loop relation.
-Expected: `pure n`. Open: the read value, and two VCs that need `invL2` unfolded. -/
+Expected: `pure n`. Open: the read value of `"n"`, which `invL2` determines. -/
 example (a b out : Addr) (n : USize) : True := by
   fail_if_success
     have : { p : StateT (USize × Heap) UB USize //
