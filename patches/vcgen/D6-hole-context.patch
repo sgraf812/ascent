@@ -1,7 +1,7 @@
 diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
---- a/Ascent/Tactic/VCGen/Solve.lean	2026-10-29 15:32:13.403427339 +0000
-+++ b/Ascent/Tactic/VCGen/Solve.lean	2026-10-29 15:32:13.412542526 +0000
-@@ -425,8 +425,38 @@
+--- a/Ascent/Tactic/VCGen/Solve.lean	2026-10-29 16:03:31.456144414 +0000
++++ b/Ascent/Tactic/VCGen/Solve.lean	2026-10-29 16:03:31.463827802 +0000
+@@ -420,8 +420,38 @@
          excessArgs: {info.excessArgs}"
      | return none
    trace[Elab.Tactic.Do.vcgen] "Applying spec {thm.proof} for {info.prog}. Excess args: {info.excessArgs}"

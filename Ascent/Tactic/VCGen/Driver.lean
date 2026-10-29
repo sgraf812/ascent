@@ -10,6 +10,7 @@ import Lean.Elab.Tactic.VCGen.Context
 import Lean.Elab.Tactic.VCGen.Solve
 import Ascent.Tactic.VCGen.Solve
 import Lean.Meta.Sym.Grind
+import Lean.Elab.Tactic.VCGen.Driver
 
 open Lean Meta Elab Tactic Sym Sym.Internal Lean.Order
 open Lean.Elab.Tactic.Do.SpecAttr
@@ -76,13 +77,34 @@ def handleInvariantSubgoals (subgoals : List MVarId) : VCGenM (Array MVarId) := 
       others := others.push sg
   return others
 
+/-- Simplify the target of a verification condition with `Context.simpMethods`. -/
+def simpVC (goal : MVarId) : VCGenM Sym.SimpGoalResult := goal.withContext do
+  let some methods := (← read).simpMethods | return .noProgress
+  let target ← goal.getType
+  let (result, simpState') ← Sym.Simp.SimpM.run (Sym.Simp.simp target) methods {} (← get).simpState
+  modify fun s => { s with simpState := simpState' }
+  result.toSimpGoalResult goal
+
 /--
 Called when decomposing the goal further did not succeed; in this case we emit a VC for the goal.
+`simp` rewrites the VC only when `reason` says that nothing is left to decompose, so a VC that
+`until`, a missing spec or the step limit leaves behind keeps its program as written.
 Invariant subgoals are handled separately by `handleInvariantSubgoals` directly inside `work`,
 so they never reach this path.
 -/
-def emitVC (goal : Grind.Goal) : VCGenM Unit := do
+def emitVC (goal : Grind.Goal) (reason : SolveResult.StopReason) : VCGenM Unit := do
   let mut goal := { goal with mvarId := ← elimTopPre goal.mvarId }
+  if reason matches .noEntailment .. | .noProgress .. then
+    -- An invariant from an `invariants` alternative is assigned while the target is built, as in
+    -- `?inv pref suff (a, b)`. Instantiating it lets `simp` reduce the body of the invariant.
+    let target ← goal.mvarId.getType
+    let target' ← instantiateMVarsS target
+    unless isSameExpr target target' do
+      goal := { goal with mvarId := ← goal.mvarId.replaceTargetDefEqFast target' }
+    match ← simpVC goal.mvarId with
+    | .closed => return
+    | .goal mvarId => goal := { goal with mvarId }
+    | .noProgress => pure ()
   goal ← processHypotheses goal
   if goal.inconsistent then return
   let some mvarId ← cleanupVC goal.mvarId | return
@@ -112,19 +134,22 @@ def work (scope coreScope : Scope) (goal : Grind.Goal) : VCGenM Unit := do
     unless (← Sym.getLevel (← s.goal.mvarId.getType)).isZero do
       holes := holes.push s.goal
       continue
+    if let some (jp, jumps) := (← get).pendingJoinPoints[s.goal.mvarId]? then
+      modify fun st => { st with pendingJoinPoints := st.pendingJoinPoints.erase s.goal.mvarId }
+      finalizeJoinPoint jp jumps
     let goal ← processHypotheses s.goal
     if goal.inconsistent then continue
     if ← isWPGoal goal.mvarId then
       match ← Lean.Elab.Tactic.VCGen.solve s.coreScope goal.mvarId with
-      | .stop _reason => emitVC goal
+      | .stop reason => Lean.Elab.Tactic.VCGen.emitVC goal reason
       | .goals coreScope subgoals =>
         let subgoals ← handleInvariantSubgoals subgoals
         worklist := worklist ++ subgoals.reverse.map (fun mv =>
           { goal := { goal with mvarId := mv }, scope := s.scope, coreScope })
       continue
     match ← solve s.scope goal.mvarId with
-    | .stop _reason =>
-      emitVC goal
+    | .stop reason =>
+      emitVC goal reason
     | .goals scope subgoals =>
       -- Handle invariant subgoals eagerly here, so that VC subgoals popped
       -- from the worklist later see the invariant MVar already assigned.
@@ -132,9 +157,10 @@ def work (scope coreScope : Scope) (goal : Grind.Goal) : VCGenM Unit := do
       let subgoals ← handleInvariantSubgoals subgoals
       worklist := worklist ++ subgoals.reverse.map (fun mv =>
         { goal := { goal with mvarId := mv }, scope, coreScope := s.coreScope })
+  -- A hole is data, not a proposition, so `emitVC` does not simplify it.
   for hole in holes do
     unless ← hole.mvarId.isAssigned do
-      emitVC hole
+      emitVC hole .outOfFuel
 
 structure Result where
   /-- All invariant goals emitted during VC generation, in emit order. The MVarId at

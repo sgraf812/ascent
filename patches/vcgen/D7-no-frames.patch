@@ -1,6 +1,6 @@
 diff -ruN a/Ascent/Tactic/VCGen/RuleCache.lean b/Ascent/Tactic/VCGen/RuleCache.lean
---- a/Ascent/Tactic/VCGen/RuleCache.lean	2026-10-29 15:32:13.391929682 +0000
-+++ b/Ascent/Tactic/VCGen/RuleCache.lean	2026-10-29 15:32:13.403054385 +0000
+--- a/Ascent/Tactic/VCGen/RuleCache.lean	2026-10-29 16:03:31.445170077 +0000
++++ b/Ascent/Tactic/VCGen/RuleCache.lean	2026-10-29 16:03:31.455836757 +0000
 @@ -82,19 +82,4 @@
    modify fun st => { st with latticeBackwardRuleCache := st.latticeBackwardRuleCache.insert key rule }
    return rule
@@ -22,8 +22,8 @@ diff -ruN a/Ascent/Tactic/VCGen/RuleCache.lean b/Ascent/Tactic/VCGen/RuleCache.l
 -
  end Lean.Elab.Tactic.VCGen.Ascend
 diff -ruN a/Ascent/Tactic/VCGen/RuleConstruction.lean b/Ascent/Tactic/VCGen/RuleConstruction.lean
---- a/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-10-29 15:32:13.391521415 +0000
-+++ b/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-10-29 15:32:13.402852985 +0000
+--- a/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-10-29 16:03:31.444763973 +0000
++++ b/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-10-29 16:03:31.455654356 +0000
 @@ -449,65 +449,4 @@
    let res ← abstractMVars prf
    mkBackwardRuleFromExpr res.expr res.paramNames.toList
@@ -91,9 +91,9 @@ diff -ruN a/Ascent/Tactic/VCGen/RuleConstruction.lean b/Ascent/Tactic/VCGen/Rule
 -
  end Lean.Elab.Tactic.VCGen.Ascend
 diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
---- a/Ascent/Tactic/VCGen/Solve.lean	2026-10-29 15:32:13.394748772 +0000
-+++ b/Ascent/Tactic/VCGen/Solve.lean	2026-10-29 15:32:13.403427339 +0000
-@@ -401,101 +401,6 @@
+--- a/Ascent/Tactic/VCGen/Solve.lean	2026-10-29 16:03:31.447910148 +0000
++++ b/Ascent/Tactic/VCGen/Solve.lean	2026-10-29 16:03:31.456144414 +0000
+@@ -396,101 +396,6 @@
      return true
    return false
  
@@ -195,7 +195,7 @@ diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
  /--
  Apply the selected `@[spec]` theorem `thm` to a spec-ready program `info.prog`. `none` when no
  backward rule fits the goal's monad, or when the rule does not apply.
-@@ -507,8 +412,8 @@
+@@ -502,8 +407,8 @@
  continuation; see `FrameProc.lean`. When the spec does not apply to the footprint, the copy is
  dropped and the candidate falls through.
  -/
@@ -206,7 +206,7 @@ diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
    let some specRule ←
      try
        mkBackwardRuleFromSpecCached thm info |>.run
-@@ -519,28 +424,6 @@
+@@ -514,28 +419,6 @@
          Pred:{indentExpr info.Pred}\n\
          excessArgs: {info.excessArgs}"
      | return none
@@ -235,7 +235,7 @@ diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
    trace[Elab.Tactic.Do.vcgen] "Applying spec {thm.proof} for {info.prog}. Excess args: {info.excessArgs}"
    let .goals goals ← specRule.applyChecked goal m!"spec rule for{indentExpr info.prog}"
      | return none
-@@ -557,12 +440,8 @@
+@@ -552,12 +435,8 @@
  def applySpecs (scope : Scope) (goal : MVarId) (info : WRPApp) :
      VCGenM SolveResult := goal.withContext do
    let candidates ← SpecTheorems.findSpecs scope.specs info.prog

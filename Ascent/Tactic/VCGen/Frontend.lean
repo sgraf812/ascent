@@ -64,7 +64,12 @@ def elabAscend : Tactic := fun _ => withMainContext do
   let goal ← getMainGoal
   let hole? ← unsealAbstractHole goal
   let holeDecl? ← hole?.mapM (·.getDecl)
-  let ctx : Context := { backwardRules := ← mkBackwardRules, internalize := false }
+  let thms ← vcgenSimpExt.getTheorems
+  let simpMethods : Sym.Simp.Methods :=
+    { pre := Sym.Simp.beta >> Sym.Simp.reduceProj >> Sym.Simp.reduceMatcher
+      post := Sym.Simp.evalGround >> thms.rewrite }
+  let ctx : Context :=
+    { backwardRules := ← mkBackwardRules, simpMethods, internalize := false }
   let scope : Scope := { specs := ← getAscendSpecTheorems }
   let coreScope : Scope := { specs := ← getSpecTheorems }
   let params ← Grind.mkDefaultParams { clean := false }

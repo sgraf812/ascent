@@ -1,7 +1,7 @@
 diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
---- a/Ascent/Tactic/VCGen/Solve.lean	2026-10-29 15:32:13.412542526 +0000
-+++ b/Ascent/Tactic/VCGen/Solve.lean	2026-10-29 15:32:13.416302454 +0000
-@@ -145,7 +145,8 @@
+--- a/Ascent/Tactic/VCGen/Solve.lean	2026-10-29 16:03:31.463827802 +0000
++++ b/Ascent/Tactic/VCGen/Solve.lean	2026-10-29 16:03:31.467525487 +0000
+@@ -137,7 +137,8 @@
  def liftedPreFor? (scope : Scope) (e : Expr) : VCGenM (Option LocalDecl) := do
    let some fvarId := scope.lastLiftedPre? | return none
    let some hyp := (← getLCtx).find? fvarId | return none

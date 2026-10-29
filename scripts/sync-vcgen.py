@@ -20,7 +20,7 @@ OUT = ROOT / "Ascent" / "Tactic" / "VCGen"
 PATCHES = ROOT / "patches" / "vcgen"
 
 # Translated modules, in import order.
-MODULES = ["RuleConstruction", "RuleCache", "Solve", "Driver"]
+MODULES = ["RuleConstruction", "RuleCache", "JoinPoint", "Solve", "Driver"]
 
 RULES = [
     # T1. Names.
@@ -34,7 +34,7 @@ RULES = [
      r"\1\2"),
     (r"^(@\[[^\]]*\] )public ", r"\1"),
     # T3. Goal metadata.
-    (r"\bWPApp\b", "WRPApp"),
+    (r"(?<!VCGen\.)\bWPApp\b", "WRPApp"),
     (r"\bisWPApp\?", "isWRPApp?"),
     (r"info\.args\.take 7", "info.lemmaPrefix"),
     (r"\.set! 7 ", ".set! WRPApp.progIdx "),
@@ -84,7 +84,7 @@ def generate(dest: pathlib.Path, patches: bool = True) -> None:
     series = PATCHES / "series"
     if patches and series.exists():
         for name in series.read_text().split():
-            subprocess.run(["patch", "--quiet", "-p1", "-d", str(dest.parent.parent.parent),
+            subprocess.run(["patch", "--quiet", "--no-backup-if-mismatch", "-p1", "-d", str(dest.parent.parent.parent),
                             "-i", str(PATCHES / name)], check=True)
 
 

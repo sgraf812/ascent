@@ -41,6 +41,8 @@ def Value (info : WRPApp) : Expr := info.args[2]!
 def Pred (info : WRPApp) : Expr := info.args[4]!
 /-- The exception relation type `ERels`. -/
 def EPosts (info : WRPApp) : Expr := info.args[8]!
+/-- The `Assertion CPred` instance. -/
+def instAL (info : WRPApp) : Expr := info.args[9]!
 /-- The concrete `WP` instance. -/
 def instWP (info : WRPApp) : Expr := info.args[13]!
 /-- The concretization `γ`. -/
