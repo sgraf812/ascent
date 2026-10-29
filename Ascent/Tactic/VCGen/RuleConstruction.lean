@@ -372,7 +372,9 @@ def tryMkBackwardRuleFromSpec (specThm : SpecTheorem) (info : WRPApp)
   let prog := specInfo.prog
   let postSpec := specInfo.post
   let epostsSpec := specInfo.eposts
-  for i in [0:WRPApp.progIdx] do
+  -- The abstract `WP` instance, the exception concretization and `γ` fix the abstract half of the
+  -- prefix, as `instWP` fixes the concrete half.
+  for i in [14, 15, 16] do
     guard <| ← withDefault <| isDefEqGuarded info.args[i]! specInfo.args[i]!
   -- The rule's abstract program is the spec's.
   let info := { info with args := info.args.set! 18 specInfo.abs }

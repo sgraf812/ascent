@@ -1,6 +1,6 @@
 diff -ruN a/Ascent/Tactic/VCGen/RuleConstruction.lean b/Ascent/Tactic/VCGen/RuleConstruction.lean
---- a/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-10-29 13:56:14.585130735 +0000
-+++ b/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-10-29 13:56:14.590465339 +0000
+--- a/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-10-29 14:28:28.159198942 +0000
++++ b/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-10-29 14:28:28.171976343 +0000
 @@ -293,7 +293,8 @@
    /- proof of the original theorem with abstracted `post` and `eposts` specialized to the excess state arguments -/
    specApplied := mkAppN specApplied ss
@@ -11,7 +11,7 @@ diff -ruN a/Ascent/Tactic/VCGen/RuleConstruction.lean b/Ascent/Tactic/VCGen/Rule
    let specAppliedTy ← mkAppM ``PartialOrder.rel #[preApplied, wpTy]
    /- later when the whole proof is type checked, we want to help the kernel by providing the expected type -/
    specApplied ← mkExpectedTypeHint specApplied specAppliedTy
-@@ -365,8 +366,16 @@
+@@ -365,8 +366,18 @@
    let_expr PartialOrder.rel Pred' _cl' pre rhs := specType
      | throwError "target not a partial order ⊑ application {specType}"
    guard <| ← isDefEqGuarded info.Pred Pred'
@@ -23,7 +23,9 @@ diff -ruN a/Ascent/Tactic/VCGen/RuleConstruction.lean b/Ascent/Tactic/VCGen/Rule
 +  let prog := specInfo.prog
 +  let postSpec := specInfo.post
 +  let epostsSpec := specInfo.eposts
-+  for i in [0:WRPApp.progIdx] do
++  -- The abstract `WP` instance, the exception concretization and `γ` fix the abstract half of the
++  -- prefix, as `instWP` fixes the concrete half.
++  for i in [14, 15, 16] do
 +    guard <| ← withDefault <| isDefEqGuarded info.args[i]! specInfo.args[i]!
 +  -- The rule's abstract program is the spec's.
 +  let info := { info with args := info.args.set! 18 specInfo.abs }
