@@ -1,7 +1,7 @@
 diff -ruN a/Ascent/Tactic/VCGen/Driver.lean b/Ascent/Tactic/VCGen/Driver.lean
---- a/Ascent/Tactic/VCGen/Driver.lean	2026-10-29 14:49:33.638232668 +0000
-+++ b/Ascent/Tactic/VCGen/Driver.lean	2026-10-29 14:49:33.657172930 +0000
-@@ -92,15 +92,35 @@
+--- a/Ascent/Tactic/VCGen/Driver.lean	2026-10-29 14:52:51.772403866 +0000
++++ b/Ascent/Tactic/VCGen/Driver.lean	2026-10-29 14:52:51.791549883 +0000
+@@ -92,15 +92,36 @@
  structure WorkItem where
    goal : Grind.Goal
    scope : Scope
@@ -18,13 +18,14 @@ diff -ruN a/Ascent/Tactic/VCGen/Driver.lean b/Ascent/Tactic/VCGen/Driver.lean
    let mvarId ← preprocessMVar goal.mvarId
 -  let mut worklist : Array WorkItem := #[{ goal := { goal with mvarId }, scope }]
 +  let mut worklist : Array WorkItem := #[{ goal := { goal with mvarId }, scope, coreScope }]
++  let mut holes : Array Grind.Goal := #[]
    while let some s := worklist.back? do
      worklist := worklist.pop
      if ← s.goal.mvarId.isAssigned then continue
-+    -- A subgoal of data type is a synthesis hole: it stays a natural metavariable, and it is
-+    -- returned only if no later step assigns it.
++    -- A subgoal of data type is a synthesis hole: it stays a natural metavariable until the
++    -- worklist is empty, and only then is it emitted, if no step assigned it.
 +    unless (← Sym.getLevel (← s.goal.mvarId.getType)).isZero do
-+      modify fun st => { st with vcs := st.vcs.push s.goal }
++      holes := holes.push s.goal
 +      continue
      let goal ← processHypotheses s.goal
      if goal.inconsistent then continue
@@ -39,16 +40,19 @@ diff -ruN a/Ascent/Tactic/VCGen/Driver.lean b/Ascent/Tactic/VCGen/Driver.lean
      match ← solve s.scope goal.mvarId with
      | .stop _reason =>
        emitVC goal
-@@ -110,7 +130,7 @@
+@@ -110,7 +131,10 @@
        -- Non-invariant subgoals go to the worklist as usual and will eventually go through `emitVC`.
        let subgoals ← handleInvariantSubgoals subgoals
        worklist := worklist ++ subgoals.reverse.map (fun mv =>
 -        { goal := { goal with mvarId := mv }, scope })
 +        { goal := { goal with mvarId := mv }, scope, coreScope := s.coreScope })
++  for hole in holes do
++    unless ← hole.mvarId.isAssigned do
++      emitVC hole
  
  structure Result where
    /-- All invariant goals emitted during VC generation, in emit order. The MVarId at
-@@ -134,7 +154,7 @@
+@@ -134,7 +158,7 @@
  
  `stepLimit?`, when `some n`, seeds the fuel counter to `n`; when `none`, fuel is unlimited.
  -/
@@ -57,7 +61,7 @@ diff -ruN a/Ascent/Tactic/VCGen/Driver.lean b/Ascent/Tactic/VCGen/Driver.lean
      (stepLimit? : Option Nat := none) (frameDB : FrameDB := {}) :
      Grind.GrindM Result := do
    let initState : State :=
-@@ -142,7 +162,7 @@
+@@ -142,7 +166,7 @@
    -- VCGen temporarily violates the `SymM` folded-projections invariant: `reduceHead?`
    -- exposes kernel projections in intermediate terms and restores the invariant in its
    -- final result, so the `shareCommon` kernel-projection check is disabled.

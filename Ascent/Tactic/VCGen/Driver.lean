@@ -103,13 +103,14 @@ def isWPGoal (goal : MVarId) : MetaM Bool := do
 def work (scope coreScope : Scope) (goal : Grind.Goal) : VCGenM Unit := do
   let mvarId ← preprocessMVar goal.mvarId
   let mut worklist : Array WorkItem := #[{ goal := { goal with mvarId }, scope, coreScope }]
+  let mut holes : Array Grind.Goal := #[]
   while let some s := worklist.back? do
     worklist := worklist.pop
     if ← s.goal.mvarId.isAssigned then continue
-    -- A subgoal of data type is a synthesis hole: it stays a natural metavariable, and it is
-    -- returned only if no later step assigns it.
+    -- A subgoal of data type is a synthesis hole: it stays a natural metavariable until the
+    -- worklist is empty, and only then is it emitted, if no step assigned it.
     unless (← Sym.getLevel (← s.goal.mvarId.getType)).isZero do
-      modify fun st => { st with vcs := st.vcs.push s.goal }
+      holes := holes.push s.goal
       continue
     let goal ← processHypotheses s.goal
     if goal.inconsistent then continue
@@ -131,6 +132,9 @@ def work (scope coreScope : Scope) (goal : Grind.Goal) : VCGenM Unit := do
       let subgoals ← handleInvariantSubgoals subgoals
       worklist := worklist ++ subgoals.reverse.map (fun mv =>
         { goal := { goal with mvarId := mv }, scope, coreScope := s.coreScope })
+  for hole in holes do
+    unless ← hole.mvarId.isAssigned do
+      emitVC hole
 
 structure Result where
   /-- All invariant goals emitted during VC generation, in emit order. The MVarId at

@@ -5,7 +5,7 @@ import Ascent.Tactic.VCGen.Driver
 # The `ascend'` tactic
 
 `ascend'` runs the forked worklist on a goal `⦃P⦄ c ⪯[γ] a ⦃Q; E⦄`. The `wrp` goals use the
-`@[wrp_spec]` database, and the `wp` goals use the `@[spec]` database. A natural metavariable in
+`@[ascend]` database, and the `wp` goals use the `@[spec]` database. A natural metavariable in
 `a` is a synthesis hole.
 -/
 
@@ -28,8 +28,8 @@ def unsealAbstractHole (goal : MVarId) : MetaM (Option MVarId) := do
   return some mvarId
 
 /-- Restore the local context of the hole, and check that the synthesized program uses only the
-free variables of that context. The unassigned metavariables of the program take the same context
-and are sealed, so that only an explicit assignment can fill them. -/
+free variables of that context. The unassigned metavariables of the program, which the run
+emitted as sealed goals, take the same context. -/
 def checkHoleScope (hole : MVarId) (decl : MetavarDecl) : MetaM Unit := do
   let restore (mv : MVarId) := modifyMCtx (·.modifyExprMVarDecl mv fun d =>
     { d with lctx := decl.lctx, localInstances := decl.localInstances })
@@ -44,7 +44,6 @@ def checkHoleScope (hole : MVarId) (decl : MetavarDecl) : MetaM Unit := do
       throwError "ascend: a hole of the synthesized abstract program has a type that mentions a \
         variable that the run introduced"
     restore mv
-    mv.setKind .syntheticOpaque
 
 @[tactic ascendTac]
 def elabAscend : Tactic := fun _ => withMainContext do
@@ -52,7 +51,7 @@ def elabAscend : Tactic := fun _ => withMainContext do
   let hole? ← unsealAbstractHole goal
   let holeDecl? ← hole?.mapM (·.getDecl)
   let ctx : Context := { backwardRules := ← mkBackwardRules, internalize := false }
-  let scope : Scope := { specs := ← getWrpSpecTheorems }
+  let scope : Scope := { specs := ← getAscendSpecTheorems }
   let coreScope : Scope := { specs := ← getSpecTheorems }
   let params ← Grind.mkDefaultParams { clean := false }
   let (_, state) ← Grind.GrindTacticM.runAtGoal goal params (sym := true) do

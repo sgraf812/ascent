@@ -68,14 +68,14 @@ def setL (x : String) (v : Nat) : M Unit := fun s =>
   simp only [StateT.wp_apply_eq, StateT.run, setL, UB.wp_pure_eq]
   exact h
 
-@[wrp_spec high] theorem setL_stutter {β AV : Type} (x : String) (v : Nat) (k : Unit → M β)
+@[ascend high] theorem setL_stutter {β AV : Type} (x : String) (v : Nat) (k : Unit → M β)
     (a : StateT Nat UB AV) (Q : β → AV → St → Prop) (E : EStack⟨⟩) :
     (fun s => wp (setL x v) (fun u s' => s'.heap = s.heap ∧
         wrp (ofStateRepr St.heap) (k u) a Q E s') E s)
       ⊑ wrp (ofStateRepr St.heap) (setL x v >>= k) a Q E :=
   wrp_stutter St.heap (setL x v) k a Q E
 
-@[wrp_spec] theorem getL_read (x : String) (av : Nat) (Q : Nat → Nat → St → Prop)
+@[ascend] theorem getL_read (x : String) (av : Nat) (Q : Nat → Nat → St → Prop)
     (E : EStack⟨⟩) :
     (fun s => wp (getL x) (fun v s' => s'.heap = s.heap ∧ Q v av s') E s)
       ⊑ wrp (ofStateRepr St.heap) (getL x) (pure av : StateT Nat UB Nat) Q E :=
@@ -106,7 +106,7 @@ def getH : M Nat := fun s => pure (s.heap, s)
 @[spec] theorem getH_spec (post : Nat → St → Prop) : ⦃fun s => post s.heap s⦄ getH ⦃post⦄ :=
   ⟨fun s h => by simpa [StateT.wp_apply_eq, StateT.run, getH, UB.wp_pure_eq] using h⟩
 
-@[wrp_spec] theorem getH_read (av : Nat) (Q : Nat → Nat → St → Prop) (E : EStack⟨⟩) :
+@[ascend] theorem getH_read (av : Nat) (Q : Nat → Nat → St → Prop) (E : EStack⟨⟩) :
     (fun s => wp getH (fun v s' => s'.heap = s.heap ∧ Q v av s') E s)
       ⊑ wrp (ofStateRepr St.heap) getH (pure av : StateT Nat UB Nat) Q E :=
   wrp_read St.heap getH av Q E

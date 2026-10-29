@@ -10,7 +10,7 @@ The translation table substitutes each `vcgen` lemma by the lemma here with the 
 Each lemma takes the 17 arguments of `wrp` before `c`, then `a`, then the arguments that its `wp`
 counterpart takes after the program type prefix.
 
-The `@[wrp_spec]` attribute keys a spec `pre ⊑ wrp γ c a Q E` on its concrete program `c`.
+The `@[ascend]` attribute keys a spec `pre ⊑ wrp γ c a Q E` on its concrete program `c`.
 -/
 
 open Lean Meta Sym Std.WP Lean.Order Ascent
@@ -85,25 +85,25 @@ def mkSpecTheoremFromConst (declName : Name) (prio : Nat) : MetaM SpecTheorem :=
   let info := (← getAsyncConstInfo declName).toConstantVal
   let (pattern, _) ← Sym.mkPatternFromDeclWithKey declName fun type => do
     let some prog ← selectProg (← whnfR type)
-      | throwError "@[wrp_spec]: the conclusion of {declName} is not `pre ⊑ wrp …`"
+      | throwError "@[ascend]: the conclusion of {declName} is not `pre ⊑ wrp …`"
     return (prog, ())
   let _ := info
   return { pattern := eraseUnusedVarsFromPattern pattern, proof := .global declName,
            kind := .triple, conjunctivePre := true, priority := prio }
 
-initialize wrpSpecExt : SpecExtension ← registerSimpleScopedEnvExtension { mkSpecExt with name := `wrpSpecMap }
+initialize ascendSpecExt : SpecExtension ← registerSimpleScopedEnvExtension { mkSpecExt with name := `ascendSpecMap }
 
 initialize registerBuiltinAttribute {
-  name := `wrp_spec
+  name := `ascend
   descr := "a `pre ⊑ wrp …` spec for the ascend fork of vcgen"
   add := fun declName stx kind => do
     let prio ← getAttrParamOptPrio stx[1]
     let thm ← MetaM.run' (mkSpecTheoremFromConst declName prio)
-    wrpSpecExt.add thm kind
+    ascendSpecExt.add thm kind
 }
 
-/-- The `@[wrp_spec]` database in scope. -/
-def getWrpSpecTheorems : CoreM SpecTheorems :=
-  return wrpSpecExt.getState (← getEnv)
+/-- The `@[ascend]` database in scope. -/
+def getAscendSpecTheorems : CoreM SpecTheorems :=
+  return ascendSpecExt.getState (← getEnv)
 
 end Lean.Elab.Tactic.VCGen.Ascend
