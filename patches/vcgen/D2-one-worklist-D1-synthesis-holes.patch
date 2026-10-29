@@ -1,0 +1,68 @@
+diff -ruN a/Ascent/Tactic/VCGen/Driver.lean b/Ascent/Tactic/VCGen/Driver.lean
+--- a/Ascent/Tactic/VCGen/Driver.lean	2026-10-29 13:56:14.578281633 +0000
++++ b/Ascent/Tactic/VCGen/Driver.lean	2026-10-29 13:56:14.598745887 +0000
+@@ -92,15 +92,35 @@
+ structure WorkItem where
+   goal : Grind.Goal
+   scope : Scope
++  /-- The `@[spec]` scope for the `wp` goals of the worklist. -/
++  coreScope : Scope
+ 
+-def work (scope : Scope) (goal : Grind.Goal) : VCGenM Unit := do
++/-- `true` iff the target of `goal` is `pre ⊑ wp …`, which `vcgen`'s own `solve` decomposes. -/
++def isWPGoal (goal : MVarId) : MetaM Bool := do
++  let_expr PartialOrder.rel _ _ _ rhs := (← goal.getType).consumeMData | return false
++  return (Lean.Elab.Tactic.VCGen.isWPApp? rhs).isSome
++
++def work (scope coreScope : Scope) (goal : Grind.Goal) : VCGenM Unit := do
+   let mvarId ← preprocessMVar goal.mvarId
+-  let mut worklist : Array WorkItem := #[{ goal := { goal with mvarId }, scope }]
++  let mut worklist : Array WorkItem := #[{ goal := { goal with mvarId }, scope, coreScope }]
+   while let some s := worklist.back? do
+     worklist := worklist.pop
+     if ← s.goal.mvarId.isAssigned then continue
++    -- A subgoal of data type is a synthesis hole: it stays a natural metavariable, and it is
++    -- returned only if no later step assigns it.
++    unless ← Meta.isProp (← s.goal.mvarId.getType) do
++      modify fun st => { st with vcs := st.vcs.push s.goal }
++      continue
+     let goal ← processHypotheses s.goal
+     if goal.inconsistent then continue
++    if ← isWPGoal goal.mvarId then
++      match ← Lean.Elab.Tactic.VCGen.solve s.coreScope goal.mvarId with
++      | .stop _reason => emitVC goal
++      | .goals coreScope subgoals =>
++        let subgoals ← handleInvariantSubgoals subgoals
++        worklist := worklist ++ subgoals.reverse.map (fun mv =>
++          { goal := { goal with mvarId := mv }, scope := s.scope, coreScope })
++      continue
+     match ← solve s.scope goal.mvarId with
+     | .stop _reason =>
+       emitVC goal
+@@ -110,7 +130,7 @@
+       -- Non-invariant subgoals go to the worklist as usual and will eventually go through `emitVC`.
+       let subgoals ← handleInvariantSubgoals subgoals
+       worklist := worklist ++ subgoals.reverse.map (fun mv =>
+-        { goal := { goal with mvarId := mv }, scope })
++        { goal := { goal with mvarId := mv }, scope, coreScope := s.coreScope })
+ 
+ structure Result where
+   /-- All invariant goals emitted during VC generation, in emit order. The MVarId at
+@@ -134,7 +154,7 @@
+ 
+ `stepLimit?`, when `some n`, seeds the fuel counter to `n`; when `none`, fuel is unlimited.
+ -/
+-partial def run (goal : Grind.Goal) (ctx : Context) (scope : Scope)
++partial def run (goal : Grind.Goal) (ctx : Context) (scope coreScope : Scope)
+     (stepLimit? : Option Nat := none) (frameDB : FrameDB := {}) :
+     Grind.GrindM Result := do
+   let initState : State :=
+@@ -142,7 +162,7 @@
+   -- VCGen temporarily violates the `SymM` folded-projections invariant: `reduceHead?`
+   -- exposes kernel projections in intermediate terms and restores the invariant in its
+   -- final result, so the `shareCommon` kernel-projection check is disabled.
+-  let ((), state) ← Sym.withoutFoldProjsCheck <| StateRefT'.run (ReaderT.run (work scope goal) ctx) initState
++  let ((), state) ← Sym.withoutFoldProjsCheck <| StateRefT'.run (ReaderT.run (work scope coreScope goal) ctx) initState
+   _ ← state.invariants.mapIdxM fun idx mv => do
+     mv.setTag (Name.mkSimple ("inv" ++ toString (idx + 1)))
+   _ ← state.vcs.mapIdxM fun idx g => do

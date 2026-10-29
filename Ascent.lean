@@ -10,3 +10,4 @@ import Ascent.WRP
 import Ascent.Refinement
 import Ascent.Refinement.WhileLoop
 import Ascent.Tactic
+import Ascent.Tactic.VCGen.Frontend

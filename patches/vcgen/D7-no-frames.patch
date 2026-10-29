@@ -1,0 +1,251 @@
+diff -ruN a/Ascent/Tactic/VCGen/RuleCache.lean b/Ascent/Tactic/VCGen/RuleCache.lean
+--- a/Ascent/Tactic/VCGen/RuleCache.lean	2026-10-29 13:56:14.574578993 +0000
++++ b/Ascent/Tactic/VCGen/RuleCache.lean	2026-10-29 13:56:14.585323412 +0000
+@@ -82,19 +82,4 @@
+   modify fun st => { st with latticeBackwardRuleCache := st.latticeBackwardRuleCache.insert key rule }
+   return rule
+ 
+-/--
+-Cached version of `mkFrameBackwardRule`.
+-
+-Cache key: `(instWP, excessArgs.size)` (the operator is determined by the monad).
+--/
+-def mkFrameBackwardRuleCached (fp : FrameProc) (info : WRPApp) :
+-    VCGenM FrameBackwardRule := do
+-  let key := (ExprPtr.mk info.instWP, info.excessArgs.size)
+-  if let some rule := (← get).frameBackwardRuleCache[key]? then return rule
+-  let frule ← mkFrameBackwardRule fp info
+-  let frule := { frule with rule := ← frule.rule.shareCommon }
+-  modify fun st => { st with frameBackwardRuleCache := st.frameBackwardRuleCache.insert key frule }
+-  return frule
+-
+-
+ end Lean.Elab.Tactic.VCGen.Ascend
+diff -ruN a/Ascent/Tactic/VCGen/RuleConstruction.lean b/Ascent/Tactic/VCGen/RuleConstruction.lean
+--- a/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-10-29 13:56:14.573997720 +0000
++++ b/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-10-29 13:56:14.585130735 +0000
+@@ -449,65 +449,4 @@
+   let res ← abstractMVars prf
+   mkBackwardRuleFromExpr res.expr res.paramNames.toList
+ 
+-/-! ## Frame rules -/
+-
+-/-- Locate the assignable subgoal positions of a frame backward rule: the split VC (the premise
+-`pre ⊑ (op F W) s⃗`, found by `opHead`) and the frame `F` read off its right-hand side. -/
+-def analyzeFrameRule (rule : BackwardRule) (opHead : Name) (numExcess : Nat) :
+-    MetaM FrameBackwardRule := do
+-  -- The binder telescope of the rule type is the pattern telescope, so `xs` is indexed by the
+-  -- entries of `resultPos`, which reorders the subgoal binders (non-dependent first) into the
+-  -- applied rule's goal list.
+-  let resultPos := rule.resultPos.toArray
+-  forallTelescope (← Meta.inferType rule.expr) fun xs _ => do
+-    let premiseType (listIdx : Nat) : MetaM Expr :=
+-      Meta.inferType xs[resultPos[listIdx]!]!
+-    let mut found := none
+-    -- Find the opApp `op F W` in the split VC that looks like `pre ⊑ (op F W) s`
+-    for i in [0:resultPos.size] do
+-      let_expr Lean.Order.PartialOrder.rel _ _ _ rhs := (← premiseType i) | continue
+-      let opApp := rhs.stripArgsN numExcess
+-      if opApp.isAppOf opHead then
+-        found := some (i, opApp)
+-        break
+-    let some (splitVCIdx, opApp) := found
+-      | throwError "frame: could not locate the split VC in the frame rule for `{opHead}`"
+-    let frameIdx := resultPos.idxOf (xs.idxOf opApp.appFn!.appArg!)
+-    return { rule, splitVCIdx, frameIdx }
+-
+-/--
+-The frame backward rule for a frame operator `op : R → Pred → Pred`, built from the frame rule
+-`meet_op_wp_upperAdjoint_le_wp`.
+-
+-The rule concludes `pre ⊑ wp prog Q E s⃗` from the split VC `pre ⊑ (op F W) s⃗` and the frame
+-condition `WP.Frames op prog F G`, with the frame `F` left schematic, the guard `G` the frame of
+-`pre` for the excess state arguments `fun u⃗ => ⌜u⃗ = s⃗⌝ ⊓ pre`, and the weakest footprint
+-`W = wp prog (fun a => upperAdjoint (op F) (Q a)) (upperAdjoint (opE F) E)` baked in, so a single
+-rule serves every inferred frame. `analyzeFrameRule` records the positions of the schematic slots.
+--/
+-def mkFrameBackwardRule (fp : FrameProc) (info : WRPApp) :
+-    MetaM FrameBackwardRule := do
+-  let op ← fp.mkOpAppM info
+-  let thm ← mkAppOptM ``Std.WP.meet_op_wp_upperAdjoint_le_wp
+-    ((info.lemmaPrefix).map some ++ #[none, some op, none, none])
+-  let (xs, _, concl) ← forallMetaTelescope (← instantiateMVars (← Meta.inferType thm))
+-  let_expr PartialOrder.rel _ _ lhs wp := concl
+-    | throwError "frame: unexpected frame rule conclusion{indentExpr concl}"
+-  let_expr Lean.Order.meet _ _ guard opApp := lhs
+-    | throwError "frame: unexpected frame rule precondition{indentExpr lhs}"
+-  let ss ← info.excessArgs.mapM fun s => do mkFreshExprMVar (← Meta.inferType s) (userName := `s)
+-  let pre ← mkFreshExprMVar (← Meta.inferType info.expr) (userName := `Pre)
+-  let hsplit ← mkFreshExprMVar (← mkAppM ``PartialOrder.rel #[pre, mkAppN opApp ss])
+-    (userName := `vc)
+-  let ssFrame ← ExcessArgsFrameInfo.new pre ss
+-  guard.mvarId!.assign ssFrame.frame
+-  let hop ← ssFrame.abstract opApp ss hsplit
+-  let G := ssFrame.frame
+-  let hmeet ← mkAppM ``le_meet
+-    #[G, G, opApp, ← mkAppOptM ``PartialOrder.rel_refl #[none, none, G], hop]
+-  let prf ← ssFrame.instantiate wp ss (← mkAppM ``PartialOrder.rel_trans #[hmeet, mkAppN thm xs])
+-  let res ← abstractMVars (← instantiateMVars prf)
+-  let rule ← mkBackwardRuleFromExpr res.expr res.paramNames.toList
+-  analyzeFrameRule rule fp.opHead info.excessArgs.size
+-
+ end Lean.Elab.Tactic.VCGen.Ascend
+diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
+--- a/Ascent/Tactic/VCGen/Solve.lean	2026-10-29 13:56:14.577665377 +0000
++++ b/Ascent/Tactic/VCGen/Solve.lean	2026-10-29 13:56:14.585796454 +0000
+@@ -401,101 +401,6 @@
+     return true
+   return false
+ 
+-/-- `let`-declaration analogue of `withLocalDeclsDND`: brings each `name : type := value` into scope
+-(types and values mutually independent), then runs `k` with the new free variables. -/
+-@[inline]
+-def withLetDeclsDND (declInfos : Array (Name × Expr × Expr))
+-    (k : Array Expr → VCGenM Expr) : VCGenM Expr :=
+-  loop #[]
+-where
+-  loop (acc : Array Expr) : VCGenM Expr := do
+-    if h : acc.size < declInfos.size then
+-      let (name, type, value) := declInfos[acc.size]
+-      Meta.withLetDecl name type value fun fv => loop (acc.push fv)
+-    else
+-      k acc
+-  termination_by declInfos.size - acc.size
+-
+-/-- Elaborate a matched `frames` alternative's frame term at the resource type `resourceTy` of the
+-applicable frame operator, with each named pattern variable bound to the subterm the pattern matched.
+-The bindings are introduced as `let`-declarations carrying the matched value, so the resulting frame
+-records the pattern-variable assignments and the user sees them in the side goals. -/
+-def elabFrame (resourceTy : Expr) (entry : FrameEntry) (res : Sym.MatchUnifyResult) :
+-    VCGenM Expr := do
+-  let mut decls : Array (Name × Expr × Expr) := #[]
+-  for nm? in entry.varNames, arg in res.args do
+-    if let some nm := nm? then
+-      decls := decls.push (nm, ← Meta.inferType arg, arg)
+-  Meta.withDefault <| withLetDeclsDND decls fun fvs => do
+-    let frameExpr ← Lean.Elab.Term.TermElabM.run' do
+-      let e ← Lean.Elab.Term.elabTermEnsuringType entry.frameStx (some resourceTy)
+-      Lean.Elab.Term.synthesizeSyntheticMVarsNoPostponing
+-      mkLetFVars fvs e
+-    instantiateMVarsS frameExpr
+-
+-/-- Find an unretired `frames` alternative matching the program (earliest source order wins),
+-elaborate its frame at the resource type of `fp`'s operator, and retire it so it applies at most
+-once. -/
+-def matchFrame? (fp : FrameProc) (info : WRPApp) : VCGenM (Option Expr) := do
+-  let db := (← get).frameDB
+-  if db.entries.isEmpty then return none
+-  let mut best : Option (FrameEntry × Sym.MatchUnifyResult) := none
+-  for srcIdx in Sym.getMatch (← getMCtx) db.tree info.prog do
+-    let entry := db.entries[srcIdx]!
+-    if entry.retired then continue
+-    if let some res ← entry.pat.match? info.prog then
+-      match best with
+-      | none => best := some (entry, res)
+-      | some (b, _) => if entry.srcIdx < b.srcIdx then best := some (entry, res)
+-  let some (entry, res) := best | return none
+-  modify fun s =>
+-    let entries := s.frameDB.entries.set! entry.srcIdx { entry with retired := true }
+-    { s with frameDB := { s.frameDB with entries } }
+-  let frame ← elabFrame (← fp.mkResourceTy info) entry res
+-  trace[Elab.Tactic.Do.vcgen] "`frames` matched {info.prog}; frame:{indentExpr frame}"
+-  return some frame
+-
+-/-- Apply `specRule` to a fresh target `?fp ⊑ wp prog ?Q E ?s⃗`.
+-Return the completed `FrameGoal` to pass to the frameproc. -/
+-def applySpecToFootprint (info : WRPApp) (specRule : Sym.BackwardRule)
+-    (le W : Expr) (excessStates : Array Expr) (frame : MVarId)
+-    (splitLatticeOp? : MVarId → Grind.GrindM (Option (List MVarId))) :
+-    Grind.GrindM (Option (FrameGoal × List MVarId)) := do
+-  let fp ← mkFreshExprMVar le.appFn!.appArg!
+-  let rhs ← mkAppNS W excessStates
+-  let target ← mkFreshExprSyntheticOpaqueMVar (← mkAppNS le #[fp, rhs])
+-  let .goals sgs ← specRule.apply target.mvarId! | return none
+-  let some preVC ← sgs.findM? fun g => return (← g.getType).isAppOf ``Lean.Order.PartialOrder.rel
+-    | throwError "frame: spec rule left no precondition VC for{indentExpr info.prog}"
+-  let some framedApp := isWRPApp? rhs
+-    | throwError "frame: the weakest footprint is not a `wp` application for{indentExpr info.prog}"
+-  let goal : FrameGoal :=
+-    { frame, footprint := fp.mvarId!, framedApp, specPre := (← preVC.getType).appArg!, preVC,
+-      specProof := target, splitLatticeOp? }
+-  return some (goal, sgs)
+-
+-/-- Apply the frame rule to a copy of `goal`, and read the weakest footprint `W` off its split VC
+-`pre ⊑ (op ?F W) s⃗`. The copy keeps candidate fall-through possible: committing to the frame rule
+-has no undo, so a spec that turns out not to apply leaves the copy orphaned and the goal untouched. -/
+-def commitFrameRule (goal : MVarId) (info : WRPApp) (fp : FrameProc) :
+-    VCGenM (Expr × FrameBackwardRule × Array MVarId × Expr) := do
+-  let frule ← mkFrameBackwardRuleCached fp info
+-  let copy ← mkFreshExprSyntheticOpaqueMVar (← goal.getType)
+-  let .goals goals ← frule.rule.applyChecked copy.mvarId! m!"frame rule for{indentExpr info.prog}"
+-    | throwError "frame: failed to apply rule for{indentExpr info.prog}"
+-  let goals := goals.toArray
+-  let vcType ← goals[frule.splitVCIdx]!.getType
+-  let_expr Lean.Order.PartialOrder.rel _ _ _ rhs := vcType
+-    | throwError "frame: split VC is not an entailment{indentExpr vcType}"
+-  return (copy, frule, goals, (rhs.stripArgsN info.excessArgs.size).appArg!)
+-
+-/-- `splitLatticeOp?` as a `GrindM` callback for `FrameGoal`, closed over the rule cache. -/
+-def splitLatticeOpCallback : VCGenM (MVarId → Grind.GrindM (Option (List MVarId))) :=
+-  liftWith (m := Grind.GrindM) fun run => pure fun m => run do
+-    let ty ← m.getType
+-    let_expr Lean.Order.PartialOrder.rel _ _ _ rhs := ty | return none
+-    splitLatticeOp? m rhs
+-
+ /--
+ Apply the selected `@[spec]` theorem `thm` to a spec-ready program `info.prog`. `none` when no
+ backward rule fits the goal's monad, or when the rule does not apply.
+@@ -507,8 +412,8 @@
+ continuation; see `FrameProc.lean`. When the spec does not apply to the footprint, the copy is
+ dropped and the candidate falls through.
+ -/
+-def applySpec (scope : Scope) (goal : MVarId) (info : WRPApp) (thm : SpecTheorem)
+-    (fp : FrameProc) (providedFrame? : Option Expr) : VCGenM (Option SolveResult) := do
++def applySpec (scope : Scope) (goal : MVarId) (info : WRPApp) (thm : SpecTheorem) :
++    VCGenM (Option SolveResult) := do
+   let some specRule ←
+     try
+       mkBackwardRuleFromSpecCached thm info |>.run
+@@ -519,28 +424,6 @@
+         Pred:{indentExpr info.Pred}\n\
+         excessArgs: {info.excessArgs}"
+     | return none
+-  unless thm.conjunctivePre do
+-    let target ← goal.getType
+-    let inferInfo : FrameInferenceInfo :=
+-      { pre := target.appFn!.appArg!, le := target.stripArgsN 2
+-        unframedApp := info, providedFrame?, spec? := thm.global?,
+-        mkOpApp := do shareCommon (← fp.mkOpAppM info) }
+-    match ← fp.proc inferInfo with
+-    | .decline => pure ()
+-    | .commit excessStates k =>
+-      unless excessStates.size == info.excessArgs.size do
+-        throwError "frameproc: the spec must run at {info.excessArgs.size} state arguments \
+-          for now, got {excessStates.size}"
+-      let (copy, frule, goals, W) ← commitFrameRule goal info fp
+-      let some (fgoal, sgs) ←
+-          applySpecToFootprint info specRule inferInfo.le W excessStates goals[frule.frameIdx]!
+-            (← splitLatticeOpCallback)
+-        | return none
+-      let split ← k fgoal
+-      trace[Elab.Tactic.Do.vcgen] "`@[frameproc]` framed {info.prog}"
+-      goals[frule.splitVCIdx]!.assign split.splitVCProof
+-      goal.assign copy
+-      return some (.goals scope (goals.toList ++ fgoal.preVC :: sgs ++ split.subgoals))
+   trace[Elab.Tactic.Do.vcgen] "Applying spec {thm.proof} for {info.prog}. Excess args: {info.excessArgs}"
+   let .goals goals ← specRule.applyChecked goal m!"spec rule for{indentExpr info.prog}"
+     | return none
+@@ -557,12 +440,8 @@
+ def applySpecs (scope : Scope) (goal : MVarId) (info : WRPApp) :
+     VCGenM SolveResult := goal.withContext do
+   let candidates ← SpecTheorems.findSpecs scope.specs info.prog
+-  let procs := (← read).frameProcs.byProg
+-  let fp := info.M.getAppFn.constName?.bind (procs[·]?) |>.getD meetFrameProc
+-  let providedFrame? ←
+-    if candidates.isEmpty then pure none else matchFrame? fp info
+   for thm in candidates do
+-    if let some res ← applySpec scope goal info thm fp providedFrame? then
++    if let some res ← applySpec scope goal info thm then
+       return res
+     trace[Elab.Tactic.Do.vcgen] "Failed to apply spec {thm.proof} for {info.prog}"
+   stopOrErrorOnMissingSpec info.prog info.M candidates
