@@ -145,7 +145,8 @@ the same hash-consed expression as `e`, or `none`. Must run in `goal`'s context.
 def liftedPreFor? (scope : Scope) (e : Expr) : VCGenM (Option LocalDecl) := do
   let some fvarId := scope.lastLiftedPre? | return none
   let some hyp := (← getLCtx).find? fvarId | return none
-  unless isSameExpr e hyp.type do return none
+  -- Unification lets the hypothesis assign a synthesis hole in `e`.
+  unless isSameExpr e hyp.type || (← isDefEqS e hyp.type) do return none
   trace[Elab.Tactic.Do.vcgen] "Solved by lifted hypothesis {hyp.userName}"
   return some hyp
 
@@ -523,10 +524,7 @@ def solve (scope : Scope) (goal : MVarId) : VCGenM SolveResult := goal.withConte
   -- Phase 2: close reflexive goals, then drive `pre` toward `⊤`, lifting any pure content so a
   -- later spec application sees a `⊤` precondition.
   if let some gs ← rfl? goal then return .goals scope gs
-  -- On a `wrp` goal the precondition stays in place, so that a spec's precondition is handed off
-  -- by `rfl?`, which can assign the spec's abstract inputs.
-  if (isWRPApp? rhs).isNone then
-    if let some (scope, gs) ← normalizePre? scope goal α pre target then return .goals scope gs
+  if let some (scope, gs) ← normalizePre? scope goal α pre target then return .goals scope gs
 
   -- Collect new local specs before any strategy that may emit multiple subgoals
   -- (`wpMatch?`, `splitLatticeOp?`) or apply a registered spec (`applySpec`).

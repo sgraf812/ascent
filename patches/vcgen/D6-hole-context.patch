@@ -1,6 +1,6 @@
 diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
---- a/Ascent/Tactic/VCGen/Solve.lean	2026-10-29 15:15:40.159740470 +0000
-+++ b/Ascent/Tactic/VCGen/Solve.lean	2026-10-29 15:15:40.167505188 +0000
+--- a/Ascent/Tactic/VCGen/Solve.lean	2026-10-29 15:18:54.123851919 +0000
++++ b/Ascent/Tactic/VCGen/Solve.lean	2026-10-29 15:18:54.132478909 +0000
 @@ -425,8 +425,38 @@
          excessArgs: {info.excessArgs}"
      | return none
