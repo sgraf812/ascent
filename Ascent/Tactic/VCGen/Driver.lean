@@ -108,7 +108,7 @@ def work (scope coreScope : Scope) (goal : Grind.Goal) : VCGenM Unit := do
     if ← s.goal.mvarId.isAssigned then continue
     -- A subgoal of data type is a synthesis hole: it stays a natural metavariable, and it is
     -- returned only if no later step assigns it.
-    unless ← Meta.isProp (← s.goal.mvarId.getType) do
+    unless (← Sym.getLevel (← s.goal.mvarId.getType)).isZero do
       modify fun st => { st with vcs := st.vcs.push s.goal }
       continue
     let goal ← processHypotheses s.goal

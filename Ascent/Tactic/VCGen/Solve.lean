@@ -428,7 +428,7 @@ def applySpec (scope : Scope) (goal : MVarId) (info : WRPApp) (thm : SpecTheorem
   let saved ← (saveState : MetaM Meta.SavedState)
   -- An unassigned hole in the abstract program takes the goal's local context, so that the rule
   -- can assign it. The frontend checks the scope of the synthesized program after the run.
-  if let .mvar hole := (← instantiateMVars info.abs) then
+  if let .mvar hole := (← instantiateMVarsIfMVarAppS info.abs) then
     if (← hole.getKind) matches .natural then
       let lctx ← getLCtx
       let localInstances ← getLocalInstances

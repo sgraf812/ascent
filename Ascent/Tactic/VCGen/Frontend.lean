@@ -28,14 +28,23 @@ def unsealAbstractHole (goal : MVarId) : MetaM (Option MVarId) := do
   return some mvarId
 
 /-- Restore the local context of the hole, and check that the synthesized program uses only the
-free variables of that context. -/
+free variables of that context. The unassigned metavariables of the program take the same context
+and are sealed, so that only an explicit assignment can fill them. -/
 def checkHoleScope (hole : MVarId) (decl : MetavarDecl) : MetaM Unit := do
-  modifyMCtx (·.modifyExprMVarDecl hole fun d =>
+  let restore (mv : MVarId) := modifyMCtx (·.modifyExprMVarDecl mv fun d =>
     { d with lctx := decl.lctx, localInstances := decl.localInstances })
+  restore hole
   let val ← instantiateMVars (mkMVar hole)
-  if (val.find? fun e => e.isFVar && !decl.lctx.contains e.fvarId!).isSome then
+  let outOfScope (e : Expr) := (e.find? fun e => e.isFVar && !decl.lctx.contains e.fvarId!).isSome
+  if outOfScope val then
     throwError "ascend: the synthesized abstract program mentions a variable that the run \
       introduced, such as the concrete state"
+  for mv in ← getMVars val do
+    if outOfScope (← instantiateMVars (← mv.getType)) then
+      throwError "ascend: a hole of the synthesized abstract program has a type that mentions a \
+        variable that the run introduced"
+    restore mv
+    mv.setKind .syntheticOpaque
 
 @[tactic ascendTac]
 def elabAscend : Tactic := fun _ => withMainContext do

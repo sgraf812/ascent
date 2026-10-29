@@ -1,6 +1,6 @@
 diff -ruN a/Ascent/Tactic/VCGen/Driver.lean b/Ascent/Tactic/VCGen/Driver.lean
---- a/Ascent/Tactic/VCGen/Driver.lean	2026-10-29 14:35:03.316833880 +0000
-+++ b/Ascent/Tactic/VCGen/Driver.lean	2026-10-29 14:35:03.337244158 +0000
+--- a/Ascent/Tactic/VCGen/Driver.lean	2026-10-29 14:49:33.638232668 +0000
++++ b/Ascent/Tactic/VCGen/Driver.lean	2026-10-29 14:49:33.657172930 +0000
 @@ -92,15 +92,35 @@
  structure WorkItem where
    goal : Grind.Goal
@@ -23,7 +23,7 @@ diff -ruN a/Ascent/Tactic/VCGen/Driver.lean b/Ascent/Tactic/VCGen/Driver.lean
      if ← s.goal.mvarId.isAssigned then continue
 +    -- A subgoal of data type is a synthesis hole: it stays a natural metavariable, and it is
 +    -- returned only if no later step assigns it.
-+    unless ← Meta.isProp (← s.goal.mvarId.getType) do
++    unless (← Sym.getLevel (← s.goal.mvarId.getType)).isZero do
 +      modify fun st => { st with vcs := st.vcs.push s.goal }
 +      continue
      let goal ← processHypotheses s.goal

@@ -1,6 +1,6 @@
 diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
---- a/Ascent/Tactic/VCGen/Solve.lean	2026-10-29 14:35:03.324309662 +0000
-+++ b/Ascent/Tactic/VCGen/Solve.lean	2026-10-29 14:35:03.333485071 +0000
+--- a/Ascent/Tactic/VCGen/Solve.lean	2026-10-29 14:49:33.645793266 +0000
++++ b/Ascent/Tactic/VCGen/Solve.lean	2026-10-29 14:49:33.653854918 +0000
 @@ -425,8 +425,16 @@
          excessArgs: {info.excessArgs}"
      | return none
@@ -8,7 +8,7 @@ diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
 +  let saved ← (saveState : MetaM Meta.SavedState)
 +  -- An unassigned hole in the abstract program takes the goal's local context, so that the rule
 +  -- can assign it. The frontend checks the scope of the synthesized program after the run.
-+  if let .mvar hole := (← instantiateMVars info.abs) then
++  if let .mvar hole := (← instantiateMVarsIfMVarAppS info.abs) then
 +    if (← hole.getKind) matches .natural then
 +      let lctx ← getLCtx
 +      let localInstances ← getLocalInstances
