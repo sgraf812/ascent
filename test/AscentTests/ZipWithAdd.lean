@@ -48,6 +48,7 @@ inductive Value                               -- minimal untyped value domain (c
   | int  (v : I)
   | ptr  (a : Addr)
   | size (n : USize)
+  deriving Inhabited
 
 /-- The `size_t` payload of a value, and `0` for the other values. -/
 def Value.toSize : Value → USize
@@ -56,7 +57,7 @@ def Value.toSize : Value → USize
 
 @[simp, vcgen_simp] theorem Value.toSize_size (n : USize) : (Value.size n).toSize = n := rfl
 
-attribute [vcgen_simp] Option.getD_some Option.some.injEq Value.size.injEq exists_eq'
+attribute [vcgen_simp] Option.get!_some Option.some.injEq Value.size.injEq exists_eq'
 
 abbrev Locals := Ident → Option Value
 
@@ -232,7 +233,7 @@ theorem wp_getSize (x : Ident) (Q : USize → State → Prop) (E : EStack⟨⟩)
     | int i => simp [StateT.lift, liftM, monadLift, MonadLift.monadLift]
 
 @[spec] theorem getSize_spec (x : Ident) (post : USize → State → Prop) :
-    ⦃fun s => (∃ n, s.locals x = some (.size n)) ∧ post ((s.locals x).getD (.size 0)).toSize s⦄
+    ⦃fun s => (∃ n, s.locals x = some (.size n)) ∧ post (s.locals x).get!.toSize s⦄
       getSize x ⦃post⦄ := by
   refine ⟨fun s ⟨⟨n, hn⟩, h⟩ => ?_⟩
   rw [wp_getSize, hn]

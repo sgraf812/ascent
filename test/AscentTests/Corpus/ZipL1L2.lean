@@ -11,7 +11,7 @@ docstring names the gap. When the gap closes, the entry fails and becomes a chec
 synthesized program against the hand-written one.
 
 The `getSize` spec states the presence of the local as a VC `∃ n, s.locals x = some (.size n)`,
-and it reads the value as the term `((s.locals x).getD (.size 0)).toSize`. After a write, `simp`
+and it reads the value as the term `(s.locals x).get!.toSize`. After a write, `simp`
 reduces this term to the written value. The entries that remain open share one gap. A hypothesis
 `s.locals x = some (.size n)` from the precondition or from the state relation does not rewrite
 the read value to `n`, so the abstract value mentions the concrete state `s`.
