@@ -1,6 +1,6 @@
 diff -ruN a/Ascent/Tactic/VCGen/RuleConstruction.lean b/Ascent/Tactic/VCGen/RuleConstruction.lean
---- a/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-10-29 15:18:54.123201523 +0000
-+++ b/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-10-29 15:18:54.128164287 +0000
+--- a/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-10-29 15:32:13.402852985 +0000
++++ b/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-10-29 15:32:13.408204429 +0000
 @@ -35,14 +35,15 @@
      on the premise and are later introduced with the right user-facing names. -/
  def mkPostPointwisePremise (postSpec postTarget postTy : Expr) (ssTypes : Array Expr)

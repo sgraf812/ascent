@@ -10,3 +10,4 @@ import AscentTests.HeapValid
 import AscentTests.ThrowCatch
 import AscentTests.ForkTracer
 import AscentTests.WordAbsEngine
+import AscentTests.Corpus.ZipL1L2

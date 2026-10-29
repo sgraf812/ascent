@@ -1,6 +1,6 @@
 diff -ruN a/Ascent/Tactic/VCGen/RuleCache.lean b/Ascent/Tactic/VCGen/RuleCache.lean
---- a/Ascent/Tactic/VCGen/RuleCache.lean	2026-10-29 15:18:54.112701158 +0000
-+++ b/Ascent/Tactic/VCGen/RuleCache.lean	2026-10-29 15:18:54.123391735 +0000
+--- a/Ascent/Tactic/VCGen/RuleCache.lean	2026-10-29 15:32:13.391929682 +0000
++++ b/Ascent/Tactic/VCGen/RuleCache.lean	2026-10-29 15:32:13.403054385 +0000
 @@ -82,19 +82,4 @@
    modify fun st => { st with latticeBackwardRuleCache := st.latticeBackwardRuleCache.insert key rule }
    return rule
@@ -22,8 +22,8 @@ diff -ruN a/Ascent/Tactic/VCGen/RuleCache.lean b/Ascent/Tactic/VCGen/RuleCache.l
 -
  end Lean.Elab.Tactic.VCGen.Ascend
 diff -ruN a/Ascent/Tactic/VCGen/RuleConstruction.lean b/Ascent/Tactic/VCGen/RuleConstruction.lean
---- a/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-10-29 15:18:54.112298590 +0000
-+++ b/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-10-29 15:18:54.123201523 +0000
+--- a/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-10-29 15:32:13.391521415 +0000
++++ b/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-10-29 15:32:13.402852985 +0000
 @@ -449,65 +449,4 @@
    let res ← abstractMVars prf
    mkBackwardRuleFromExpr res.expr res.paramNames.toList
@@ -91,8 +91,8 @@ diff -ruN a/Ascent/Tactic/VCGen/RuleConstruction.lean b/Ascent/Tactic/VCGen/Rule
 -
  end Lean.Elab.Tactic.VCGen.Ascend
 diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
---- a/Ascent/Tactic/VCGen/Solve.lean	2026-10-29 15:18:54.115493117 +0000
-+++ b/Ascent/Tactic/VCGen/Solve.lean	2026-10-29 15:18:54.123851919 +0000
+--- a/Ascent/Tactic/VCGen/Solve.lean	2026-10-29 15:32:13.394748772 +0000
++++ b/Ascent/Tactic/VCGen/Solve.lean	2026-10-29 15:32:13.403427339 +0000
 @@ -401,101 +401,6 @@
      return true
    return false

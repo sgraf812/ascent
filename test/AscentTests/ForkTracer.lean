@@ -1,4 +1,5 @@
 import Ascent.Tactic.VCGen.Frontend
+import Ascent.Refinement.StateRepr
 import Ascent.UB.StateT
 import Std.Tactic.Do
 
@@ -7,38 +8,6 @@ open Std.WP Lean.Order Ascent Ascent.Concretization
 set_option experimental.vcgen true
 
 namespace ForkTracer
-
-variable {Cσ Aσ CV CV₂ AV : Type}
-
-theorem wrp_stutter (f : Cσ → Aσ) (c₁ : StateT Cσ UB CV) (c₂ : CV → StateT Cσ UB CV₂)
-    (a : StateT Aσ UB AV) (Q : CV₂ → AV → Cσ → Prop) (E : EStack⟨⟩) :
-    (fun s => wp c₁ (fun v s' => f s' = f s ∧ wrp (ofStateRepr f) (c₂ v) a Q E s') E s)
-      ⊑ wrp (ofStateRepr f) (c₁ >>= c₂) a Q E := by
-  refine wrp_intro fun Qa Ea => ?_
-  intro s hs
-  simp only [meet_apply, meet_prop_eq_and] at hs
-  obtain ⟨h, ha⟩ := hs
-  rw [wp_bind_StateT]
-  refine WP.wp_monotone_post (x := c₁) ?_ s h
-  rintro v s' ⟨hf, hw⟩
-  refine wrp_transport (P := wrp (ofStateRepr f) (c₂ v) a Q E) PartialOrder.rel_refl Qa Ea s' ?_
-  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred] at ha ⊢
-  rw [hf]
-  exact ⟨hw, ha⟩
-
-theorem wrp_read (f : Cσ → Aσ) (c : StateT Cσ UB CV) (av : AV) (Q : CV → AV → Cσ → Prop)
-    (E : EStack⟨⟩) :
-    (fun s => wp c (fun v s' => f s' = f s ∧ Q v av s') E s)
-      ⊑ wrp (ofStateRepr f) c (pure av : StateT Aσ UB AV) Q E := by
-  refine wrp_intro fun Qa Ea => ?_
-  intro s hs
-  simp only [meet_apply, meet_prop_eq_and] at hs
-  obtain ⟨h, ha⟩ := hs
-  simp only [ofStateRepr_pred, StateT.wp_apply_eq, StateT.run_pure, UB.wp_pure_eq] at ha
-  refine WP.wp_monotone_post (x := c) ?_ s h
-  rintro v s' ⟨hf, hq⟩
-  simp only [post_pi, ofStateRepr_pred]
-  exact ⟨av, hq, by rw [hf]; exact ha⟩
 
 structure St where
   locals : String → Option Nat
