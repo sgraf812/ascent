@@ -33,8 +33,8 @@ def runBaseline (sizes : List Nat) (showSynth := false) : MetaM Unit := do
   runBench "WordAbs" mkStmt [``chainC] mkExpected solveBaseline (`(tactic| grind)) sizes
     (showSynth := showSynth)
 
-def solveEngine (_n : Nat) (goal : MVarId) : MetaM (List MVarId) :=
-  return (← Ascent.Tactic.mainWith goal #[]).toList
+def solveEngine (_n : Nat) (goal : MVarId) : MetaM (List MVarId) := do
+  solveUsingTactic goal (← `(tactic| ascend'))
 
 def runEngine (sizes : List Nat) (showSynth := false) : MetaM Unit := do
   IO.println "=== WordAbs ascend engine ==="

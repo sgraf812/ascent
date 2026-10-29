@@ -1,6 +1,6 @@
 diff -ruN a/Ascent/Tactic/VCGen/Driver.lean b/Ascent/Tactic/VCGen/Driver.lean
---- a/Ascent/Tactic/VCGen/Driver.lean	2026-10-29 14:52:51.772403866 +0000
-+++ b/Ascent/Tactic/VCGen/Driver.lean	2026-10-29 14:52:51.791549883 +0000
+--- a/Ascent/Tactic/VCGen/Driver.lean	2026-10-29 15:04:08.268014586 +0000
++++ b/Ascent/Tactic/VCGen/Driver.lean	2026-10-29 15:04:08.291884702 +0000
 @@ -92,15 +92,36 @@
  structure WorkItem where
    goal : Grind.Goal

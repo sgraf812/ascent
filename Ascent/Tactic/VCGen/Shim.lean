@@ -17,10 +17,10 @@ open Lean Meta Sym Std.WP Lean.Order Ascent
 
 namespace Ascent
 
-universe u v w w' x y z
+universe u w w' u₁ u₂ u₃ u₄
 
 section
-variable {CProg : Type x} {AProg : Type y} {CVal AVal : Type z}
+variable {CProg : Type u₁} {AProg : Type u₂} {CVal : Type u₃} {AVal : Type u₄}
   {CPred APred : Type w} {CEPosts AEPosts : Type w'} {ERels : Type u}
   [Assertion CPred] [Assertion APred] [Assertion CEPosts] [Assertion AEPosts]
   [WP CProg CVal CPred CEPosts] [WP AProg AVal APred AEPosts]
@@ -91,6 +91,23 @@ def mkSpecTheoremFromConst (declName : Name) (prio : Nat) : MetaM SpecTheorem :=
   return { pattern := eraseUnusedVarsFromPattern pattern, proof := .global declName,
            kind := .triple, conjunctivePre := true, priority := prio }
 
+/-- The declaration that `@[ascend]` registers for `declName`. A spec in `Refinement` form gets the
+auxiliary theorem `declName.le_wrp`, its `pre ⊑ wrp …` form, since the spec database reads only
+entailments. -/
+def wrpFormOf (declName : Name) : MetaM Name := do
+  let info ← getConstInfo declName
+  let isRefinement ← forallTelescope info.type fun _ body =>
+    return body.isAppOfArity ``Ascent.Refinement 22
+  unless isRefinement do return declName
+  let auxName := declName ++ `le_wrp
+  if (← getEnv).contains auxName then return auxName
+  let us := info.levelParams.map mkLevelParam
+  let (type, value) ← forallTelescope info.type fun xs _ => do
+    let prf ← mkAppM ``Ascent.Refinement.le_wrp #[mkAppN (mkConst declName us) xs]
+    return (← mkForallFVars xs (← inferType prf), ← mkLambdaFVars xs prf)
+  addDecl <| .thmDecl { name := auxName, levelParams := info.levelParams, type, value }
+  return auxName
+
 initialize ascendSpecExt : SpecExtension ← registerSimpleScopedEnvExtension { mkSpecExt with name := `ascendSpecMap }
 
 initialize registerBuiltinAttribute {
@@ -98,7 +115,7 @@ initialize registerBuiltinAttribute {
   descr := "a `pre ⊑ wrp …` spec for the ascend fork of vcgen"
   add := fun declName stx kind => do
     let prio ← getAttrParamOptPrio stx[1]
-    let thm ← MetaM.run' (mkSpecTheoremFromConst declName prio)
+    let thm ← MetaM.run' do mkSpecTheoremFromConst (← wrpFormOf declName) prio
     ascendSpecExt.add thm kind
 }
 

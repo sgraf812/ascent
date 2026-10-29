@@ -1,6 +1,6 @@
 import Ascent.Refinement
 import Ascent.UB
-import Ascent.Tactic
+import Ascent.Tactic.VCGen.Frontend
 
 /-!
 # Guarded word abstraction: the first synthesis family
@@ -11,11 +11,9 @@ structurally from the concrete one: each addition acquires a no-overflow guard t
 abstract program and is threaded by `wp`. This is AutoCorres' word-abstraction phase in
 miniature, built from `bind`/`pure`/leaf rules only.
 
-The registry form `addW_spec` is Q-generalized: it applies to any return relation by unification, so
-the goal's rebound continuation rides through untouched (auto-framing). Its precondition carries
-the synthesis directives: the relation conjunct `wordVal cv = av` pins the abstract input to the
-previously related value, and the guard sits as a hypothesis of the continuation. The
-fixed-relation form `refines_addW` used by the hand-written baseline chain derives from it by weakening.
+The engine uses the fixed-relation specs `refines_addW` and `refines_pureW`: after each step the
+engine introduces the related values as free variables, and the continuation hole of each bind
+is applied to the abstract one. `wrp_bind` is the bind rule.
 -/
 
 open Std.WP Lean.Order Ascent
@@ -33,7 +31,7 @@ carries the synthesis directives and the relation bookkeeping: `wordVal cv = av`
 and the continuation receives the no-overflow guard and the *established* relation of the sum
 as hypotheses, so downstream relation obligations close by assumption instead of re-deriving
 the chain's arithmetic. -/
-@[ascend] theorem addW_spec (av : Int) (cv y : UInt64) {Q : UInt64 → Int → Prop} {E : EStack⟨⟩} :
+theorem addW_spec (av : Int) (cv y : UInt64) {Q : UInt64 → Int → Prop} {E : EStack⟨⟩} :
     ⦃(wordVal cv = av ∧
         (av + wordVal y < 2 ^ 64 → wordVal (cv + y) = av + wordVal y →
           Q (cv + y) (av + wordVal y)) : Prop)⦄
@@ -49,20 +47,27 @@ the chain's arithmetic. -/
 
 /-- The fixed-relation form of `addW_spec`, for the hand-written baseline chain: under the
 no-overflow guard, the sum stays related. -/
-theorem refines_addW (av : Int) (cv y : UInt64) :
+@[ascend] theorem refines_addW (av : Int) (cv y : UInt64) {E : EStack⟨⟩} :
     ⦃(⌜wordVal cv = av⌝ : Prop)⦄
       (pure (cv + y) : Id UInt64)
-      ⪯[γw] (UB.guardRet (av + wordVal y < 2 ^ 64) (av + wordVal y)) ⦃(⌜wordVal · = ·⌝)⦄ := by
+      ⪯[γw] (UB.guardRet (av + wordVal y < 2 ^ 64) (av + wordVal y)) ⦃(⌜wordVal · = ·⌝); E⦄ := by
   refine (addW_spec av cv y).weaken ?_
   simp only [CompleteLattice.ofProp_prop_eq]
   intro hav
   exact ⟨hav, fun _ hcpl => hcpl⟩
 
-/-- A pure word value is abstracted by its integer image. Registry form; the seed of every
-chain. -/
-@[ascend] theorem pureW_spec (cv : UInt64) {Q : UInt64 → Int → Prop} {E : EStack⟨⟩} :
+/-- A pure word value is abstracted by its integer image. -/
+theorem pureW_spec (cv : UInt64) {Q : UInt64 → Int → Prop} {E : EStack⟨⟩} :
     ⦃Q cv (wordVal cv)⦄ (pure cv : Id UInt64) ⪯[γw] (pure (wordVal cv) : UB Int) ⦃Q; E⦄ :=
   Refinement.pure _ _
+
+/-- The fixed-relation form of `pureW_spec`: the seed of every chain. -/
+@[ascend] theorem refines_pureW (cv : UInt64) {E : EStack⟨⟩} :
+    ⦃(⊤ : Prop)⦄ (pure cv : Id UInt64) ⪯[γw] (pure (wordVal cv) : UB Int)
+      ⦃(⌜wordVal · = ·⌝); E⦄ :=
+  Refinement.pure_eq (f := wordVal) ⊤ cv rfl
+
+attribute [ascend] wrp_bind
 
 /-- The intermediate-relation bind form for the baseline chain: the head establishes `R`, the
 continuations correspond under it. -/

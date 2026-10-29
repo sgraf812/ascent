@@ -145,7 +145,8 @@ the same hash-consed expression as `e`, or `none`. Must run in `goal`'s context.
 def liftedPreFor? (scope : Scope) (e : Expr) : VCGenM (Option LocalDecl) := do
   let some fvarId := scope.lastLiftedPre? | return none
   let some hyp := (← getLCtx).find? fvarId | return none
-  unless isSameExpr e hyp.type do return none
+  -- Unification lets the hypothesis assign a synthesis hole in `e`.
+  unless isSameExpr e hyp.type || (← isDefEqS e hyp.type) do return none
   trace[Elab.Tactic.Do.vcgen] "Solved by lifted hypothesis {hyp.userName}"
   return some hyp
 
@@ -426,15 +427,37 @@ def applySpec (scope : Scope) (goal : MVarId) (info : WRPApp) (thm : SpecTheorem
     | return none
   trace[Elab.Tactic.Do.vcgen] "Applying spec {thm.proof} for {info.prog}. Excess args: {info.excessArgs}"
   let saved ← (saveState : MetaM Meta.SavedState)
-  -- An unassigned hole in the abstract program takes the goal's local context, so that the rule
-  -- can assign it. The frontend checks the scope of the synthesized program after the run.
-  if let .mvar hole := (← instantiateMVarsIfMVarAppS info.abs) then
-    if (← hole.getKind) matches .natural then
-      let lctx ← getLCtx
-      let localInstances ← getLocalInstances
-      modifyMCtx (·.modifyExprMVarDecl hole fun d => { d with lctx, localInstances })
+  -- An unassigned hole in the abstract program is filled through a fresh metavariable `?b` of
+  -- the goal's context, which the rule then assigns. A bare hole is assigned `?b`. A hole `?h xs`
+  -- applied to distinct free variables gets the delayed assignment `?h xs := ?b`, and the goal's
+  -- abstract program becomes `?b`. The frontend resolves the delayed assignments after the run.
+  let mut goal := goal
+  let mut filled : Option (LocalContext × Array Expr × Expr) := none
+  let abs ← instantiateMVarsIfMVarAppS info.abs
+  if let .mvar hole := abs.getAppFn then
+    let xs := abs.getAppArgs
+    let distinct := (xs.toList.map (·.fvarId!)).eraseDups.length == xs.size
+    if (← hole.getKind) matches .natural && !(← hole.isDelayedAssigned) &&
+        xs.all (·.isFVar) && distinct then
+      let b ← shareCommon (← mkFreshExprMVar (← Sym.inferType abs))
+      filled := some ((← hole.getDecl).lctx, xs, b)
+      if xs.isEmpty then
+        hole.assign b
+      else
+        assignDelayedMVar hole xs b.mvarId!
+        let_expr PartialOrder.rel α inst pre _ := ← goal.getType | return none
+        let rhs ← mkAppNS info.head (info.args.set! 18 b ++ info.excessArgs)
+        let target ← mkAppNS (← goal.getType).getAppFn #[α, inst, pre, rhs]
+        let g ← mkFreshExprSyntheticOpaqueMVar (← shareCommon target) (← goal.getTag)
+        goal.assign g
+        goal := g.mvarId!
   let .goals goals ← specRule.applyChecked goal m!"spec rule for{indentExpr info.prog}"
     | (saved.restore : MetaM Unit); return none
+  -- The rule's abstract program may use only the hole's context and the hole's arguments.
+  if let some (lctx, xs, b) := filled then
+    let v ← instantiateMVarsS b
+    if v.hasAnyFVar fun fv => !lctx.contains fv && !xs.contains (.fvar fv) then
+      (saved.restore : MetaM Unit); return none
   return some (.goals scope goals)
 
 /--

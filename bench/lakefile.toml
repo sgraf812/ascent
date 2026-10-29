@@ -1,5 +1,5 @@
 name = "ascent-bench"
-defaultTargets = ["Driver"]
+defaultTargets = ["Bench"]
 precompileModules = true
 
 [[require]]
@@ -9,3 +9,12 @@ path = ".."
 [[lean_lib]]
 name = "Driver"
 srcDir = "lib"
+
+[[lean_lib]]
+name = "Cases"
+srcDir = "cases"
+globs = ["Cases.*"]
+
+[[lean_lib]]
+name = "Bench"
+roots = ["ascend_word_abs"]

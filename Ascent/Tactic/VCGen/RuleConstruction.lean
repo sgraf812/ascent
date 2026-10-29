@@ -35,14 +35,15 @@ open Std.WP Lean.Order
     on the premise and are later introduced with the right user-facing names. -/
 def mkPostPointwisePremise (postSpec postTarget postTy : Expr) (ssTypes : Array Expr)
     (stateArgNames : Array Name := #[]) : MetaM Expr := do
-  let .forallE _ α _ _ := postTy
-    | throwError "expected a postcondition function, got {indentExpr postTy}"
-  withLocalDeclD `a α fun a => do
+  let .forallE _ α (.forallE _ β _ _) _ := postTy
+    | throwError "expected a return relation, got {indentExpr postTy}"
+  withLocalDeclD `cv α fun cv => do
+  withLocalDeclD `av β fun av => do
     let ssNamesTypes := ssTypes.mapIdx fun i ty => (stateArgNames[i]?.getD `s, ty)
     withLocalDeclsDND ssNamesTypes fun ss' => do
-      let lhs := postSpec.betaRev <| ss'.reverse.push a
-      let rhs := mkAppN (mkApp postTarget a) ss'
-      mkForallFVars (#[a] ++ ss') (← mkAppM ``PartialOrder.rel #[lhs, rhs])
+      let lhs := postSpec.betaRev <| ss'.reverse ++ #[av, cv]
+      let rhs := mkAppN (mkApp2 postTarget cv av) ss'
+      mkForallFVars (#[cv, av] ++ ss') (← mkAppM ``PartialOrder.rel #[lhs, rhs])
 
 /-- Reduce a projection of a constructor application, e.g. `(⟨R⟩ : Thrown).onThrow` to `R`.
 Return any other term unchanged. -/
@@ -372,12 +373,11 @@ def tryMkBackwardRuleFromSpec (specThm : SpecTheorem) (info : WRPApp)
   let prog := specInfo.prog
   let postSpec := specInfo.post
   let epostsSpec := specInfo.eposts
-  -- The abstract `WP` instance, the exception concretization and `γ` fix the abstract half of the
-  -- prefix, as `instWP` fixes the concrete half.
-  for i in [14, 15, 16] do
-    guard <| ← withDefault <| isDefEqGuarded info.args[i]! specInfo.args[i]!
-  -- The rule's abstract program is the spec's.
-  let info := { info with args := info.args.set! 18 specInfo.abs }
+  -- The rule takes the concrete half of the prefix from the goal, and the abstract half, `γ` and
+  -- the abstract program from the spec: the run fixes the abstract types only when a leaf applies.
+  let concrete := [0, 2, 4, 6, 9, 11, 13]
+  let args := specInfo.args.mapIdx fun i a => if concrete.contains i then info.args[i]! else a
+  let info := { info with head := specInfo.head, args }
   -- `withDefault`: the goal can carry a registered `WP` instance (e.g. `Id.wpInst`) while the
   -- spec spells `WPMonad.toWP ?inst`; default transparency unfolds both after `?inst` synthesis.
   guard <| ← withDefault <| isDefEqGuarded info.instWP instWP'

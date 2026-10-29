@@ -27,10 +27,24 @@ def unsealAbstractHole (goal : MVarId) : MetaM (Option MVarId) := do
     mvarId.setKind .natural
   return some mvarId
 
+/-- Replace the delayed assignment of each hole in `e` by an ordinary one: `?h xs := ?b` becomes
+`?h := fun xs => b`, where `b` is the value of `?b`. An unapplied occurrence of `?h`, such as the
+continuation of a bind, needs the ordinary assignment. -/
+partial def resolveDelayedHoles (e : Expr) : MetaM Unit := do
+  for mv in ← getMVars e do
+    let some d ← getDelayedMVarAssignment? mv | continue
+    let b ← instantiateMVars (mkMVar d.mvarIdPending)
+    resolveDelayedHoles b
+    let b ← instantiateMVars b
+    let val ← withLCtx' (← d.mvarIdPending.getDecl).lctx (mkLambdaFVars d.fvars b)
+    modifyMCtx fun mctx => { mctx with dAssignment := mctx.dAssignment.erase mv }
+    mv.assign val
+
 /-- Restore the local context of the hole, and check that the synthesized program uses only the
 free variables of that context. The unassigned metavariables of the program, which the run
 emitted as sealed goals, take the same context. -/
 def checkHoleScope (hole : MVarId) (decl : MetavarDecl) : MetaM Unit := do
+  resolveDelayedHoles (← instantiateMVars (mkMVar hole))
   let restore (mv : MVarId) := modifyMCtx (·.modifyExprMVarDecl mv fun d =>
     { d with lctx := decl.lctx, localInstances := decl.localInstances })
   restore hole
