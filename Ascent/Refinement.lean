@@ -1,4 +1,5 @@
 import Ascent.WRP
+import Ascent.WPCont
 
 /-!
 # Refinement
@@ -94,6 +95,27 @@ theorem Refinement.conj_wp [Heyting CPred] [WPConjunctive c]
     (le_meet _ _ _
       (PartialOrder.rel_trans (meet_le_right _ _) (meet_le_left _ _)) (meet_le_left _ _))
     (PartialOrder.rel_trans (meet_le_right _ _) (meet_le_right _ _))
+
+end
+
+section
+variable {CProg : Type _} {AProg : Type v} {CVal AVal : Type _}
+  {CPred APred : Type w} {CEPosts AEPosts : Type w'} {ERels : Type u}
+  [Assertion CPred] [Assertion APred] [Assertion CEPosts] [Assertion AEPosts]
+  [WP CProg CVal CPred CEPosts] [CCPO AProg] [WP AProg AVal APred AEPosts] [WPCont AProg]
+  [EPostsConcretization CPred APred CEPosts AEPosts ERels]
+  {γ : Concretization CPred APred}
+
+theorem Refinement.admissible [Heyting CPred]
+    (hγ : ∀ (ι : Type v) (X : ι → APred), γ.pred (iSup X) ⊑ iSup fun i => γ.pred (X i))
+    (P : CPred) (c : CProg) (Q : CVal → AVal → CPred) (E : ERels) :
+    admissible fun a : AProg => ⦃P⦄ c ⪯[γ] a ⦃Q; E⦄ := by
+  intro ch hch hall
+  refine ⟨wrp_intro fun Qa Ea => ?_⟩
+  refine PartialOrder.rel_trans (meet_mono_right (γ.pred_mono (WPCont.wp_csup hch Qa Ea))) ?_
+  refine PartialOrder.rel_trans (meet_mono_right (hγ _ _)) ?_
+  refine PartialOrder.rel_trans (meet_iSup_le _ _) ?_
+  exact iSup_le _ _ fun a => wrp_transport (hall a.1 a.2).le_wrp Qa Ea
 
 end
 

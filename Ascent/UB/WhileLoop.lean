@@ -1,4 +1,5 @@
 import Ascent.UB
+import Ascent.WPCont
 
 /-!
 # `while` in `StateT σ UB`
@@ -12,8 +13,8 @@ whileLoop cond body =
   get >>= fun s => if cond s then body >>= fun _ => whileLoop cond body else pure ()
 ```
 
-`wp_csup_StateT` states that `wp` of the supremum of a chain of programs is below the supremum of
-their `wp`s. Fixpoint induction over `loopFix` needs this fact.
+The flat order of `UB α` satisfies `WPCont`, so fixpoint induction applies to `partial_fixpoint`
+definitions in `UB` and in `StateT σ UB`.
 -/
 
 open Std.WP Lean.Order Ascent
@@ -21,6 +22,14 @@ open Std.WP Lean.Order Ascent
 instance {α} : PartialOrder (UB α) := inferInstanceAs (PartialOrder (Option α))
 instance {α} : CCPO (UB α) := inferInstanceAs (CCPO (Option α))
 instance : MonoBind UB := inferInstanceAs (MonoBind Option)
+
+instance {α} : WPCont (UB α) where
+  wp_csup {ch} hch Q E := admissible_flatOrder (b := (none : Option α))
+    (fun u => wp (show UB α from u) Q E → iSup fun x : {x // ch x} => wp x.1 Q E)
+    (fun h => by change (⊥ : Prop) at h; rw [bot_prop_eq] at h; exact h.elim)
+    ch hch fun x hx h => by
+      rw [iSup_prop_eq_exists]
+      exact ⟨⟨x, hx⟩, h⟩
 
 /-- The fixpoint, at the state-passing type `σ → UB (Unit × σ)` that carries the `CCPO`. -/
 def loopFix {σ : Type} (cond : σ → Bool) (body : StateT σ UB Unit) : StateT σ UB Unit :=
@@ -31,22 +40,6 @@ partial_fixpoint
 applies. -/
 def whileLoop {σ : Type} (cond : σ → Bool) (body : StateT σ UB Unit) : StateT σ UB Unit :=
   loopFix cond body
-
-theorem wp_csup_StateT {σ α : Type} {c : (σ → UB (α × σ)) → Prop} (hc : chain c)
-    (Q : α → σ → Prop) (E : EStack⟨⟩) :
-    wp (show StateT σ UB α from CCPO.csup hc) Q E ⊑
-      iSup fun f : {f // c f} => wp (show StateT σ UB α from f.1) Q E := by
-  intro s
-  have hadm := admissible_apply
-    (β := fun _ => UB (α × σ))
-    (fun s (u : UB (α × σ)) => wp u (fun p => Q p.1 p.2) E →
-      (iSup fun f : {f // c f} => wp (show StateT σ UB α from f.1) Q E) s) s
-    (admissible_flatOrder (b := (none : Option (α × σ))) _ (fun h => by
-      change (⊥ : Prop) at h; rw [bot_prop_eq] at h; exact h.elim))
-  simp only [StateT.wp_apply_eq, StateT.run] at hadm ⊢
-  exact hadm c hc fun f hf h => by
-    simp only [iSup_apply, iSup_prop_eq_exists]
-    exact ⟨⟨f, hf⟩, by simpa [StateT.wp_apply_eq, StateT.run] using h⟩
 
 theorem loopStep_eq {σ : Type} (cond : σ → Bool) (body k : StateT σ UB Unit) :
     (show StateT σ UB Unit from

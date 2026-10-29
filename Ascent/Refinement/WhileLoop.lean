@@ -7,8 +7,9 @@ import Ascent.UB.StateT
 `Refinement.whileLoop` is fixpoint induction over the abstract loop. To refine
 `whileLoop acond abody`, it suffices to refine one unfolding of the abstract loop in which the
 recursive call is an arbitrary program `f` that the concrete loop refines. The concrete side
-unfolds by `whileLoop_unfold`. The concretization must preserve suprema, because the abstract
-loop is the supremum of its finite unfoldings.
+unfolds by `whileLoop_unfold`. The abstract loop is the supremum of its finite unfoldings, so the
+induction motive must be admissible. `Refinement.admissible` proves this for every abstract
+program type with `WPCont` and every concretization that preserves suprema.
 
 `refines_whileLoop` is the lockstep instance under `Concretization.ofStateRel J`: the conditions
 agree on `J`-related states, and the bodies refine each other.
@@ -26,17 +27,11 @@ theorem Refinement.whileLoop {Cσ Aσ : Type} {γ : Concretization (Cσ → Prop
         ⪯[γ] (get >>= fun as => if acond as then abody >>= fun _ => f else pure ()) ⦃Q⦄) :
     ⦃P⦄ (_root_.whileLoop ccond cbody) ⪯[γ] (_root_.whileLoop acond abody) ⦃Q⦄ := by
   refine loopFix.fixpoint_induct acond abody
-    (fun f => ⦃P⦄ (_root_.whileLoop ccond cbody) ⪯[γ] (show StateT Aσ UB Unit from f) ⦃Q⦄) ?_ ?_
-  · intro ch hch hall
-    refine ⟨wrp_intro fun Qa Ea => ?_⟩
-    refine PartialOrder.rel_trans (meet_mono_right (γ.pred_mono (wp_csup_StateT hch Qa Ea))) ?_
-    refine PartialOrder.rel_trans (meet_mono_right (hγ _ _)) ?_
-    refine PartialOrder.rel_trans (meet_iSup_le _ _) ?_
-    exact iSup_le _ _ fun f => wrp_transport (hall f.1 f.2).le_wrp Qa Ea
-  · intro f hf
-    have := h f hf
-    rw [← whileLoop_unfold, ← loopStep_eq] at this
-    exact this
+    (fun f => ⦃P⦄ (_root_.whileLoop ccond cbody) ⪯[γ] (show StateT Aσ UB Unit from f) ⦃Q⦄)
+    (Refinement.admissible (AProg := StateT Aσ UB Unit) hγ P _ Q ⊥) fun f hf => ?_
+  have := h f hf
+  rw [← whileLoop_unfold, ← loopStep_eq] at this
+  exact this
 
 theorem refines_whileLoop {Aσ Cσ : Type} (J : Cσ → Aσ → Prop)
     (ccond : Cσ → Bool) (cbody : StateT Cσ UB Unit)
