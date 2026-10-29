@@ -8,6 +8,10 @@ import Ascent.WPCont
 program `c` refines the abstract program `a`. The notation is `⦃P⦄ c ⪯[γ] a ⦃Q; E⦄`, and
 `⦃P⦄ c ⪯[γ] a ⦃Q⦄` sets `E := ⊥`.
 
+`Refinement.transport` turns a Hoare triple `Triple a Pa Qa Ea` about the abstract program into
+the Hoare triple `Triple c (P ⊓ γ.pred Pa) (γ.post Q Qa) (ePosts γ E Ea)` about the concrete
+program.
+
 The triple forms of the `wrp` laws carry the rebound `wrp` in the precondition, so they apply to
 every return relation by instantiation.
 -/
@@ -69,6 +73,11 @@ theorem Refinement.ite {cond : Prop} [Decidable cond] {c₁ c₂ : CProg} {a₁ 
     (h₁ : ⦃P⦄ c₁ ⪯[γ] a₁ ⦃Q; E⦄) (h₂ : ⦃P⦄ c₂ ⪯[γ] a₂ ⦃Q; E⦄) :
     ⦃P⦄ (if cond then c₁ else c₂) ⪯[γ] (if cond then a₁ else a₂) ⦃Q; E⦄ := by
   by_cases hc : cond <;> simp only [hc, ite_true, ite_false] <;> assumption
+
+theorem Refinement.transport [Heyting CPred] {Pa : APred} {Qa : AVal → APred} {Ea : AEPosts}
+    (h : ⦃P⦄ c ⪯[γ] a ⦃Q; E⦄) (ha : Triple a Pa Qa Ea) :
+    Triple c (P ⊓ γ.pred Pa) (γ.post Q Qa) (EPostsConcretization.ePosts γ E Ea) :=
+  ⟨PartialOrder.rel_trans (meet_mono_right (γ.pred_mono ha.le_wp)) (wrp_transport h.le_wrp Qa Ea)⟩
 
 theorem Refinement.conj_wp [Heyting CPred] [WPConjunctive c]
     {R : CVal → CPred} (h : ⦃P⦄ c ⪯[γ] a ⦃Q; E⦄) (hw : P ⊑ wp c R ⊥) :
