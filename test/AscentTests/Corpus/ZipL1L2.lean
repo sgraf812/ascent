@@ -11,17 +11,18 @@ docstring names the gap. When the gap closes, the entry fails and becomes a chec
 synthesized program against the hand-written one.
 
 The `getSize` spec states the presence of the local as a VC `∃ n, s.locals x = some (.size n)`,
-and it reads the value as the term `(s.locals x).get!.toSize`. After a write, `simp`
-reduces this term to the written value. The entries that remain open share one gap. A hypothesis
-`s.locals x = some (.size n)` from the precondition or from the state relation does not rewrite
-the read value to `n`, so the abstract value mentions the concrete state `s`.
+and it reads the value as the term `(s.locals x).get!.toSize`. A precondition or a state relation
+states the concrete state as an equation `s = { locals := …, heap := h }`. `vcgen` substitutes this
+equation, and `simp` then reduces each read value to a variable of the entry.
+
+The other locals `L` and the heap `h` of the equation are parameters of the entry. In C2, the
+refinement for all `L` and `h` is equivalent to the refinement under the precondition
+`s.locals "len_a" = some (.size la) ∧ s.locals "len_b" = some (.size lb)`.
 -/
 
 open Std.WP Lean.Order Ascent Ascent.Concretization Zip
 
 set_option experimental.vcgen true
--- The expected failures discard their elaboration, so their binders look unused.
-set_option linter.unusedVariables false
 
 namespace Zip.Corpus
 
@@ -48,7 +49,7 @@ abbrev γh : Concretization (State → Prop) (Heap → Prop) := ofStateRepr Stat
 
 @[ascend] theorem getSize_read_rel {Aσ : Type} (J : State → Aσ → Prop) (x : Ident) (av : USize)
     (Q : USize → USize → State → Prop) (E : EStack⟨⟩) :
-    (fun s => ∀ as, J s as → wp (getSize x) (fun v s' => J s' as ∧ Q v av s') E s)
+    (⨅ as, (J · as) ⇨ wp (getSize x) (fun v s' => J s' as ∧ Q v av s') E)
       ⊑ wrp (ofStateRel J) (getSize x) (pure av : StateT Aσ UB USize) Q E :=
   wrp_read_rel J _ av Q E
 
@@ -60,34 +61,38 @@ def c1 (v : USize) : { a : StateT Heap UB USize //
 
 example (v : USize) : (c1 v).1 = pure v := rfl
 
-/-- C2: the entry prefix of `zipL1`, under the entry precondition on the length locals.
-Expected: `pure (min la lb)`. Open: the read values of `"len_a"` and `"len_b"`. -/
-example (la lb : USize) : True := by
-  fail_if_success
-    have : { a : StateT Heap UB USize //
-        ⦃fun s => s.locals "len_a" = some (.size la) ∧ s.locals "len_b" = some (.size lb)⦄
-          (do
-            let la' ← getSize "len_a"
-            let lb' ← getSize "len_b"
-            setSize "n" (min la' lb')
-            setSize "i" 0
-            getSize "n")
-          ⪯[γh] a ⦃(⌜· = ·⌝)⦄ } := by
-      apply Subtype.mk
-      ascend'
-      done
-  trivial
+/-- C2: the entry prefix of `zipL1`, with `"len_a"` and `"len_b"` given. -/
+def c2 (la lb : USize) (L : Locals) (h : Heap) : { a : StateT Heap UB USize //
+    ⦃fun s => s = { locals := (fun y => if y = "len_a" then some (.size la)
+        else if y = "len_b" then some (.size lb) else L y), heap := h }⦄
+      (do
+        let la' ← getSize "len_a"
+        let lb' ← getSize "len_b"
+        setSize "n" (min la' lb')
+        setSize "i" 0
+        getSize "n")
+      ⪯[γh] a ⦃(⌜· = ·⌝)⦄ } := by
+  apply Subtype.mk
+  ascend'
 
-/-- C3: `refines_getSizeN`, the `return n` of the loop phase under the loop relation.
-Expected: `pure n`. Open: the read value of `"n"`, which `invL2` determines. -/
-example (a b out : Addr) (n : USize) : True := by
-  fail_if_success
-    have : { p : StateT (USize × Heap) UB USize //
-        ⦃(⊤ : State → Prop)⦄ (getSize "n") ⪯[ofStateRel (invL2 a b out n)] p ⦃(⌜· = ·⌝)⦄ } := by
-      apply Subtype.mk
-      ascend'
-      done
-  trivial
+example (la lb : USize) (L : Locals) (h : Heap) : (c2 la lb L h).1 = pure (min la lb) := rfl
+
+/-- The loop relation `invL2`, with the concrete state as an equation. -/
+abbrev invL2Eq (a b out : Addr) (n : USize) (L : Locals) : State → USize × Heap → Prop :=
+  fun s p =>
+    s = { locals := fun y =>
+            if y = "i" then some (.size p.1) else if y = "n" then some (.size n)
+            else if y = "a" then some (.ptr a) else if y = "b" then some (.ptr b)
+            else if y = "out" then some (.ptr out) else L y,
+          heap := p.2 }
+
+/-- C3: `refines_getSizeN`, the `return n` of the loop phase under the loop relation. -/
+def c3 (a b out : Addr) (n : USize) (L : Locals) : { p : StateT (USize × Heap) UB USize //
+    ⦃(⊤ : State → Prop)⦄ (getSize "n") ⪯[ofStateRel (invL2Eq a b out n L)] p ⦃(⌜· = ·⌝)⦄ } := by
+  apply Subtype.mk
+  ascend'
+
+example (a b out : Addr) (n : USize) (L : Locals) : (c3 a b out n L).1 = pure n := rfl
 
 /-! ## Entries that need more than the engine has
 

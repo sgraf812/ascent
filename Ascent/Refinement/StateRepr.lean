@@ -49,11 +49,12 @@ theorem wrp_read (f : Cσ → Aσ) (c : StateT Cσ UB CV) (av : AV) (Q : CV → 
 
 theorem wrp_read_rel (J : Cσ → Aσ → Prop) (c : StateT Cσ UB CV) (av : AV)
     (Q : CV → AV → Cσ → Prop) (E : EStack⟨⟩) :
-    (fun s => ∀ as, J s as → wp c (fun v s' => J s' as ∧ Q v av s') E s)
+    (⨅ as, (J · as) ⇨ wp c (fun v s' => J s' as ∧ Q v av s') E)
       ⊑ wrp (ofStateRel J) c (pure av : StateT Aσ UB AV) Q E := by
   refine wrp_intro fun Qa Ea => ?_
   intro s hs
-  simp only [meet_apply, meet_prop_eq_and, ofStateRel_pred] at hs
+  simp only [meet_apply, meet_prop_eq_and, ofStateRel_pred, iInf_apply, himp_apply,
+    iInf_prop_eq_forall, himp_prop_eq_imp] at hs
   obtain ⟨h, as, hJ, ha⟩ := hs
   simp only [StateT.wp_apply_eq, StateT.run_pure, UB.wp_pure_eq] at ha
   refine WP.wp_monotone_post (x := c) ?_ s (h as hJ)

@@ -72,10 +72,10 @@ def splitProdBinder (goal : MVarId) (target : Expr) : VCGenM MVarId :=
   let dom ← instantiateMVarsIfMVarAppS dom
   let_expr c@Prod α β := dom | return goal
   let us := c.constLevels!
-  let mk ← mkAppNS (← mkConstS ``Prod.mk us) #[α, β, .bvar 1, .bvar 0]
-  let newTarget := Expr.forallE `a α (.forallE `b β (body.instantiate1 mk) .default) .default
-  let g ← liftMetaM <| mkFreshExprSyntheticOpaqueMVar (← shareCommon newTarget)
-  let motive := Expr.lam `p dom body .default
+  let mk ← mkAppNS (← mkConstS ``Prod.mk us) #[α, β, ← mkBVarS 1, ← mkBVarS 0]
+  let newTarget ← mkForallS `a .default α (← mkForallS `b .default β (← instantiateS body #[mk]))
+  let g ← liftMetaM <| mkFreshExprSyntheticOpaqueMVar newTarget
+  let motive ← mkLambdaS `p .default dom body
   let prodForall ← mkAppNS (← mkConstS ``Prod.forall us) #[α, β, motive]
   goal.assign <| mkApp4 (.const ``Iff.mpr []) target newTarget prodForall g
   return g.mvarId!
