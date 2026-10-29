@@ -1,6 +1,6 @@
 diff -ruN a/Ascent/Tactic/VCGen/RuleConstruction.lean b/Ascent/Tactic/VCGen/RuleConstruction.lean
---- a/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-10-29 14:28:28.159198942 +0000
-+++ b/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-10-29 14:28:28.171976343 +0000
+--- a/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-10-29 14:35:03.323780195 +0000
++++ b/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-10-29 14:35:03.329241413 +0000
 @@ -293,7 +293,8 @@
    /- proof of the original theorem with abstracted `post` and `eposts` specialized to the excess state arguments -/
    specApplied := mkAppN specApplied ss

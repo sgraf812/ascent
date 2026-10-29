@@ -100,4 +100,25 @@ example (m : Nat) :
   ascend'
   simp
 
+/-- Reads the heap of the concrete state. -/
+def getH : M Nat := fun s => pure (s.heap, s)
+
+@[spec] theorem getH_spec (post : Nat → St → Prop) : ⦃fun s => post s.heap s⦄ getH ⦃post⦄ :=
+  ⟨fun s h => by simpa [StateT.wp_apply_eq, StateT.run, getH, UB.wp_pure_eq] using h⟩
+
+@[wrp_spec] theorem getH_read (av : Nat) (Q : Nat → Nat → St → Prop) (E : EStack⟨⟩) :
+    (fun s => wp getH (fun v s' => s'.heap = s.heap ∧ Q v av s') E s)
+      ⊑ wrp (ofStateRepr St.heap) getH (pure av : StateT Nat UB Nat) Q E :=
+  wrp_read St.heap getH av Q E
+
+/-- The only abstract value for `getH` is the concrete `s.heap`, so the synthesized program would
+mention the concrete state, and the final scope check fails. -/
+example : True := by
+  fail_if_success
+    have : ∃ a : StateT Nat UB Nat,
+        ⦃(⊤ : St → Prop)⦄ getH ⪯[ofStateRepr St.heap] a ⦃fun cv av => ⌜cv = av⌝⦄ := by
+      apply Exists.intro
+      ascend'
+  trivial
+
 end ForkTracer

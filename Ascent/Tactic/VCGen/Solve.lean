@@ -426,26 +426,15 @@ def applySpec (scope : Scope) (goal : MVarId) (info : WRPApp) (thm : SpecTheorem
     | return none
   trace[Elab.Tactic.Do.vcgen] "Applying spec {thm.proof} for {info.prog}. Excess args: {info.excessArgs}"
   let saved ← (saveState : MetaM Meta.SavedState)
-  -- An unassigned hole in the abstract program takes a fresh metavariable of the goal's context,
-  -- so that the rule can assign it. Afterwards the metavariables in its value move to the hole's
-  -- context.
-  let hole? ← do
-    let .mvar hole := (← instantiateMVars info.abs) | pure none
-    unless (← hole.getKind) matches .natural do return none
-    hole.assign (← mkFreshExprMVar (← hole.getType))
-    pure (some hole)
+  -- An unassigned hole in the abstract program takes the goal's local context, so that the rule
+  -- can assign it. The frontend checks the scope of the synthesized program after the run.
+  if let .mvar hole := (← instantiateMVars info.abs) then
+    if (← hole.getKind) matches .natural then
+      let lctx ← getLCtx
+      let localInstances ← getLocalInstances
+      modifyMCtx (·.modifyExprMVarDecl hole fun d => { d with lctx, localInstances })
   let .goals goals ← specRule.applyChecked goal m!"spec rule for{indentExpr info.prog}"
     | (saved.restore : MetaM Unit); return none
-  if let some hole := hole? then
-    let decl ← hole.getDecl
-    let outOfScope (e : Expr) := e.hasAnyFVar (!decl.lctx.contains ·)
-    let val ← instantiateMVars (mkMVar hole)
-    let mvars ← getMVars val
-    if outOfScope val || (← mvars.anyM fun mv => return outOfScope (← mv.getType)) then
-      (saved.restore : MetaM Unit); return none
-    for mv in mvars do
-      modifyMCtx (·.modifyExprMVarDecl mv fun d =>
-        { d with lctx := decl.lctx, localInstances := decl.localInstances })
   return some (.goals scope goals)
 
 /--
