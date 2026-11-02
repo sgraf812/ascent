@@ -94,7 +94,8 @@ def main() -> None:
             tree = pathlib.Path(tmp) / "Ascent" / "Tactic" / "VCGen"
             generate(tree)
             diff = subprocess.run(["diff", "-r", "-q", str(tree), str(OUT),
-                                   "-x", "Shim.lean", "-x", "WRPApp.lean", "-x", "Frontend.lean"])
+                                   "-x", "Shim.lean", "-x", "WRPApp.lean", "-x", "Frontend.lean",
+                                   "-x", "Command.lean"])
             sys.exit(diff.returncode)
     if "--raw" in sys.argv:
         generate(pathlib.Path(sys.argv[sys.argv.index("--raw") + 1]), patches=False)

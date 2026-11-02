@@ -37,6 +37,8 @@ def M (info : WRPApp) : Expr :=
   if info.args[0]!.isApp then info.args[0]!.appFn! else info.args[0]!
 /-- The concrete value type `CVal`. -/
 def Value (info : WRPApp) : Expr := info.args[2]!
+/-- The abstract value type `AVal`. -/
+def AValue (info : WRPApp) : Expr := info.args[3]!
 /-- The concrete assertion type `CPred`. -/
 def Pred (info : WRPApp) : Expr := info.args[4]!
 /-- The exception relation type `ERels`. -/

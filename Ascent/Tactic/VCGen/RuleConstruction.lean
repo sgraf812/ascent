@@ -334,12 +334,14 @@ def eqSpecToWp? (info : WRPApp) (eqPrf eqType : Expr) :
   -- are read-only there.
   guard <| ← withReducible <| approxDefEq <| isDefEqGuarded eqα info.Prog
   -- `post`/`eposts` are schematic metavariables (their VCs collapse downstream).
-  let post ← mkFreshExprMVar (userName := `Q) (← mkArrow info.Value info.Pred)
+  let post ← mkFreshExprMVar (userName := `Q) (← mkArrow info.Value (← mkArrow info.AValue info.Pred))
   let eposts ← mkFreshExprMVar (userName := `E) info.EPosts
   -- The goal's leading `wp` arguments `#[Prog, Value, Pred, EPosts, instAL, instEAL, instWP]` are
   -- exactly the leading arguments of `wp_le_wp_of_eq`.
+  -- The abstract program is schematic, so that the rule does not capture the goal's hole.
+  let abs ← mkFreshExprMVar (userName := `a) info.args[1]!
   let specProof ← mkAppOptM ``Ascent.wrp_le_wrp_of_eq <|
-    (info.lemmaPrefix).map some ++ #[none, none, some eqPrf, some post, some eposts]
+    (info.args.take 17).map some ++ #[some abs, none, none, some eqPrf, some post, some eposts]
   return (specProof, ← instantiateMVars (← Meta.inferType specProof))
 
 /--

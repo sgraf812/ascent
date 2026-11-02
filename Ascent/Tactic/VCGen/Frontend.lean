@@ -6,7 +6,7 @@ import Ascent.Tactic.VCGen.Driver
 
 `ascend'` runs the forked worklist on a goal `⦃P⦄ c ⪯[γ] a ⦃Q; E⦄`. The `wrp` goals use the
 `@[ascend]` database, and the `wp` goals use the `@[spec]` database. A natural metavariable in
-`a` is a synthesis hole.
+`a` is a synthesis hole. `ascend' [f, g]` unfolds the definitions `f` and `g` in both kinds of goals.
 -/
 
 open Lean Meta Elab Tactic Sym
@@ -15,7 +15,7 @@ namespace Lean.Elab.Tactic.VCGen.Ascend
 
 open Lean.Elab.Tactic.VCGen.SpecAttr
 
-syntax (name := ascendTac) "ascend'" : tactic
+syntax (name := ascendTac) "ascend'" (" [" ident,* "]")? : tactic
 
 /-- Unseal the abstract program hole of a `Refinement` goal, so that rule application can assign
 it. Returns the hole. -/
@@ -52,15 +52,23 @@ def checkHoleScope (hole : MVarId) (decl : MetavarDecl) : MetaM Unit := do
   let outOfScope (e : Expr) := (e.find? fun e => e.isFVar && !decl.lctx.contains e.fvarId!).isSome
   if outOfScope val then
     throwError "ascend: the synthesized abstract program mentions a variable that the run \
-      introduced, such as the concrete state"
+      introduced, such as the concrete state:{indentExpr val}"
   for mv in ← getMVars val do
     if outOfScope (← instantiateMVars (← mv.getType)) then
       throwError "ascend: a hole of the synthesized abstract program has a type that mentions a \
         variable that the run introduced"
     restore mv
 
+/-- The unfold equations of the definitions `declNames`, added to the spec database `specs`. -/
+def addUnfoldSpecs (specs : SpecTheorems) (declNames : Array Name) : MetaM SpecTheorems := do
+  let mut simpThms : SimpTheorems := {}
+  for declName in declNames do
+    simpThms ← simpThms.addDeclToUnfold declName
+  addSimpSpecs specs simpThms
+
 @[tactic ascendTac]
-def elabAscend : Tactic := fun _ => withMainContext do
+def elabAscend : Tactic := fun stx => withMainContext do
+  let declNames ← stx[1][1].getSepArgs.mapM fun id => realizeGlobalConstNoOverloadWithInfo id
   let goal ← getMainGoal
   let hole? ← unsealAbstractHole goal
   let holeDecl? ← hole?.mapM (·.getDecl)
@@ -70,8 +78,8 @@ def elabAscend : Tactic := fun _ => withMainContext do
       post := Sym.Simp.evalGround >> thms.rewrite }
   let ctx : Context :=
     { backwardRules := ← mkBackwardRules, simpMethods, internalize := false }
-  let scope : Scope := { specs := ← getAscendSpecTheorems }
-  let coreScope : Scope := { specs := ← getSpecTheorems }
+  let scope : Scope := { specs := ← addUnfoldSpecs (← getAscendSpecTheorems) declNames }
+  let coreScope : Scope := { specs := ← addUnfoldSpecs (← getSpecTheorems) declNames }
   let params ← Grind.mkDefaultParams { clean := false }
   let (_, state) ← Grind.GrindTacticM.runAtGoal goal params (sym := true) do
     let g ← Lean.Elab.Tactic.Grind.getMainGoal
