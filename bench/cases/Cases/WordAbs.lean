@@ -93,7 +93,7 @@ def chainC (c : UInt64) : Nat → Id UInt64
   | n+1 => do let r ← chainC c n; pure (r + c)
 
 /-- The expected abstract image of `chainC`: the guarded integer chain, for the golden check. -/
-def chainA (c : UInt64) : Nat → UB Int
+noncomputable def chainA (c : UInt64) : Nat → UB Int
   | 0 => pure (wordVal c)
   | n+1 => do let r ← chainA c n; UB.guardRet (r + wordVal c < 2 ^ 64) (r + wordVal c)
 

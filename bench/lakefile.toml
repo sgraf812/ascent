@@ -17,4 +17,4 @@ globs = ["Cases.*"]
 
 [[lean_lib]]
 name = "Bench"
-roots = ["ascend_word_abs"]
+roots = ["ascend_word_abs", "ascend_word_abs_val"]

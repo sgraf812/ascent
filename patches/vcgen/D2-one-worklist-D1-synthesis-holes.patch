@@ -1,6 +1,6 @@
-diff --color -ruN a/Ascent/Tactic/VCGen/Driver.lean b/Ascent/Tactic/VCGen/Driver.lean
---- a/Ascent/Tactic/VCGen/Driver.lean	2026-10-29 18:00:12.845401035 +0000
-+++ b/Ascent/Tactic/VCGen/Driver.lean	2026-10-29 18:00:12.838178552 +0000
+diff -ruN a/Ascent/Tactic/VCGen/Driver.lean b/Ascent/Tactic/VCGen/Driver.lean
+--- a/Ascent/Tactic/VCGen/Driver.lean	2026-11-02 10:59:29.876951709 +0000
++++ b/Ascent/Tactic/VCGen/Driver.lean	2026-11-02 10:59:29.900385683 +0000
 @@ -10,6 +10,7 @@
  import Lean.Elab.Tactic.VCGen.Solve
  import Ascent.Tactic.VCGen.Solve

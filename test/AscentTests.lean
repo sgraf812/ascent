@@ -11,3 +11,6 @@ import AscentTests.ThrowCatch
 import AscentTests.ForkTracer
 import AscentTests.WordAbsEngine
 import AscentTests.Corpus.ZipL1L2
+import AscentTests.AscendUnfold
+import AscentTests.AscendDef
+import AscentTests.PureRefinement

@@ -15,6 +15,12 @@ namespace Lean.Elab.Tactic.VCGen.Ascend
 
 open Lean.Elab.Tactic.VCGen.SpecAttr
 
+register_option ascend.maxExponent : Nat := {
+  defValue := 16
+  descr := "the largest exponent `n` for which the `simp` step of `ascend'` evaluates a power `a ^ n` \
+    of literals"
+}
+
 syntax (name := ascendTac) "ascend'" (" [" ident,* "]")? : tactic
 
 /-- Unseal the abstract program hole of a `Refinement` goal, so that rule application can assign
@@ -75,7 +81,8 @@ def elabAscend : Tactic := fun stx => withMainContext do
   let thms ← vcgenSimpExt.getTheorems
   let simpMethods : Sym.Simp.Methods :=
     { pre := Sym.Simp.beta >> Sym.Simp.reduceProj >> Sym.Simp.reduceMatcher
-      post := Sym.Simp.evalGround >> thms.rewrite }
+      post := Sym.Simp.evalGround { maxExponent := ascend.maxExponent.get (← getOptions) } >>
+        thms.rewrite }
   let ctx : Context :=
     { backwardRules := ← mkBackwardRules, simpMethods, internalize := false }
   let scope : Scope := { specs := ← addUnfoldSpecs (← getAscendSpecTheorems) declNames }

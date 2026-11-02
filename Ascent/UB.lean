@@ -22,7 +22,16 @@ instance : LawfulMonad UB := inferInstanceAs (LawfulMonad Option)
 def fail : UB α := none
 
 /-- Returns `a` if `g` holds. Fails otherwise. -/
-def guardRet (g : Prop) [Decidable g] (a : α) : UB α := if g then pure a else fail
+noncomputable def guardRet (g : Prop) (a : α) : UB α :=
+  @ite _ g (Classical.propDecidable g) (pure a) fail
+
+theorem guardRet_of_pos {g : Prop} {a : α} (h : g) : guardRet g a = pure a :=
+  ite_eq_left (h := Classical.propDecidable g) h
+
+theorem guardRet_of_neg {g : Prop} {a : α} (h : ¬g) : guardRet g a = fail :=
+  ite_eq_right (h := Classical.propDecidable g) h
+
+@[simp] theorem guardRet_true {a : α} : guardRet True a = pure a := guardRet_of_pos trivial
 
 /-- The `wp` of `UB`: `⊥` on `none`, `post a` on `some a`. -/
 @[instance_reducible] def wpInst {α} : WP (UB α) α Prop EStack⟨⟩ where
@@ -96,15 +105,15 @@ instance {α} (x : UB α) : WPConjunctive x where
       rw [show (Q₁ ⊓ Q₂) = fun v => Q₁ v ⊓ Q₂ v from funext fun v => meet_apply Q₁ Q₂ v]
       exact PartialOrder.rel_refl
 
-theorem Ascent.Refinement.guardRet {AV CV : Type} {g : Prop} [Decidable g] {P : Prop}
+theorem Ascent.Refinement.guardRet {AV CV : Type} {g : Prop} {P : Prop}
     {Q : CV → AV → Prop} (c : CV) (a : AV) (h : g → P ⊑ Q c a) :
     ⦃P⦄ (Pure.pure c : Id CV) ⪯[Concretization.id Prop] (UB.guardRet g a) ⦃Q⦄ := by
   refine ⟨wrp_intro fun Qa Ea => ?_⟩
   by_cases hg : g
-  · rw [show UB.guardRet g a = Pure.pure a from by simp [UB.guardRet, hg]]
+  · rw [UB.guardRet_of_pos hg]
     show P ⊓ Qa a ⊑ (Concretization.id Prop).post Q Qa c
     refine le_iSup_of_le a ?_
     exact le_meet _ _ _ (PartialOrder.rel_trans (meet_le_left _ _) (h hg)) (meet_le_right _ _)
-  · rw [show UB.guardRet g a = UB.fail from by simp [UB.guardRet, hg]]
+  · rw [UB.guardRet_of_neg hg]
     show P ⊓ (⊥ : Prop) ⊑ _
     exact PartialOrder.rel_trans (meet_le_right _ _) (bot_le _)

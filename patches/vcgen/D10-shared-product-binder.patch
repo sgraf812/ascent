@@ -1,6 +1,6 @@
-diff --color -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
---- a/Ascent/Tactic/VCGen/Solve.lean	2026-10-29 17:59:48.488766621 +0000
-+++ b/Ascent/Tactic/VCGen/Solve.lean	2026-10-29 17:59:48.501766425 +0000
+diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
+--- a/Ascent/Tactic/VCGen/Solve.lean	2026-11-02 10:59:29.895484900 +0000
++++ b/Ascent/Tactic/VCGen/Solve.lean	2026-11-02 10:59:29.905007220 +0000
 @@ -72,10 +72,10 @@
    let dom ← instantiateMVarsIfMVarAppS dom
    let_expr c@Prod α β := dom | return goal

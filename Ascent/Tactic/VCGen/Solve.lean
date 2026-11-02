@@ -138,8 +138,7 @@ the same hash-consed expression as `e`, or `none`. Must run in `goal`'s context.
 def liftedPreFor? (scope : Scope) (e : Expr) : VCGenM (Option LocalDecl) := do
   let some fvarId := scope.lastLiftedPre? | return none
   let some hyp := (← getLCtx).find? fvarId | return none
-  -- Unification lets the hypothesis assign a synthesis hole in `e`.
-  unless isSameExpr e hyp.type || (← isDefEqS e hyp.type) do return none
+  unless isSameExpr e hyp.type do return none
   trace[Elab.Tactic.Do.vcgen] "Solved by lifted hypothesis {hyp.userName}"
   return some hyp
 
@@ -180,13 +179,20 @@ def instantiateWPProg? (rhs : Expr) : VCGenM (Option Expr) := do
   if isSameExpr prog prog' then return none
   return some (← shareCommon (setAppArg rhs WRPApp.progIdx n prog'))
 
+/-- Instantiate the assigned metavariable at the head of `e`, and beta-reduce. The arguments keep
+their metavariables. -/
+partial def instantiateHeadMVarS (e : Expr) : SymM Expr := do
+  let .mvar mvarId := e.getAppFn | return e
+  let some v ← getExprMVarAssignment? mvarId | return e
+  instantiateHeadMVarS (← betaS v e.getAppArgs)
+
 /-- Instantiate assigned head metavariables in the goal's entailment, so the shape tests in the
 following steps see the assigned form. -/
 def instantiateGoal? (goal : MVarId) (target : Expr) : VCGenM (Option MVarId) := do
   let_expr c@PartialOrder.rel α inst pre rhs := target | return none
   let α' ← instantiateMVarsIfMVarAppS α
   let pre' ← instantiateMVarsIfMVarAppS pre
-  let rhs' ← instantiateMVarsIfMVarAppS rhs
+  let rhs' ← instantiateHeadMVarS rhs
   let rhs' := (← instantiateWPProg? rhs').getD rhs'
   if isSameExpr α α' && isSameExpr pre pre' && isSameExpr rhs rhs' then return none
   return some (← goal.replaceTargetDefEqFast (← mkAppNS c #[α', inst, pre', rhs']))

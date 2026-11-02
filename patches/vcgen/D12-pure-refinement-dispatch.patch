@@ -1,0 +1,31 @@
+diff -ruN a/Ascent/Tactic/VCGen/Driver.lean b/Ascent/Tactic/VCGen/Driver.lean
+--- a/Ascent/Tactic/VCGen/Driver.lean	2026-11-02 10:59:29.900385683 +0000
++++ b/Ascent/Tactic/VCGen/Driver.lean	2026-11-02 10:59:29.913883510 +0000
+@@ -9,6 +9,7 @@
+ import Lean.Elab.Tactic.VCGen.Context
+ import Lean.Elab.Tactic.VCGen.Solve
+ import Ascent.Tactic.VCGen.Solve
++import Ascent.Tactic.VCGen.PureRefinement
+ import Lean.Meta.Sym.Grind
+ import Lean.Elab.Tactic.VCGen.Driver
+ 
+@@ -94,6 +95,7 @@
+ -/
+ def emitVC (goal : Grind.Goal) (reason : SolveResult.StopReason) : VCGenM Unit := do
+   let mut goal := { goal with mvarId := ← elimTopPre goal.mvarId }
++  if ← closeByEntry goal.mvarId then return
+   if reason matches .noEntailment .. | .noProgress .. then
+     -- An invariant from an `invariants` alternative is assigned while the target is built, as in
+     -- `?inv pref suff (a, b)`. Instantiating it lets `simp` reduce the body of the invariant.
+@@ -151,6 +153,11 @@
+     | .stop reason =>
+       emitVC goal reason
+     | .goals scope subgoals =>
++      -- A `PureRefinement` subgoal is solved at once, so that the continuation sees the abstract
++      -- value and the precondition.
++      let subgoals ← subgoals.filterM fun mv => do
++        if ← isPureRefinementGoal mv then solvePureRefinement mv; return false
++        return true
+       -- Handle invariant subgoals eagerly here, so that VC subgoals popped
+       -- from the worklist later see the invariant MVar already assigned.
+       -- Non-invariant subgoals go to the worklist as usual and will eventually go through `emitVC`.
