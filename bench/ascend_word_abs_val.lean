@@ -19,9 +19,22 @@ def runEngine (sizes : List Nat) (showSynth := false) : MetaM Unit := do
   AscendBench.runBench "WordAbsVal" mkStmt [``chainC] mkExpected solveEngine
     (`(tactic| simp_all [funRel_iff])) sizes (showSynth := showSynth)
 
+def mkStmtR (n : Nat) : MetaM Term :=
+  `(⦃(⊤ : Prop)⦄ (chainCR 7 7 $(quote n)) ⪯[γw] (?_ : UB Int) ⦃(⌜FunRel wordVal · ·⌝)⦄)
+
+def mkExpectedR (n : Nat) : MetaM Term :=
+  `(chainAR 7 (wordVal 7) $(quote n))
+
+def runEngineR (sizes : List Nat) (showSynth := false) : MetaM Unit := do
+  IO.println "=== WordAbsVal right-nested ==="
+  AscendBench.runBench "WordAbsValR" mkStmtR [``chainCR] mkExpectedR solveEngine
+    (`(tactic| simp_all [funRel_iff])) sizes (showSynth := showSynth)
+
 set_option maxRecDepth 100000
 set_option maxHeartbeats 10000000
 
 #eval runEngine [2] (showSynth := true)
 
 #eval runEngine [10, 20, 50, 100, 200, 500, 1000, 2000, 5000]
+
+#eval runEngineR [10, 20, 50, 100, 200, 500, 1000, 2000, 5000]

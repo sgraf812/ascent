@@ -35,16 +35,24 @@ def unsealAbstractHole (goal : MVarId) : MetaM (Option MVarId) := do
 
 /-- Replace the delayed assignment of each hole in `e` by an ordinary one: `?h xs := ?b` becomes
 `?h := fun xs => b`, where `b` is the value of `?b`. An unapplied occurrence of `?h`, such as the
-continuation of a bind, needs the ordinary assignment. -/
+continuation of a bind, needs the ordinary assignment. The walk follows the raw assignment of each
+metavariable and resolves the innermost hole first, so that each pending value is instantiated once
+and every outer abstraction skips the closed lambdas below it. -/
 partial def resolveDelayedHoles (e : Expr) : MetaM Unit := do
-  for mv in ← getMVars e do
-    let some d ← getDelayedMVarAssignment? mv | continue
-    let b ← instantiateMVars (mkMVar d.mvarIdPending)
-    resolveDelayedHoles b
-    let b ← instantiateMVars b
-    let val ← withLCtx' (← d.mvarIdPending.getDecl).lctx (mkLambdaFVars d.fvars b)
-    modifyMCtx fun mctx => { mctx with dAssignment := mctx.dAssignment.erase mv }
-    mv.assign val
+  let _ ← go e |>.run {}
+where
+  go (e : Expr) : StateRefT (Std.HashSet MVarId) MetaM Unit := do
+    for mv in (e.collectMVars {}).result do
+      if (← get).contains mv then continue
+      modify (·.insert mv)
+      if let some v ← getExprMVarAssignment? mv then
+        go v
+      else if let some d ← getDelayedMVarAssignment? mv then
+        go (mkMVar d.mvarIdPending)
+        let b ← instantiateMVars (mkMVar d.mvarIdPending)
+        let val ← withLCtx' (← d.mvarIdPending.getDecl).lctx (mkLambdaFVars d.fvars b)
+        modifyMCtx fun mctx => { mctx with dAssignment := mctx.dAssignment.erase mv }
+        mv.assign val
 
 /-- Restore the local context of the hole, and check that the synthesized program uses only the
 free variables of that context. The unassigned metavariables of the program, which the run

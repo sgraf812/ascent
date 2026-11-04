@@ -44,4 +44,12 @@ noncomputable def chainA (c : UInt64) : Nat → UB Int
   | 0 => UB.guardRet True (wordVal c)
   | n+1 => do let r ← chainA c n; UB.guardRet (r + wordVal c < 2 ^ 64) (r + wordVal c)
 
+def chainCR (c : UInt64) : UInt64 → Nat → Id UInt64
+  | acc, 0 => pure acc
+  | acc, n+1 => do let r ← pure (acc + c); chainCR c r n
+
+noncomputable def chainAR (c : UInt64) : Int → Nat → UB Int
+  | acc, 0 => UB.guardRet True acc
+  | acc, n+1 => do let r ← UB.guardRet (acc + wordVal c < 2 ^ 64) (acc + wordVal c); chainAR c r n
+
 end AscendBenchVal
