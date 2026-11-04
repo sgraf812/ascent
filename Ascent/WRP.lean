@@ -138,6 +138,19 @@ noncomputable def wrpCont {CV AV CV₂ AV₂ : Type w}
     CV → AV → CPred :=
   fun cv av => wrp γ (c₂ cv) (a₂ av) Q E
 
+theorem wrp_bind_assoc {CV CV₂ CV₃ AV : Type w} {c₁ : CM CV} {c₂ : CV → CM CV₂} {c₃ : CV₂ → CM CV₃}
+    {a : AM AV} {Q : CV₃ → AV → CPred} {E : ERels} :
+    wrp γ (c₁ >>= (c₂ >=> c₃)) a Q E ⊑ wrp γ ((c₁ >>= c₂) >>= c₃) a Q E := by
+  have h : (c₁ >>= c₂) >>= c₃ = c₁ >>= (c₂ >=> c₃) := bind_assoc c₁ c₂ c₃
+  rw [h]
+
+theorem wrp_kleisli [Heyting CPred] {CV AV CV₂ AV₂ CV₃ : Type w}
+    {c₂ : CV → CM CV₂} {c₃ : CV₂ → CM CV₃} {x : CV} {a₁ : AM AV} {a₂ : AV → AM AV₂}
+    {Q : CV₃ → AV₂ → CPred} {E : ERels} :
+    wrp γ (c₂ x) a₁ (fun cv av => wrp γ (c₃ cv) (a₂ av) Q E) E ⊑
+      wrp γ ((c₂ >=> c₃) x) (a₁ >>= a₂) Q E :=
+  wrp_bind
+
 end
 
 /-! ## Exceptions, for `Except` -/
