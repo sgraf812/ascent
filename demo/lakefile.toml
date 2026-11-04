@@ -1,0 +1,13 @@
+name = "ascent-demo"
+defaultTargets = ["Demo"]
+
+[[require]]
+name = "ascent"
+path = ".."
+
+[[require]]
+name = "Kraken"
+path = "../../kraken"
+
+[[lean_lib]]
+name = "Demo"
