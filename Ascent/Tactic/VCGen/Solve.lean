@@ -438,7 +438,7 @@ def applySpec (scope : Scope) (goal : MVarId) (info : WRPApp) (thm : SpecTheorem
   let abs ← instantiateMVarsIfMVarAppS info.abs
   if let .mvar hole := abs.getAppFn then
     let xs := abs.getAppArgs
-    let distinct := (xs.toList.map (·.fvarId!)).eraseDups.length == xs.size
+    let distinct := xs.all (·.isFVar) && (xs.toList.map (·.fvarId!)).eraseDups.length == xs.size
     if (← hole.getKind) matches .natural && !(← hole.isDelayedAssigned) &&
         xs.all (·.isFVar) && distinct then
       let b ← shareCommon (← mkFreshExprMVar (← Sym.inferType abs))
