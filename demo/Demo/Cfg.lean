@@ -357,27 +357,6 @@ noncomputable instance {Aσ : Type} :
       ((CfgLabel → Aσ → Prop) × EStack⟨⟩) (Int64 → CfgLabel → MachineData → Prop) where
   ePosts γ E Ea := γ.post E Ea.1
 
-/-! ## The sequencing rules at the block stack
-
-The rules are instances of `wrp_cons` and `wrp_nil` at `BlockM Aσ`, so that their `WP` instances
-are the ones instance search finds for a goal at that stack. -/
-
-section
-variable [Host] [FunDecls] {Aσ : Type} {γ : Concretization (MachineData → Prop) (Aσ → Prop)}
-  {E : Int64 → CfgLabel → MachineData → Prop}
-
-@[ascend] theorem wrp_cons_block {AV₂ : Type} (d : Directive) (p : Program) (a : BlockM Aσ Unit)
-    (k : BlockM Aσ AV₂) {Q : Unit → AV₂ → MachineData → Prop}
-    (hN : Program.labels (d :: p) = []) :
-    wrp γ d a (fun _ _ => wrp γ p k Q E) E ⊑ wrp γ (d :: p) (a >>= fun _ => k) Q E :=
-  wrp_cons d p a (fun _ => k) hN
-
-@[ascend] theorem wrp_nil_block {Q : Unit → Unit → MachineData → Prop} :
-    Q () () ⊑ wrp γ ([] : Program) (pure () : BlockM Aσ Unit) Q E :=
-  wrp_nil
-
-end
-
 /-! ## The control-flow rule -/
 
 section

@@ -390,7 +390,7 @@ theorem exitIf_bind (g : AState → Bool) (f : AState → AState) (l : CfgLabel)
       ⊑ wrp (ofStateRepr abs) (Directive.instr (.regular asz osz .ret) :: p) ret Q E := by
   show _ ⊑ wrp (ofStateRepr abs) _ (exitIf retLoaded _ .exit) Q E
   rw [← exitIf_bind retLoaded _ .exit (fun _ => pure ())]
-  exact PartialOrder.rel_trans (wrp_ret asz osz) (wrp_cons_block _ p ret (pure ()) hN)
+  exact PartialOrder.rel_trans (wrp_ret asz osz) (wrp_cons _ p ret (fun _ => pure ()) hN)
 
 end
 

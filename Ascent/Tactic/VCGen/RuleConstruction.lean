@@ -375,9 +375,24 @@ def tryMkBackwardRuleFromSpec (specThm : SpecTheorem) (info : WRPApp)
   let prog := specInfo.prog
   let postSpec := specInfo.post
   let epostsSpec := specInfo.eposts
-  -- The rule takes the concrete half of the prefix from the goal, and the abstract half, `γ` and
-  -- the abstract program from the spec: the run fixes the abstract types only when a leaf applies.
+  -- The rule takes the concrete half of the prefix from the goal. The abstract half and `γ` come
+  -- from the spec, unified with the goal's arguments first: an argument the goal fixes is baked
+  -- into the rule, and a metavariable of the goal stays a pattern variable, so a leaf spec can
+  -- still fix an open abstract type when it applies. The abstract program stays schematic so that
+  -- the rule does not capture the goal's hole. Sym's matcher never binds a pattern variable to a
+  -- partial application, so the abstract monad must be baked in before the pattern is built.
   let concrete := [0, 2, 4, 6, 9, 11, 13]
+  for i in [1, 3, 5, 7, 8, 16] do
+    discard <| withReducible <| approxDefEq <| isDefEqGuarded specInfo.args[i]! info.args[i]!
+  -- The spec's instance arguments on the abstract side are synthesized once their types are fixed.
+  for x in _xs, b in _bs do
+    if b.isInstImplicit && !(← x.mvarId!.isAssigned) then
+      let ty ← instantiateMVars (← Meta.inferType x)
+      unless ty.hasExprMVar do
+        if let some inst ← (monadLift (Meta.synthInstance? ty) : OptionT MetaM (Option Expr)) then
+          discard <| isDefEqGuarded x inst
+  for i in [10, 12, 14, 15] do
+    discard <| withDefault <| isDefEqGuarded specInfo.args[i]! info.args[i]!
   let args := specInfo.args.mapIdx fun i a => if concrete.contains i then info.args[i]! else a
   let info := { info with head := specInfo.head, args }
   -- `withDefault`: the goal can carry a registered `WP` instance (e.g. `Id.wpInst`) while the

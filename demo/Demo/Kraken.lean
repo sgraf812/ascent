@@ -14,7 +14,7 @@ variable [Host] [FunDecls]
   [EPostsConcretization (MachineData → Prop) APred (Int64 → MachineData → Prop) AEPosts ERels]
   {γ : Concretization (MachineData → Prop) APred}
 
-theorem wrp_cons {AV AV₂ : Type} (d : Directive) (p : Program) (a : AM AV) (k : AV → AM AV₂)
+@[ascend] theorem wrp_cons {AV AV₂ : Type} (d : Directive) (p : Program) (a : AM AV) (k : AV → AM AV₂)
     {Q : Unit → AV₂ → MachineData → Prop} {E : ERels} (hN : Program.labels (d :: p) = []) :
     wrp γ d a (fun _ x => wrp γ p (k x) Q E) E ⊑ wrp γ (d :: p) (a >>= k) Q E := by
   refine wrp_intro fun Qa Ea => ?_
@@ -35,7 +35,7 @@ theorem wrp_cons {AV AV₂ : Type} (d : Directive) (p : Program) (a : AM AV) (k 
   · intro s hw
     exact Program.wp_cons hN hw
 
-theorem wrp_nil {Q : Unit → Unit → MachineData → Prop} {E : ERels} :
+@[ascend] theorem wrp_nil {Q : Unit → Unit → MachineData → Prop} {E : ERels} :
     Q () () ⊑ wrp γ ([] : Program) (pure () : AM Unit) Q E := by
   refine wrp_intro fun Qa Ea => ?_
   intro s hs

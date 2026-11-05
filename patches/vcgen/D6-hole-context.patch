@@ -1,27 +1,38 @@
 diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
---- a/Ascent/Tactic/VCGen/Solve.lean	2026-11-02 10:59:29.885063001 +0000
-+++ b/Ascent/Tactic/VCGen/Solve.lean	2026-11-02 10:59:29.895484900 +0000
-@@ -421,8 +421,38 @@
+--- a/Ascent/Tactic/VCGen/Solve.lean	2026-11-05 09:26:00.081125910 +0000
++++ b/Ascent/Tactic/VCGen/Solve.lean	2026-11-05 09:26:00.087584269 +0000
+@@ -421,8 +421,49 @@
          excessArgs: {info.excessArgs}"
      | return none
    trace[Elab.Tactic.Do.vcgen] "Applying spec {thm.proof} for {info.prog}. Excess args: {info.excessArgs}"
 +  let saved ← (saveState : MetaM Meta.SavedState)
 +  -- An unassigned hole in the abstract program is filled through a fresh metavariable `?b` of
 +  -- the goal's context, which the rule then assigns. A bare hole is assigned `?b`. A hole `?h xs`
-+  -- applied to distinct free variables gets the delayed assignment `?h xs := ?b`, and the goal's
-+  -- abstract program becomes `?b`. The frontend resolves the delayed assignments after the run.
++  -- applied to distinct free variables gets the delayed assignment `?h xs := ?b`. A hole applied
++  -- to closed terms, such as the continuation `?k ()` of a bind whose first action returns `()`,
++  -- is assigned the constant function `fun _ => ?b`. In every case the goal's abstract program
++  -- becomes `?b`. The frontend resolves the delayed assignments after the run.
 +  let mut goal := goal
 +  let mut filled : Option (LocalContext × Array Expr × Expr) := none
 +  let abs ← instantiateMVarsIfMVarAppS info.abs
 +  if let .mvar hole := abs.getAppFn then
 +    let xs := abs.getAppArgs
 +    let distinct := xs.all (·.isFVar) && (xs.toList.map (·.fvarId!)).eraseDups.length == xs.size
-+    if (← hole.getKind) matches .natural && !(← hole.isDelayedAssigned) &&
-+        xs.all (·.isFVar) && distinct then
++    let closed := xs.all fun x => !x.hasFVar && !x.hasMVar
++    if (← hole.getKind) matches .natural && !(← hole.isDelayedAssigned) && (distinct || closed) then
 +      let b ← shareCommon (← mkFreshExprMVar (← Sym.inferType abs))
-+      filled := some ((← hole.getDecl).lctx, xs, b)
++      filled := some ((← hole.getDecl).lctx, if closed then #[] else xs, b)
 +      if xs.isEmpty then
 +        hole.assign b
++      else if closed then
++        let mut ty ← instantiateMVars (← hole.getType)
++        let mut doms := #[]
++        for _ in [0:xs.size] do
++          let .forallE nm d body _ := ty
++            | throwError "ascend: the hole {mkMVar hole} applied to {xs} has no function type"
++          doms := doms.push (nm, d)
++          ty := body
++        hole.assign <| doms.foldr (fun (nm, d) acc => .lam nm d acc .default) b
 +      else
 +        assignDelayedMVar hole xs b.mvarId!
 +        let_expr PartialOrder.rel α inst pre _ := ← goal.getType | return none
