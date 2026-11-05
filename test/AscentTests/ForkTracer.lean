@@ -56,7 +56,7 @@ def synth (m : Nat) : { a : StateT Nat UB Nat //
     ⦃(⊤ : St → Prop)⦄ (setL "n" m >>= fun _ => getL "n") ⪯[ofStateRepr St.heap] a
       ⦃fun cv av => ⌜cv = av⌝⦄ } := by
   apply Subtype.mk
-  ascend'
+  ascend
   simp
   rfl
 
@@ -66,7 +66,7 @@ example (m : Nat) : (synth m).1 = pure m := rfl
 example (m : Nat) :
     ⦃(⊤ : St → Prop)⦄ (setL "n" m >>= fun _ => getL "n") ⪯[ofStateRepr St.heap]
       (pure m : StateT Nat UB Nat) ⦃fun cv av => ⌜cv = av⌝⦄ := by
-  ascend'
+  ascend
   simp
 
 /-- Reads the heap of the concrete state. -/
@@ -87,7 +87,7 @@ example : True := by
     have : ∃ a : StateT Nat UB Nat,
         ⦃(⊤ : St → Prop)⦄ getH ⪯[ofStateRepr St.heap] a ⦃fun cv av => ⌜cv = av⌝⦄ := by
       apply Exists.intro
-      ascend'
+      ascend
   trivial
 
 end ForkTracer

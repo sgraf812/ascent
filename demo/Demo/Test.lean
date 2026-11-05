@@ -21,4 +21,4 @@ noncomputable def loopBodyA [Host] [FunDecls] (t : MachineData) :
     { a : BlockM AState Unit //
       ⦃(· = t)⦄ loopBody ⪯[ofStateRepr abs] a ⦃fun _ _ _ => True; fun _ _ _ => True⦄ } := by
   apply Subtype.mk
-  ascend' [loopBody]
+  ascend [loopBody]

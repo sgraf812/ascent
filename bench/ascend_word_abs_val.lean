@@ -12,7 +12,7 @@ def mkExpected (n : Nat) : MetaM Term :=
   `(chainA 7 $(quote n))
 
 def solveEngine (_n : Nat) (goal : MVarId) : MetaM (List MVarId) := do
-  AscendBench.solveUsingTactic goal (← `(tactic| ascend'))
+  AscendBench.solveUsingTactic goal (← `(tactic| ascend))
 
 def runEngine (sizes : List Nat) (showSynth := false) : MetaM Unit := do
   IO.println "=== WordAbsVal ascend engine ==="

@@ -4,9 +4,9 @@ import Ascent.Tactic.VCGen.Frontend
 # The `ascend_def` command
 
 `ascend_def a : T from ⦃P⦄ c ⪯[γ] a ⦃Q; E⦄ by tac` defines `a : T` as the abstract program that
-`ascend'` synthesizes for `c`, and proves the refinement as the theorem `a.refines`. In the
+`ascend` synthesizes for `c`, and proves the refinement as the theorem `a.refines`. In the
 statement, `a` is a variable of type `T`. The command replaces `a` by a synthesis hole, runs
-`ascend'` with the head definition of `c` unfolded, and closes each VC with `tac`.
+`ascend` with the head definition of `c` unfolded, and closes each VC with `tac`.
 -/
 
 open Lean Meta Elab Command Term
@@ -16,7 +16,7 @@ namespace Lean.Elab.Tactic.VCGen.Ascend
 syntax (name := ascendDefCmd)
   "ascend_def " ident " : " term " from " term (" by " tacticSeq)? : command
 
-/-- The head constant of the concrete program `c`, if `ascend'` can unfold it: a definition that
+/-- The head constant of the concrete program `c`, if `ascend` can unfold it: a definition that
 is neither a projection nor an instance. -/
 def unfoldableHead? (c : Expr) : MetaM (Option Name) := do
   let some declName := c.getAppFn.constName? | return none
@@ -39,8 +39,8 @@ elab_rules : command
       throwError "ascend_def: the statement is not a refinement:{indentExpr goalType}"
     let proof ← mkFreshExprSyntheticOpaqueMVar goalType
     let ascendStx ← match ← unfoldableHead? goalType.getAppArgs[13]! with
-      | some declName => `(tactic| ascend' [$(mkIdent declName):ident])
-      | none => `(tactic| ascend')
+      | some declName => `(tactic| ascend [$(mkIdent declName):ident])
+      | none => `(tactic| ascend)
     let (vcs, _) ← Lean.Elab.runTactic proof.mvarId! ascendStx
     for vc in vcs do
       let some tac := tac?

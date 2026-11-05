@@ -73,7 +73,7 @@ noncomputable def zipWithAddA [Host] [FunDecls] (s : MachineData) (ra : Int64) :
       table]
     refine ⟨?_, ?_, ?_, List.forall_mem_nil _⟩
     all_goals intro t hst
-    all_goals ascend'
+    all_goals ascend
     all_goals cfg_vc
 
 /-- The synthesized L1 program: the text over the abstract machine, block by block. -/

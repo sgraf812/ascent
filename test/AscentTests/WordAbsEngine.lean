@@ -41,7 +41,7 @@ noncomputable def chain2 : { a : UB Int //
     ⦃(⊤ : Prop)⦄ ((pure 7 >>= fun r => pure (r + 7)) >>= fun r => pure (r + 7) : Id UInt64)
       ⪯[γw] a ⦃(⌜FunRel wordVal · ·⌝)⦄ } := by
   apply Subtype.mk
-  ascend'
+  ascend
 
 /-- Each addition acquires its no-overflow guard, at the abstract value of the previous step. -/
 example : chain2.1 = (do

@@ -14,11 +14,11 @@ noncomputable def chainA (c : UInt64) : Nat → UB Int
     let r ← chainA c n
     UB.guardRet (r + wordVal c < 2 ^ 64) (r + wordVal c)
 
-/-- `ascend' [chainC]` unfolds the recursive concrete program at a literal depth. -/
+/-- `ascend [chainC]` unfolds the recursive concrete program at a literal depth. -/
 noncomputable def chain3 :
     { a : UB Int // ⦃(⊤ : Prop)⦄ (chainC 7 3) ⪯[γw] a ⦃(⌜FunRel wordVal · ·⌝)⦄ } := by
   apply Subtype.mk
-  ascend' [chainC]
+  ascend [chainC]
 
 example : chain3.1 = chainA 7 3 := rfl
 

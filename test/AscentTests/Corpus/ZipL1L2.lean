@@ -57,7 +57,7 @@ abbrev γh : Concretization (State → Prop) (Heap → Prop) := ofStateRepr Stat
 def c1 (v : USize) : { a : StateT Heap UB USize //
     ⦃(⊤ : State → Prop)⦄ (setSize "n" v >>= fun _ => getSize "n") ⪯[γh] a ⦃(⌜· = ·⌝)⦄ } := by
   apply Subtype.mk
-  ascend'
+  ascend
 
 example (v : USize) : (c1 v).1 = pure v := rfl
 
@@ -73,7 +73,7 @@ def c2 (la lb : USize) (L : Locals) (h : Heap) : { a : StateT Heap UB USize //
         getSize "n")
       ⪯[γh] a ⦃(⌜· = ·⌝)⦄ } := by
   apply Subtype.mk
-  ascend'
+  ascend
 
 example (la lb : USize) (L : Locals) (h : Heap) : (c2 la lb L h).1 = pure (min la lb) := rfl
 
@@ -90,7 +90,7 @@ abbrev invL2Eq (a b out : Addr) (n : USize) (L : Locals) : State → USize × He
 def c3 (a b out : Addr) (n : USize) (L : Locals) : { p : StateT (USize × Heap) UB USize //
     ⦃(⊤ : State → Prop)⦄ (getSize "n") ⪯[ofStateRel (invL2Eq a b out n L)] p ⦃(⌜· = ·⌝)⦄ } := by
   apply Subtype.mk
-  ascend'
+  ascend
 
 example (a b out : Addr) (n : USize) (L : Locals) : (c3 a b out n L).1 = pure n := rfl
 

@@ -2,11 +2,11 @@ import Lean.Elab.Tactic.VCGen.Frontend
 import Ascent.Tactic.VCGen.Driver
 
 /-!
-# The `ascend'` tactic
+# The `ascend` tactic
 
-`ascend'` runs the forked worklist on a goal `⦃P⦄ c ⪯[γ] a ⦃Q; E⦄`. The `wrp` goals use the
+`ascend` runs the forked worklist on a goal `⦃P⦄ c ⪯[γ] a ⦃Q; E⦄`. The `wrp` goals use the
 `@[ascend]` database, and the `wp` goals use the `@[spec]` database. A natural metavariable in
-`a` is a synthesis hole. `ascend' [f, g]` unfolds the definitions `f` and `g` in both kinds of goals.
+`a` is a synthesis hole. `ascend [f, g]` unfolds the definitions `f` and `g` in both kinds of goals.
 -/
 
 open Lean Meta Elab Tactic Sym
@@ -17,11 +17,11 @@ open Lean.Elab.Tactic.VCGen.SpecAttr
 
 register_option ascend.maxExponent : Nat := {
   defValue := 16
-  descr := "the largest exponent `n` for which the `simp` step of `ascend'` evaluates a power `a ^ n` \
+  descr := "the largest exponent `n` for which the `simp` step of `ascend` evaluates a power `a ^ n` \
     of literals"
 }
 
-syntax (name := ascendTac) "ascend'" (" [" ident,* "]")? : tactic
+syntax (name := ascendTac) "ascend" (" [" ident,* "]")? : tactic
 
 /-- Unseal the abstract program hole of a `Refinement` goal, so that rule application can assign
 it. Returns the hole. -/
