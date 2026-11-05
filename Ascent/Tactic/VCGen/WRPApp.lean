@@ -98,15 +98,16 @@ def schematic (info : WRPApp) : MetaM WRPApp := do
   return { info with args, expr := mkAppN info.head (args ++ info.excessArgs) }
 
 /-- The arguments a rule built from `schematic` bakes in, as one term for hash-consing: each
-program type reduced to its monad where `monadOf?` finds one. The program types fix the lattice
-types, the exception relation type and every instance of the prefix, as out-parameters. The term
-is a key, never a well-typed expression. -/
+program type reduced to its monad where `monadOf?` finds one, and `γ`. The program types fix the
+lattice types, the exception relation type and every instance of the prefix, as out-parameters.
+`γ` is baked in so that a structured concretization is unified once, at rule construction, and
+then compared by pointer at every application. The term is a key, never a well-typed expression. -/
 def ruleKey (info : WRPApp) : MetaM Expr := do
   let side (i : Nat) : MetaM Expr := do
     match ← info.monadOf? i with
     | some (m, _) => return m
     | none => return info.args[i]!
-  return mkApp2 (mkConst `Ascent.ruleKey) (← side 0) (← side 1)
+  return mkApp3 (mkConst `Ascent.ruleKey) (← side 0) (← side 1) info.γ
 
 end WRPApp
 

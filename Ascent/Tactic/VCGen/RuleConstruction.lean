@@ -387,17 +387,15 @@ def tryMkBackwardRuleFromSpec (specThm : SpecTheorem) (info : WRPApp)
   -- the matcher assigns the goal's metavariable when the rule applies. Sym's matcher never binds
   -- a pattern variable to a partial application, so a fixed monad must be baked in before the
   -- pattern is built. The conclusion carries the goal's arguments wherever they unified, as the
-  -- goals of the run spell them. `γ` is the spec's: the program types do not fix it, and a rule
-  -- keyed on the program types must apply at every `γ` the spec admits.
+  -- goals of the run spell them.
   let mut args := info.args
   let unify (i : Nat) : OptionT MetaM Bool := do
     let ok ← if i ≥ 9 && i ≤ 15 then withDefault <| isDefEqGuarded specInfo.args[i]! info.args[i]!
       else withReducible <| approxDefEq <| isDefEqGuarded specInfo.args[i]! info.args[i]!
     if !ok && !goalInfo.args[i]!.hasExprMVar then failure
     return ok
-  for i in [0, 1, 2, 3, 4, 5, 6, 7, 8] do
+  for i in [0, 1, 2, 3, 4, 5, 6, 7, 8, 16] do
     unless ← unify i do args := args.set! i specInfo.args[i]!
-  args := args.set! 16 specInfo.args[16]!
   for x in _xs, b in _bs do
     if b.isInstImplicit && !(← x.mvarId!.isAssigned) then
       let ty ← instantiateMVars (← Meta.inferType x)
