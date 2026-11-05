@@ -43,9 +43,9 @@ def AState.sib8 (st : AState) (b i : Reg64) (d : Int64) : BitVec 64 :=
 def AState.frameSafe (st : AState) (a : BitVec 64) : Bool :=
   decide (8 ≤ (st.regs .rsp - a).toNat) && decide (8 ≤ (a - st.regs .rsp).toNat)
 
-@[simp] theorem abs_regs (s : MachineData) : (abs s).regs = s.regs.get64 := rfl
-@[simp] theorem abs_status (s : MachineData) : (abs s).status = s.status.noAF := rfl
-@[simp] theorem abs_mem (s : MachineData) : (abs s).mem = s.dmem := rfl
+@[simp, vcgen_simp] theorem abs_regs (s : MachineData) : (abs s).regs = s.regs.get64 := rfl
+@[simp, vcgen_simp] theorem abs_status (s : MachineData) : (abs s).status = s.status.noAF := rfl
+@[simp, vcgen_simp] theorem abs_mem (s : MachineData) : (abs s).mem = s.dmem := rfl
 
 theorem abs_regs_set64 (s : MachineData) (r : Reg64) (v : BitVec 64) :
     (s.regs.set64 r v).get64 = fun r' => if r' = r then v else s.regs.get64 r' := by
@@ -211,13 +211,24 @@ def retLoaded (st : AState) : Bool := (Mem.loadInt st.mem (st.regs .rsp) 8).isSo
 /-! The grind theory of the guards: the scaled-index address without displacement, and the frame
 guard as its two bounds, which kraken's `Blocks.Disjoint.of_sub` turns into disjointness. -/
 
-@[grind =] theorem AState.sib8_zero (st : AState) (b i : Reg64) :
+@[simp, vcgen_simp, grind =] theorem AState.sib8_zero (st : AState) (b i : Reg64) :
     st.sib8 b i 0 = st.regs b + st.regs i * 8 := by
   simp [AState.sib8]
 
-@[grind =] theorem AState.frameSafe_eq (st : AState) (a : BitVec 64) :
+@[vcgen_simp] theorem AState.frameSafe_eq (st : AState) (a : BitVec 64) :
     (st.frameSafe a = true) = (8 ≤ (st.regs .rsp - a).toNat ∧ 8 ≤ (a - st.regs .rsp).toNat) := by
   simp [AState.frameSafe]
+
+/-- A store at a frame-safe address leaves the return slot as it was. The guard itself is the
+pattern, so a finisher instantiates the lemma in one step. -/
+theorem Mem.loadInt_storeInt_of_frameSafe {st : AState} {a x : BitVec 64} (h : st.frameSafe a = true)
+    (hrsp : st.regs .rsp = x) {m : DataMem} {v : Int} :
+    (Mem.storeInt m a 8 v).loadInt x 8 = m.loadInt x 8 := by
+  rw [AState.frameSafe_eq, hrsp] at h
+  exact Mem.loadInt_storeInt_of_disjoint (Mem.Blocks.Disjoint.of_sub h.1 h.2) _
+
+grind_pattern Mem.loadInt_storeInt_of_frameSafe =>
+  Mem.loadInt (Mem.storeInt m a 8 v) x 8, AState.frameSafe st a
 
 attribute [grind =] abs_regs abs_mem sib8Storable_eq sib8Loaded_eq
 

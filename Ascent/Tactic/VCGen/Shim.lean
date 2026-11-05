@@ -63,6 +63,26 @@ def unfoldRefinement (goal : MVarId) : VCGenM MVarId := do
     | throwError "Failed to unfold the Refinement target of {goal}"
   return goal
 
+/-- Rewrite every hypothesis of `goal` with the simp step. A hypothesis lifted from a precondition,
+such as a branch condition or a guard, reaches the verification condition as written, and a
+finisher needs it in the normal form the simp step gives the target. -/
+def simpHypotheses (goal : MVarId) : VCGenM MVarId := do
+  let some methods := (← read).simpMethods | return goal
+  let mut goal := goal
+  -- From the last hypothesis backwards: a replacement reintroduces the hypotheses after it.
+  for fvarId in (← goal.getDecl).lctx.getFVarIds.reverse do
+    let some decl := (← goal.getDecl).lctx.find? fvarId | continue
+    if decl.isImplementationDetail then continue
+    let type ← instantiateMVars decl.type
+    unless ← goal.withContext (isProp type) do continue
+    let (result, simpState') ←
+      goal.withContext <| Sym.Simp.SimpM.run (Sym.Simp.simp type) methods {} (← get).simpState
+    modify fun s => { s with simpState := simpState' }
+    if let .step type' proof .. := result then
+      let r ← goal.withContext <| goal.replaceLocalDecl fvarId type' proof
+      goal := r.mvarId
+  return goal
+
 /-- Replace the abstract program of the goal `pre ⊑ wrp γ c a Q E s₁ … sₙ` by `b`. -/
 def setAbs (goal : MVarId) (info : WRPApp) (b : Expr) : VCGenM MVarId := do
   let_expr PartialOrder.rel α inst pre _ := ← goal.getType

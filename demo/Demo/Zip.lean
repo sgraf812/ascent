@@ -60,7 +60,7 @@ attribute [local vcgen_simp] zipWithAdd
 ascend_def zipWithAddA [Host] [FunDecls] [Embeds zipWithAdd] (s : MachineData) (ra : Int64) :
     BlockM AState Unit from
   ⦃(· = s.push64 ra)⦄ zipWithAdd ⪯[ofStateRepr abs] zipWithAddA ⦃fun _ _ => ⊤; RetRel s ra⦄
-  ascend [refines_cfg (p := zipWithAdd)] with cfg_vc
+  ascend [refines_cfg (p := zipWithAdd)] with grind
 
 /-- The synthesized L1 program: the text over the abstract machine, block by block. -/
 example [Host] [FunDecls] [Embeds zipWithAdd] (s : MachineData) (ra : Int64) :

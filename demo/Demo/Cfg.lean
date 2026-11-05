@@ -539,12 +539,12 @@ attribute [vcgen_simp] Program.blocks_eq Program.view_cons_instr Program.view_co
 Shape equations at a literal label, in the style of kraken's flag and register theories, so that a
 grind finisher normalizes a relation VC without a disjunction to split on. -/
 
-@[grind =] theorem FallRel_eq (s₀ s : MachineData) : FallRel s₀ () () s = StackOf s₀ s := rfl
+@[simp, vcgen_simp, grind =] theorem FallRel_eq (s₀ s : MachineData) : FallRel s₀ () () s = StackOf s₀ s := rfl
 
-@[grind =] theorem StackOf_eq (s₀ s : MachineData) :
+@[simp, vcgen_simp, grind =] theorem StackOf_eq (s₀ s : MachineData) :
     StackOf s₀ s = (s.regs.get64 .rsp = s₀.regs.get64 .rsp ∧ s.retAddr = s₀.retAddr) := rfl
 
-@[grind =] theorem JumpRel_label [Host] (p : Program) (s₀ : MachineData) (a : Int64) (l : Label)
+@[simp, vcgen_simp, grind =] theorem JumpRel_label [Host] (p : Program) (s₀ : MachineData) (a : Int64) (l : Label)
     (s : MachineData) :
     JumpRel p s₀ a (.label l) s = (l ∈ Program.labels p ∧ a = label l ∧ StackOf s₀ s) := by
   apply propext
@@ -555,7 +555,7 @@ grind finisher normalizes a relation VC without a disjunction to split on. -/
   · rintro ⟨hmem, ha, hs⟩
     exact Or.inl ⟨l, hmem, rfl, ha, hs⟩
 
-@[grind =] theorem JumpRel_exit [Host] (p : Program) (s₀ : MachineData) (a : Int64)
+@[simp, vcgen_simp, grind =] theorem JumpRel_exit [Host] (p : Program) (s₀ : MachineData) (a : Int64)
     (s : MachineData) :
     JumpRel p s₀ a .exit s = (a = s₀.retAddr.get! ∧ s.regs.get64 .rsp = s₀.regs.get64 .rsp + 8#64) := by
   apply propext
@@ -567,6 +567,7 @@ grind finisher normalizes a relation VC without a disjunction to split on. -/
     exact Or.inr ⟨rfl, ha, hs⟩
 
 attribute [vcgen_simp] Program.labels_nil Program.labels_cons_instr Program.labels_cons_label
+  MachineData.retAddr_eq CondCode.interp_le CondCode.interp_nz Bool.and_eq_true
 attribute [grind →] Mem.Blocks.Disjoint.of_sub
 
 /-- The control-flow rule as a spec: the abstract program is `cfgLoop` over a table of blocks, one
