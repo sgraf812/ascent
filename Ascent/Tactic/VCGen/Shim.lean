@@ -1,5 +1,7 @@
 import Lean.Elab.Tactic.VCGen.Context
 import Lean.Elab.Tactic.VCGen.Util
+import Lean.Meta.Sym.AlphaShareBuilder
+import Lean.Meta.Sym.InstantiateS
 import Ascent.Refinement
 import Ascent.Tactic.VCGen.WRPApp
 
@@ -13,7 +15,7 @@ counterpart takes after the program type prefix.
 The `@[ascend]` attribute keys a spec `pre ⊑ wrp γ c a Q E` on its concrete program `c`.
 -/
 
-open Lean Meta Sym Std.WP Lean.Order Ascent
+open Lean Meta Sym Sym.Internal Std.WP Lean.Order Ascent
 
 namespace Ascent
 
@@ -42,16 +44,6 @@ theorem wrp_mono_post_le (x : CProg) (post post' : CVal → AVal → CPred) (epo
   refine PartialOrder.rel_trans ?_ (le_iSup (fun av' => post' cv av' ⊓ γ.pred (Qa av')) av)
   exact meet_mono_left (h cv av)
 
-theorem wrp_mono_erel_le [Assertion ERels] (x : CProg) (post : CVal → AVal → CPred) (eposts eposts' : ERels)
-    (h : eposts ⊑ eposts') {pre : CPred} (h' : pre ⊑ wrp γ x a post eposts) :
-    pre ⊑ wrp γ x a post eposts' := by
-  sorry
-
-theorem wrp_mono_bot_le [Assertion ERels] (x : CProg) (post : CVal → AVal → CPred) (eposts : ERels)
-    {pre : CPred} (h : pre ⊑ wrp γ x a post ⊥) :
-    pre ⊑ wrp γ x a post eposts := by
-  sorry
-
 theorem wrp_le_wrp_of_eq {x y : CProg} (h : x = y) (post : CVal → AVal → CPred)
     (eposts : ERels) : wrp γ y a post eposts ⊑ wrp γ x a post eposts := by
   subst h; exact PartialOrder.rel_refl
@@ -70,6 +62,72 @@ def unfoldRefinement (goal : MVarId) : VCGenM MVarId := do
   let .goals [goal] ← rule.apply goal
     | throwError "Failed to unfold the Refinement target of {goal}"
   return goal
+
+/-- Replace the abstract program of the goal `pre ⊑ wrp γ c a Q E s₁ … sₙ` by `b`. -/
+def setAbs (goal : MVarId) (info : WRPApp) (b : Expr) : VCGenM MVarId := do
+  let_expr PartialOrder.rel α inst pre _ := ← goal.getType
+    | throwError "setAbs: the goal is not an entailment"
+  let rhs ← mkAppNS info.head (info.args.set! 18 b ++ info.excessArgs)
+  let target ← mkAppNS (← goal.getType).getAppFn #[α, inst, pre, rhs]
+  let g ← mkFreshExprSyntheticOpaqueMVar (← shareCommon target) (← goal.getTag)
+  goal.assign g
+  return g.mvarId!
+
+/-- The cell of a table slot `Table.get tbl k` at a closed key `k`. A table under construction is
+a chain `(k₁, b₁) :: … :: ?rest` that ends in a natural metavariable: the cell of a key with an
+entry, else a fresh cell `?b` of the current context, appended as `?rest := (k, ?b) :: ?rest'`.
+The local context of the table comes with a fresh cell, so that the caller can check that the
+synthesized cell uses only that context. `none` when the key is open, the slot is not a table
+under construction, or the key has no entry and the chain ends in no metavariable. -/
+def tableCell (get : Expr) : VCGenM (Option (Option LocalContext × Expr)) := do
+  let args := get.getAppArgs
+  let κ := args[0]!
+  let β := args[1]!
+  let k := args[5]!
+  if k.hasFVar || k.hasMVar then return none
+  let mut tbl ← instantiateMVarsS args[4]!
+  repeat
+    if let .mvar m := tbl then
+      unless (← m.getKind) matches .natural do return none
+      let decl ← m.getDecl
+      let b ← shareCommon (← mkFreshExprMVar β)
+      let rest ← shareCommon (← withLCtx decl.lctx decl.localInstances (mkFreshExprMVar decl.type))
+      let prodTy ← mkAppNS (← mkConstS ``Prod [0, 0]) #[κ, β]
+      let entry ← mkAppNS (← mkConstS ``Prod.mk [0, 0]) #[κ, β, k, b]
+      m.assign (← mkAppNS (← mkConstS ``List.cons [0]) #[prodTy, entry, rest])
+      return some (decl.lctx, b)
+    let_expr List.cons _ entry rest := tbl | return none
+    let_expr Prod.mk _ _ k' b := entry | return none
+    if k' == k then return some (none, b)
+    tbl := rest
+  return none
+
+/-- Split a target `∀ x ∈ a :: l, G x` into `G a` and `∀ x ∈ l, G x`, and close
+`∀ x ∈ [], G x`. -/
+def forallMemList? (goal : MVarId) (target : Expr) : VCGenM (Option (List MVarId)) := do
+  let .forallE _ _ (.forallE _ dom _ _) _ := target | return none
+  let_expr Membership.mem _ _ _ l _ := dom | return none
+  let l ← instantiateMVarsS l
+  -- `MVarId.apply`: the premise `p a` of the lemma is a higher-order pattern under the binder.
+  let lemma ←
+    if l.isAppOfArity ``List.cons 3 then pure ``Ascent.forall_mem_cons_intro
+    else if l.isAppOfArity ``List.nil 1 then pure ``Ascent.forall_mem_nil_intro
+    else return none
+  let some gs ← (liftM (observing? (goal.apply (← mkConstWithFreshMVarLevels lemma))) : VCGenM _)
+    | return none
+  -- The element `a` sits under projections in `G a`; reduce them, so that the premise meets the
+  -- run in reduced form.
+  let methods : Sym.Simp.Methods :=
+    { pre := Sym.Simp.beta >> Sym.Simp.reduceProj >> Sym.Simp.reduceMatcher
+      post := Sym.Simp.evalGround {} }
+  let mut gs' := []
+  for g in gs do
+    let g ← preprocessMVar g
+    match ← Sym.simpGoal g methods with
+    | .goal g' => gs' := gs' ++ [g']
+    | .noProgress => gs' := gs' ++ [g]
+    | .closed => pure ()
+  return some gs'
 
 /-- The concrete program of a spec conclusion `pre ⊑ wrp γ c a Q E`. -/
 def selectProg (type : Expr) : MetaM (Option Expr) := do

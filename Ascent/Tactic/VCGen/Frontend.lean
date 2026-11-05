@@ -21,7 +21,7 @@ register_option ascend.maxExponent : Nat := {
     of literals"
 }
 
-syntax (name := ascendTac) "ascend" (" [" ident,* "]")? : tactic
+syntax (name := ascendTac) "ascend" (" [" term,* "]")? : tactic
 
 /-- Unseal the abstract program hole of a `Refinement` goal, so that rule application can assign
 it. Returns the hole. -/
@@ -73,6 +73,33 @@ def checkHoleScope (hole : MVarId) (decl : MetavarDecl) : MetaM Unit := do
         variable that the run introduced"
     restore mv
 
+/-- Close every table of the synthesized program: the chain `(k₁, b₁) :: … :: ?rest` that the run
+built one cell per key ends with `?rest := []`. -/
+def closeTables (hole : MVarId) : MetaM Unit := do
+  for mv in ← getMVars (← instantiateMVars (mkMVar hole)) do
+    let ty ← instantiateMVars (← mv.getType)
+    if ty.isAppOfArity ``Ascent.Table 2 then
+      let #[κ, β] := ty.getAppArgs | continue
+      mv.assign (mkApp (mkConst ``List.nil [0]) (mkApp2 (mkConst ``Prod [0, 0]) κ β))
+
+/-- A spec passed at the invocation, `ascend [t]`: the proof `t` with its metavariables abstracted,
+in `pre ⊑ wrp …` form, at a priority above the registered specs. -/
+def mkSpecTheoremFromTerm (term : Syntax) : TacticM SpecTheorem := withRef term do
+  let e ← Tactic.elabTerm term none
+  Term.synthesizeSyntheticMVars (postpone := .no) (ignoreStuckTC := true)
+  let e ← instantiateMVars e
+  let e ← forallTelescope (← inferType e) fun xs body => do
+    if (← whnfR body).isAppOf ``Ascent.Refinement then
+      mkLambdaFVars xs (← mkAppM ``Ascent.Refinement.le_wrp #[mkAppN e xs])
+    else pure e
+  let r ← abstractMVars e
+  let (pattern, _) ← Sym.mkPatternFromExprWithKey r.expr r.paramNames.toList fun type => do
+    let some prog ← selectProg (← whnfR type)
+      | throwError "ascend: the conclusion of {term} is not `pre ⊑ wrp …`:{indentExpr type}"
+    return (prog, ())
+  return { pattern := eraseUnusedVarsFromPattern pattern, proof := .stx (← mkFreshId) term r.expr,
+           kind := .triple, conjunctivePre := true, priority := eval_prio default + 1 }
+
 /-- The unfold equations of the definitions `declNames`, added to the spec database `specs`. -/
 def addUnfoldSpecs (specs : SpecTheorems) (declNames : Array Name) : MetaM SpecTheorems := do
   let mut simpThms : SimpTheorems := {}
@@ -82,7 +109,16 @@ def addUnfoldSpecs (specs : SpecTheorems) (declNames : Array Name) : MetaM SpecT
 
 @[tactic ascendTac]
 def elabAscend : Tactic := fun stx => withMainContext do
-  let declNames ← stx[1][1].getSepArgs.mapM fun id => realizeGlobalConstNoOverloadWithInfo id
+  -- An identifier of a definition is unfolded; any other term is a spec of this invocation.
+  let mut declNames := #[]
+  let mut termSpecs := #[]
+  for arg in stx[1][1].getSepArgs do
+    if arg.isIdent then
+      if let some declName ← observing? (realizeGlobalConstNoOverloadWithInfo arg) then
+        if let some (.defnInfo _) := (← getEnv).find? declName then
+          declNames := declNames.push declName
+          continue
+    termSpecs := termSpecs.push arg
   let goal ← getMainGoal
   let hole? ← unsealAbstractHole goal
   let holeDecl? ← hole?.mapM (·.getDecl)
@@ -93,14 +129,19 @@ def elabAscend : Tactic := fun stx => withMainContext do
         thms.rewrite }
   let ctx : Context :=
     { backwardRules := ← mkBackwardRules, simpMethods, internalize := false }
-  let scope : Scope := { specs := ← addUnfoldSpecs (← getAscendSpecTheorems) declNames }
+  let mut specs ← addUnfoldSpecs (← getAscendSpecTheorems) declNames
+  for term in termSpecs do
+    specs := specs.insert (← mkSpecTheoremFromTerm term)
+  let scope : Scope := { specs }
   let coreScope : Scope := { specs := ← addUnfoldSpecs (← getSpecTheorems) declNames }
   let params ← Grind.mkDefaultParams { clean := false }
   let (_, state) ← Grind.GrindTacticM.runAtGoal goal params (sym := true) do
     let g ← Lean.Elab.Tactic.Grind.getMainGoal
     let result ← Lean.Elab.Tactic.Grind.liftGrindM (run g ctx scope coreScope)
     Lean.Elab.Tactic.Grind.replaceMainGoal result.vcs.toList
-  if let (some hole, some decl) := (hole?, holeDecl?) then checkHoleScope hole decl
+  if let (some hole, some decl) := (hole?, holeDecl?) then
+    closeTables hole
+    checkHoleScope hole decl
   replaceMainGoal (state.goals.map (·.mvarId))
 
 end Lean.Elab.Tactic.VCGen.Ascend

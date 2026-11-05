@@ -1,5 +1,6 @@
 import Lean.Meta.Sym.SymM
 import Ascent.WRP
+import Ascent.Table
 
 /-!
 # Goal metadata for `wrp` goals

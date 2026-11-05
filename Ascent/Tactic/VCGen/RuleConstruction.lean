@@ -108,8 +108,9 @@ partial def decomposeProdRel (EPosts epostsSpec epostsAbstract : Expr)
       if EPostsR.isConstOf ``PUnit then
         mkAppM ``Unit.unit_le #[epostsAbstract]
       else if EPostsR.isForall then
-        -- A bare `ε → σ → Prop`, e.g. of `Except ε`, yields a pointwise VC like a stack component.
-        let ssTypes ← forallTelescope EPostsR fun xs _ => xs.drop 1 |>.mapM (Meta.inferType ·)
+        -- A bare exception relation `ε → εa → σ → Prop` yields a pointwise VC like a return
+        -- relation: the first two arguments are the concrete and the abstract exception.
+        let ssTypes ← forallTelescope EPostsR fun xs _ => xs.drop 2 |>.mapM (Meta.inferType ·)
         let hTy ← mkPostPointwisePremise epostsSpec epostsAbstract EPostsR ssTypes stateArgNames
         let h ← mkFreshExprMVar (userName := `epostsImpl) hTy
         mkExpectedTypeHint h (← mkAppM ``PartialOrder.rel #[epostsSpec, epostsAbstract])
@@ -254,35 +255,8 @@ def mkSpecBackwardProof (info : WRPApp)
     specApplied := mkAppN (wpLemma ``Ascent.wrp_mono_post_le)
       #[prog, postSpec, postAbstract, epostsSpec, hpostRel, pre, specApplied]
 
-  /- abstract concrete `eposts` if it is not already abstract -/
-  unless epostsAbstract.isMVar do
-    /- `EStack⟨t₁, t₂, ..., tₙ⟩`: type of `eposts` -/
-    let epostsTy ← Meta.inferType epostsSpec
-    /- mvar `epostsAbstract` for new abstract `eposts` -/
-    epostsAbstract ← mkFreshExprMVar (userName := `EPosts) epostsTy
-    /- if `eposts` is `⊥`, then `eposts ⊑ epostsAbstract` holds trivially and
-      abstracting `eposts` can be simply done by `WP.wp_monotone_bot_le` without
-      introducing a new premise. This case is quite common, that's why we handle
-      it specially.
-      The test runs at a fresh metavariable depth, where a schematic component of
-      `eposts` such as `E` in `estack⟨E⟩` is read-only. `decomposeProdRel` below
-      assigns `E` the matching component of `epostsAbstract`. -/
-    let isBot ← withNewMCtxDepth do
-      try
-        let botEPred ← mkAppOptM ``Lean.Order.bot #[epostsTy, none]
-        isDefEqGuarded epostsSpec botEPred
-      catch _ => pure false
-    if isBot then
-      /- get the proof of `pre ⊑ wp prog postAbstract epostsAbstract`, where `eposts (= ⊥)` is abstracted.
-        This proof DOES NOT have a `?epostsImpl` premise -/
-      specApplied := mkAppN (wpLemma ``Ascent.wrp_mono_bot_le)
-        #[prog, postAbstract, epostsAbstract, pre, specApplied]
-    else
-      /- Decompose `epostsSpec ⊑ epostsAbstract` into per-component proofs
-        using `Prod.mk_le` and `Unit.unit_le` -/
-      let heposts ← decomposeProdRel info.EPosts epostsSpec epostsAbstract stateArgNames
-      specApplied := mkAppN (wpLemma ``Ascent.wrp_mono_erel_le)
-        #[prog, postAbstract, epostsSpec, epostsAbstract, heposts, pre, specApplied]
+  /- The exception relation stays the spec's: a fixed `E` is matched against the goal's `E`
+    structurally. `wrp` is not monotone in `E` for an arbitrary `EPostsConcretization`. -/
 
   /- By default we always abstract `pre`, since in most of the specifications
     `pre` is not schematic. In exceptional cases, where `pre` is schematic, it

@@ -9,6 +9,7 @@ import Ascent.Concretization
 import Ascent.EPostsConcretization
 import Ascent.WRP
 import Ascent.Refinement
+import Ascent.Table
 import Ascent.Refinement.WhileLoop
 import Ascent.Refinement.StateRepr
 import Ascent.Tactic.VCGen.Command

@@ -88,6 +88,9 @@ def forallIntro? (oldGoal : MVarId) (target : Expr) : VCGenM (Option (List MVarI
     | .goal goal => pure goal
     | .noProgress => pure oldGoal
   let mut target ← goal.getType
+  -- A premise `∀ x ∈ a :: l, G x` is split into `G a` and `∀ x ∈ l, G x` before its binders are
+  -- introduced, so that each `G aᵢ` meets the run at a closed `aᵢ`.
+  if let some gs ← forallMemList? goal target then return some gs
   while target.isForall do
     let n := numBindersToIntro target
     let goal' ← if n == 0 then splitProdBinder goal target else introsHygienicN goal n
@@ -433,12 +436,17 @@ def applySpec (scope : Scope) (goal : MVarId) (info : WRPApp) (thm : SpecTheorem
   -- the goal's context, which the rule then assigns. A bare hole is assigned `?b`. A hole `?h xs`
   -- applied to distinct free variables gets the delayed assignment `?h xs := ?b`. A hole applied
   -- to closed terms, such as the continuation `?k ()` of a bind whose first action returns `()`,
-  -- is assigned the constant function `fun _ => ?b`. In every case the goal's abstract program
-  -- becomes `?b`. The frontend resolves the delayed assignments after the run.
+  -- is assigned the constant function `fun _ => ?b`. A table slot `Table.get ?tbl k` at a closed
+  -- key gets the cell of `k` (`tableCell`). In every case the goal's abstract program becomes
+  -- the cell. The frontend resolves the delayed assignments after the run.
   let mut goal := goal
   let mut filled : Option (LocalContext × Array Expr × Expr) := none
   let abs ← instantiateMVarsIfMVarAppS info.abs
-  if let .mvar hole := abs.getAppFn then
+  if abs.isAppOfArity ``Ascent.Table.get 6 then
+    if let some (lctx?, b) ← tableCell abs then
+      if let some lctx := lctx? then filled := some (lctx, #[], b)
+      goal ← setAbs goal info b
+  else if let .mvar hole := abs.getAppFn then
     let xs := abs.getAppArgs
     let distinct := xs.all (·.isFVar) && (xs.toList.map (·.fvarId!)).eraseDups.length == xs.size
     let closed := xs.all fun x => !x.hasFVar && !x.hasMVar
@@ -458,12 +466,7 @@ def applySpec (scope : Scope) (goal : MVarId) (info : WRPApp) (thm : SpecTheorem
         hole.assign <| doms.foldr (fun (nm, d) acc => .lam nm d acc .default) b
       else
         assignDelayedMVar hole xs b.mvarId!
-        let_expr PartialOrder.rel α inst pre _ := ← goal.getType | return none
-        let rhs ← mkAppNS info.head (info.args.set! 18 b ++ info.excessArgs)
-        let target ← mkAppNS (← goal.getType).getAppFn #[α, inst, pre, rhs]
-        let g ← mkFreshExprSyntheticOpaqueMVar (← shareCommon target) (← goal.getTag)
-        goal.assign g
-        goal := g.mvarId!
+        goal ← setAbs goal info b
   let .goals goals ← specRule.applyChecked goal m!"spec rule for{indentExpr info.prog}"
     | (saved.restore : MetaM Unit); return none
   -- The rule's abstract program may use only the hole's context and the hole's arguments.

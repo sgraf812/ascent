@@ -55,41 +55,29 @@ macro "cfg_vc" : tactic => `(tactic| (
      simp only [Reg64s.get64, Reg64s.get64_set64] at h1 ⊢
      rw [h1])))
 
-/-- The block table of `zipWithAdd`, one abstract block per label. -/
-def table (b₀ b₁ b₂ : BlockM AState Unit) : CfgLabel → BlockM AState Unit
-  | .entry => b₀
-  | .label "LBB0_2" => b₁
-  | .label "LBB0_3" => b₂
-  | _ => pure ()
+attribute [local vcgen_simp] zipWithAdd
 
 noncomputable def zipWithAddA [Host] [FunDecls] (s : MachineData) (ra : Int64) :
     { a : BlockM AState Unit //
-      wrp (ofStateRepr abs) zipWithAdd a (fun _ _ => ⊤) (RetRel s ra) (s.push64 ra) } := by
-  refine ⟨cfgLoop (table ?b₀ ?b₁ ?b₂) (Program.next zipWithAdd) .entry, ?prop⟩
-  case prop =>
-    refine wrp_cfg (p := zipWithAdd) abs (Program.next zipWithAdd) (by decide) ?_
-    simp only [Program.blocks_eq, zipWithAdd, Program.view_cons_instr, Program.view_cons_label,
-      Program.view_nil', Program.blocksFrom_cons, Program.blocksFrom_nil, List.forall_mem_cons,
-      table]
-    refine ⟨?_, ?_, ?_, List.forall_mem_nil _⟩
-    all_goals intro t hst
-    all_goals ascend
-    all_goals cfg_vc
+      ⦃(· = s.push64 ra)⦄ zipWithAdd ⪯[ofStateRepr abs] a ⦃fun _ _ => ⊤; RetRel s ra⦄ } := by
+  apply Subtype.mk
+  ascend [refines_cfg (p := zipWithAdd)]
+  all_goals first | decide | cfg_vc
 
 /-- The synthesized L1 program: the text over the abstract machine, block by block. -/
 example [Host] [FunDecls] (s : MachineData) (ra : Int64) :
-    (zipWithAddA s ra).1 = cfgLoop (table
-      (do
+    (zipWithAddA s ra).1 = cfgLoop (Table.get [
+      (.entry, do
         testRegReg .rcx .rcx
         jcc .le "LBB0_3"
         xorReg32Reg32 .rax .rax
-        pure ())
-      (do
+        pure ()),
+      (.label "LBB0_2", do
         movRegSib8 .r8 .rsi .rax 0
         addRegSib8 .r8 .rdi .rax 0
         movSib8Reg .rdx .rax 0 .r8
         incReg .rax
         cmpRegReg .rcx .rax
         jcc .nz "LBB0_2"
-        pure ())
-      ret) (Program.next zipWithAdd) .entry := rfl
+        pure ()),
+      (.label "LBB0_3", ret)]) (Program.next zipWithAdd) .entry := rfl

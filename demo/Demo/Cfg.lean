@@ -1,4 +1,5 @@
 import Demo.Kraken
+import Ascent.Table
 import Kraken.StateCfg
 import Ascent.UB.StateT
 import Ascent.UB.WhileLoop
@@ -374,6 +375,102 @@ end
 section
 variable [Host] [FunDecls] {Aσ : Type} (abs : MachineData → Aσ)
 
+theorem wrp_cfg_le {p : Program} (next : CfgLabel → CfgLabel)
+    (hnext : ∀ blk ∈ Program.blocks p, next blk.label = blk.next)
+    {ablock : CfgLabel → BlockM Aσ Unit} {s : MachineData} {ra : Int64}
+    (h : ∀ blk ∈ Program.blocks p, ∀ t, StackOf (s.push64 ra) t →
+      ⦃(· = t)⦄ blk.body ⪯[Concretization.ofStateRepr abs] (ablock blk.label)
+        ⦃FallRel (s.push64 ra); JumpRel p (s.push64 ra)⦄) :
+    (fun t => t = s.push64 ra) ⊑ wrp (Concretization.ofStateRepr abs) p
+      (cfgLoop ablock next .entry) (fun _ _ => ⊤) (RetRel s ra) := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro t ht
+  simp only [meet_apply, meet_prop_eq_and, Concretization.ofStateRepr_pred] at ht
+  obtain ⟨rfl, hpre⟩ := ht
+  let I : CfgLabel → MachineData → Prop := fun l t =>
+    wp (cfgLoop ablock next l) Qa Ea (abs t) ∧ StackOf (s.push64 ra) t
+  have hcfg := Program.WP.cfg (p := p)
+    (E := EPostsConcretization.ePosts (Concretization.ofStateRepr abs) (RetRel s ra) Ea)
+    (s₀ := s.push64 ra) I (fun l t => steps ablock next (.label l) (abs t)) ?_
+    ⟨hpre, rfl, rfl⟩
+  · refine Program.wp_mono (fun u hu => ?_) (fun _ hu => hu) hcfg
+    obtain ⟨hQ, -⟩ := hu
+    rw [wp_cfgLoop_exit_fn] at hQ
+    show (Concretization.ofStateRepr abs).post (fun _ _ => ⊤) Qa () u.data
+    simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
+      meet_prop_eq_and, top_apply, top_prop_eq, Concretization.ofStateRepr_pred]
+    exact ⟨(), trivial, hQ⟩
+  · refine Program.forallBlocks_iff.mpr fun blk hmem t hI => ?_
+    intro I'
+    obtain ⟨hIt, hst⟩ := hI
+    have hl := Program.label_ne_exit_of_mem_blocks hmem
+    have hfix : ∃ r, cfgFix ablock next blk.label (abs t) = some r := by
+      rw [wp_BlockM_eq, cfgLoop_run] at hIt
+      revert hIt
+      cases cfgFix ablock next blk.label (abs t) <;> intro hIt
+      · exact hIt.elim
+      · exact ⟨_, rfl⟩
+    obtain ⟨r, hfix⟩ := hfix
+    rw [wp_cfgLoop_fn ablock next Qa Ea hl, wp_BlockM_eq] at hIt
+    let Qa' : Unit → Aσ → Prop := fun _ st' =>
+      wp (cfgLoop ablock next (next blk.label)) Qa Ea st'
+        ∧ (ablock blk.label).run.run (abs t) = some (.ok (), st')
+    let Ea' : (CfgLabel → Aσ → Prop) × EStack⟨⟩ :=
+      (fun l' st' => cfgEPosts ablock next Qa Ea l' st'
+        ∧ (ablock blk.label).run.run (abs t) = some (.error l', st'), Ea.2)
+    have hpre' : wp (ablock blk.label) Qa' Ea' (abs t) := by
+      rw [wp_BlockM_eq]
+      revert hIt
+      rcases hrun : (ablock blk.label).run.run (abs t) with _ | ⟨l' | _, st'⟩ <;> intro hIt
+      · exact hIt.elim
+      · exact ⟨hIt, hrun⟩
+      · exact ⟨hIt, hrun⟩
+    have hb := wrp_transport (h blk hmem t hst).le_wrp Qa' Ea'
+    have hmeet : ((fun t' => t' = t) ⊓ (Concretization.ofStateRepr abs).pred
+        (wp (ablock blk.label) Qa' Ea')) t := by
+      simp only [meet_apply, meet_prop_eq_and, Concretization.ofStateRepr_pred]
+      exact ⟨trivial, hpre'⟩
+    have hwp := hb t hmeet
+    refine Program.wp_mono (fun u hu => ?_) (fun u hu => ?_) hwp
+    · show I' blk.next (blk.idx + 1) () u.data
+      change (Concretization.ofStateRepr abs).post (FallRel (s.push64 ra)) Qa' () u.data at hu
+      simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
+        meet_prop_eq_and, Concretization.ofStateRepr_pred, FallRel] at hu
+      obtain ⟨-, hst', hQ, hrun⟩ := hu
+      rw [hnext blk hmem] at hQ
+      refine ⟨⟨hQ, hst'⟩, decreases_of_steps_lt abs fun _ => ?_⟩
+      rw [← hnext blk hmem]
+      exact steps_lt_of_ok ablock next hl hrun hfix
+    · show Program.Intercept (Program.labels p) (s.push64 ra) I'
+        (EPostsConcretization.ePosts (Concretization.ofStateRepr abs) (RetRel s ra) Ea)
+        u.pc u.data
+      change (Concretization.ofStateRepr abs).post (JumpRel p (s.push64 ra)) Ea'.1
+        u.pc u.data at hu
+      simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
+        meet_prop_eq_and, Concretization.ofStateRepr_pred, JumpRel] at hu
+      obtain ⟨l', hrel, hE, hrun⟩ := hu
+      rcases hrel with ⟨l, hmem', rfl, ha, hst'⟩ | ⟨rfl, ha, hrsp'⟩
+      · rw [cfgEPosts_label] at hE
+        refine Program.Intercept.intro (Or.inl ⟨?_, l, ha.symm, hmem', ⟨hE, hst'⟩, ?_⟩)
+        · show ¬ ((s.push64 ra).regs.get64 .rsp).SerialLt (u.data.regs.get64 .rsp)
+          rw [hst'.1]
+          exact BitVec.not_serialLt_self _
+        · exact decreases_of_steps_lt abs fun _ =>
+            steps_lt_of_error ablock next hl (by simp) hrun hfix
+      · rw [cfgEPosts_exit] at hE
+        have hrsp₀ : (s.push64 ra).regs.get64 .rsp = s.regs.get64 .rsp - 8#64 := by
+          simp only [MachineData.regs_push64, Reg64s.get64_set64, ↓reduceIte]
+        refine Program.Intercept.intro (Or.inr ⟨?_, fun _ _ _ => ?_⟩)
+        · show (Concretization.ofStateRepr abs).post (RetRel s ra) Ea.1 u.pc u.data
+          simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
+            meet_prop_eq_and, Concretization.ofStateRepr_pred, RetRel]
+          refine ⟨.exit, ⟨?_, rfl, ?_⟩, hE⟩
+          · rw [ha, MachineData.retAddr_push64, Option.get!_some]
+          · rw [hrsp', hrsp₀, BitVec.sub_add_cancel]
+        · show ((s.push64 ra).regs.get64 .rsp).SerialLt (u.data.regs.get64 .rsp)
+          rw [hrsp', hrsp₀, BitVec.sub_add_cancel]
+          exact BitVec.serialLt_sub _ _ (by decide)
+
 theorem wrp_cfg {p : Program} (next : CfgLabel → CfgLabel)
     (hnext : ∀ blk ∈ Program.blocks p, next blk.label = blk.next)
     {ablock : CfgLabel → BlockM Aσ Unit} {s : MachineData} {ra : Int64}
@@ -381,97 +478,22 @@ theorem wrp_cfg {p : Program} (next : CfgLabel → CfgLabel)
       ⦃(· = t)⦄ blk.body ⪯[Concretization.ofStateRepr abs] (ablock blk.label)
         ⦃FallRel (s.push64 ra); JumpRel p (s.push64 ra)⦄) :
     wrp (Concretization.ofStateRepr abs) p (cfgLoop ablock next .entry) (fun _ _ => ⊤) (RetRel s ra)
-      (s.push64 ra) := by
-  have hw : (fun t => t = s.push64 ra) ⊑ wrp (Concretization.ofStateRepr abs) p
-      (cfgLoop ablock next .entry) (fun _ _ => ⊤) (RetRel s ra) := by
-    refine wrp_intro fun Qa Ea => ?_
-    intro t ht
-    simp only [meet_apply, meet_prop_eq_and, Concretization.ofStateRepr_pred] at ht
-    obtain ⟨rfl, hpre⟩ := ht
-    let I : CfgLabel → MachineData → Prop := fun l t =>
-      wp (cfgLoop ablock next l) Qa Ea (abs t) ∧ StackOf (s.push64 ra) t
-    have hcfg := Program.WP.cfg (p := p)
-      (E := EPostsConcretization.ePosts (Concretization.ofStateRepr abs) (RetRel s ra) Ea)
-      (s₀ := s.push64 ra) I (fun l t => steps ablock next (.label l) (abs t)) ?_
-      ⟨hpre, rfl, rfl⟩
-    · refine Program.wp_mono (fun u hu => ?_) (fun _ hu => hu) hcfg
-      obtain ⟨hQ, -⟩ := hu
-      rw [wp_cfgLoop_exit_fn] at hQ
-      show (Concretization.ofStateRepr abs).post (fun _ _ => ⊤) Qa () u.data
-      simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
-        meet_prop_eq_and, top_apply, top_prop_eq, Concretization.ofStateRepr_pred]
-      exact ⟨(), trivial, hQ⟩
-    · refine Program.forallBlocks_iff.mpr fun blk hmem t hI => ?_
-      intro I'
-      obtain ⟨hIt, hst⟩ := hI
-      have hl := Program.label_ne_exit_of_mem_blocks hmem
-      have hfix : ∃ r, cfgFix ablock next blk.label (abs t) = some r := by
-        rw [wp_BlockM_eq, cfgLoop_run] at hIt
-        revert hIt
-        cases cfgFix ablock next blk.label (abs t) <;> intro hIt
-        · exact hIt.elim
-        · exact ⟨_, rfl⟩
-      obtain ⟨r, hfix⟩ := hfix
-      rw [wp_cfgLoop_fn ablock next Qa Ea hl, wp_BlockM_eq] at hIt
-      let Qa' : Unit → Aσ → Prop := fun _ st' =>
-        wp (cfgLoop ablock next (next blk.label)) Qa Ea st'
-          ∧ (ablock blk.label).run.run (abs t) = some (.ok (), st')
-      let Ea' : (CfgLabel → Aσ → Prop) × EStack⟨⟩ :=
-        (fun l' st' => cfgEPosts ablock next Qa Ea l' st'
-          ∧ (ablock blk.label).run.run (abs t) = some (.error l', st'), Ea.2)
-      have hpre' : wp (ablock blk.label) Qa' Ea' (abs t) := by
-        rw [wp_BlockM_eq]
-        revert hIt
-        rcases hrun : (ablock blk.label).run.run (abs t) with _ | ⟨l' | _, st'⟩ <;> intro hIt
-        · exact hIt.elim
-        · exact ⟨hIt, hrun⟩
-        · exact ⟨hIt, hrun⟩
-      have hb := wrp_transport (h blk hmem t hst).le_wrp Qa' Ea'
-      have hmeet : ((fun t' => t' = t) ⊓ (Concretization.ofStateRepr abs).pred
-          (wp (ablock blk.label) Qa' Ea')) t := by
-        simp only [meet_apply, meet_prop_eq_and, Concretization.ofStateRepr_pred]
-        exact ⟨trivial, hpre'⟩
-      have hwp := hb t hmeet
-      refine Program.wp_mono (fun u hu => ?_) (fun u hu => ?_) hwp
-      · show I' blk.next (blk.idx + 1) () u.data
-        change (Concretization.ofStateRepr abs).post (FallRel (s.push64 ra)) Qa' () u.data at hu
-        simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
-          meet_prop_eq_and, Concretization.ofStateRepr_pred, FallRel] at hu
-        obtain ⟨-, hst', hQ, hrun⟩ := hu
-        rw [hnext blk hmem] at hQ
-        refine ⟨⟨hQ, hst'⟩, decreases_of_steps_lt abs fun _ => ?_⟩
-        rw [← hnext blk hmem]
-        exact steps_lt_of_ok ablock next hl hrun hfix
-      · show Program.Intercept (Program.labels p) (s.push64 ra) I'
-          (EPostsConcretization.ePosts (Concretization.ofStateRepr abs) (RetRel s ra) Ea)
-          u.pc u.data
-        change (Concretization.ofStateRepr abs).post (JumpRel p (s.push64 ra)) Ea'.1
-          u.pc u.data at hu
-        simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
-          meet_prop_eq_and, Concretization.ofStateRepr_pred, JumpRel] at hu
-        obtain ⟨l', hrel, hE, hrun⟩ := hu
-        rcases hrel with ⟨l, hmem', rfl, ha, hst'⟩ | ⟨rfl, ha, hrsp'⟩
-        · rw [cfgEPosts_label] at hE
-          refine Program.Intercept.intro (Or.inl ⟨?_, l, ha.symm, hmem', ⟨hE, hst'⟩, ?_⟩)
-          · show ¬ ((s.push64 ra).regs.get64 .rsp).SerialLt (u.data.regs.get64 .rsp)
-            rw [hst'.1]
-            exact BitVec.not_serialLt_self _
-          · exact decreases_of_steps_lt abs fun _ =>
-              steps_lt_of_error ablock next hl (by simp) hrun hfix
-        · rw [cfgEPosts_exit] at hE
-          have hrsp₀ : (s.push64 ra).regs.get64 .rsp = s.regs.get64 .rsp - 8#64 := by
-            simp only [MachineData.regs_push64, Reg64s.get64_set64, ↓reduceIte]
-          refine Program.Intercept.intro (Or.inr ⟨?_, fun _ _ _ => ?_⟩)
-          · show (Concretization.ofStateRepr abs).post (RetRel s ra) Ea.1 u.pc u.data
-            simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
-              meet_prop_eq_and, Concretization.ofStateRepr_pred, RetRel]
-            refine ⟨.exit, ⟨?_, rfl, ?_⟩, hE⟩
-            · rw [ha, MachineData.retAddr_push64, Option.get!_some]
-            · rw [hrsp', hrsp₀, BitVec.sub_add_cancel]
-          · show ((s.push64 ra).regs.get64 .rsp).SerialLt (u.data.regs.get64 .rsp)
-            rw [hrsp', hrsp₀, BitVec.sub_add_cancel]
-            exact BitVec.serialLt_sub _ _ (by decide)
-  exact hw (s.push64 ra) rfl
+      (s.push64 ra) :=
+  wrp_cfg_le abs next hnext h (s.push64 ra) rfl
+
+attribute [vcgen_simp] Program.blocks_eq Program.view_cons_instr Program.view_cons_label
+  Program.view_nil' Program.blocksFrom_cons Program.blocksFrom_nil
+
+/-- The control-flow rule as a spec: the abstract program is `cfgLoop` over a table of blocks, one
+cell per label, which `ascend` fills block by block. -/
+theorem refines_cfg {p : Program} (tbl : Table CfgLabel (BlockM Aσ Unit)) {s : MachineData}
+    {ra : Int64} (hnext : ∀ blk ∈ Program.blocks p, Program.next p blk.label = blk.next)
+    (h : ∀ blk ∈ Program.blocks p, ∀ t, StackOf (s.push64 ra) t →
+      ⦃(· = t)⦄ blk.body ⪯[Concretization.ofStateRepr abs] (Table.get tbl blk.label)
+        ⦃FallRel (s.push64 ra); JumpRel p (s.push64 ra)⦄) :
+    ⦃(· = s.push64 ra)⦄ p ⪯[Concretization.ofStateRepr abs]
+      (cfgLoop (Table.get tbl) (Program.next p) .entry) ⦃fun _ _ => ⊤; RetRel s ra⦄ :=
+  ⟨wrp_cfg_le abs (Program.next p) hnext h⟩
 
 end
 
