@@ -39,9 +39,10 @@ def AState.setReg (st : AState) (r : Reg64) (v : BitVec 64) : AState :=
 def AState.sib8 (st : AState) (b i : Reg64) (d : Int64) : BitVec 64 :=
   st.regs b + st.regs i * 8 + BitVec.ofInt 64 d.toInt
 
-/-- A store of eight bytes at `a` leaves the return slot of the frame intact. -/
-def AState.frameSafe (st : AState) (a : BitVec 64) : Bool :=
-  decide (8 ≤ (st.regs .rsp - a).toNat) && decide (8 ≤ (a - st.regs .rsp).toNat)
+/-- The guard of an eight-byte store at `a`: the cell is mapped, and it lies apart from the return
+slot of the frame, the bounds of `Blocks.Disjoint.of_sub` as booleans. -/
+def AState.storable8 (st : AState) (a : BitVec 64) : Bool :=
+  (Mem.loadInt st.mem a 8).isSome && BitVec.ule 8#64 (st.regs .rsp - a) && BitVec.ule 8#64 (a - st.regs .rsp)
 
 @[simp, vcgen_simp] theorem abs_regs (s : MachineData) : (abs s).regs = s.regs.get64 := rfl
 
@@ -209,89 +210,84 @@ end
 
 /-! ## The instructions of the example -/
 
-/-- The eight bytes at the scaled-index address are mapped. -/
-def sib8Loaded (b i : Reg64) (d : Int64) (st : AState) : Bool :=
-  (Mem.loadInt st.mem (st.sib8 b i d) 8).isSome
-
-/-- The store at the scaled-index address is mapped and leaves the frame intact. -/
-def sib8Storable (b i : Reg64) (d : Int64) (st : AState) : Bool :=
-  sib8Loaded b i d st && st.frameSafe (st.sib8 b i d)
-
 /-- The return slot is mapped. -/
 def retLoaded (st : AState) : Bool := (Mem.loadInt st.mem (st.regs .rsp) 8).isSome
 
-@[simp, vcgen_simp] theorem sib8Loaded_eq (b i : Reg64) (d : Int64) (st : AState) :
-    sib8Loaded b i d st = (Mem.loadInt st.mem (st.sib8 b i d) 8).isSome := rfl
-@[simp, vcgen_simp] theorem sib8Storable_eq (b i : Reg64) (d : Int64) (st : AState) :
-    sib8Storable b i d st = (sib8Loaded b i d st && st.frameSafe (st.sib8 b i d)) := rfl
 @[simp, vcgen_simp] theorem retLoaded_eq (st : AState) :
     retLoaded st = (Mem.loadInt st.mem (st.regs .rsp) 8).isSome := rfl
 
-/-! The grind theory of the guards: the scaled-index address without displacement, and the frame
-guard as its two bounds, which kraken's `Blocks.Disjoint.of_sub` turns into disjointness. -/
+/-! The grind theory of the guards: the scaled-index address without displacement, and the store
+guard as its three conjuncts. -/
 
 @[simp, vcgen_simp, grind =] theorem AState.sib8_zero (st : AState) (b i : Reg64) :
     st.sib8 b i 0 = st.regs b + st.regs i * 8 := by
   simp [AState.sib8]
 
-theorem AState.frameSafe_eq (st : AState) (a : BitVec 64) :
-    (st.frameSafe a = true) = (8 ≤ (st.regs .rsp - a).toNat ∧ 8 ≤ (a - st.regs .rsp).toNat) := by
-  simp [AState.frameSafe]
+theorem AState.storable8_eq (st : AState) (a : BitVec 64) :
+    (st.storable8 a = true) = ((Mem.loadInt st.mem a 8).isSome = true
+      ∧ 8 ≤ (st.regs .rsp - a).toNat ∧ 8 ≤ (a - st.regs .rsp).toNat) := by
+  simp [AState.storable8, BitVec.ule_iff_toNat_le, and_assoc]
 
-/-- A store at a frame-safe address leaves the return slot as it was. The guard itself is the
-pattern, so a finisher instantiates the lemma in one step. -/
-theorem Mem.loadInt_storeInt_of_frameSafe {st : AState} {a x : BitVec 64} (h : st.frameSafe a = true)
+/-- The store guard is the disjointness of the cell from the return slot. -/
+theorem Mem.Blocks.Disjoint.of_storable8 {st : AState} {a : BitVec 64} (h : st.storable8 a = true) :
+    Mem.Blocks.Disjoint [(st.regs .rsp, 8)] [(a, 8)] := by
+  rw [AState.storable8_eq] at h
+  exact Mem.Blocks.Disjoint.of_sub h.2.1 h.2.2
+
+/-- A store at a guarded address leaves the return slot as it was. The guard itself is the pattern,
+so a finisher instantiates the lemma in one step. -/
+theorem Mem.loadInt_storeInt_of_storable8 {st : AState} {a x : BitVec 64} (h : st.storable8 a = true)
     (hrsp : st.regs .rsp = x) {m : DataMem} {v : Int} :
     (Mem.storeInt m a 8 v).loadInt x 8 = m.loadInt x 8 := by
-  rw [AState.frameSafe_eq, hrsp] at h
-  exact Mem.loadInt_storeInt_of_disjoint (Mem.Blocks.Disjoint.of_sub h.1 h.2) _
+  subst hrsp
+  exact Mem.loadInt_storeInt_of_disjoint (Mem.Blocks.Disjoint.of_storable8 h) _
 
-grind_pattern Mem.loadInt_storeInt_of_frameSafe =>
-  Mem.loadInt (Mem.storeInt m a 8 v) x 8, AState.frameSafe st a
+grind_pattern Mem.loadInt_storeInt_of_storable8 =>
+  Mem.loadInt (Mem.storeInt m a 8 v) x 8, AState.storable8 st a
 
 /-! ## Arrays
 
-`st.Array8 base n` is an array of `n` eight-byte cells at `base`: mapped, and apart from the return
-slot of the frame. The guards of a load and of a store through a scaled index into it follow from
-the array and the bound on the index, so a refinement under an array precondition discharges the
-guards of its block from one fact per array. -/
+An array of `n` eight-byte cells at `base` is `Mem.Mapped [(base, 8 * n)] st.mem` together with
+`Mem.Blocks.Disjoint [(st.regs .rsp, 8)] [(base, 8 * n)]`, the cells apart from the return slot.
+The guards of a load and of a store through a scaled index into the array follow from these two
+facts and the bound on the index. -/
 
-def AState.Array8 (st : AState) (base : BitVec 64) (n : Nat) : Prop :=
-  Mem.Mapped [(base, 8 * n)] st.mem ∧ 8 * n ≤ (st.regs .rsp - base).toNat
-    ∧ 8 ≤ (base - st.regs .rsp).toNat ∧ (base - st.regs .rsp).toNat + 8 * n ≤ 2 ^ 64
+/-- Two disjoint cells lie at least their lengths apart, in either direction. -/
+theorem Mem.Blocks.Disjoint.sub_le {w : Nat} {x a : BitVec w} {k n : Nat}
+    (hd : Mem.Blocks.Disjoint [(x, k)] [(a, n)]) (hk : 0 < k) (hn : 0 < n) :
+    n ≤ (x - a).toNat ∧ k ≤ (a - x).toNat := by
+  refine ⟨Nat.le_of_not_lt fun hlt => ?_, Nat.le_of_not_lt fun hlt => ?_⟩
+  · exact hd x (Or.inl (by rw [BitVec.sub_self, BitVec.toNat_zero]; omega)) (Or.inl (by omega))
+  · exact hd a (Or.inl (by omega)) (Or.inl (by rw [BitVec.sub_self, BitVec.toNat_zero]; omega))
 
-theorem sib8Loaded_of_array {st : AState} {b i : Reg64} {n : Nat} (h : AState.Array8 st (st.regs b) n)
-    (hi : (st.regs i).toNat < n) : sib8Loaded b i 0 st = true := by
-  rw [sib8Loaded_eq, AState.sib8_zero]
-  refine Mem.Mapped.loadInt_isSome h.1 (Mem.Blocks.Inside.base_add ?_)
-  have := h.2.2.2
-  bv_omega
+theorem isSome_loadInt_of_mapped {st : AState} {base i : BitVec 64} {n : Nat}
+    (hm : Mem.Mapped [(base, 8 * n)] st.mem) (hi : i.toNat < n) (hn : 8 * n ≤ 2 ^ 64) :
+    (Mem.loadInt st.mem (base + i * 8) 8).isSome = true :=
+  Mem.Mapped.loadInt_isSome hm (Mem.Blocks.Inside.base_add (by bv_omega))
 
-theorem frameSafe_of_array {st : AState} {b i : Reg64} {n : Nat} (h : AState.Array8 st (st.regs b) n)
-    (hi : (st.regs i).toNat < n) : st.frameSafe (st.sib8 b i 0) = true := by
-  rw [AState.frameSafe_eq, AState.sib8_zero]
-  obtain ⟨-, h₁, h₂, h₃⟩ := h
-  constructor <;> bv_omega
+theorem storable8_of_disjoint {st : AState} {base i : BitVec 64} {n : Nat}
+    (hm : Mem.Mapped [(base, 8 * n)] st.mem)
+    (hd : Mem.Blocks.Disjoint [(st.regs .rsp, 8)] [(base, 8 * n)]) (hi : i.toNat < n)
+    (hn : 8 * n ≤ 2 ^ 64) : st.storable8 (base + i * 8) = true := by
+  rw [AState.storable8_eq]
+  refine ⟨isSome_loadInt_of_mapped hm hi hn, ?_⟩
+  exact Mem.Blocks.Disjoint.sub_le (Mem.Blocks.Disjoint.of_inside_right_pair hd
+    (Mem.Blocks.Inside.base_add (x := i * 8) (n := 8) (by bv_omega))) (by omega) (by omega)
 
-theorem sib8Storable_of_array {st : AState} {b i : Reg64} {n : Nat} (h : AState.Array8 st (st.regs b) n)
-    (hi : (st.regs i).toNat < n) : sib8Storable b i 0 st = true := by
-  rw [sib8Storable_eq, sib8Loaded_of_array h hi, frameSafe_of_array h hi]
-  rfl
-
-attribute [grind =] abs_regs abs_mem sib8Storable_eq sib8Loaded_eq
+attribute [grind =] abs_regs abs_mem
 
 def movRegSib8 (r b i : Reg64) (d : Int64) : BlockM AState Unit :=
-  modifyIf (sib8Loaded b i d) fun st =>
+  modifyIf (fun st => (Mem.loadInt st.mem (st.sib8 b i d) 8).isSome) fun st =>
     st.setReg r (BitVec.ofInt 64 (Mem.loadInt st.mem (st.sib8 b i d) 8).get!)
 
 def addRegSib8 (rd b i : Reg64) (d : Int64) : BlockM AState Unit :=
-  modifyIf (sib8Loaded b i d) fun st =>
+  modifyIf (fun st => (Mem.loadInt st.mem (st.sib8 b i d) 8).isSome) fun st =>
     let x := BitVec.ofInt 64 (Mem.loadInt st.mem (st.sib8 b i d) 8).get!
     let y := st.regs rd
     { st.setReg rd (x + y) with status := (StatusFlags.ofAdd x y).noAF }
 
 def movSib8Reg (b i : Reg64) (d : Int64) (rs : Reg64) : BlockM AState Unit :=
-  modifyIf (sib8Storable b i d) fun st =>
+  modifyIf (fun st => st.storable8 (st.sib8 b i d)) fun st =>
     { st with mem := Mem.storeInt st.mem (st.sib8 b i d) 8 (st.regs rs).toInt }
 
 def incReg (r : Reg64) : BlockM AState Unit :=
@@ -324,7 +320,7 @@ variable [Host] [FunDecls] {Q : Unit → Unit → MachineData → Prop}
   {E : Int64 → CfgLabel → MachineData → Prop}
 
 @[ascend] theorem wrp_movRegSib8 (r b i : Reg64) (d : Int64) :
-    (fun s => sib8Loaded b i d (abs s) = true →
+    (fun s => (Mem.loadInt (abs s).mem ((abs s).sib8 b i d) 8).isSome = true →
       Q () () { s with regs := s.regs.set64 r (BitVec.ofInt 64
         (Mem.loadInt s.dmem (s.regs.get64 b + s.regs.get64 i * 8 + BitVec.ofInt 64 d.toInt) 8).get!) })
       ⊑ wrp (ofStateRepr abs)
@@ -332,13 +328,13 @@ variable [Host] [FunDecls] {Q : Unit → Unit → MachineData → Prop}
             (.mov (.reg (.low r .W64)) (.regOrMem (.mem ⟨some (.reg b), some ⟨i, .W64⟩, .int64 d⟩)))))
           (movRegSib8 r b i d) Q E :=
   by
-  refine wrp_modifyIf (g := sib8Loaded b i d)
+  refine wrp_modifyIf (g := fun st => (Mem.loadInt st.mem (st.sib8 b i d) 8).isSome)
     (fun Q E s hp hq => (Program.WP.Spec.mov_reg_sib8 (Q := Q) (E := E) r b i d).le_wp s ⟨hp, hq⟩) ?_
   intro s hg
   exact ⟨hg, by simp [abs, AState.setReg, AState.sib8, abs_regs_set64]⟩
 
 @[ascend] theorem wrp_addRegSib8 (rd b i : Reg64) (d : Int64) :
-    (fun s => sib8Loaded b i d (abs s) = true →
+    (fun s => (Mem.loadInt (abs s).mem ((abs s).sib8 b i d) 8).isSome = true →
       let x := BitVec.ofInt 64
         (Mem.loadInt s.dmem (s.regs.get64 b + s.regs.get64 i * 8 + BitVec.ofInt 64 d.toInt) 8).get!
       let y := s.regs.get64 rd
@@ -349,13 +345,13 @@ variable [Host] [FunDecls] {Q : Unit → Unit → MachineData → Prop}
             (.add (.reg (.low rd .W64)) (.regOrMem (.mem ⟨some (.reg b), some ⟨i, .W64⟩, .int64 d⟩)))))
           (addRegSib8 rd b i d) Q E :=
   by
-  refine wrp_modifyIf (g := sib8Loaded b i d)
+  refine wrp_modifyIf (g := fun st => (Mem.loadInt st.mem (st.sib8 b i d) 8).isSome)
     (fun Q E s hp hq => (Program.WP.Spec.add_reg_sib8 (Q := Q) (E := E) rd b i d).le_wp s ⟨hp, hq⟩) ?_
   intro s hg
   exact ⟨hg, by simp [abs, AState.setReg, AState.sib8, abs_regs_set64, StatusFlags.noAF]⟩
 
 @[ascend] theorem wrp_movSib8Reg (b i : Reg64) (d : Int64) (rs : Reg64) :
-    (fun s => sib8Storable b i d (abs s) = true →
+    (fun s => (abs s).storable8 ((abs s).sib8 b i d) = true →
       Q () () { s with
         dmem := Mem.storeInt s.dmem (s.regs.get64 b + s.regs.get64 i * 8 + BitVec.ofInt 64 d.toInt)
           8 (s.regs.get64 rs).toInt })
@@ -364,10 +360,10 @@ variable [Host] [FunDecls] {Q : Unit → Unit → MachineData → Prop}
             (.mov (.mem ⟨some (.reg b), some ⟨i, .W64⟩, .int64 d⟩) (.regOrMem (.reg (.low rs .W64))))))
           (movSib8Reg b i d rs) Q E :=
   by
-  refine wrp_modifyIf (g := sib8Storable b i d)
+  refine wrp_modifyIf (g := fun st => st.storable8 (st.sib8 b i d))
     (fun Q E s hp hq => (Program.WP.Spec.mov_sib8_reg (Q := Q) (E := E) b i d rs).le_wp s ⟨hp, hq⟩) ?_
   intro s hg
-  exact ⟨((Bool.and_eq_true _ _).mp hg).1, by simp [abs, AState.sib8]⟩
+  exact ⟨(((Bool.and_eq_true _ _).mp ((Bool.and_eq_true _ _).mp hg).1)).1, by simp [abs, AState.sib8]⟩
 
 @[ascend] theorem wrp_incReg (asz : Width) (r : Reg64) :
     (fun s => true = true → Q () () { s with
