@@ -65,13 +65,39 @@ def lemmaPrefix (info : WRPApp) : Array Expr := (info.args.take 17).push info.ar
 /-- The `wrp` application itself, before the excess state arguments apply. -/
 def wp (info : WRPApp) : Expr := info.expr.stripArgsN info.excessArgs.size
 
-/-- The arguments of the prefix that a spec rule bakes in, as one term for hash-consing: the
-concrete `WP` instance, the abstract monad, the abstract lattice types, the exception relation
-type and `γ`. The term is a key, never a well-typed expression. -/
+/-- The monad of the concrete (`side = 0`) or abstract (`side = 1`) program type, when its `WP`
+instance is the one of a `WPMonad`: `instWPOfWPMonad m Pred EPosts α …` applied to `m α`. -/
+def monad? (info : WRPApp) (side : Nat) : Option Expr :=
+  let inst := info.args[13 + side]!
+  if inst.isAppOfArity ``Std.WP.instWPOfWPMonad 8 then some inst.getAppArgs[0]! else none
+
+/-- The prefix with each monadic value type, its `WP` instance and the abstract program replaced
+by fresh metavariables. A rule built from it is specific to the pair of monads only, and
+`abstractMVars` turns the metavariables into rule parameters. A program type whose `WP` instance
+is not the one of a `WPMonad`, such as kraken's `Program`, is kept whole. -/
+def schematic (info : WRPApp) : MetaM WRPApp := do
+  let mut args := info.args
+  for side in [0, 1] do
+    if let some m := info.monad? side then
+      let v ← mkFreshExprMVar (← Meta.inferType args[2 + side]!)
+      let inst := args[13 + side]!
+      args := args.set! (2 + side) v |>.set! side (mkApp m v)
+        |>.set! (13 + side) (mkAppN inst.getAppFn (inst.getAppArgs.set! 3 v))
+  args := args.set! 18 (← mkFreshExprMVar (userName := `a) args[1]!)
+  return { info with args, expr := mkAppN info.head (args ++ info.excessArgs) }
+
+/-- The arguments of the prefix that a rule built from `schematic` bakes in, as one term for
+hash-consing: each program type reduced to its monad where `monad?` finds one, else the program
+type with its `WP` instance, then the lattice types, the exception relation type and `γ`. The
+term is a key, never a well-typed expression. -/
 def ruleKey (info : WRPApp) : Expr :=
-  let AM := if info.args[1]!.isApp then info.args[1]!.appFn! else info.args[1]!
-  mkAppN (mkConst `Ascent.ruleKey)
-    #[info.instWP, AM, info.args[5]!, info.args[7]!, info.args[8]!, info.γ]
+  let side (i : Nat) : Array Expr :=
+    match info.monad? i with
+    | some m => #[m]
+    | none => #[info.args[i]!, info.args[13 + i]!]
+  mkAppN (mkConst `Ascent.ruleKey) <|
+    side 0 ++ side 1 ++ #[info.args[4]!, info.args[5]!, info.args[6]!, info.args[7]!,
+      info.args[8]!, info.γ]
 
 end WRPApp
 

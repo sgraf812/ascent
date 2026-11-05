@@ -359,6 +359,9 @@ same way.
 -/
 def tryMkBackwardRuleFromSpec (specThm : SpecTheorem) (info : WRPApp)
     (stateArgNames : Array Name := #[]) : OptionT MetaM BackwardRule := do
+  -- The rule is specific to the pair of monads: the value types, the `WP` instances and the
+  -- abstract program of the goal are replaced by metavariables that become rule parameters.
+  let info ← info.schematic
   -- Instantiate the spec theorem, creating metavars for all universally quantified params
   let (_xs, _bs, specProof, specType) ← specThm.instantiate
   -- Equality specs (the simp side of `@[spec]`) are normalized to `⊑ wp` form, then handled like
@@ -375,35 +378,26 @@ def tryMkBackwardRuleFromSpec (specThm : SpecTheorem) (info : WRPApp)
   let prog := specInfo.prog
   let postSpec := specInfo.post
   let epostsSpec := specInfo.eposts
-  -- The rule takes the concrete half of the prefix from the goal. The abstract half and `γ` come
-  -- from the spec, with the abstract monad, the abstract lattice types, `γ` and their instances
-  -- unified with the goal's first, so that the rule is specific to the pair of monads and the
-  -- cache keys on that pair (`mkBackwardRuleFromSpecCached`). The abstract value type stays a
-  -- pattern variable, also inside the abstract `WP` instance, which the matcher checks by
-  -- `isDefEqI`; a continuation goal carries a fresh value type and must reuse the rule. The
-  -- abstract program stays schematic so that the rule does not capture the goal's hole. Sym's
-  -- matcher never binds a pattern variable to a partial application, so the abstract monad must
-  -- be baked in before the pattern is built.
-  let concrete := [0, 2, 4, 6, 9, 11, 13]
-  if specInfo.args[1]!.isApp && info.args[1]!.isApp then
-    discard <| withReducible <| approxDefEq <|
-      isDefEqGuarded specInfo.args[1]!.appFn! info.args[1]!.appFn!
-  for i in [5, 7, 8, 16] do
+  -- The spec's prefix is unified with the goal's schematic prefix: the types first, then the
+  -- spec's instance binders whose types are closed by then are synthesized, then the instances.
+  -- An argument the goal fixes is baked into the rule; a metavariable of the goal, such as an
+  -- open abstract monad, stays a pattern variable, so a leaf spec can still fix it when it
+  -- applies. Sym's matcher never binds a pattern variable to a partial application, so a fixed
+  -- monad must be baked in before the pattern is built. The concrete `WP` instance must unify,
+  -- at default transparency: the goal can carry a registered instance (e.g. `Id.wpInst`) while
+  -- the spec spells `WPMonad.toWP ?inst`.
+  for i in [0, 1, 2, 3, 4, 5, 6, 7, 8, 16] do
     discard <| withReducible <| approxDefEq <| isDefEqGuarded specInfo.args[i]! info.args[i]!
-  -- The spec's instance arguments on the abstract side are synthesized once their types are fixed.
   for x in _xs, b in _bs do
     if b.isInstImplicit && !(← x.mvarId!.isAssigned) then
       let ty ← instantiateMVars (← Meta.inferType x)
       unless ty.hasExprMVar do
         if let some inst ← (monadLift (Meta.synthInstance? ty) : OptionT MetaM (Option Expr)) then
           discard <| isDefEqGuarded x inst
-  for i in [10, 12, 15] do
+  for i in [9, 10, 11, 12, 14, 15] do
     discard <| withDefault <| isDefEqGuarded specInfo.args[i]! info.args[i]!
-  let args := specInfo.args.mapIdx fun i a => if concrete.contains i then info.args[i]! else a
-  let info := { info with head := specInfo.head, args }
-  -- `withDefault`: the goal can carry a registered `WP` instance (e.g. `Id.wpInst`) while the
-  -- spec spells `WPMonad.toWP ?inst`; default transparency unfolds both after `?inst` synthesis.
   guard <| ← withDefault <| isDefEqGuarded info.instWP instWP'
+  let info := { info with head := specInfo.head, args := specInfo.args }
   -- Use local excess-state binders so explicit post premises can be re-lifted to `⊑`.
   -- Name them positionally from `stateArgNames` (else `s`) so the rule's binders carry good names.
   let mut ss := #[]
@@ -425,7 +419,9 @@ then `SplitInfo.splitWith` to build the splitting proof. Hypothesis types are
 discovered via `rwIfOrMatcher` inside the splitter telescope. -/
 def mkBackwardRuleForSplit
     (splitInfo : SplitInfo) (info : WRPApp) : MetaM BackwardRule := do
-  -- The split value type is the goal's, so reuse the goal's program type and `WP` instance directly.
+  -- The rule is specific to the pair of monads: the value types, the `WP` instances and the
+  -- abstract program of the goal are replaced by metavariables that become rule parameters.
+  let info ← info.schematic
   let a := info.Value
   let ma := info.Prog
   let prf ←

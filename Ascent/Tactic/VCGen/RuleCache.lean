@@ -51,7 +51,7 @@ open Lean.Elab.Tactic.Do in
 /--
 Cached version of `mkBackwardRuleForSplit`.
 
-Cache key: `(splitter name, instWP, excessArgs.size)`.
+Cache key: `(splitter name, ruleKey, excessArgs.size)`, with `ruleKey` as for spec rules.
 -/
 def mkBackwardRuleForSplitCached (splitInfo : SplitInfo) (info : WRPApp) :
     VCGenM BackwardRule := do
@@ -60,7 +60,7 @@ def mkBackwardRuleForSplitCached (splitInfo : SplitInfo) (info : WRPApp) :
     | .dite .. => ``dite
     | .cond .. => ``cond
     | .matcher matcherApp => matcherApp.matcherName
-  let key := (cacheKey, ExprPtr.mk info.instWP, info.excessArgs.size)
+  let key := (cacheKey, ExprPtr.mk (← shareCommon info.ruleKey), info.excessArgs.size)
   let s := (← get).splitBackwardRuleCache
   if let some rule := s[key]? then return rule
   let rule ← mkBackwardRuleForSplit splitInfo info
