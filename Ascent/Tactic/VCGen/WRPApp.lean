@@ -65,6 +65,14 @@ def lemmaPrefix (info : WRPApp) : Array Expr := (info.args.take 17).push info.ar
 /-- The `wrp` application itself, before the excess state arguments apply. -/
 def wp (info : WRPApp) : Expr := info.expr.stripArgsN info.excessArgs.size
 
+/-- The arguments of the prefix that a spec rule bakes in, as one term for hash-consing: the
+concrete `WP` instance, the abstract monad, the abstract lattice types, the exception relation
+type and `γ`. The term is a key, never a well-typed expression. -/
+def ruleKey (info : WRPApp) : Expr :=
+  let AM := if info.args[1]!.isApp then info.args[1]!.appFn! else info.args[1]!
+  mkAppN (mkConst `Ascent.ruleKey)
+    #[info.instWP, AM, info.args[5]!, info.args[7]!, info.args[8]!, info.γ]
+
 end WRPApp
 
 /-- The `wrp` metadata of `rhs`, or `none` when `rhs` is not a `wrp` application. -/

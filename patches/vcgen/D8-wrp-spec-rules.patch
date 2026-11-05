@@ -1,6 +1,6 @@
 diff -ruN a/Ascent/Tactic/VCGen/RuleConstruction.lean b/Ascent/Tactic/VCGen/RuleConstruction.lean
---- a/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-11-05 09:25:59.922480260 +0000
-+++ b/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-11-05 09:25:59.937717916 +0000
+--- a/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-11-05 10:52:01.119797804 +0000
++++ b/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-11-05 10:52:01.123668159 +0000
 @@ -35,14 +35,15 @@
      on the premise and are later introduced with the right user-facing names. -/
  def mkPostPointwisePremise (postSpec postTarget postTy : Expr) (ssTypes : Array Expr)
@@ -33,7 +33,7 @@ diff -ruN a/Ascent/Tactic/VCGen/RuleConstruction.lean b/Ascent/Tactic/VCGen/Rule
    let specAppliedTy ← mkAppM ``PartialOrder.rel #[preApplied, wpTy]
    /- later when the whole proof is type checked, we want to help the kernel by providing the expected type -/
    specApplied ← mkExpectedTypeHint specApplied specAppliedTy
-@@ -365,8 +367,32 @@
+@@ -365,8 +367,38 @@
    let_expr PartialOrder.rel Pred' _cl' pre rhs := specType
      | throwError "target not a partial order ⊑ application {specType}"
    guard <| ← isDefEqGuarded info.Pred Pred'
@@ -46,13 +46,19 @@ diff -ruN a/Ascent/Tactic/VCGen/RuleConstruction.lean b/Ascent/Tactic/VCGen/Rule
 +  let postSpec := specInfo.post
 +  let epostsSpec := specInfo.eposts
 +  -- The rule takes the concrete half of the prefix from the goal. The abstract half and `γ` come
-+  -- from the spec, unified with the goal's arguments first: an argument the goal fixes is baked
-+  -- into the rule, and a metavariable of the goal stays a pattern variable, so a leaf spec can
-+  -- still fix an open abstract type when it applies. The abstract program stays schematic so that
-+  -- the rule does not capture the goal's hole. Sym's matcher never binds a pattern variable to a
-+  -- partial application, so the abstract monad must be baked in before the pattern is built.
++  -- from the spec, with the abstract monad, the abstract lattice types, `γ` and their instances
++  -- unified with the goal's first, so that the rule is specific to the pair of monads and the
++  -- cache keys on that pair (`mkBackwardRuleFromSpecCached`). The abstract value type stays a
++  -- pattern variable, also inside the abstract `WP` instance, which the matcher checks by
++  -- `isDefEqI`; a continuation goal carries a fresh value type and must reuse the rule. The
++  -- abstract program stays schematic so that the rule does not capture the goal's hole. Sym's
++  -- matcher never binds a pattern variable to a partial application, so the abstract monad must
++  -- be baked in before the pattern is built.
 +  let concrete := [0, 2, 4, 6, 9, 11, 13]
-+  for i in [1, 3, 5, 7, 8, 16] do
++  if specInfo.args[1]!.isApp && info.args[1]!.isApp then
++    discard <| withReducible <| approxDefEq <|
++      isDefEqGuarded specInfo.args[1]!.appFn! info.args[1]!.appFn!
++  for i in [5, 7, 8, 16] do
 +    discard <| withReducible <| approxDefEq <| isDefEqGuarded specInfo.args[i]! info.args[i]!
 +  -- The spec's instance arguments on the abstract side are synthesized once their types are fixed.
 +  for x in _xs, b in _bs do
@@ -61,7 +67,7 @@ diff -ruN a/Ascent/Tactic/VCGen/RuleConstruction.lean b/Ascent/Tactic/VCGen/Rule
 +      unless ty.hasExprMVar do
 +        if let some inst ← (monadLift (Meta.synthInstance? ty) : OptionT MetaM (Option Expr)) then
 +          discard <| isDefEqGuarded x inst
-+  for i in [10, 12, 14, 15] do
++  for i in [10, 12, 15] do
 +    discard <| withDefault <| isDefEqGuarded specInfo.args[i]! info.args[i]!
 +  let args := specInfo.args.mapIdx fun i a => if concrete.contains i then info.args[i]! else a
 +  let info := { info with head := specInfo.head, args }
@@ -69,21 +75,22 @@ diff -ruN a/Ascent/Tactic/VCGen/RuleConstruction.lean b/Ascent/Tactic/VCGen/Rule
    -- spec spells `WPMonad.toWP ?inst`; default transparency unfolds both after `?inst` synthesis.
    guard <| ← withDefault <| isDefEqGuarded info.instWP instWP'
 diff -ruN a/Ascent/Tactic/VCGen/RuleCache.lean b/Ascent/Tactic/VCGen/RuleCache.lean
---- a/Ascent/Tactic/VCGen/RuleCache.lean	2026-11-05 09:25:59.922357788 +0000
-+++ b/Ascent/Tactic/VCGen/RuleCache.lean	2026-11-05 09:18:03.199497978 +0000
-@@ -31,11 +31,13 @@
+--- a/Ascent/Tactic/VCGen/RuleCache.lean	2026-11-05 10:52:01.119417326 +0000
++++ b/Ascent/Tactic/VCGen/RuleCache.lean	2026-11-05 10:51:36.569709475 +0000
+@@ -31,11 +31,14 @@
  Both `Triple`/`⊑ wp` and equality entries go through `tryMkBackwardRuleFromSpec`, which normalizes
  an equality spec to `⊑ wp` form using the supplied `wp` metadata before building the rule.
  
 -Cache key: `(proof key, instWP, excessArgs.size)`.
-+Cache key: `(proof key, prefix, excessArgs.size)`, where `prefix` is the hash-consed `wrp` prefix
-+of the goal: the rule bakes in the goal's concrete half and every abstract argument the goal fixes.
++Cache key: `(proof key, ruleKey, excessArgs.size)`, where `ruleKey` is the hash-consed
++`WRPApp.ruleKey` of the goal, the arguments the rule bakes in: the concrete `WP` instance, the
++abstract monad, the abstract lattice types and `γ`.
  -/
  def mkBackwardRuleFromSpecCached (specThm : SpecTheorem) (info : WRPApp) :
      OptionT VCGenM BackwardRule := do
 -  let key := (specThm.proof.key, ExprPtr.mk info.instWP, info.excessArgs.size)
-+  let wrpPrefix ← shareCommon (mkAppN info.head (info.args.take 17))
-+  let key := (specThm.proof.key, ExprPtr.mk wrpPrefix, info.excessArgs.size)
++  let ruleKey ← shareCommon info.ruleKey
++  let key := (specThm.proof.key, ExprPtr.mk ruleKey, info.excessArgs.size)
    let s := (← get).specBackwardRuleCache
    if let some rule := s[key]? then return rule
    let some rule ← withNewMCtxDepth <| tryMkBackwardRuleFromSpec specThm info |>.run

@@ -31,13 +31,14 @@ Cached version of spec rule construction.
 Both `Triple`/`⊑ wp` and equality entries go through `tryMkBackwardRuleFromSpec`, which normalizes
 an equality spec to `⊑ wp` form using the supplied `wp` metadata before building the rule.
 
-Cache key: `(proof key, prefix, excessArgs.size)`, where `prefix` is the hash-consed `wrp` prefix
-of the goal: the rule bakes in the goal's concrete half and every abstract argument the goal fixes.
+Cache key: `(proof key, ruleKey, excessArgs.size)`, where `ruleKey` is the hash-consed
+`WRPApp.ruleKey` of the goal, the arguments the rule bakes in: the concrete `WP` instance, the
+abstract monad, the abstract lattice types and `γ`.
 -/
 def mkBackwardRuleFromSpecCached (specThm : SpecTheorem) (info : WRPApp) :
     OptionT VCGenM BackwardRule := do
-  let wrpPrefix ← shareCommon (mkAppN info.head (info.args.take 17))
-  let key := (specThm.proof.key, ExprPtr.mk wrpPrefix, info.excessArgs.size)
+  let ruleKey ← shareCommon info.ruleKey
+  let key := (specThm.proof.key, ExprPtr.mk ruleKey, info.excessArgs.size)
   let s := (← get).specBackwardRuleCache
   if let some rule := s[key]? then return rule
   let some rule ← withNewMCtxDepth <| tryMkBackwardRuleFromSpec specThm info |>.run
