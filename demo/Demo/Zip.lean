@@ -49,8 +49,7 @@ ascend_def zipWithAddA [Host] [FunDecls] [Embeds zipWithAdd] (s : MachineData) (
 example [Host] [FunDecls] [Embeds zipWithAdd] (s : MachineData) (ra : Int64) :
     zipWithAddA s ra = cfgLoop (Table.get [
       (.entry, do
-        testRegReg .rcx .rcx
-        jcc .le "LBB0_3"
+        testJcc .rcx .rcx .le "LBB0_3"
         xorReg32Reg32 .rax .rax
         pure ()),
       (.label "LBB0_2", do
@@ -58,7 +57,6 @@ example [Host] [FunDecls] [Embeds zipWithAdd] (s : MachineData) (ra : Int64) :
         addRegSib8 .r8 .rdi .rax 0
         movSib8Reg .rdx .rax 0 .r8
         incReg .rax
-        cmpRegReg .rcx .rax
-        jcc .nz "LBB0_2"
+        cmpJcc .rcx .rax .nz "LBB0_2"
         pure ()),
       (.label "LBB0_3", ret)]) (Program.next zipWithAdd) .entry := rfl
