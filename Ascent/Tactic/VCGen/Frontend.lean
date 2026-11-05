@@ -6,7 +6,10 @@ import Ascent.Tactic.VCGen.Driver
 
 `ascend` runs the forked worklist on a goal `⦃P⦄ c ⪯[γ] a ⦃Q; E⦄`. The `wrp` goals use the
 `@[ascend]` database, and the `wp` goals use the `@[spec]` database. A natural metavariable in
-`a` is a synthesis hole. `ascend [f, g]` unfolds the definitions `f` and `g` in both kinds of goals.
+`a` is a synthesis hole. `ascend [f, g]` unfolds the definitions `f` and `g` in both kinds of goals,
+and takes any other term as a spec of the invocation. `ascend … with g` runs the `grind` step `g`
+on every verification condition, as `vcgen … with g` does; a general tactic in place of `g` runs
+on every verification condition after the run.
 -/
 
 open Lean Meta Elab Tactic Sym
@@ -21,7 +24,7 @@ register_option ascend.maxExponent : Nat := {
     of literals"
 }
 
-syntax (name := ascendTac) "ascend" (" [" term,* "]")? : tactic
+syntax (name := ascendTac) "ascend" (" [" term,* "]")? (" with " vcgenDischarge)? : tactic
 
 /-- Unseal the abstract program hole of a `Refinement` goal, so that rule application can assign
 it. Returns the hole. -/
@@ -83,7 +86,7 @@ def closeTables (hole : MVarId) : MetaM Unit := do
       mv.assign (mkApp (mkConst ``List.nil [0]) (mkApp2 (mkConst ``Prod [0, 0]) κ β))
 
 /-- A spec passed at the invocation, `ascend [t]`: the proof `t` with its metavariables abstracted,
-in `pre ⊑ wrp …` form, at a priority above the registered specs. -/
+in `pre ⊑ wrp …` form, at the priority of core's explicit specs, above the unfold equations. -/
 def mkSpecTheoremFromTerm (term : Syntax) : TacticM SpecTheorem := withRef term do
   let e ← Tactic.elabTerm term none
   Term.synthesizeSyntheticMVars (postpone := .no) (ignoreStuckTC := true)
@@ -98,7 +101,7 @@ def mkSpecTheoremFromTerm (term : Syntax) : TacticM SpecTheorem := withRef term 
       | throwError "ascend: the conclusion of {term} is not `pre ⊑ wrp …`:{indentExpr type}"
     return (prog, ())
   return { pattern := eraseUnusedVarsFromPattern pattern, proof := .stx (← mkFreshId) term r.expr,
-           kind := .triple, conjunctivePre := true, priority := eval_prio default + 1 }
+           kind := .triple, conjunctivePre := true, priority := explicitSpecPrio }
 
 /-- The unfold equations of the definitions `declNames`, added to the spec database `specs`. -/
 def addUnfoldSpecs (specs : SpecTheorems) (declNames : Array Name) : MetaM SpecTheorems := do
@@ -135,13 +138,26 @@ def elabAscend : Tactic := fun stx => withMainContext do
   let scope : Scope := { specs }
   let coreScope : Scope := { specs := ← addUnfoldSpecs (← getSpecTheorems) declNames }
   let params ← Grind.mkDefaultParams { clean := false }
+  -- The `with` clause is a `grind` step, as for `vcgen`, or a general tactic that runs on every
+  -- verification condition after the run.
+  let mut step? : Option (TSyntax `grind) := none
+  let mut tac? : Option (TSyntax `tactic) := none
+  if stx[2].getNumArgs == 2 then
+    let w := stx[2][1]
+    if w.getKind == ``Lean.Parser.Tactic.vcgenDischargeGrind then step? := some ⟨w[0]⟩
+    else tac? := some ⟨w[0]⟩
   let (_, state) ← Grind.GrindTacticM.runAtGoal goal params (sym := true) do
     let g ← Lean.Elab.Tactic.Grind.getMainGoal
     let result ← Lean.Elab.Tactic.Grind.liftGrindM (run g ctx scope coreScope)
     Lean.Elab.Tactic.Grind.replaceMainGoal result.vcs.toList
+    if let some step := step? then
+      unless (← Lean.Elab.Tactic.Grind.getUnsolvedGoals).isEmpty do
+        Lean.Elab.Tactic.Grind.evalGrindTactic step
   if let (some hole, some decl) := (hole?, holeDecl?) then
     closeTables hole
     checkHoleScope hole decl
   replaceMainGoal (state.goals.map (·.mvarId))
+  if let some tac := tac? then
+    evalTactic (← `(tactic| all_goals ($tac:tactic)))
 
 end Lean.Elab.Tactic.VCGen.Ascend

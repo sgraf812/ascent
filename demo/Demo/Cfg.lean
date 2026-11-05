@@ -81,6 +81,49 @@ attribute [vcgen_simp] List.forall_mem_cons List.forall_mem_nil
 def Program.next (p : Program) (l : CfgLabel) : CfgLabel :=
   (((Program.blocks p).find? fun blk => blk.label = l).map (·.next)).getD .exit
 
+theorem Program.label_mem_blocksFrom {b : CfgLabel} :
+    ∀ {j : Nat} {body : Program} {bs : List (Label × Program)} {blk : Program.Block},
+      blk ∈ Program.blocksFrom b j body bs → blk.label = b ∨ ∃ lb ∈ bs, blk.label = .label lb.1
+  | _, _, [], blk, h => by
+    simp only [Program.blocksFrom, List.mem_singleton] at h
+    subst h
+    exact Or.inl rfl
+  | j, body, (l, body') :: bs, blk, h => by
+    simp only [Program.blocksFrom, List.mem_cons] at h
+    rcases h with rfl | h
+    · exact Or.inl rfl
+    · rcases Program.label_mem_blocksFrom h with h | ⟨lb, hlb, h⟩
+      · exact Or.inr ⟨(l, body'), List.mem_cons_self, h⟩
+      · exact Or.inr ⟨lb, List.mem_cons_of_mem _ hlb, h⟩
+
+theorem Program.find?_blocksFrom {b : CfgLabel} :
+    ∀ {j : Nat} {body : Program} {bs : List (Label × Program)}, (bs.map (·.1)).Nodup →
+      (∀ lb ∈ bs, b ≠ .label lb.1) → ∀ {blk : Program.Block}, blk ∈ Program.blocksFrom b j body bs →
+        (Program.blocksFrom b j body bs).find? (fun blk' => blk'.label = blk.label) = some blk
+  | _, _, [], _, _, blk, h => by
+    simp only [Program.blocksFrom, List.mem_singleton] at h
+    subst h
+    simp [Program.blocksFrom]
+  | j, body, (l, body') :: bs, hnd, hb, blk, h => by
+    simp only [Program.blocksFrom, List.mem_cons] at h
+    rcases h with rfl | h
+    · simp [Program.blocksFrom]
+    · have hne : b ≠ blk.label := by
+        rcases Program.label_mem_blocksFrom h with h' | ⟨lb, hlb, h'⟩
+        · rw [h']; exact hb (l, body') List.mem_cons_self
+        · rw [h']; exact hb lb (List.mem_cons_of_mem _ hlb)
+      simp only [List.map_cons, List.nodup_cons, List.mem_map] at hnd
+      rw [Program.blocksFrom, List.find?_cons_of_neg (by simpa using hne)]
+      exact Program.find?_blocksFrom hnd.2 (fun lb hlb heq => hnd.1 ⟨lb, hlb, (CfgLabel.label.inj heq).symm⟩) h
+
+/-- With distinct labels, the fallthrough target of a block is its successor in the text. -/
+theorem Program.next_eq_of_nodup {p : Program} (hnd : (Program.labels p).Nodup) {blk : Program.Block}
+    (h : blk ∈ Program.blocks p) : Program.next p blk.label = blk.next := by
+  rw [Program.labels_view] at hnd
+  unfold Program.next Program.blocks
+  rw [Program.find?_blocksFrom hnd (fun _ _ => CfgLabel.noConfusion) h]
+  rfl
+
 namespace Ascent.Kraken
 
 /-! ## The abstract control-flow loop -/
@@ -481,19 +524,33 @@ theorem wrp_cfg {p : Program} (next : CfgLabel → CfgLabel)
       (s.push64 ra) :=
   wrp_cfg_le abs next hnext h (s.push64 ra) rfl
 
+@[vcgen_simp] theorem Program.Block.label_mk (l : CfgLabel) (i : Nat) (b : Program) (n : CfgLabel) :
+    (Program.Block.mk l i b n).label = l := rfl
+@[vcgen_simp] theorem Program.Block.body_mk (l : CfgLabel) (i : Nat) (b : Program) (n : CfgLabel) :
+    (Program.Block.mk l i b n).body = b := rfl
+@[vcgen_simp] theorem Program.Block.next_mk (l : CfgLabel) (i : Nat) (b : Program) (n : CfgLabel) :
+    (Program.Block.mk l i b n).next = n := rfl
+
 attribute [vcgen_simp] Program.blocks_eq Program.view_cons_instr Program.view_cons_label
   Program.view_nil' Program.blocksFrom_cons Program.blocksFrom_nil
 
+/-! The jump and fallthrough VCs of a block without a store close by `finish`: the relations
+unfold, and the jump and fallthrough lemmas apply backward. -/
+attribute [grind] JumpRel FallRel StackOf
+attribute [grind ←] JumpRel.internal JumpRel.exit FallRel.intro
+
 /-- The control-flow rule as a spec: the abstract program is `cfgLoop` over a table of blocks, one
-cell per label, which `ascend` fills block by block. -/
-theorem refines_cfg {p : Program} (tbl : Table CfgLabel (BlockM Aσ Unit)) {s : MachineData}
-    {ra : Int64} (hnext : ∀ blk ∈ Program.blocks p, Program.next p blk.label = blk.next)
+cell per label, which `ascend` fills block by block. The program is embedded in the host, so its
+labels are distinct and each block falls through to its successor in the text. -/
+theorem refines_cfg {p : Program} [Embeds p] (tbl : Table CfgLabel (BlockM Aσ Unit))
+    {s : MachineData} {ra : Int64}
     (h : ∀ blk ∈ Program.blocks p, ∀ t, StackOf (s.push64 ra) t →
       ⦃(· = t)⦄ blk.body ⪯[Concretization.ofStateRepr abs] (Table.get tbl blk.label)
         ⦃FallRel (s.push64 ra); JumpRel p (s.push64 ra)⦄) :
     ⦃(· = s.push64 ra)⦄ p ⪯[Concretization.ofStateRepr abs]
       (cfgLoop (Table.get tbl) (Program.next p) .entry) ⦃fun _ _ => ⊤; RetRel s ra⦄ :=
-  ⟨wrp_cfg_le abs (Program.next p) hnext h⟩
+  ⟨wrp_cfg_le abs (Program.next p)
+    (fun _ hmem => Program.next_eq_of_nodup Program.labels_nodup_of_embeds hmem) h⟩
 
 end
 

@@ -1,6 +1,6 @@
 import Demo.AState
 import Kraken.X64.Parser
-import Ascent.Tactic.VCGen.Frontend
+import Ascent.Tactic.VCGen.Command
 
 /-!
 # `zipWithAdd`
@@ -57,16 +57,14 @@ macro "cfg_vc" : tactic => `(tactic| (
 
 attribute [local vcgen_simp] zipWithAdd
 
-noncomputable def zipWithAddA [Host] [FunDecls] (s : MachineData) (ra : Int64) :
-    { a : BlockM AState Unit //
-      ⦃(· = s.push64 ra)⦄ zipWithAdd ⪯[ofStateRepr abs] a ⦃fun _ _ => ⊤; RetRel s ra⦄ } := by
-  apply Subtype.mk
-  ascend [refines_cfg (p := zipWithAdd)]
-  all_goals first | decide | cfg_vc
+ascend_def zipWithAddA [Host] [FunDecls] [Embeds zipWithAdd] (s : MachineData) (ra : Int64) :
+    BlockM AState Unit from
+  ⦃(· = s.push64 ra)⦄ zipWithAdd ⪯[ofStateRepr abs] zipWithAddA ⦃fun _ _ => ⊤; RetRel s ra⦄
+  ascend [refines_cfg (p := zipWithAdd)] with cfg_vc
 
 /-- The synthesized L1 program: the text over the abstract machine, block by block. -/
-example [Host] [FunDecls] (s : MachineData) (ra : Int64) :
-    (zipWithAddA s ra).1 = cfgLoop (Table.get [
+example [Host] [FunDecls] [Embeds zipWithAdd] (s : MachineData) (ra : Int64) :
+    zipWithAddA s ra = cfgLoop (Table.get [
       (.entry, do
         testRegReg .rcx .rcx
         jcc .le "LBB0_3"
