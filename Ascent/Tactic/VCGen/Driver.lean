@@ -110,8 +110,6 @@ def emitVC (goal : Grind.Goal) (reason : SolveResult.StopReason) : VCGenM Unit :
   goal ← processHypotheses goal
   if goal.inconsistent then return
   let some mvarId ← cleanupVC goal.mvarId | return
-  -- The hypotheses `cleanupVC` introduces from the target are rewritten with the simp step.
-  let mvarId ← simpHypotheses mvarId
   mvarId.setKind .syntheticOpaque
   modify fun s => { s with vcs := s.vcs.push { goal with mvarId } }
 

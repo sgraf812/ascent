@@ -38,29 +38,12 @@ LBB0_3:
   retq
 ")
 
-/-- The relation VCs of a block: an internal jump, a fallthrough, or the return. -/
-macro "cfg_vc" : tactic => `(tactic| (
-  first
-  | refine JumpRel.internal (by decide) rfl (StackOf.of_step (by assumption) ?_ ?_)
-  | refine FallRel.intro (StackOf.of_step (by assumption) ?_ ?_)
-  | refine JumpRel.exit (by rw [(‹StackOf _ _›).2]) ?_
-  all_goals first
-  | rfl
-  | (have h := ‹sib8Storable _ _ _ _ = true›
-     simp only [sib8Storable_eq, sib8Loaded_eq, AState.frameSafe, AState.sib8, abs_regs, abs_mem,
-       Reg64s.get64, Bool.and_eq_true, decide_eq_true_eq, Int64.toInt_zero, BitVec.ofInt_ofNat,
-       BitVec.add_zero] at h
-     exact Mem.loadInt_storeInt_of_disjoint (Mem.Blocks.Disjoint.of_sub h.2.1 h.2.2) _)
-  | (have h1 := (‹StackOf _ _›).1
-     simp only [Reg64s.get64, Reg64s.get64_set64] at h1 ⊢
-     rw [h1])))
-
 attribute [local vcgen_simp] zipWithAdd
 
 ascend_def zipWithAddA [Host] [FunDecls] [Embeds zipWithAdd] (s : MachineData) (ra : Int64) :
     BlockM AState Unit from
   ⦃(· = s.push64 ra)⦄ zipWithAdd ⪯[ofStateRepr abs] zipWithAddA ⦃fun _ _ => ⊤; RetRel s ra⦄
-  ascend [refines_cfg (p := zipWithAdd)] with grind
+  ascend [refines_cfg (p := zipWithAdd)] with finish
 
 /-- The synthesized L1 program: the text over the abstract machine, block by block. -/
 example [Host] [FunDecls] [Embeds zipWithAdd] (s : MachineData) (ra : Int64) :

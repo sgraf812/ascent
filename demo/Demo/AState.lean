@@ -44,6 +44,25 @@ def AState.frameSafe (st : AState) (a : BitVec 64) : Bool :=
   decide (8 ≤ (st.regs .rsp - a).toNat) && decide (8 ≤ (a - st.regs .rsp).toNat)
 
 @[simp, vcgen_simp] theorem abs_regs (s : MachineData) : (abs s).regs = s.regs.get64 := rfl
+
+/-! The register fields of the abstraction, one rule per register as for `Reg64s.get64`, so that a
+finisher sees `s.regs.r.toBitVec` and never `get64`. -/
+@[simp, vcgen_simp, grind =] theorem abs_regs_rax (s : MachineData) : (abs s).regs .rax = s.regs.rax.toBitVec := rfl
+@[simp, vcgen_simp, grind =] theorem abs_regs_rbx (s : MachineData) : (abs s).regs .rbx = s.regs.rbx.toBitVec := rfl
+@[simp, vcgen_simp, grind =] theorem abs_regs_rcx (s : MachineData) : (abs s).regs .rcx = s.regs.rcx.toBitVec := rfl
+@[simp, vcgen_simp, grind =] theorem abs_regs_rdx (s : MachineData) : (abs s).regs .rdx = s.regs.rdx.toBitVec := rfl
+@[simp, vcgen_simp, grind =] theorem abs_regs_rsi (s : MachineData) : (abs s).regs .rsi = s.regs.rsi.toBitVec := rfl
+@[simp, vcgen_simp, grind =] theorem abs_regs_rdi (s : MachineData) : (abs s).regs .rdi = s.regs.rdi.toBitVec := rfl
+@[simp, vcgen_simp, grind =] theorem abs_regs_rsp (s : MachineData) : (abs s).regs .rsp = s.regs.rsp.toBitVec := rfl
+@[simp, vcgen_simp, grind =] theorem abs_regs_rbp (s : MachineData) : (abs s).regs .rbp = s.regs.rbp.toBitVec := rfl
+@[simp, vcgen_simp, grind =] theorem abs_regs_r8 (s : MachineData) : (abs s).regs .r8 = s.regs.r8.toBitVec := rfl
+@[simp, vcgen_simp, grind =] theorem abs_regs_r9 (s : MachineData) : (abs s).regs .r9 = s.regs.r9.toBitVec := rfl
+@[simp, vcgen_simp, grind =] theorem abs_regs_r10 (s : MachineData) : (abs s).regs .r10 = s.regs.r10.toBitVec := rfl
+@[simp, vcgen_simp, grind =] theorem abs_regs_r11 (s : MachineData) : (abs s).regs .r11 = s.regs.r11.toBitVec := rfl
+@[simp, vcgen_simp, grind =] theorem abs_regs_r12 (s : MachineData) : (abs s).regs .r12 = s.regs.r12.toBitVec := rfl
+@[simp, vcgen_simp, grind =] theorem abs_regs_r13 (s : MachineData) : (abs s).regs .r13 = s.regs.r13.toBitVec := rfl
+@[simp, vcgen_simp, grind =] theorem abs_regs_r14 (s : MachineData) : (abs s).regs .r14 = s.regs.r14.toBitVec := rfl
+@[simp, vcgen_simp, grind =] theorem abs_regs_r15 (s : MachineData) : (abs s).regs .r15 = s.regs.r15.toBitVec := rfl
 @[simp, vcgen_simp] theorem abs_status (s : MachineData) : (abs s).status = s.status.noAF := rfl
 @[simp, vcgen_simp] theorem abs_mem (s : MachineData) : (abs s).mem = s.dmem := rfl
 
@@ -215,7 +234,7 @@ guard as its two bounds, which kraken's `Blocks.Disjoint.of_sub` turns into disj
     st.sib8 b i 0 = st.regs b + st.regs i * 8 := by
   simp [AState.sib8]
 
-@[vcgen_simp] theorem AState.frameSafe_eq (st : AState) (a : BitVec 64) :
+theorem AState.frameSafe_eq (st : AState) (a : BitVec 64) :
     (st.frameSafe a = true) = (8 ≤ (st.regs .rsp - a).toNat ∧ 8 ≤ (a - st.regs .rsp).toNat) := by
   simp [AState.frameSafe]
 

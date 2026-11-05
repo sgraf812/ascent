@@ -366,28 +366,28 @@ def RetRel (s : MachineData) (ra : Int64) : Int64 → CfgLabel → MachineData �
 
 /-- The stack discipline inside the function: the stack pointer and the return slot of the entry
 state `s₀`. -/
-def StackOf (s₀ s : MachineData) : Prop :=
+def SameStackFrame (s₀ s : MachineData) : Prop :=
   s.regs.get64 .rsp = s₀.regs.get64 .rsp ∧ s.retAddr = s₀.retAddr
 
-def FallRel (s₀ : MachineData) : Unit → Unit → MachineData → Prop := fun _ _ s => StackOf s₀ s
+def FallRel (s₀ : MachineData) : Unit → Unit → MachineData → Prop := fun _ _ s => SameStackFrame s₀ s
 
 def JumpRel [Host] (p : Program) (s₀ : MachineData) : Int64 → CfgLabel → MachineData → Prop :=
   fun a l' s =>
-    (∃ l, l ∈ Program.labels p ∧ l' = .label l ∧ a = label l ∧ StackOf s₀ s)
+    (∃ l, l ∈ Program.labels p ∧ l' = .label l ∧ a = label l ∧ SameStackFrame s₀ s)
     ∨ (l' = .exit ∧ a = s₀.retAddr.get! ∧ s.regs.get64 .rsp = s₀.regs.get64 .rsp + 8#64)
 
-theorem StackOf.of_step {s₀ t s' : MachineData} (h : StackOf s₀ t)
+theorem SameStackFrame.of_step {s₀ t s' : MachineData} (h : SameStackFrame s₀ t)
     (hrsp : s'.regs.get64 .rsp = t.regs.get64 .rsp)
     (hmem : Mem.loadInt s'.dmem (t.regs.get64 .rsp) 8 = Mem.loadInt t.dmem (t.regs.get64 .rsp) 8) :
-    StackOf s₀ s' := by
+    SameStackFrame s₀ s' := by
   refine ⟨hrsp.trans h.1, ?_⟩
   rw [MachineData.retAddr_eq, hrsp, hmem, ← MachineData.retAddr_eq]
   exact h.2
 
-theorem FallRel.intro {s₀ s : MachineData} (h : StackOf s₀ s) : FallRel s₀ () () s := h
+theorem FallRel.intro {s₀ s : MachineData} (h : SameStackFrame s₀ s) : FallRel s₀ () () s := h
 
 theorem JumpRel.internal [Host] {p : Program} {s₀ s : MachineData} {a : Int64} {l : Label}
-    (hmem : l ∈ Program.labels p) (ha : a = label l) (h : StackOf s₀ s) :
+    (hmem : l ∈ Program.labels p) (ha : a = label l) (h : SameStackFrame s₀ s) :
     JumpRel p s₀ a (.label l) s :=
   Or.inl ⟨l, hmem, rfl, ha, h⟩
 
@@ -421,7 +421,7 @@ variable [Host] [FunDecls] {Aσ : Type} (abs : MachineData → Aσ)
 theorem wrp_cfg_le {p : Program} (next : CfgLabel → CfgLabel)
     (hnext : ∀ blk ∈ Program.blocks p, next blk.label = blk.next)
     {ablock : CfgLabel → BlockM Aσ Unit} {s : MachineData} {ra : Int64}
-    (h : ∀ blk ∈ Program.blocks p, ∀ t, StackOf (s.push64 ra) t →
+    (h : ∀ blk ∈ Program.blocks p, ∀ t, SameStackFrame (s.push64 ra) t →
       ⦃(· = t)⦄ blk.body ⪯[Concretization.ofStateRepr abs] (ablock blk.label)
         ⦃FallRel (s.push64 ra); JumpRel p (s.push64 ra)⦄) :
     (fun t => t = s.push64 ra) ⊑ wrp (Concretization.ofStateRepr abs) p
@@ -431,7 +431,7 @@ theorem wrp_cfg_le {p : Program} (next : CfgLabel → CfgLabel)
   simp only [meet_apply, meet_prop_eq_and, Concretization.ofStateRepr_pred] at ht
   obtain ⟨rfl, hpre⟩ := ht
   let I : CfgLabel → MachineData → Prop := fun l t =>
-    wp (cfgLoop ablock next l) Qa Ea (abs t) ∧ StackOf (s.push64 ra) t
+    wp (cfgLoop ablock next l) Qa Ea (abs t) ∧ SameStackFrame (s.push64 ra) t
   have hcfg := Program.WP.cfg (p := p)
     (E := EPostsConcretization.ePosts (Concretization.ofStateRepr abs) (RetRel s ra) Ea)
     (s₀ := s.push64 ra) I (fun l t => steps ablock next (.label l) (abs t)) ?_
@@ -517,7 +517,7 @@ theorem wrp_cfg_le {p : Program} (next : CfgLabel → CfgLabel)
 theorem wrp_cfg {p : Program} (next : CfgLabel → CfgLabel)
     (hnext : ∀ blk ∈ Program.blocks p, next blk.label = blk.next)
     {ablock : CfgLabel → BlockM Aσ Unit} {s : MachineData} {ra : Int64}
-    (h : ∀ blk ∈ Program.blocks p, ∀ t, StackOf (s.push64 ra) t →
+    (h : ∀ blk ∈ Program.blocks p, ∀ t, SameStackFrame (s.push64 ra) t →
       ⦃(· = t)⦄ blk.body ⪯[Concretization.ofStateRepr abs] (ablock blk.label)
         ⦃FallRel (s.push64 ra); JumpRel p (s.push64 ra)⦄) :
     wrp (Concretization.ofStateRepr abs) p (cfgLoop ablock next .entry) (fun _ _ => ⊤) (RetRel s ra)
@@ -539,14 +539,14 @@ attribute [vcgen_simp] Program.blocks_eq Program.view_cons_instr Program.view_co
 Shape equations at a literal label, in the style of kraken's flag and register theories, so that a
 grind finisher normalizes a relation VC without a disjunction to split on. -/
 
-@[simp, vcgen_simp, grind =] theorem FallRel_eq (s₀ s : MachineData) : FallRel s₀ () () s = StackOf s₀ s := rfl
+@[simp, vcgen_simp] theorem FallRel_eq (s₀ s : MachineData) : FallRel s₀ () () s = SameStackFrame s₀ s := rfl
 
-@[simp, vcgen_simp, grind =] theorem StackOf_eq (s₀ s : MachineData) :
-    StackOf s₀ s = (s.regs.get64 .rsp = s₀.regs.get64 .rsp ∧ s.retAddr = s₀.retAddr) := rfl
+@[simp, vcgen_simp] theorem SameStackFrame_eq (s₀ s : MachineData) :
+    SameStackFrame s₀ s = (s.regs.get64 .rsp = s₀.regs.get64 .rsp ∧ s.retAddr = s₀.retAddr) := rfl
 
-@[simp, vcgen_simp, grind =] theorem JumpRel_label [Host] (p : Program) (s₀ : MachineData) (a : Int64) (l : Label)
+@[simp, vcgen_simp] theorem JumpRel_label [Host] (p : Program) (s₀ : MachineData) (a : Int64) (l : Label)
     (s : MachineData) :
-    JumpRel p s₀ a (.label l) s = (l ∈ Program.labels p ∧ a = label l ∧ StackOf s₀ s) := by
+    JumpRel p s₀ a (.label l) s = (l ∈ Program.labels p ∧ a = label l ∧ SameStackFrame s₀ s) := by
   apply propext
   constructor
   · rintro (⟨l', hmem, hl, ha, hs⟩ | ⟨h, -⟩)
@@ -555,7 +555,7 @@ grind finisher normalizes a relation VC without a disjunction to split on. -/
   · rintro ⟨hmem, ha, hs⟩
     exact Or.inl ⟨l, hmem, rfl, ha, hs⟩
 
-@[simp, vcgen_simp, grind =] theorem JumpRel_exit [Host] (p : Program) (s₀ : MachineData) (a : Int64)
+@[simp, vcgen_simp] theorem JumpRel_exit [Host] (p : Program) (s₀ : MachineData) (a : Int64)
     (s : MachineData) :
     JumpRel p s₀ a .exit s = (a = s₀.retAddr.get! ∧ s.regs.get64 .rsp = s₀.regs.get64 .rsp + 8#64) := by
   apply propext
@@ -567,15 +567,14 @@ grind finisher normalizes a relation VC without a disjunction to split on. -/
     exact Or.inr ⟨rfl, ha, hs⟩
 
 attribute [vcgen_simp] Program.labels_nil Program.labels_cons_instr Program.labels_cons_label
-  MachineData.retAddr_eq CondCode.interp_le CondCode.interp_nz Bool.and_eq_true
-attribute [grind →] Mem.Blocks.Disjoint.of_sub
+  MachineData.retAddr_eq
 
 /-- The control-flow rule as a spec: the abstract program is `cfgLoop` over a table of blocks, one
 cell per label, which `ascend` fills block by block. The program is embedded in the host, so its
 labels are distinct and each block falls through to its successor in the text. -/
 theorem refines_cfg {p : Program} [Embeds p] (tbl : Table CfgLabel (BlockM Aσ Unit))
     {s : MachineData} {ra : Int64}
-    (h : ∀ blk ∈ Program.blocks p, ∀ t, StackOf (s.push64 ra) t →
+    (h : ∀ blk ∈ Program.blocks p, ∀ t, SameStackFrame (s.push64 ra) t →
       ⦃(· = t)⦄ blk.body ⪯[Concretization.ofStateRepr abs] (Table.get tbl blk.label)
         ⦃FallRel (s.push64 ra); JumpRel p (s.push64 ra)⦄) :
     ⦃(· = s.push64 ra)⦄ p ⪯[Concretization.ofStateRepr abs]

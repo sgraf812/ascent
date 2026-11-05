@@ -8,8 +8,7 @@ import Ascent.Tactic.VCGen.Driver
 `@[ascend]` database, and the `wp` goals use the `@[spec]` database. A natural metavariable in
 `a` is a synthesis hole. `ascend [f, g]` unfolds the definitions `f` and `g` in both kinds of goals,
 and takes any other term as a spec of the invocation. `ascend … with g` runs the `grind` step `g`
-on every verification condition, as `vcgen … with g` does; a general tactic in place of `g` runs
-on every verification condition after the run.
+on every verification condition, as `vcgen … with g` does.
 -/
 
 open Lean Meta Elab Tactic Sym
@@ -130,14 +129,12 @@ def elabAscend : Tactic := fun stx => withMainContext do
     { pre := Sym.Simp.beta >> Sym.Simp.reduceProj >> Sym.Simp.reduceMatcher
       post := Sym.Simp.evalGround { maxExponent := ascend.maxExponent.get (← getOptions) } >>
         thms.rewrite }
-  -- The `with` clause is a `grind` step, as for `vcgen`, or a general tactic that runs on every
-  -- verification condition after the run.
+  -- The `with` clause is a `grind` step, as for `vcgen`.
   let mut step? : Option (TSyntax `grind) := none
-  let mut tac? : Option (TSyntax `tactic) := none
   if stx[2].getNumArgs == 2 then
     let w := stx[2][1]
     if w.getKind == ``Lean.Parser.Tactic.vcgenDischargeGrind then step? := some ⟨w[0]⟩
-    else tac? := some ⟨w[0]⟩
+    else throwErrorAt w "`ascend … with` expects a `grind`-mode discharging step, not a general tactic"
   -- Hypotheses are internalized only for a `with` step that reads the E-graph, as for `vcgen`.
   let ctx : Context :=
     { backwardRules := ← mkBackwardRules, simpMethods, internalize := step?.isSome }
@@ -155,15 +152,13 @@ def elabAscend : Tactic := fun stx => withMainContext do
     if let some step := step? then
       let mut rest := []
       for vc in ← Lean.Elab.Tactic.Grind.getUnsolvedGoals do
-        Lean.Elab.Tactic.Grind.replaceMainGoal [vc]
+        Lean.Elab.Tactic.Grind.setGoals [vc]
         Lean.Elab.Tactic.Grind.evalGrindTactic step
         rest := rest ++ (← Lean.Elab.Tactic.Grind.getUnsolvedGoals)
-      Lean.Elab.Tactic.Grind.replaceMainGoal rest
+      Lean.Elab.Tactic.Grind.setGoals rest
   if let (some hole, some decl) := (hole?, holeDecl?) then
     closeTables hole
     checkHoleScope hole decl
   replaceMainGoal (state.goals.map (·.mvarId))
-  if let some tac := tac? then
-    evalTactic (← `(tactic| all_goals ($tac:tactic)))
 
 end Lean.Elab.Tactic.VCGen.Ascend
