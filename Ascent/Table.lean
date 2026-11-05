@@ -11,7 +11,7 @@ cell for `k` on its own, and the table collects the cells of all keys.
 namespace Ascent
 
 /-- A finite map from keys to cells, as a list of entries. -/
-def Table (κ β : Type) := List (κ × β)
+abbrev Table (κ β : Type) := List (κ × β)
 
 /-- The cell of `tbl` at `k`, the default cell for a key without an entry. -/
 def Table.get {κ β : Type} [DecidableEq κ] [Inhabited β] (tbl : Table κ β) (k : κ) : β :=

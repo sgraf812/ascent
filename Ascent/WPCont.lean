@@ -35,6 +35,9 @@ open Ascent
 instance {σ α : Type u} {m : Type u → Type v} [CCPO (m (α × σ))] : CCPO (StateT σ m α) :=
   instCCPOPi
 
+instance {ε α : Type u} {m : Type u → Type v} [CCPO (m (Except ε α))] : CCPO (ExceptT ε m α) :=
+  inferInstanceAs (CCPO (m (Except ε α)))
+
 instance {σ α : Type u} {m : Type u → Type v} {Pred : Type w} {EPosts : Type w'}
     [CCPO (m (α × σ))] [Assertion Pred] [Assertion EPosts] [WP (m (α × σ)) (α × σ) Pred EPosts]
     [WPCont (m (α × σ))] : WPCont (StateT σ m α) where

@@ -40,6 +40,12 @@ LBB0_3:
 
 attribute [local vcgen_simp] zipWithAdd
 
+/-! The successor of each block, for the passes after the first. -/
+@[vcgen_simp] theorem zipWithAdd_next_entry : Program.next zipWithAdd .entry = .label "LBB0_2" := rfl
+@[vcgen_simp] theorem zipWithAdd_next_2 :
+    Program.next zipWithAdd (.label "LBB0_2") = .label "LBB0_3" := rfl
+@[vcgen_simp] theorem zipWithAdd_next_3 : Program.next zipWithAdd (.label "LBB0_3") = .exit := rfl
+
 ascend_def zipWithAddA [Host] [FunDecls] [Embeds zipWithAdd] (s : MachineData) (ra : Int64) :
     BlockM MachineData Unit from
   ⦃(· = s.push64 ra)⦄ zipWithAdd ⪯[ofStateRepr abs] zipWithAddA ⦃fun _ _ => ⊤; RetRel s ra⦄

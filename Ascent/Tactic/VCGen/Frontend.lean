@@ -83,6 +83,8 @@ def closeTables (hole : MVarId) : MetaM Unit := do
     if ty.isAppOfArity ``Ascent.Table 2 then
       let #[κ, β] := ty.getAppArgs | continue
       mv.assign (mkApp (mkConst ``List.nil [0]) (mkApp2 (mkConst ``Prod [0, 0]) κ β))
+    else if ty.isAppOfArity ``List 1 && ty.appArg!.isAppOfArity ``Prod 2 then
+      mv.assign (mkApp (mkConst ``List.nil [0]) ty.appArg!)
 
 /-- A spec passed at the invocation, `ascend [t]`: the proof `t` with its metavariables abstracted,
 in `pre ⊑ wrp …` form, at the priority of core's explicit specs, above the unfold equations. -/

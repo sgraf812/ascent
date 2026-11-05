@@ -112,19 +112,22 @@ namespace AInstr
 
 /-! ## The three step shapes -/
 
-noncomputable def modifyIf (g : MachineData → Prop) (f : MachineData → MachineData) :
-    BlockM MachineData Unit :=
+section
+variable {σ : Type}
+
+noncomputable def modifyIf (g : σ → Prop) (f : σ → σ) : BlockM σ Unit :=
   fun st => UB.guardRet (g st) (.ok (), f st)
 
-noncomputable def exitIf (g : MachineData → Prop) (f : MachineData → MachineData) (l : CfgLabel) :
-    BlockM MachineData Unit :=
+noncomputable def exitIf (g : σ → Prop) (f : σ → σ) (l : CfgLabel) : BlockM σ Unit :=
   fun st => UB.guardRet (g st) (.error l, f st)
 
-def branch (c : MachineData → Bool) (l : CfgLabel) : BlockM MachineData Unit :=
+def branch (c : σ → Bool) (l : CfgLabel) : BlockM σ Unit :=
   fun st => if c st then pure (.error l, st) else pure (.ok (), st)
 
+end
+
 section
-variable (Qa : Unit → MachineData → Prop) (Ea : (CfgLabel → MachineData → Prop) × EStack⟨⟩) (st : MachineData)
+variable {σ : Type} (Qa : Unit → σ → Prop) (Ea : (CfgLabel → σ → Prop) × EStack⟨⟩) (st : σ)
 
 theorem modifyIf_run (g f) : (modifyIf g f).run.run st = modifyIf g f st := rfl
 theorem exitIf_run (g f l) : (exitIf g f l).run.run st = exitIf g f l st := rfl
