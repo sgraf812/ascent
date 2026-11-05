@@ -1,4 +1,4 @@
-import Demo.AState
+import Demo.L1
 import Kraken.X64.Parser
 import Ascent.Tactic.VCGen.Command
 
@@ -41,7 +41,7 @@ LBB0_3:
 attribute [local vcgen_simp] zipWithAdd
 
 ascend_def zipWithAddA [Host] [FunDecls] [Embeds zipWithAdd] (s : MachineData) (ra : Int64) :
-    BlockM AState Unit from
+    BlockM MachineData Unit from
   ⦃(· = s.push64 ra)⦄ zipWithAdd ⪯[ofStateRepr abs] zipWithAddA ⦃fun _ _ => ⊤; RetRel s ra⦄
   ascend [refines_cfg (p := zipWithAdd)] with finish
 

@@ -1,4 +1,4 @@
-import Demo.AState
+import Demo.L1
 import Kraken.X64.Parser
 import Ascent.Tactic.VCGen.Frontend
 
@@ -18,7 +18,7 @@ def loopBody : Program := parse("
 ")
 
 noncomputable def loopBodyA [Host] [FunDecls] (t : MachineData) :
-    { a : BlockM AState Unit //
+    { a : BlockM MachineData Unit //
       ⦃(· = t)⦄ loopBody ⪯[ofStateRepr abs] a ⦃fun _ _ _ => True; fun _ _ _ => True⦄ } := by
   apply Subtype.mk
   ascend [loopBody]
