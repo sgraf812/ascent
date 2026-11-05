@@ -65,39 +65,48 @@ def lemmaPrefix (info : WRPApp) : Array Expr := (info.args.take 17).push info.ar
 /-- The `wrp` application itself, before the excess state arguments apply. -/
 def wp (info : WRPApp) : Expr := info.expr.stripArgsN info.excessArgs.size
 
-/-- The monad of the concrete (`side = 0`) or abstract (`side = 1`) program type, when its `WP`
-instance is the one of a `WPMonad`: `instWPOfWPMonad m Pred EPosts α …` applied to `m α`. -/
-def monad? (info : WRPApp) (side : Nat) : Option Expr :=
+/-- The monad `m` of the program type `m α` on the concrete (`side = 0`) or abstract (`side = 1`)
+side, with its `WPMonad m Pred EPosts` instance: read off a `WP` instance of the form
+`instWPOfWPMonad m Pred EPosts α …`, else synthesized for the head of the program type. `none` for
+a program type that is not monadic, such as kraken's `Program`. -/
+def monadOf? (info : WRPApp) (side : Nat) : MetaM (Option (Expr × Expr)) := do
   let inst := info.args[13 + side]!
-  if inst.isAppOfArity ``Std.WP.instWPOfWPMonad 8 then some inst.getAppArgs[0]! else none
+  if inst.isAppOfArity ``Std.WP.instWPOfWPMonad 8 then
+    return some (inst.getAppArgs[0]!, inst.getAppArgs[7]!)
+  let prog := info.args[side]!
+  unless prog.isApp do return none
+  let m := prog.appFn!
+  let some ty ← observing? (mkAppOptM ``Std.WP.WPMonad
+      #[m, info.args[4 + side]!, info.args[6 + side]!, none, info.args[9 + side]!, info.args[11 + side]!])
+    | return none
+  return (← synthInstance? ty).map (m, ·)
 
 /-- The prefix with each monadic value type, its `WP` instance and the abstract program replaced
-by fresh metavariables. A rule built from it is specific to the pair of monads only, and
-`abstractMVars` turns the metavariables into rule parameters. A program type whose `WP` instance
-is not the one of a `WPMonad`, such as kraken's `Program`, is kept whole. -/
+by fresh metavariables, the instance in the spelling `instWPOfWPMonad m Pred EPosts ?α …` whatever
+the goal's spelling. A rule built from it is specific to the pair of monads only, and
+`abstractMVars` turns the metavariables into rule parameters. A program type that is not monadic
+is kept whole. -/
 def schematic (info : WRPApp) : MetaM WRPApp := do
   let mut args := info.args
   for side in [0, 1] do
-    if let some m := info.monad? side then
+    if let some (m, inst) ← info.monadOf? side then
       let v ← mkFreshExprMVar (← Meta.inferType args[2 + side]!)
-      let inst := args[13 + side]!
-      args := args.set! (2 + side) v |>.set! side (mkApp m v)
-        |>.set! (13 + side) (mkAppN inst.getAppFn (inst.getAppArgs.set! 3 v))
+      let instWP ← mkAppOptM ``Std.WP.instWPOfWPMonad
+        #[m, args[4 + side]!, args[6 + side]!, v, none, args[9 + side]!, args[11 + side]!, inst]
+      args := args.set! (2 + side) v |>.set! side (mkApp m v) |>.set! (13 + side) instWP
   args := args.set! 18 (← mkFreshExprMVar (userName := `a) args[1]!)
   return { info with args, expr := mkAppN info.head (args ++ info.excessArgs) }
 
-/-- The arguments of the prefix that a rule built from `schematic` bakes in, as one term for
-hash-consing: each program type reduced to its monad where `monad?` finds one, else the program
-type with its `WP` instance, then the lattice types, the exception relation type and `γ`. The
-term is a key, never a well-typed expression. -/
-def ruleKey (info : WRPApp) : Expr :=
-  let side (i : Nat) : Array Expr :=
-    match info.monad? i with
-    | some m => #[m]
-    | none => #[info.args[i]!, info.args[13 + i]!]
-  mkAppN (mkConst `Ascent.ruleKey) <|
-    side 0 ++ side 1 ++ #[info.args[4]!, info.args[5]!, info.args[6]!, info.args[7]!,
-      info.args[8]!, info.γ]
+/-- The arguments a rule built from `schematic` bakes in, as one term for hash-consing: each
+program type reduced to its monad where `monadOf?` finds one. The program types fix the lattice
+types, the exception relation type and every instance of the prefix, as out-parameters. The term
+is a key, never a well-typed expression. -/
+def ruleKey (info : WRPApp) : MetaM Expr := do
+  let side (i : Nat) : MetaM Expr := do
+    match ← info.monadOf? i with
+    | some (m, _) => return m
+    | none => return info.args[i]!
+  return mkApp2 (mkConst `Ascent.ruleKey) (← side 0) (← side 1)
 
 end WRPApp
 

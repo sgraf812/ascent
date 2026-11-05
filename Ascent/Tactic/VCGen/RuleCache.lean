@@ -32,12 +32,11 @@ Both `Triple`/`⊑ wp` and equality entries go through `tryMkBackwardRuleFromSpe
 an equality spec to `⊑ wp` form using the supplied `wp` metadata before building the rule.
 
 Cache key: `(proof key, ruleKey, excessArgs.size)`, where `ruleKey` is the hash-consed
-`WRPApp.ruleKey` of the goal, the arguments the rule bakes in: the concrete `WP` instance, the
-abstract monad, the abstract lattice types and `γ`.
+`WRPApp.ruleKey` of the goal: the two program types, each reduced to its monad where there is one.
 -/
 def mkBackwardRuleFromSpecCached (specThm : SpecTheorem) (info : WRPApp) :
     OptionT VCGenM BackwardRule := do
-  let ruleKey ← shareCommon info.ruleKey
+  let ruleKey ← shareCommon (← info.ruleKey)
   let key := (specThm.proof.key, ExprPtr.mk ruleKey, info.excessArgs.size)
   let s := (← get).specBackwardRuleCache
   if let some rule := s[key]? then return rule
@@ -60,7 +59,7 @@ def mkBackwardRuleForSplitCached (splitInfo : SplitInfo) (info : WRPApp) :
     | .dite .. => ``dite
     | .cond .. => ``cond
     | .matcher matcherApp => matcherApp.matcherName
-  let key := (cacheKey, ExprPtr.mk (← shareCommon info.ruleKey), info.excessArgs.size)
+  let key := (cacheKey, ExprPtr.mk (← shareCommon (← info.ruleKey)), info.excessArgs.size)
   let s := (← get).splitBackwardRuleCache
   if let some rule := s[key]? then return rule
   let rule ← mkBackwardRuleForSplit splitInfo info

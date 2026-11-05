@@ -361,6 +361,7 @@ def tryMkBackwardRuleFromSpec (specThm : SpecTheorem) (info : WRPApp)
     (stateArgNames : Array Name := #[]) : OptionT MetaM BackwardRule := do
   -- The rule is specific to the pair of monads: the value types, the `WP` instances and the
   -- abstract program of the goal are replaced by metavariables that become rule parameters.
+  let goalInfo := info
   let info ← info.schematic
   -- Instantiate the spec theorem, creating metavars for all universally quantified params
   let (_xs, _bs, specProof, specType) ← specThm.instantiate
@@ -374,30 +375,38 @@ def tryMkBackwardRuleFromSpec (specThm : SpecTheorem) (info : WRPApp)
   guard <| ← isDefEqGuarded info.Pred Pred'
   let some specInfo := isWRPApp? rhs
     | throwError "target not a wrp application {rhs}"
-  let instWP' := specInfo.instWP
   let prog := specInfo.prog
   let postSpec := specInfo.post
   let epostsSpec := specInfo.eposts
-  -- The spec's prefix is unified with the goal's schematic prefix: the types first, then the
-  -- spec's instance binders whose types are closed by then are synthesized, then the instances.
-  -- An argument the goal fixes is baked into the rule; a metavariable of the goal, such as an
-  -- open abstract monad, stays a pattern variable, so a leaf spec can still fix it when it
-  -- applies. Sym's matcher never binds a pattern variable to a partial application, so a fixed
-  -- monad must be baked in before the pattern is built. The concrete `WP` instance must unify,
-  -- at default transparency: the goal can carry a registered instance (e.g. `Id.wpInst`) while
-  -- the spec spells `WPMonad.toWP ?inst`.
-  for i in [0, 1, 2, 3, 4, 5, 6, 7, 8, 16] do
-    discard <| withReducible <| approxDefEq <| isDefEqGuarded specInfo.args[i]! info.args[i]!
+  -- Each argument of the spec's prefix is unified with the goal's schematic prefix: the types
+  -- first, then the spec's instance binders whose types are closed by then are synthesized, then
+  -- the instances, at default transparency, since the goal can carry a registered instance (e.g.
+  -- `Id.wpInst`) while the spec spells `WPMonad.toWP ?inst`. An argument the goal fixes must
+  -- unify, or the spec does not apply to the goal. An argument the goal leaves open, such as an
+  -- abstract monad that a leaf spec fixes, keeps the spec's spelling when it does not unify, and
+  -- the matcher assigns the goal's metavariable when the rule applies. Sym's matcher never binds
+  -- a pattern variable to a partial application, so a fixed monad must be baked in before the
+  -- pattern is built. The conclusion carries the goal's arguments wherever they unified, as the
+  -- goals of the run spell them. `γ` is the spec's: the program types do not fix it, and a rule
+  -- keyed on the program types must apply at every `γ` the spec admits.
+  let mut args := info.args
+  let unify (i : Nat) : OptionT MetaM Bool := do
+    let ok ← if i ≥ 9 && i ≤ 15 then withDefault <| isDefEqGuarded specInfo.args[i]! info.args[i]!
+      else withReducible <| approxDefEq <| isDefEqGuarded specInfo.args[i]! info.args[i]!
+    if !ok && !goalInfo.args[i]!.hasExprMVar then failure
+    return ok
+  for i in [0, 1, 2, 3, 4, 5, 6, 7, 8] do
+    unless ← unify i do args := args.set! i specInfo.args[i]!
+  args := args.set! 16 specInfo.args[16]!
   for x in _xs, b in _bs do
     if b.isInstImplicit && !(← x.mvarId!.isAssigned) then
       let ty ← instantiateMVars (← Meta.inferType x)
       unless ty.hasExprMVar do
         if let some inst ← (monadLift (Meta.synthInstance? ty) : OptionT MetaM (Option Expr)) then
           discard <| isDefEqGuarded x inst
-  for i in [9, 10, 11, 12, 14, 15] do
-    discard <| withDefault <| isDefEqGuarded specInfo.args[i]! info.args[i]!
-  guard <| ← withDefault <| isDefEqGuarded info.instWP instWP'
-  let info := { info with head := specInfo.head, args := specInfo.args }
+  for i in [9, 10, 11, 12, 13, 14, 15] do
+    unless ← unify i do args := args.set! i specInfo.args[i]!
+  let info := { info with head := specInfo.head, args := args.take 17 ++ specInfo.args.extract 17 21 }
   -- Use local excess-state binders so explicit post premises can be re-lifted to `⊑`.
   -- Name them positionally from `stateArgNames` (else `s`) so the rule's binders carry good names.
   let mut ss := #[]
