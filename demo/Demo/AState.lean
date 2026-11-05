@@ -208,6 +208,19 @@ def retLoaded (st : AState) : Bool := (Mem.loadInt st.mem (st.regs .rsp) 8).isSo
 @[simp, vcgen_simp] theorem retLoaded_eq (st : AState) :
     retLoaded st = (Mem.loadInt st.mem (st.regs .rsp) 8).isSome := rfl
 
+/-! The grind theory of the guards: the scaled-index address without displacement, and the frame
+guard as its two bounds, which kraken's `Blocks.Disjoint.of_sub` turns into disjointness. -/
+
+@[grind =] theorem AState.sib8_zero (st : AState) (b i : Reg64) :
+    st.sib8 b i 0 = st.regs b + st.regs i * 8 := by
+  simp [AState.sib8]
+
+@[grind =] theorem AState.frameSafe_eq (st : AState) (a : BitVec 64) :
+    (st.frameSafe a = true) = (8 ≤ (st.regs .rsp - a).toNat ∧ 8 ≤ (a - st.regs .rsp).toNat) := by
+  simp [AState.frameSafe]
+
+attribute [grind =] abs_regs abs_mem sib8Storable_eq sib8Loaded_eq
+
 def movRegSib8 (r b i : Reg64) (d : Int64) : BlockM AState Unit :=
   modifyIf (sib8Loaded b i d) fun st =>
     st.setReg r (BitVec.ofInt 64 (Mem.loadInt st.mem (st.sib8 b i d) 8).get!)

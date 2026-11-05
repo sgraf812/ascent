@@ -130,14 +130,6 @@ def elabAscend : Tactic := fun stx => withMainContext do
     { pre := Sym.Simp.beta >> Sym.Simp.reduceProj >> Sym.Simp.reduceMatcher
       post := Sym.Simp.evalGround { maxExponent := ascend.maxExponent.get (← getOptions) } >>
         thms.rewrite }
-  let ctx : Context :=
-    { backwardRules := ← mkBackwardRules, simpMethods, internalize := false }
-  let mut specs ← addUnfoldSpecs (← getAscendSpecTheorems) declNames
-  for term in termSpecs do
-    specs := specs.insert (← mkSpecTheoremFromTerm term)
-  let scope : Scope := { specs }
-  let coreScope : Scope := { specs := ← addUnfoldSpecs (← getSpecTheorems) declNames }
-  let params ← Grind.mkDefaultParams { clean := false }
   -- The `with` clause is a `grind` step, as for `vcgen`, or a general tactic that runs on every
   -- verification condition after the run.
   let mut step? : Option (TSyntax `grind) := none
@@ -146,13 +138,27 @@ def elabAscend : Tactic := fun stx => withMainContext do
     let w := stx[2][1]
     if w.getKind == ``Lean.Parser.Tactic.vcgenDischargeGrind then step? := some ⟨w[0]⟩
     else tac? := some ⟨w[0]⟩
+  -- Hypotheses are internalized only for a `with` step that reads the E-graph, as for `vcgen`.
+  let ctx : Context :=
+    { backwardRules := ← mkBackwardRules, simpMethods, internalize := step?.isSome }
+  let mut specs ← addUnfoldSpecs (← getAscendSpecTheorems) declNames
+  for term in termSpecs do
+    specs := specs.insert (← mkSpecTheoremFromTerm term)
+  let scope : Scope := { specs }
+  let coreScope : Scope := { specs := ← addUnfoldSpecs (← getSpecTheorems) declNames }
+  let params ← Grind.mkDefaultParams { clean := false }
   let (_, state) ← Grind.GrindTacticM.runAtGoal goal params (sym := true) do
     let g ← Lean.Elab.Tactic.Grind.getMainGoal
     let result ← Lean.Elab.Tactic.Grind.liftGrindM (run g ctx scope coreScope)
     Lean.Elab.Tactic.Grind.replaceMainGoal result.vcs.toList
+    -- The step runs on every verification condition, as `vcgen … <;> g` does.
     if let some step := step? then
-      unless (← Lean.Elab.Tactic.Grind.getUnsolvedGoals).isEmpty do
+      let mut rest := []
+      for vc in ← Lean.Elab.Tactic.Grind.getUnsolvedGoals do
+        Lean.Elab.Tactic.Grind.replaceMainGoal [vc]
         Lean.Elab.Tactic.Grind.evalGrindTactic step
+        rest := rest ++ (← Lean.Elab.Tactic.Grind.getUnsolvedGoals)
+      Lean.Elab.Tactic.Grind.replaceMainGoal rest
   if let (some hole, some decl) := (hole?, holeDecl?) then
     closeTables hole
     checkHoleScope hole decl
