@@ -249,6 +249,35 @@ theorem Mem.loadInt_storeInt_of_frameSafe {st : AState} {a x : BitVec 64} (h : s
 grind_pattern Mem.loadInt_storeInt_of_frameSafe =>
   Mem.loadInt (Mem.storeInt m a 8 v) x 8, AState.frameSafe st a
 
+/-! ## Arrays
+
+`st.Array8 base n` is an array of `n` eight-byte cells at `base`: mapped, and apart from the return
+slot of the frame. The guards of a load and of a store through a scaled index into it follow from
+the array and the bound on the index, so a refinement under an array precondition discharges the
+guards of its block from one fact per array. -/
+
+def AState.Array8 (st : AState) (base : BitVec 64) (n : Nat) : Prop :=
+  Mem.Mapped [(base, 8 * n)] st.mem ∧ 8 * n ≤ (st.regs .rsp - base).toNat
+    ∧ 8 ≤ (base - st.regs .rsp).toNat ∧ (base - st.regs .rsp).toNat + 8 * n ≤ 2 ^ 64
+
+theorem sib8Loaded_of_array {st : AState} {b i : Reg64} {n : Nat} (h : AState.Array8 st (st.regs b) n)
+    (hi : (st.regs i).toNat < n) : sib8Loaded b i 0 st = true := by
+  rw [sib8Loaded_eq, AState.sib8_zero]
+  refine Mem.Mapped.loadInt_isSome h.1 (Mem.Blocks.Inside.base_add ?_)
+  have := h.2.2.2
+  bv_omega
+
+theorem frameSafe_of_array {st : AState} {b i : Reg64} {n : Nat} (h : AState.Array8 st (st.regs b) n)
+    (hi : (st.regs i).toNat < n) : st.frameSafe (st.sib8 b i 0) = true := by
+  rw [AState.frameSafe_eq, AState.sib8_zero]
+  obtain ⟨-, h₁, h₂, h₃⟩ := h
+  constructor <;> bv_omega
+
+theorem sib8Storable_of_array {st : AState} {b i : Reg64} {n : Nat} (h : AState.Array8 st (st.regs b) n)
+    (hi : (st.regs i).toNat < n) : sib8Storable b i 0 st = true := by
+  rw [sib8Storable_eq, sib8Loaded_of_array h hi, frameSafe_of_array h hi]
+  rfl
+
 attribute [grind =] abs_regs abs_mem sib8Storable_eq sib8Loaded_eq
 
 def movRegSib8 (r b i : Reg64) (d : Int64) : BlockM AState Unit :=
