@@ -43,13 +43,15 @@ carries over to `zipWithAddT`: -/
 #print zipWithAddT
 #check @zipWithAddT.refines
 
-/-! ## 4. Registers as values
+/-! ## 4. Registers as values, synthesized by `ascend_def`
 
-The registers that the loop only reads become parameters, the index `rax` a `let mut`. The state is
-the data memory alone. -/
+The state is the data memory alone. The lifting relation, the one hint of the run, names the
+registers that become values: `rdi`, `rsi`, `rdx`, `rcx` and `rsp` are parameters, and `rax` is
+the value of the loop. The loaded values of `r8` become variables. `ascend_def` synthesized
+`zipWithAddL` and proved: -/
 
 #print zipWithAddL
-#check @zipWithAddT_refines_L
+#check @zipWithAddL.refines
 
 /-! ## 5. The pure program
 

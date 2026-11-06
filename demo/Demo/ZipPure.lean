@@ -5,8 +5,8 @@ import Demo.Words
 # What `zipWithAdd` computes, from the lifted program
 
 `wp_zipWithAddL` states the result of `zipWithAddL` as the pure function `List.zipWith (· + ·)` on
-the arrays it reads, and `zipWithAdd_correct` carries it back to the x64 text through
-`zipWithAddT` and the first refinement.
+the arrays it reads, and `zipWithAdd_correct` carries it back to the x64 text through the
+refinements of `zipWithAddL`, `zipWithAddT` and the first layer.
 -/
 
 open Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
@@ -26,12 +26,19 @@ structure ZipArrays (m : DataMem) (A B O rsp : BitVec 64) (n : Nat) : Prop where
   disjR : Mem.Blocks.Disjoint [(rsp, 8)] [(O, 8 * n)]
   ret : (Mem.loadInt m rsp 8).isSome = true
 
+section
+variable [Host] [FunDecls] [Embeds zipWithAdd] (s : MachineData) (ra : Int64)
+
 theorem wp_zipWithAddL {m : DataMem} {A B O rsp : BitVec 64} {n : Nat} (h : ZipArrays m A B O rsp n) :
-    wp (zipWithAddL A B O (BitVec.ofNat 64 n) rsp) (fun _ _ => False)
+    wp (zipWithAddL s ra A B O (BitVec.ofNat 64 n) rsp) (fun _ _ => False)
       (fun l m' => l = .exit ∧ words m' O n = List.zipWith (· + ·) (words m A n) (words m B n),
         estack⟨⟩) m := by
   have hlen := h.len
+  have h0 : (0#64 : BitVec 64) = 0 := rfl
+  have h1 : (1#64 : BitVec 64) = 1 := rfl
+  have h8 : (8#64 : BitVec 64) = 8 := rfl
   unfold zipWithAddL
+  simp only [h0, h1, h8]
   by_cases hn0 : n = 0
   · subst hn0
     rw [cmp_le_self_zero]
@@ -96,7 +103,7 @@ def zipWithAddP (a b : Array (BitVec 64)) : Id (Array (BitVec 64)) := pure (Arra
 forgets the memory. The result is the output array at the return. -/
 theorem zipWithAddL_refines_P {m : DataMem} {A B O rsp : BitVec 64} {n : Nat}
     (h : ZipArrays m A B O rsp n) :
-    ⦃(· = m)⦄ (zipWithAddL A B O (BitVec.ofNat 64 n) rsp) ⪯[purify DataMem]
+    ⦃(· = m)⦄ (zipWithAddL s ra A B O (BitVec.ofNat 64 n) rsp) ⪯[purify DataMem]
       (zipWithAddP (words m A n).toArray (words m B n).toArray)
       ⦃fun _ _ _ => False; (fun l m' => l = .exit ∧ (words m' O n).toArray
         = Id.run (zipWithAddP (words m A n).toArray (words m B n).toArray), estack⟨⟩)⦄ := by
@@ -104,7 +111,8 @@ theorem zipWithAddL_refines_P {m : DataMem} {A B O rsp : BitVec 64} {n : Nat}
   intro m' hm'
   simp only [meet_apply, meet_prop_eq_and] at hm'
   obtain ⟨rfl, -⟩ := hm'
-  refine WP.wp_monotone (x := zipWithAddL A B O (BitVec.ofNat 64 n) _) ?_ ?_ _ (wp_zipWithAddL h)
+  refine WP.wp_monotone (x := zipWithAddL s ra A B O (BitVec.ofNat 64 n) _) ?_ ?_ _
+    (wp_zipWithAddL s ra h)
   · intro _ _ hq
     exact hq.elim
   · refine Prod.mk_le _ _ _ ?_ PartialOrder.rel_refl
@@ -115,9 +123,6 @@ theorem zipWithAddL_refines_P {m : DataMem} {A B O rsp : BitVec 64} {n : Nat}
     rfl
 
 /-! ## The machine code -/
-
-section
-variable [Host] [FunDecls] [Embeds zipWithAdd]
 
 /-- What the x64 text computes: started at `s.push64 ra` with `rdi`, `rsi`, `rdx` pointing to the
 arrays and `rcx` holding their length `n`, it returns to `ra` with the stack pointer of the caller,
@@ -135,11 +140,15 @@ theorem zipWithAdd_correct (s : MachineData) (ra : Int64) {A B O : BitVec 64} {n
   let Ea : (CfgLabel → DataMem → Prop) × EStack⟨⟩ :=
     (fun l m' => l = .exit ∧ words m' O n = List.zipWith (· + ·) (words t₀.dmem A n) (words t₀.dmem B n),
       estack⟨⟩)
-  have hL := wp_zipWithAddL hmem
-  have hS := wp_zipWithAddT_of_L s ra (rdi := A) (rsi := B) (rdx := O) (rcx := BitVec.ofNat 64 n)
-    (rsp := rsp) (fun _ _ => False) Ea (abs t₀) ⟨hrdi, hrsi, hrdx, hrcx, rfl, rfl⟩ hL
+  have hL := Refinement.transport (zipWithAddL.refines s ra A B O (BitVec.ofNat 64 n) rsp)
+    (Pa := (· = t₀.dmem)) ⟨fun m hm => by subst hm; exact wp_zipWithAddL s ra hmem⟩
+    (Qa := fun _ _ => False) (Ea := Ea)
   have hT := Refinement.transport (zipWithAddT.refines s ra)
-    (Pa := (· = abs t₀)) ⟨fun t ht => by subst ht; exact hS⟩
+    (Pa := (· = abs t₀)) ⟨fun t ht => by
+      subst ht
+      refine hL.le_wp (abs t₀) ?_
+      simp only [meet_apply, meet_prop_eq_and, Concretization.ofStateRepr_pred, abs_regs, abs_dmem]
+      exact ⟨⟨.of_rel hrdi, .of_rel hrsi, .of_rel hrdx, .of_rel hrcx, .of_rel rfl⟩, trivial⟩⟩
   refine ⟨fun t ht => ?_⟩
   refine WP.wp_monotone (x := zipWithAdd) ?_ ?_ t (hT.le_wp t ?_)
   · intro _ _ _
@@ -148,8 +157,9 @@ theorem zipWithAdd_correct (s : MachineData) (ra : Int64) {A B O : BitVec 64} {n
     change (Concretization.ofStateRepr abs).post (RetRel s ra) _ a t' at h'
     rw [Concretization.post_pi] at h'
     obtain ⟨l', ⟨hra, -, hrsp⟩, h''⟩ := h'
-    simp only [Concretization.ofStateRepr_pred] at h''
-    obtain ⟨⟨-, hwords⟩, -⟩ := h''
+    simp only [Concretization.ofStateRepr_pred, EPostsConcretization.ePosts_cons] at h''
+    rw [Concretization.post_pi] at h''
+    obtain ⟨_, -, -, hwords⟩ := h''
     exact ⟨hra, hrsp, hwords⟩
   · simp only [meet_apply, meet_prop_eq_and, Concretization.ofStateRepr_pred]
     exact ⟨ht, by rw [ht]⟩

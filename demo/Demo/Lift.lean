@@ -59,6 +59,9 @@ theorem wp_retAt (rsp : BitVec 64) :
 
 end
 
+/-- `c ≐ x`: the concrete value `c` abstracts to the abstract value `x`. -/
+scoped notation:50 c:51 " ≐ " x:51 => PureRefinement c x True Eq
+
 /-! ## The registers and the memory after a step -/
 
 section
@@ -77,15 +80,16 @@ variable (st : MachineData)
 @[vcgen_simp] theorem movSib8Reg_regs (b i : Reg64) (d : Int64) (r : Reg64) :
     (movSib8Reg b i d r st).regs = st.regs := rfl
 @[vcgen_simp] theorem movSib8Reg_dmem (b i : Reg64) (d : Int64) (r : Reg64) :
-    (movSib8Reg b i d r st).dmem = Mem.storeInt st.dmem (sib8 b i d st) 8 (st.regs.get64 r).toInt := rfl
+    (movSib8Reg b i d r st).dmem = Mem.storeInt st.dmem (sib8 b i d st) 8 (st.regs.get64 r).toInt :=
+  rfl
 @[vcgen_simp] theorem incReg_regs (r : Reg64) :
     (incReg r st).regs = st.regs.set64 r (st.regs.get64 r + 1) := rfl
 @[vcgen_simp] theorem incReg_dmem (r : Reg64) : (incReg r st).dmem = st.dmem := rfl
 @[vcgen_simp] theorem xorReg32Reg32_regs (rd rs : Reg64) :
     (xorReg32Reg32 rd rs st).regs = st.regs.set64 rd
       (((st.regs.get64 rd).take 32 ^^^ (st.regs.get64 rs).take 32).zeroExtend 64) := rfl
-@[vcgen_simp] theorem xorReg32Reg32_dmem (rd rs : Reg64) : (xorReg32Reg32 rd rs st).dmem = st.dmem :=
-  rfl
+@[vcgen_simp] theorem xorReg32Reg32_dmem (rd rs : Reg64) :
+    (xorReg32Reg32 rd rs st).dmem = st.dmem := rfl
 @[vcgen_simp] theorem ret_regs : (ret st).regs = st.regs.set64 .rsp (st.regs.get64 .rsp + 8) := rfl
 @[vcgen_simp] theorem ret_dmem : (ret st).dmem = st.dmem := rfl
 
@@ -104,6 +108,15 @@ variable {w : Nat} {a b x y : BitVec w} {P₁ P₂ : Prop}
     PureRefinement (a * b) (x * y) (P₁ ∧ P₂) Eq := fun ⟨hp₁, hp₂⟩ => by
   rw [h₁ hp₁, h₂ hp₂]
 
+@[ascend_pure] theorem abs_and (h₁ : PureRefinement a x P₁ Eq) (h₂ : PureRefinement b y P₂ Eq) :
+    PureRefinement (a &&& b) (x &&& y) (P₁ ∧ P₂) Eq := fun ⟨hp₁, hp₂⟩ => by
+  rw [h₁ hp₁, h₂ hp₂]
+
+@[ascend_pure] theorem abs_cmp {cc : CondCode} {a b x y : BitVec 64}
+    (h₁ : PureRefinement a x P₁ Eq) (h₂ : PureRefinement b y P₂ Eq) :
+    PureRefinement (cc.cmp a b) (cc.cmp x y) (P₁ ∧ P₂) Eq := fun ⟨hp₁, hp₂⟩ => by
+  rw [h₁ hp₁, h₂ hp₂]
+
 @[ascend_pure] theorem abs_sib8 {t : MachineData} {b i : Reg64} {d : Int64} {x y : BitVec 64}
     (hb : PureRefinement (t.regs.get64 b) x P₁ Eq) (hi : PureRefinement (t.regs.get64 i) y P₂ Eq) :
     PureRefinement (sib8 b i d t) (x + y * 8 + BitVec.ofInt 64 d.toInt) (P₁ ∧ P₂) Eq :=
@@ -116,18 +129,20 @@ end
 
 /-! ## Steps -/
 
+attribute [ascend] wrp_bind
+
 section
 variable {Q : Unit → BitVec 64 → MachineData → Prop} {Qu : Unit → Unit → MachineData → Prop}
   {E : (CfgLabel → CfgLabel → MachineData → Prop) × EStack⟨⟩}
 
-theorem wrp_pure_unit :
+@[ascend] theorem wrp_pure_unit :
     Qu () () ⊑ wrp (ofStateRepr MachineData.dmem) (pure () : BlockM MachineData Unit)
       (pure () : BlockM DataMem Unit) Qu E :=
   wrp_pure () ()
 
-theorem wrp_movRegSib8_load8 (r b i : Reg64) (d : Int64) (a : BitVec 64) :
-    (fun t => PureRefinement (sib8 b i d t) a True Eq ∧
-      (loadOk8 b i d t → ∀ y, PureRefinement ((movRegSib8 r b i d t).regs.get64 r) y True Eq →
+@[ascend] theorem wrp_movRegSib8_load8 (r b i : Reg64) (d : Int64) (a : BitVec 64) :
+    (fun t => sib8 b i d t ≐ a ∧
+      (loadOk8 b i d t → ∀ y, (movRegSib8 r b i d t).regs.get64 r ≐ y →
         Q () y (movRegSib8 r b i d t)))
       ⊑ wrp (ofStateRepr MachineData.dmem) (modifyIf (loadOk8 b i d) (movRegSib8 r b i d))
           (load8 a) Q E := by
@@ -141,10 +156,10 @@ theorem wrp_movRegSib8_load8 (r b i : Reg64) (d : Int64) (a : BitVec 64) :
   refine ⟨hg, _, hk hg _ (PureRefinement.of_rel ?_), hq⟩
   simp only [movRegSib8, Reg64s.get64_set64, ↓reduceIte, ha]
 
-theorem wrp_addRegSib8_load8 (r b i : Reg64) (d : Int64) (a : BitVec 64) :
-    (fun t => PureRefinement (sib8 b i d t) a True Eq ∧
+@[ascend] theorem wrp_addRegSib8_load8 (r b i : Reg64) (d : Int64) (a : BitVec 64) :
+    (fun t => sib8 b i d t ≐ a ∧
       (loadOk8 b i d t →
-        ∀ y, PureRefinement (BitVec.ofInt 64 (Mem.loadInt t.dmem (sib8 b i d t) 8).get!) y True Eq →
+        ∀ y, BitVec.ofInt 64 (Mem.loadInt t.dmem (sib8 b i d t) 8).get! ≐ y →
           Q () y (addRegSib8 r b i d t)))
       ⊑ wrp (ofStateRepr MachineData.dmem) (modifyIf (loadOk8 b i d) (addRegSib8 r b i d))
           (load8 a) Q E := by
@@ -158,9 +173,10 @@ theorem wrp_addRegSib8_load8 (r b i : Reg64) (d : Int64) (a : BitVec 64) :
   refine ⟨hg, _, hk hg _ (PureRefinement.of_rel ?_), hq⟩
   rw [ha]
 
-theorem wrp_movSib8Reg_store8 (b i : Reg64) (d : Int64) (rs : Reg64) (sp a v : BitVec 64) :
-    (fun t => PureRefinement (t.regs.get64 .rsp) sp True Eq ∧ PureRefinement (sib8 b i d t) a True Eq ∧
-      PureRefinement (t.regs.get64 rs) v True Eq ∧
+@[ascend] theorem wrp_movSib8Reg_store8 (b i : Reg64) (d : Int64) (rs : Reg64)
+    (sp a v : BitVec 64) :
+    (fun t => t.regs.get64 .rsp ≐ sp ∧ sib8 b i d t ≐ a ∧
+      t.regs.get64 rs ≐ v ∧
       (storeOk8 b i d t → Qu () () (movSib8Reg b i d rs t)))
       ⊑ wrp (ofStateRepr MachineData.dmem) (modifyIf (storeOk8 b i d) (movSib8Reg b i d rs))
           (store8 sp a v) Qu E := by
@@ -176,6 +192,178 @@ theorem wrp_movSib8Reg_store8 (b i : Reg64) (d : Int64) (rs : Reg64) (sp a v : B
   refine ⟨hg, (), hk hg, ?_⟩
   simp only [ofStateRepr_pred, movSib8Reg, ha, hv]
   exact hq
+
+end
+
+/-! ## Control -/
+
+/-- One iteration of two lockstep loops: both continue with the loop values related by `R`, or
+both stop with the results related by `Q`. -/
+def StepRel {βa : Type} (R : MachineData → βa → Prop) (Q : PUnit → βa → MachineData → Prop) :
+    ForInStep PUnit → ForInStep βa → MachineData → Prop
+  | .yield _, .yield v, t => R t v
+  | .done u, .done v, t => Q u v t
+  | _, _, _ => False
+
+section
+variable {βa : Type} (R : MachineData → βa → Prop) (Q : PUnit → βa → MachineData → Prop)
+  (t : MachineData)
+
+@[vcgen_simp] theorem StepRel_yield (u : PUnit) (v : βa) :
+    StepRel R Q (.yield u) (.yield v) t = R t v := rfl
+@[vcgen_simp] theorem StepRel_done (u : PUnit) (v : βa) :
+    StepRel R Q (.done u) (.done v) t = Q u v t := rfl
+
+end
+
+section
+variable {AV : Type} {Qu : Unit → AV → MachineData → Prop}
+  {E : (CfgLabel → CfgLabel → MachineData → Prop) × EStack⟨⟩}
+
+theorem wrp_forIn_lockstep {βa : Type} (R : MachineData → βa → Prop) (ab : βa)
+    {fc : Unit → PUnit → BlockM MachineData (ForInStep PUnit)}
+    {fa : βa → BlockM DataMem (ForInStep βa)}
+    {Q : PUnit → βa → MachineData → Prop}
+    (hbody : ∀ v, (fun t => R t v) ⊑
+      wrp (ofStateRepr MachineData.dmem) (fc () PUnit.unit) (fa v) (StepRel R Q) E) :
+    (fun t => R t ab) ⊑ wrp (ofStateRepr MachineData.dmem) (FixLoop.mk.forIn PUnit.unit fc)
+      (FixLoop.mk.forIn ab fun _ v => fa v) Q E := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro t ht
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred] at ht
+  haveI : Nonempty βa := ⟨ab⟩
+  have key := FixLoop.forIn_induct (fun _ v => fa v)
+    (fun g => ∀ v t, R t v → wp (g v) Qa Ea t.dmem →
+      wp (FixLoop.mk.forIn PUnit.unit fc) ((ofStateRepr MachineData.dmem).post Q Qa)
+        (EPostsConcretization.ePosts (ofStateRepr MachineData.dmem) E Ea) t)
+    (admissible_pi _ fun v => admissible_pi _ fun t => admissible_pi _ fun _ =>
+      admissible_apply (fun _ u => wp u Qa Ea t.dmem → _) v (admissible_wp_imp _ Ea t.dmem _)) ?_
+  · exact key ab t ht.1 ht.2
+  intro g ih v t hR hw
+  rw [FixLoop.forIn_eq, WPMonadExact.wp_bind_eq]
+  simp only [FixLoop.step, WPMonadExact.wp_bind_eq] at hw
+  have hb := wrp_transport (hbody v)
+    (fun r m => match r with | .done v' => Qa v' m | .yield v' => wp (g v') Qa Ea m) Ea t (by
+      simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred]
+      refine ⟨hR, WP.wp_monotone_post (x := fa v) ?_ t.dmem hw⟩
+      intro r m hr
+      cases r <;> simp only [WPMonadExact.wp_pure_eq] at hr ⊢ <;> exact hr)
+  refine WP.wp_monotone_post (x := fc () PUnit.unit) ?_ t hb
+  intro rc t' h'
+  rw [Concretization.post_pi] at h'
+  obtain ⟨ra, hrel, hq⟩ := h'
+  simp only [ofStateRepr_pred] at hq
+  cases rc <;> cases ra <;> simp only [StepRel] at hrel
+  · simp only [WPMonadExact.wp_pure_eq]
+    rw [Concretization.post_pi]
+    exact ⟨_, hrel, hq⟩
+  · exact ih _ t' hrel hq
+
+theorem wrp_forIn_lockstep_unit {βa : Type} (R : MachineData → βa → Prop) (ab : βa)
+    {fc : Unit → PUnit → BlockM MachineData (ForInStep PUnit)}
+    {fa : βa → BlockM DataMem (ForInStep βa)}
+    {Q : PUnit → Unit → MachineData → Prop}
+    (hbody : ∀ v, (fun t => R t v) ⊑ wrp (ofStateRepr MachineData.dmem) (fc () PUnit.unit) (fa v)
+      (StepRel R fun u _ t => Q u () t) E) :
+    (fun t => R t ab) ⊑ wrp (ofStateRepr MachineData.dmem) (FixLoop.mk.forIn PUnit.unit fc)
+      (FixLoop.mk.forIn ab (fun _ v => fa v) >>= fun _ => pure ()) Q E := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro t ht
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, WPMonadExact.wp_bind_eq,
+    WPMonadExact.wp_pure_eq] at ht
+  have h := wrp_transport (wrp_forIn_lockstep R ab hbody) (fun _ => Qa ()) Ea t
+    (by simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred]; exact ht)
+  refine WP.wp_monotone_post (x := FixLoop.mk.forIn PUnit.unit fc) ?_ t h
+  intro u t' h'
+  rw [Concretization.post_pi] at h' ⊢
+  obtain ⟨_, hq, hqa⟩ := h'
+  exact ⟨(), hq, hqa⟩
+
+@[ascend] theorem wrp_condState {CV : Type} {Q : CV → AV → MachineData → Prop}
+    {c : MachineData → Bool}
+    {x y : BlockM MachineData CV} {ax ay : BlockM DataMem AV} (b : Bool) :
+    (fun t => c t ≐ b ∧
+      (c t = true → wrp (ofStateRepr MachineData.dmem) x ax Q E t) ∧
+      (c t = false → wrp (ofStateRepr MachineData.dmem) y ay Q E t))
+      ⊑ wrp (ofStateRepr MachineData.dmem) (condState c x y) (if b then ax else ay) Q E := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro t ht
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred] at ht
+  obtain ⟨⟨hb, hx, hy⟩, hw⟩ := ht
+  have hb : c t = b := hb trivial
+  rw [wp_condState]
+  cases b with
+  | true =>
+    simp only [hb, ↓reduceIte] at hw ⊢
+    exact wrp_transport (P := wrp (ofStateRepr MachineData.dmem) x ax Q E) PartialOrder.rel_refl
+      Qa Ea t
+      (by simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred]; exact ⟨hx hb, hw⟩)
+  | false =>
+    simp only [hb, Bool.false_eq_true, ↓reduceIte] at hw ⊢
+    exact wrp_transport (P := wrp (ofStateRepr MachineData.dmem) y ay Q E) PartialOrder.rel_refl
+      Qa Ea t
+      (by simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred]; exact ⟨hy hb, hw⟩)
+
+@[ascend high] theorem wrp_stutter_bind {CV : Type} {Q : CV → AV → MachineData → Prop}
+    (f : MachineData → MachineData)
+    {k : Unit → BlockM MachineData CV} {a : BlockM DataMem AV} (hf : ∀ t, (f t).dmem = t.dmem) :
+    (fun t => wrp (ofStateRepr MachineData.dmem) (k ()) a Q E (f t))
+      ⊑ wrp (ofStateRepr MachineData.dmem) (modifyIf (fun _ => True) f >>= k) a Q E := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro t ht
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred] at ht
+  obtain ⟨hk, hw⟩ := ht
+  rw [WPMonadExact.wp_bind_eq, wp_modifyIf]
+  refine ⟨trivial, wrp_transport (P := wrp (ofStateRepr MachineData.dmem) (k ()) a Q E)
+    PartialOrder.rel_refl Qa Ea (f t) ?_⟩
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, hf]
+  exact ⟨hk, hw⟩
+
+@[ascend] theorem wrp_exitIf_retAt {Q : Unit → Unit → MachineData → Prop} (sp : BitVec 64) :
+    (fun t => t.regs.get64 .rsp ≐ sp ∧ (retOk t → E.1 .exit .exit (ret t)))
+      ⊑ wrp (ofStateRepr MachineData.dmem) (exitIf retOk ret .exit : BlockM MachineData Unit)
+          (retAt sp) Q E := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro t ht
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_retAt] at ht
+  obtain ⟨⟨hsp, hk⟩, hl, he⟩ := ht
+  have hsp : t.regs.get64 .rsp = sp := hsp trivial
+  have hg : retOk t := by rw [retOk, hsp]; exact hl
+  rw [wp_exitIf]
+  refine ⟨hg, ?_⟩
+  simp only [EPostsConcretization.ePosts_cons]
+  rw [Concretization.post_pi]
+  exact ⟨.exit, hk hg, he⟩
+
+@[ascend] theorem wrp_yield {βa : Type} {Q : ForInStep PUnit → ForInStep βa → MachineData → Prop}
+    (v : βa) :
+    (fun t => Q (.yield PUnit.unit) (.yield v) t) ⊑ wrp (ofStateRepr MachineData.dmem)
+      (pure (.yield PUnit.unit) : BlockM MachineData (ForInStep PUnit))
+      (pure (.yield v) : BlockM DataMem (ForInStep βa)) Q E :=
+  wrp_pure (Q := Q) (ForInStep.yield PUnit.unit) (ForInStep.yield v)
+
+@[ascend] theorem wrp_toDone {βa : Type} {Q : ForInStep PUnit → ForInStep βa → MachineData → Prop}
+    (v : βa)
+    {x : BlockM MachineData PUnit} {ax : BlockM DataMem PUnit} :
+    (fun t => Q (.yield PUnit.unit) (.yield v) t ∧
+      wrp (ofStateRepr MachineData.dmem) x ax (fun _ _ t' => Q (.done PUnit.unit) (.done v) t') E t)
+      ⊑ wrp (ofStateRepr MachineData.dmem) (toDone x) (ax >>= fun _ => pure (.done v)) Q E := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro t ht
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, WPMonadExact.wp_bind_eq,
+    WPMonadExact.wp_pure_eq] at ht
+  obtain ⟨⟨-, hx⟩, hw⟩ := ht
+  rw [wp_toDone]
+  have hb := wrp_transport
+    (P := wrp (ofStateRepr MachineData.dmem) x ax
+      (fun _ _ t' => Q (.done PUnit.unit) (.done v) t') E)
+    PartialOrder.rel_refl (fun _ => Qa (.done v)) Ea t
+    (by simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred]; exact ⟨hx, hw⟩)
+  refine WP.wp_monotone_post (x := x) ?_ t hb
+  intro u t' h'
+  rw [Concretization.post_pi] at h' ⊢
+  obtain ⟨_, hq, hqa⟩ := h'
+  exact ⟨.done v, hq, hqa⟩
 
 end
 
