@@ -39,10 +39,12 @@ section
 variable {σ α : Type}
 
 /-- The block program `x` ends normally or in undefined behaviour, never by a jump. -/
-def NoThrow (x : BlockM σ α) : Prop := ∀ s l s', x.run.run s ≠ some (.error l, s')
+class NoThrow (x : BlockM σ α) : Prop where
+  noThrow : ∀ s l s', x.run.run s ≠ some (.error l, s')
 
 /-- The only label the block program `x` throws is `.exit`. -/
-def Exits (x : BlockM σ α) : Prop := ∀ s l s', x.run.run s = some (.error l, s') → l = .exit
+class Exits (x : BlockM σ α) : Prop where
+  exits : ∀ s l s', x.run.run s = some (.error l, s') → l = .exit
 
 theorem wp_get_bind (k : σ → BlockM σ α) (Q : α → σ → Prop) (E : (CfgLabel → σ → Prop) × EStack⟨⟩)
     (s : σ) : wp (get >>= k) Q E s = wp (k s) Q E s := by
@@ -59,7 +61,7 @@ theorem NoThrow.wp_epost {x : BlockM σ α} (h : NoThrow x) {Q : α → σ → P
   rw [wp_BlockM_eq, wp_BlockM_eq]
   rcases hr : x.run.run s with _ | ⟨l | _, s'⟩
   · exact id
-  · exact (h s l s' hr).elim
+  · exact (h.noThrow s l s' hr).elim
   · exact id
 
 theorem Exits.wp_epost {x : BlockM σ α} (h : Exits x) {Q : α → σ → Prop}
@@ -68,7 +70,7 @@ theorem Exits.wp_epost {x : BlockM σ α} (h : Exits x) {Q : α → σ → Prop}
   rw [wp_BlockM_eq, wp_BlockM_eq]
   rcases hr : x.run.run s with _ | ⟨l | _, s'⟩
   · exact id
-  · rw [h s l s' hr]; exact hE s'
+  · rw [h.exits s l s' hr]; exact hE s'
   · exact id
 
 /-- A property `wp u Q E s → R` of a block program is admissible. -/
@@ -171,21 +173,23 @@ theorem wp_cfgLoop_rotated (hLX : L ≠ X) (he : NoThrow e) (hb : NoThrow b) (hx
 end
 
 /-- `wp_cfgLoop_rotated` as a refinement: the rotated block loop refines its structured form under
-the identity view, with the thrown labels related by equality. -/
-theorem refines_cfgLoop_rotated {σ : Type} {c₀ c : σ → Bool} {e b x : BlockM σ Unit} {L X : Label}
-    {next : CfgLabel → CfgLabel} (hLX : L ≠ X) (he : NoThrow e) (hb : NoThrow b) (hx : Exits x)
+the identity view, with the thrown labels related by equality. The entry block is the continuation
+`e` of the exit test, so that its instance `NoThrow (e ())` is found once the rule has matched. -/
+theorem refines_cfgLoop_rotated {σ : Type} {c₀ c : σ → Bool} {e : Unit → BlockM σ Unit}
+    {b x : BlockM σ Unit} {L X : Label} {next : CfgLabel → CfgLabel} [he : NoThrow (e ())]
+    [hb : NoThrow b] [hx : Exits x] (hLX : L ≠ X)
     (hn₀ : next .entry = .label L) (hn₂ : next (.label L) = .label X)
     (hn₃ : next (.label X) = .exit) :
     ⦃(⊤ : σ → Prop)⦄
-      (cfgLoop (Table.get [(.entry, AInstr.branch c₀ (.label X) >>= fun _ => e),
+      (cfgLoop (Table.get [(.entry, AInstr.branch c₀ (.label X) >>= e),
         (.label L, b >>= fun _ => AInstr.branch c (.label L)), (.label X, x)]) next .entry)
-      ⪯[Concretization.ofStateRepr id] (rotated c₀ c e b x)
+      ⪯[Concretization.ofStateRepr id] (rotated c₀ c (e ()) b x)
       ⦃fun _ _ _ => True; (fun l l' _ => l = l', estack⟨⟩)⦄ := by
   refine ⟨wrp_intro fun Qa Ea => ?_⟩
   intro s hs
   simp only [meet_apply, meet_prop_eq_and, Concretization.ofStateRepr_pred, id] at hs
-  refine wp_cfgLoop_rotated _ _ hLX he hb hx hn₀ hn₂ hn₃ s ?_
-  refine WP.wp_monotone (x := rotated c₀ c e b x) ?_ ?_ s hs.2
+  refine wp_cfgLoop_rotated (e := e ()) _ _ hLX he hb hx hn₀ hn₂ hn₃ s ?_
+  refine WP.wp_monotone (x := rotated c₀ c (e ()) b x) ?_ ?_ s hs.2
   · intro u s' hq
     rw [Concretization.post_pi]
     exact ⟨u, trivial, hq⟩

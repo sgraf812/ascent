@@ -89,7 +89,7 @@ def closeTables (hole : MVarId) : MetaM Unit := do
 /-- A spec passed at the invocation, `ascend [t]`: the proof `t` with its metavariables abstracted,
 in `pre ⊑ wrp …` form, at the priority of core's explicit specs, above the unfold equations. -/
 def mkSpecTheoremFromTerm (term : Syntax) : TacticM SpecTheorem := withRef term do
-  let e ← Tactic.elabTerm term none
+  let e ← Tactic.elabTerm term none (mayPostpone := true)
   Term.synthesizeSyntheticMVars (postpone := .no) (ignoreStuckTC := true)
   let e ← instantiateMVars e
   let e ← forallTelescope (← inferType e) fun xs body => do

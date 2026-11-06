@@ -5,6 +5,7 @@ import Demo.Zip
 import Demo.Words
 import Demo.Structure
 import Demo.ZipS
+import Demo.ZipSynth
 import Demo.ZipL
 import Demo.ZipPure
 import Demo.Walkthrough

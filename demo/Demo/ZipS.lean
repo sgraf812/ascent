@@ -18,34 +18,50 @@ namespace Ascent.Kraken
 section
 variable {σ α β : Type}
 
-theorem NoThrow.bind {x : BlockM σ α} {f : α → BlockM σ β} (hx : NoThrow x)
-    (hf : ∀ a, NoThrow (f a)) : NoThrow (x >>= f) := by
-  intro s l s' h
-  simp only [ExceptT.run_bind, StateT.run_bind] at h
-  obtain ⟨⟨r, s₁⟩, h₁, h₂⟩ := (UB.bind_eq_some _ _ _).mp h
-  rcases r with l₁ | a
-  · exact hx s l₁ s₁ h₁
-  · exact hf a s₁ l s' h₂
+instance {x : BlockM σ α} {f : α → BlockM σ β} [hx : NoThrow x] [hf : ∀ a, NoThrow (f a)] :
+    NoThrow (x >>= f) where
+  noThrow s l s' h := by
+    simp only [ExceptT.run_bind, StateT.run_bind] at h
+    obtain ⟨⟨r, s₁⟩, h₁, h₂⟩ := (UB.bind_eq_some _ _ _).mp h
+    rcases r with l₁ | a
+    · exact hx.noThrow s l₁ s₁ h₁
+    · exact (hf a).noThrow s₁ l s' h₂
 
-theorem NoThrow.pure (a : α) : NoThrow (Pure.pure a : BlockM σ α) := fun _ _ _ h => nomatch h
+instance (a : α) : NoThrow (Pure.pure a : BlockM σ α) where
+  noThrow _ _ _ h := nomatch h
 
-theorem NoThrow.modifyIf (g : σ → Prop) (f : σ → σ) : NoThrow (modifyIf g f) := by
-  intro s l s' h
-  rw [AInstr.modifyIf_run, AInstr.modifyIf] at h
-  by_cases hg : g s
-  · rw [UB.guardRet_of_pos hg] at h; nomatch h
-  · rw [UB.guardRet_of_neg hg] at h; nomatch h
+instance (g : σ → Prop) (f : σ → σ) : NoThrow (AInstr.modifyIf g f) where
+  noThrow s l s' h := by
+    rw [AInstr.modifyIf_run, AInstr.modifyIf] at h
+    by_cases hg : g s
+    · rw [UB.guardRet_of_pos hg] at h; nomatch h
+    · rw [UB.guardRet_of_neg hg] at h; nomatch h
 
-theorem Exits.exitIf (g : σ → Prop) (f : σ → σ) : Exits (exitIf g f .exit) := by
-  intro s l s' h
-  rw [AInstr.exitIf_run, AInstr.exitIf] at h
-  by_cases hg : g s
-  · rw [UB.guardRet_of_pos hg] at h
-    cases h
-    rfl
-  · rw [UB.guardRet_of_neg hg] at h; nomatch h
+instance (g : σ → Prop) (f : σ → σ) : Exits (AInstr.exitIf g f .exit) where
+  exits s l s' h := by
+    rw [AInstr.exitIf_run, AInstr.exitIf] at h
+    by_cases hg : g s
+    · rw [UB.guardRet_of_pos hg] at h
+      cases h
+      rfl
+    · rw [UB.guardRet_of_neg hg] at h; nomatch h
 
 end
+
+/-! ## The steps of the first layer -/
+
+instance (r b i : Reg64) (d : Int64) : NoThrow (movRegSib8 r b i d) := by
+  unfold movRegSib8; infer_instance
+instance (rd b i : Reg64) (d : Int64) : NoThrow (addRegSib8 rd b i d) := by
+  unfold addRegSib8; infer_instance
+instance (b i : Reg64) (d : Int64) (rs : Reg64) : NoThrow (movSib8Reg b i d rs) := by
+  unfold movSib8Reg; infer_instance
+instance (r : Reg64) : NoThrow (incReg r) := by
+  unfold incReg; infer_instance
+instance (rd rs : Reg64) : NoThrow (xorReg32Reg32 rd rs) := by
+  unfold xorReg32Reg32; infer_instance
+instance : Exits ret := by
+  unfold ret; infer_instance
 
 /-! ## The structured program -/
 
@@ -95,24 +111,20 @@ theorem zipWithAddA_eq (s : MachineData) (ra : Int64) :
   unfold zipWithAddBody
   simp only [bind_assoc, bind_pure_unit, testJcc, cmpJcc]
 
-theorem zipWithAddBody_noThrow : NoThrow zipWithAddBody := by
-  unfold zipWithAddBody
-  exact NoThrow.bind (NoThrow.modifyIf _ _) fun _ => NoThrow.bind (NoThrow.modifyIf _ _) fun _ =>
-    NoThrow.bind (NoThrow.modifyIf _ _) fun _ => NoThrow.modifyIf _ _
+instance : NoThrow zipWithAddBody := by
+  unfold zipWithAddBody; infer_instance
 
 theorem zipWithAddA_refines_S (s : MachineData) (ra : Int64) :
     ⦃(⊤ : MachineData → Prop)⦄ (zipWithAddA s ra) ⪯[Concretization.ofStateRepr id] zipWithAddS
       ⦃fun _ _ _ => True; (fun l l' _ => l = l', estack⟨⟩)⦄ := by
   rw [zipWithAddA_eq]
-  exact refines_cfgLoop_rotated (by simp) (NoThrow.modifyIf _ _) zipWithAddBody_noThrow
-    (Exits.exitIf _ _) rfl rfl rfl
+  exact refines_cfgLoop_rotated (by simp) rfl rfl rfl
 
 theorem wp_zipWithAddA_of_S (s : MachineData) (ra : Int64) (Qa : Unit → MachineData → Prop)
     (Ea : (CfgLabel → MachineData → Prop) × EStack⟨⟩) (t : MachineData)
     (h : wp zipWithAddS Qa Ea t) : wp (zipWithAddA s ra) Qa Ea t := by
   rw [zipWithAddA_eq]
-  exact wp_cfgLoop_rotated Qa Ea (by simp) (NoThrow.modifyIf _ _) zipWithAddBody_noThrow
-    (Exits.exitIf _ _) rfl rfl rfl t h
+  exact wp_cfgLoop_rotated Qa Ea (by simp) inferInstance inferInstance inferInstance rfl rfl rfl t h
 
 end
 
