@@ -32,8 +32,8 @@ Both `Triple`/`⊑ wp` and equality entries go through `tryMkBackwardRuleFromSpe
 an equality spec to `⊑ wp` form using the supplied `wp` metadata before building the rule.
 
 Cache key: `(proof key, ruleKey, excessArgs.size)`, where `ruleKey` is the hash-consed
-`WRPApp.ruleKey` of the goal: the two program types, each reduced to its monad where there is one,
-and `γ`.
+`WRPApp.ruleKey` of the goal: the concrete `WP` instance, the abstract monad, the abstract assertion
+and exception types, and `γ`.
 -/
 def mkBackwardRuleFromSpecCached (specThm : SpecTheorem) (info : WRPApp) :
     OptionT VCGenM BackwardRule := do

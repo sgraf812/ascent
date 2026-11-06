@@ -82,33 +82,33 @@ def monadOf? (info : WRPApp) (side : Nat) : MetaM (Option (Expr × Expr)) := do
     | return none
   return (← synthInstance? ty).map (m, ·)
 
-/-- The prefix with each monadic value type, its `WP` instance and the abstract program replaced
-by fresh metavariables, the instance in the spelling `instWPOfWPMonad m Pred EPosts ?α …` whatever
-the goal's spelling. A rule built from it is specific to the pair of monads only, and
-`abstractMVars` turns the metavariables into rule parameters. A program type that is not monadic
-is kept whole. -/
+/-- The prefix with the abstract side replaced by fresh metavariables: the abstract value type, the
+abstract `WP` instance in the spelling `instWPOfWPMonad m APred AEPosts ?α …`, and the abstract
+program. The concrete side stays as the goal spells it. A rule built from it is specific to the
+goal's concrete program type and to the abstract monad, and `abstractMVars` turns the
+metavariables into rule parameters. An abstract program type that is not monadic is kept whole. -/
 def schematic (info : WRPApp) : MetaM WRPApp := do
   let mut args := info.args
-  for side in [0, 1] do
-    if let some (m, inst) ← info.monadOf? side then
-      let v ← mkFreshExprMVar (← Meta.inferType args[2 + side]!)
-      let instWP ← mkAppOptM ``Std.WP.instWPOfWPMonad
-        #[m, args[4 + side]!, args[6 + side]!, v, none, args[9 + side]!, args[11 + side]!, inst]
-      args := args.set! (2 + side) v |>.set! side (mkApp m v) |>.set! (13 + side) instWP
+  if let some (m, inst) ← info.monadOf? 1 then
+    let v ← mkFreshExprMVar (← Meta.inferType args[3]!)
+    let instWP ← mkAppOptM ``Std.WP.instWPOfWPMonad
+      #[m, args[5]!, args[7]!, v, none, args[10]!, args[12]!, inst]
+    args := args.set! 3 v |>.set! 1 (mkApp m v) |>.set! 14 instWP
   args := args.set! 18 (← mkFreshExprMVar (userName := `a) args[1]!)
   return { info with args, expr := mkAppN info.head (args ++ info.excessArgs) }
 
-/-- The arguments a rule built from `schematic` bakes in, as one term for hash-consing: each
-program type reduced to its monad where `monadOf?` finds one, and `γ`. The program types fix the
-lattice types, the exception relation type and every instance of the prefix, as out-parameters.
-`γ` is baked in so that a structured concretization is unified once, at rule construction, and
-then compared by pointer at every application. The term is a key, never a well-typed expression. -/
+/-- The arguments a rule built from `schematic` bakes in, as one term for hash-consing: the
+concrete `WP` instance, as core's key; the abstract monad where `monadOf?` finds one, else the
+abstract program type and its `WP` instance; the abstract assertion type, the abstract exception
+postcondition type, the exception relation type, and `γ`. `γ` is baked in so that a structured
+concretization is unified once, at rule construction, and then compared by pointer at every
+application. The term is a key, never a well-typed expression. -/
 def ruleKey (info : WRPApp) : MetaM Expr := do
-  let side (i : Nat) : MetaM Expr := do
-    match ← info.monadOf? i with
-    | some (m, _) => return m
-    | none => return info.args[i]!
-  return mkApp3 (mkConst `Ascent.ruleKey) (← side 0) (← side 1) info.γ
+  let abs ← match ← info.monadOf? 1 with
+    | some (m, _) => pure #[m]
+    | none => pure #[info.args[1]!, info.args[14]!]
+  return mkAppN (mkConst `Ascent.ruleKey)
+    (#[info.instWP] ++ abs ++ #[info.args[5]!, info.args[7]!, info.args[8]!, info.γ])
 
 end WRPApp
 
