@@ -1,7 +1,7 @@
 import Ascent.Tactic.VCGen.Frontend
 
 /-!
-# The `ascend_def` and `simp_def` commands
+# The `ascend_def` and `sym_simp_def` commands
 
 `ascend_def a xs : T from ⦃P⦄ c ⪯[γ] a ⦃Q; E⦄ ascend [specs] with tac` defines `a : ∀ xs, T` as the
 abstract program that `ascend` synthesizes for `c`, and proves the refinement as the theorem
@@ -9,21 +9,10 @@ abstract program that `ascend` synthesizes for `c`, and proves the refinement as
 replaces `a` by a synthesis hole, runs `ascend` with the head definition of `c` unfolded and the
 specs of the `ascend` clause, and closes every VC with the `grind` step `tac`.
 
-`simp_def a xs : T from c using [lemmas]` is the simplification between two runs: it defines
-`a : ∀ xs, T` as `c` simplified by `simp only [lemmas]`, and proves `a.eq : ∀ xs, c = a xs`.
-`Ascent.bind_seq_assoc` groups a chain of steps so that its last step is on top, the form in which
-a rule about the end of a block applies.
+`sym_simp_def a xs : T from c using pre [ps] post [qs]` is the simplification between two runs:
+it defines `a : ∀ xs, T` as `c` simplified by `Sym.simp` with the rewrite rules `ps` and `qs`, and
+proves `a.eq : ∀ xs, c = a xs`.
 -/
-
-namespace Ascent
-
-/-- A chain of steps with its last step on top. -/
-theorem bind_seq_assoc {m : Type u → Type v} [Monad m] [LawfulMonad m] {α β γ : Type u}
-    (x : m α) (y : m β) (z : m γ) :
-    (x >>= fun _ => y >>= fun _ => z) = ((x >>= fun _ => y) >>= fun _ => z) := by
-  rw [bind_assoc]
-
-end Ascent
 
 open Lean Meta Elab Command Term
 
@@ -84,38 +73,6 @@ elab_rules : command
     addDecl <| .thmDecl {
       name := name.getId ++ `refines, levelParams := [],
       type := ← mkForallFVars xs (stmtFn.beta #[mkAppN (mkConst name.getId) xs]),
-      value := ← mkLambdaFVars xs proof }
-
-syntax (name := simpDefCmd)
-  "simp_def " ident bracketedBinder* " : " term " from " term
-    " using " "[" Lean.Parser.Tactic.simpLemma,* "]" : command
-
-/-- `simp_def f xs : T from c using [lemmas]` defines `f : ∀ xs, T` as `c` simplified by
-`simp only [lemmas]` and proves `f.eq : ∀ xs, c = f xs`. -/
-elab_rules : command
-  | `(simp_def $name $binders* : $type from $c using [$lemmas,*]) =>
-    liftTermElabM <| Term.elabBinders binders fun xs => do
-    let T ← elabType type
-    let c ← Term.elabTermEnsuringType c T
-    synthesizeSyntheticMVarsNoPostponing
-    let c ← instantiateMVars c
-    let rhs ← mkFreshExprMVar T
-    let proof ← mkFreshExprSyntheticOpaqueMVar (← mkEq c rhs)
-    let lemmas : Syntax.TSepArray [``Lean.Parser.Tactic.simpStar, ``Lean.Parser.Tactic.simpErase,
-      ``Lean.Parser.Tactic.simpLemma] "," := ⟨lemmas.elemsAndSeps⟩
-    let simpStx ← `(tactic| (conv => lhs; simp only [$lemmas,*]) <;> exact rfl)
-    let (gs, _) ← Lean.Elab.runTactic proof.mvarId! simpStx
-    unless gs.isEmpty do throwError "simp_def: the simplification left goals"
-    let value ← instantiateMVars rhs
-    if value.hasMVar then throwError "simp_def: the simplified program has holes:{indentExpr value}"
-    addDecl <| .defnDecl {
-      name := name.getId, levelParams := [], type := ← mkForallFVars xs T,
-      value := ← mkLambdaFVars xs value, hints := .regular 0, safety := .safe }
-    enableRealizationsForConst name.getId
-    let proof ← instantiateMVars proof
-    addDecl <| .thmDecl {
-      name := name.getId ++ `eq, levelParams := [],
-      type := ← mkForallFVars xs (← mkEq c (mkAppN (mkConst name.getId) xs)),
       value := ← mkLambdaFVars xs proof }
 
 syntax (name := symSimpDefCmd)
