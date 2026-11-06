@@ -5,3 +5,5 @@ import Demo.Zip
 import Demo.BlockRefine
 import Demo.L2
 import Demo.ZipSpec
+import Demo.Structure
+import Demo.ZipS
