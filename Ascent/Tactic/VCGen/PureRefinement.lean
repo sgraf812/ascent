@@ -156,8 +156,8 @@ partial def solveCore (rules : DiscrTree PureRule) (env : PureEnv) (goal : MVarI
       let args := type.getAppArgs
       let type' ← mkAppNS type.getAppFn (args.set! 2 cv)
       let g ← shareCommon (← mkFreshExprMVar type')
-      goal.assign (← mkAppNS (← mkConstS ``Ascent.PureRefinement.of_cv_eq type.getAppFn.constLevels!)
-        #[args[0]!, args[1]!, cv₀, args[3]!, args[4]!, args[5]!, cv, g, e])
+      let ofCvEq ← mkConstS ``Ascent.PureRefinement.of_cv_eq type.getAppFn.constLevels!
+      goal.assign (← mkAppNS ofCvEq #[args[0]!, args[1]!, cv₀, args[3]!, args[4]!, args[5]!, cv, g, e])
       pure (g.mvarId!, type')
   let mctx ← getMCtx
   let candidates := Sym.getMatch mctx env.entries cv ++
@@ -224,5 +224,21 @@ def closeByEntry (goal : MVarId) : VCGenM Bool := goal.withContext do
   for r in Sym.getMatch (← getMCtx) env.rels type do
     if (← r.rule.apply goal) matches .goals [] then return true
   return false
+
+/-- Simplify the right-hand side `rhs` of a goal `pre ⊑ rhs` on `Prop` when the simplified `rhs`
+holds `PureRefinement` obligations, such as the relation of a loop value that a `StepRel` post
+states. The new goal goes back to the worklist, which decomposes it and solves the obligations. -/
+def simpPureRefinementRhs? (goal : MVarId) : VCGenM (Option MVarId) := goal.withContext do
+  let target ← instantiateMVarsS (← goal.getType)
+  let some (α, _, pre, rhs) := target.app4? ``Lean.Order.PartialOrder.rel | return none
+  unless α.isProp do return none
+  let (rhs', some e) ← simpRun rhs | return none
+  unless (rhs'.find? (·.isAppOfArity ``Ascent.PureRefinement 6)).isSome do return none
+  let f ← mkAppNS target.getAppFn (target.getAppArgs.pop)
+  let newTarget ← mkAppNS f #[rhs']
+  let g ← liftMetaM <| mkFreshExprSyntheticOpaqueMVar newTarget
+  let h := mkApp6 (mkConst ``congrArg [1, 1]) α α rhs rhs' f e
+  goal.assign (mkApp4 (mkConst ``Eq.mpr [0]) target newTarget h g)
+  return some g.mvarId!
 
 end Lean.Elab.Tactic.VCGen.Ascend
