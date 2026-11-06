@@ -7,3 +7,4 @@ import Demo.Structure
 import Demo.ZipS
 import Demo.ZipL
 import Demo.ZipPure
+import Demo.Walkthrough
