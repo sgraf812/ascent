@@ -77,9 +77,31 @@ theorem Program.label_ne_exit_of_mem_blocks {p : Program} {blk : Program.Block}
       = ⟨b, j, body, .label l⟩ :: Program.blocksFrom (.label l) (j + 1) body' bs := rfl
 attribute [vcgen_simp] List.forall_mem_cons List.forall_mem_nil
 
+/-- The fallthrough target of the block at `l` in a list of blocks, `.exit` for a label without a
+block. -/
+def Program.nextIn : List Program.Block → CfgLabel → CfgLabel
+  | [], _ => .exit
+  | blk :: bs, l => if blk.label = l then blk.next else Program.nextIn bs l
+
+@[vcgen_simp, grind =] theorem Program.nextIn_nil (l : CfgLabel) : Program.nextIn [] l = .exit := rfl
+@[vcgen_simp, grind =] theorem Program.nextIn_cons (blk : Program.Block) (bs : List Program.Block)
+    (l : CfgLabel) :
+    Program.nextIn (blk :: bs) l = if blk.label = l then blk.next else Program.nextIn bs l := rfl
+
+theorem Program.nextIn_eq_find? (bs : List Program.Block) (l : CfgLabel) :
+    Program.nextIn bs l = ((bs.find? fun blk => blk.label = l).map (·.next)).getD .exit := by
+  induction bs with
+  | nil => rfl
+  | cons blk bs ih =>
+    by_cases h : blk.label = l
+    · simp [Program.nextIn, h]
+    · simp [Program.nextIn, h, ih]
+
 /-- The fallthrough target of the block at `l`. -/
-def Program.next (p : Program) (l : CfgLabel) : CfgLabel :=
-  (((Program.blocks p).find? fun blk => blk.label = l).map (·.next)).getD .exit
+def Program.next (p : Program) (l : CfgLabel) : CfgLabel := Program.nextIn (Program.blocks p) l
+
+@[vcgen_simp, grind =] theorem Program.next_eq (p : Program) (l : CfgLabel) :
+    Program.next p l = Program.nextIn (Program.blocks p) l := rfl
 
 theorem Program.label_mem_blocksFrom {b : CfgLabel} :
     ∀ {j : Nat} {body : Program} {bs : List (Label × Program)} {blk : Program.Block},
@@ -120,7 +142,8 @@ theorem Program.find?_blocksFrom {b : CfgLabel} :
 theorem Program.next_eq_of_nodup {p : Program} (hnd : (Program.labels p).Nodup) {blk : Program.Block}
     (h : blk ∈ Program.blocks p) : Program.next p blk.label = blk.next := by
   rw [Program.labels_view] at hnd
-  unfold Program.next Program.blocks
+  rw [Program.next, Program.nextIn_eq_find?]
+  unfold Program.blocks
   rw [Program.find?_blocksFrom hnd (fun _ _ => CfgLabel.noConfusion) h]
   rfl
 

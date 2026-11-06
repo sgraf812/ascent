@@ -15,6 +15,7 @@ set_option experimental.vcgen true
 namespace Ascent.Kraken
 
 attribute [ascend] wrp_bind wrp_pure_unit
+attribute [local vcgen_simp] zipWithAdd
 
 section
 variable {Q : Unit → Unit → MachineData → Prop}
