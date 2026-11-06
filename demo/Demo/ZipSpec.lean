@@ -13,6 +13,7 @@ the sums, read in the memory before the loop.
 -/
 
 open Std.WP Lean.Order Ascent Ascent.Kraken
+open scoped Program.WP
 
 namespace Ascent.Kraken
 
@@ -269,6 +270,38 @@ theorem zipWithAddR_spec (s : MachineData) (ra : Int64) {st₀ : RegMem} {A B O 
       rw [RegMem.set_mem, hmem]
       exact words_stores_out hlen
     · simp [zipInv, h₀, h₂, h₃] at hI
+
+/-! ## The machine code -/
+
+theorem regMem_abs (t : MachineData) : regMem (abs t) = regMem t := rfl
+
+/-- What the x64 text computes: started at `s.push64 ra` with the arrays in place, it returns to
+`ra` with the stack pointer of the caller, and the output array holds the sums of the inputs. -/
+theorem zipWithAdd_spec (s : MachineData) (ra : Int64) {A B O : BitVec 64} {n : Nat}
+    (h : ZipWithAddPre (regMem (s.push64 ra)) A B O n) :
+    Triple zipWithAdd (fun t => t = s.push64 ra) (fun _ _ => True)
+      (fun a t => a = ra ∧ t.regs.get64 .rsp = s.regs.get64 .rsp
+        ∧ words t.dmem O n = List.zipWith (· + ·) (words (s.push64 ra).dmem A n)
+            (words (s.push64 ra).dmem B n)) := by
+  have hR : Triple (zipWithAddR s ra) (· = regMem (s.push64 ra)) (fun _ _ => False)
+      (fun l st => l = .exit ∧ ZipWithAddPost (regMem (s.push64 ra)) A B O n st, estack⟨⟩) :=
+    ⟨fun st hst => by subst hst; exact zipWithAddR_spec s ra h⟩
+  have hA := Refinement.transport (zipWithAddR.refines s ra) hR
+  have hT := Refinement.transport (zipWithAddA.refines s ra) hA
+  refine ⟨fun t ht => ?_⟩
+  refine WP.wp_monotone (x := zipWithAdd) ?_ ?_ t (hT.le_wp t ?_)
+  · intro _ _ _
+    trivial
+  · intro a t' h'
+    change (Concretization.ofStateRepr abs).post (RetRel s ra) _ a t' at h'
+    rw [Concretization.post_pi] at h'
+    obtain ⟨l', ⟨hra, -, hrsp⟩, h''⟩ := h'
+    simp only [Concretization.ofStateRepr_pred, EPostsConcretization.ePosts_cons,
+      Concretization.post_pi] at h''
+    obtain ⟨_, -, -, -, hwords⟩ := h''
+    exact ⟨hra, hrsp, hwords⟩
+  · simp only [meet_apply, meet_prop_eq_and, Concretization.ofStateRepr_pred]
+    exact ⟨ht, trivial, by rw [ht, regMem_abs]⟩
 
 end
 
