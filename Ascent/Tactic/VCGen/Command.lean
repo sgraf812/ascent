@@ -102,7 +102,7 @@ elab_rules : command
     let (value, proof) ← Sym.SymM.run do
       let c ← Sym.shareCommon c
       let methods : Sym.Simp.Methods :=
-        { pre := Sym.Simp.beta >> Sym.Simp.reduceProj >> Sym.Simp.reduceMatcher >>
+        { pre := Sym.Simp.zeta >> Sym.Simp.beta >> Sym.Simp.reduceProj >> Sym.Simp.reduceMatcher >>
             Sym.Simp.reduceControl >> preThms.rewrite Sym.Simp.dischargeSimpSelf
           post := Sym.Simp.evalGround >> Grind.NormSym.reduceCtorEq >> vcThms.rewrite >>
             postThms.rewrite Sym.Simp.dischargeSimpSelf }

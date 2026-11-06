@@ -673,6 +673,12 @@ grind finisher normalizes a relation VC without a disjunction to split on. -/
 attribute [vcgen_simp] Program.labels_nil Program.labels_cons_instr Program.labels_cons_label
   MachineData.retAddr_eq
 
+@[vcgen_simp] theorem Label.mem_cons (a b : Label) (l : List Label) : (a ∈ b :: l) = (a = b ∨ a ∈ l) :=
+  propext List.mem_cons
+
+@[vcgen_simp] theorem Label.mem_nil (a : Label) : (a ∈ ([] : List Label)) = False :=
+  propext (iff_false_intro List.not_mem_nil)
+
 /-- The control-flow rule as a spec: the abstract program is `cfgLoop` over a table of blocks, one
 cell per label, which `ascend` fills block by block. The program is embedded in the host, so its
 labels are distinct and each block falls through to its successor in the text. -/
