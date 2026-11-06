@@ -147,7 +147,7 @@ elab_rules : command
       let methods : Sym.Simp.Methods :=
         { pre := Sym.Simp.beta >> Sym.Simp.reduceProj >> Sym.Simp.reduceMatcher >>
             Sym.Simp.reduceControl >> preThms.rewrite Sym.Simp.dischargeSimpSelf
-          post := Sym.Simp.evalGround >> vcThms.rewrite >>
+          post := Sym.Simp.evalGround >> Grind.NormSym.reduceCtorEq >> vcThms.rewrite >>
             postThms.rewrite Sym.Simp.dischargeSimpSelf }
       let (r, _) ← Sym.Simp.SimpM.run (Sym.Simp.simp c) methods
       match r with

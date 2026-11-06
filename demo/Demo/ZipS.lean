@@ -48,41 +48,26 @@ instance (g : σ → Prop) (f : σ → σ) : Exits (AInstr.exitIf g f .exit) whe
 
 end
 
-/-! ## The steps of the first layer -/
-
-instance (r b i : Reg64) (d : Int64) : NoThrow (movRegSib8 r b i d) := by
-  unfold movRegSib8; infer_instance
-instance (rd b i : Reg64) (d : Int64) : NoThrow (addRegSib8 rd b i d) := by
-  unfold addRegSib8; infer_instance
-instance (b i : Reg64) (d : Int64) (rs : Reg64) : NoThrow (movSib8Reg b i d rs) := by
-  unfold movSib8Reg; infer_instance
-instance (r : Reg64) : NoThrow (incReg r) := by
-  unfold incReg; infer_instance
-instance (rd rs : Reg64) : NoThrow (xorReg32Reg32 rd rs) := by
-  unfold xorReg32Reg32; infer_instance
-instance : Exits ret := by
-  unfold ret; infer_instance
-
 /-! ## The structured program -/
 
 /-- The body of the loop of `zipWithAdd`, without its back jump. -/
 noncomputable def zipWithAddBody : BlockM MachineData Unit := do
-  movRegSib8 .r8 .rsi .rax 0
-  addRegSib8 .r8 .rdi .rax 0
-  movSib8Reg .rdx .rax 0 .r8
-  incReg .rax
+  modifyIf (loadOk8 .rsi .rax 0) (movRegSib8 .r8 .rsi .rax 0)
+  modifyIf (loadOk8 .rdi .rax 0) (addRegSib8 .r8 .rdi .rax 0)
+  modifyIf (storeOk8 .rdx .rax 0) (movSib8Reg .rdx .rax 0 .r8)
+  modifyIf (fun _ => True) (incReg .rax)
 
 /-- `zipWithAdd` as a structured loop over the machine state. -/
 noncomputable def zipWithAddS : BlockM MachineData Unit := do
   let st ← get
-  if CondCode.cmp .le (st.regs.get64 .rcx &&& st.regs.get64 .rcx) 0 then ret
+  if CondCode.cmp .le (st.regs.get64 .rcx &&& st.regs.get64 .rcx) 0 then exitIf retOk ret .exit
   else
-    xorReg32Reg32 .rax .rax
+    modifyIf (fun _ => True) (xorReg32Reg32 .rax .rax)
     repeat'
       zipWithAddBody
       let st ← get
       if !(CondCode.cmp .nz (st.regs.get64 .rcx) (st.regs.get64 .rax)) then break
-    ret
+    exitIf retOk ret .exit
 
 section
 variable [Host] [FunDecls] [Embeds zipWithAdd]
@@ -90,26 +75,26 @@ variable [Host] [FunDecls] [Embeds zipWithAdd]
 theorem zipWithAddA_eq (s : MachineData) (ra : Int64) :
     zipWithAddA s ra = cfgLoop (Table.get [
       (.entry, branch (fun st => CondCode.cmp .le (st.regs.get64 .rcx &&& st.regs.get64 .rcx) 0)
-        (.label "LBB0_3") >>= fun _ => xorReg32Reg32 .rax .rax),
+        (.label "LBB0_3") >>= fun _ => modifyIf (fun _ => True) (xorReg32Reg32 .rax .rax)),
       (.label "LBB0_2", zipWithAddBody >>= fun _ =>
         branch (fun st => CondCode.cmp .nz (st.regs.get64 .rcx) (st.regs.get64 .rax)) (.label "LBB0_2")),
-      (.label "LBB0_3", ret)]) (Program.next zipWithAdd) .entry := by
+      (.label "LBB0_3", exitIf retOk ret .exit)]) (Program.next zipWithAdd) .entry := by
   have h₀ : zipWithAddA s ra = cfgLoop (Table.get [
       (.entry, do
-        testJcc .rcx .rcx .le "LBB0_3"
-        xorReg32Reg32 .rax .rax
+        branch (fun st => CondCode.le.cmp (st.regs.get64 .rcx &&& st.regs.get64 .rcx) 0) (.label "LBB0_3")
+        modifyIf (fun _ => True) (xorReg32Reg32 .rax .rax)
         pure ()),
       (.label "LBB0_2", do
-        movRegSib8 .r8 .rsi .rax 0
-        addRegSib8 .r8 .rdi .rax 0
-        movSib8Reg .rdx .rax 0 .r8
-        incReg .rax
-        cmpJcc .rcx .rax .nz "LBB0_2"
+        modifyIf (loadOk8 .rsi .rax 0) (movRegSib8 .r8 .rsi .rax 0)
+        modifyIf (loadOk8 .rdi .rax 0) (addRegSib8 .r8 .rdi .rax 0)
+        modifyIf (storeOk8 .rdx .rax 0) (movSib8Reg .rdx .rax 0 .r8)
+        modifyIf (fun _ => True) (incReg .rax)
+        branch (fun st => CondCode.nz.cmp (st.regs.get64 .rcx) (st.regs.get64 .rax)) (.label "LBB0_2")
         pure ()),
-      (.label "LBB0_3", ret)]) (Program.next zipWithAdd) .entry := rfl
+      (.label "LBB0_3", exitIf retOk ret .exit)]) (Program.next zipWithAdd) .entry := rfl
   rw [h₀]
   unfold zipWithAddBody
-  simp only [bind_assoc, bind_pure_unit, testJcc, cmpJcc]
+  simp only [bind_assoc, bind_pure_unit]
 
 instance : NoThrow zipWithAddBody := by
   unfold zipWithAddBody; infer_instance

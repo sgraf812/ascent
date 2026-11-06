@@ -159,9 +159,9 @@ def LiftRel (rdi rsi rdx rcx rsp : BitVec 64) (t : MachineData) (rax : BitVec 64
 theorem wp_ret_of_retAt {rsp : BitVec 64} {Ea : (CfgLabel → DataMem → Prop) × EStack⟨⟩}
     {Qu : Unit → DataMem → Prop} {Qc : Unit → MachineData → Prop} {t : MachineData}
     (hrsp : t.regs.get64 .rsp = rsp) (h : wp (retAt rsp) Qu Ea t.dmem) :
-    wp ret Qc (fun l t' => Ea.1 l t'.dmem ∧ t'.regs.get64 .rsp = rsp + 8, Ea.2) t := by
+    wp (exitIf retOk ret .exit) Qc (fun l t' => Ea.1 l t'.dmem ∧ t'.regs.get64 .rsp = rsp + 8, Ea.2) t := by
   rw [wp_retAt] at h
-  rw [ret, wp_exitIf]
+  rw [wp_exitIf, retOk, ret]
   refine ⟨by rw [hrsp]; exact h.1, h.2, ?_⟩
   rw [Reg64s.get64_set64]
   simp [hrsp]
@@ -178,7 +178,7 @@ theorem wp_zipWithAddS_of_L {rdi rsi rdx rcx rsp : BitVec 64} (Qa : Unit → Dat
   cases hc : CondCode.cmp .le (rcx &&& rcx) 0
   · simp only [hc, Bool.false_eq_true, ↓reduceIte] at h ⊢
     rw [WPMonadExact.wp_bind_eq] at h
-    rw [WPMonadExact.wp_bind_eq, xorReg32Reg32, wp_modifyIf, WPMonadExact.wp_bind_eq]
+    rw [WPMonadExact.wp_bind_eq, wp_modifyIf, xorReg32Reg32, WPMonadExact.wp_bind_eq]
     refine ⟨trivial, ?_⟩
     refine wp_fixLoop_lockstep (fun t' rax => LiftRel rdi rsi rdx rcx rsp t' rax) _ _ _ _ _ _ ?_
       (fun _ t' hR hq => wp_ret_of_retAt hR.2.2.2.2.1 hq) 0 _ ?_ h
@@ -189,6 +189,7 @@ theorem wp_zipWithAddS_of_L {rdi rsi rdx rcx rsp : BitVec 64} (Qa : Unit → Dat
       unfold zipWithAddBody
       simp only [WPMonadExact.wp_bind_eq, wp_load8, wp_store8] at hw
       simp only [WPMonadExact.wp_bind_eq, movRegSib8, addRegSib8, movSib8Reg, incReg, wp_modifyIf,
+        loadOk8, storeOk8, sib8,
         wp_get, Reg64s.get64_set64, reduceCtorEq, ↓reduceIte, hrdi', hrsi', hrdx', hrcx', hrsp',
         hrax', hoff, hz, true_and]
       obtain ⟨hB, hA, hO, hw'⟩ := hw

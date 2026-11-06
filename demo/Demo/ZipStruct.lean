@@ -9,14 +9,11 @@ namespace Ascent.Kraken
 
 sym_simp_def zipWithAddT [Host] [FunDecls] [Embeds zipWithAdd] (s : MachineData) (ra : Int64) :
     BlockM MachineData Unit from zipWithAddA s ra
-  using pre [tryCatch_table_get_bind, tryCatch_bind_assoc, tryCatch_pure_bind, tryCatch_pure,
-    tryCatch_throw, tryCatch_cfgLoop_bind, tryCatch_movRegSib8_bind, tryCatch_addRegSib8_bind,
-    tryCatch_movSib8Reg_bind, tryCatch_incReg_bind, tryCatch_xorReg32Reg32_bind, tryCatch_cmpJcc_bind,
-    tryCatch_testJcc_bind, tryCatch_ret_bind]
-  post [zipWithAddA, zipWithAdd, cfgLoop_label, cfgLoop_entry, cfgLoop_exit,
-    CfgLabel.label_eq_label, CfgLabel.label_eq_exit, CfgLabel.exit_eq_label, CfgLabel.label_eq_entry,
-    CfgLabel.entry_eq_label, CfgLabel.entry_eq_exit, CfgLabel.exit_eq_entry, eq_self, pure_bind,
-    bind_pure_unit, pure_done_eq, throw_eq_toDone, bind_toDone, condState_toDone, forIn_toDone]
+  using pre [tryCatch_table_get_bind, tryCatch_bind_assoc, tryCatch_pure,
+    tryCatch_cfgLoop_bind, tryCatch_modifyIf_bind, tryCatch_branch_bind,
+    tryCatch_exitIf_bind]
+  post [zipWithAddA, zipWithAdd, cfgLoop_exit, cfgLoop_eq_repeat,
+    CfgLabel.label_eq_label, bind_pure_unit, pure_done_eq, bind_toDone, condState_toDone, forIn_toDone]
 
 #print zipWithAddT
 

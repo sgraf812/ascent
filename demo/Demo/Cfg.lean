@@ -153,75 +153,6 @@ namespace Ascent.Kraken
 
 abbrev BlockM (Aσ : Type) := ExceptT CfgLabel (StateT Aσ UB)
 
-/-- The fixpoint, at the state-passing type that carries the `CCPO`. -/
-def cfgFix {Aσ : Type} (ablock : CfgLabel → BlockM Aσ Unit) (next : CfgLabel → CfgLabel)
-    (l : CfgLabel) (s : Aσ) : UB (Except CfgLabel Unit × Aσ) :=
-  if l = .exit then pure (.ok (), s) else
-    (ablock l).run.run s >>= fun p =>
-      match p.1 with
-      | .ok _ => cfgFix ablock next (next l) p.2
-      | .error l' => if l' = .exit then pure (.error .exit, p.2) else cfgFix ablock next l' p.2
-partial_fixpoint
-
-def cfgLoop {Aσ : Type} (ablock : CfgLabel → BlockM Aσ Unit) (next : CfgLabel → CfgLabel)
-    (l : CfgLabel) : BlockM Aσ Unit :=
-  cfgFix ablock next l
-
-section
-variable {Aσ : Type} (ablock : CfgLabel → BlockM Aσ Unit) (next : CfgLabel → CfgLabel)
-  (Qa : Unit → Aσ → Prop) (Ea : (CfgLabel → Aσ → Prop) × EStack⟨⟩) (s : Aσ)
-
-theorem cfgLoop_run (l : CfgLabel) : (cfgLoop ablock next l).run.run s = cfgFix ablock next l s :=
-  rfl
-
-theorem wp_cfgLoop_exit : wp (cfgLoop ablock next .exit) Qa Ea s = Qa () s := by
-  rw [ExceptT.wp_apply_eq, StateT.wp_apply_eq, cfgLoop_run, cfgFix]
-  simp only [eq_self, ↓reduceIte, UB.wp_pure_eq]
-  rfl
-
-/-- The exception post of one block: the loop continues at a thrown label, and `.exit` is final. -/
-def cfgEPosts (l' : CfgLabel) : Aσ → Prop :=
-  if l' = .exit then Ea.1 .exit else wp (cfgLoop ablock next l') Qa Ea
-
-theorem wp_cfgLoop {l : CfgLabel} (hl : l ≠ .exit) :
-    wp (cfgLoop ablock next l) Qa Ea s
-      = wp (ablock l) (fun _ => wp (cfgLoop ablock next (next l)) Qa Ea)
-          (cfgEPosts ablock next Qa Ea, Ea.2) s := by
-  rw [ExceptT.wp_apply_eq, StateT.wp_apply_eq, cfgLoop_run, cfgFix]
-  simp only [hl, ↓reduceIte, UB.wp_bind_eq]
-  rw [ExceptT.wp_apply_eq, StateT.wp_apply_eq]
-  congr 1
-  funext p
-  rcases p with ⟨r, s'⟩
-  rcases r with l' | _
-  · by_cases h : l' = .exit
-    · subst h
-      simp only [eq_self, ↓reduceIte, UB.wp_pure_eq]
-      rfl
-    · simp only [h, ↓reduceIte]
-      show _ = cfgEPosts ablock next Qa Ea l' s'
-      simp only [cfgEPosts, h, ↓reduceIte]
-      rfl
-  · rfl
-
-theorem wp_cfgLoop_exit_fn : wp (cfgLoop ablock next .exit) Qa Ea = Qa () :=
-  funext (wp_cfgLoop_exit ablock next Qa Ea)
-
-theorem wp_cfgLoop_fn {l : CfgLabel} (hl : l ≠ .exit) :
-    wp (cfgLoop ablock next l) Qa Ea
-      = wp (ablock l) (fun _ => wp (cfgLoop ablock next (next l)) Qa Ea)
-          (cfgEPosts ablock next Qa Ea, Ea.2) :=
-  funext fun s => wp_cfgLoop ablock next Qa Ea s hl
-
-theorem cfgEPosts_label (l : Label) :
-    cfgEPosts ablock next Qa Ea (.label l) = wp (cfgLoop ablock next (.label l)) Qa Ea := by
-  simp only [cfgEPosts, reduceCtorEq, ↓reduceIte]
-
-theorem cfgEPosts_exit : cfgEPosts ablock next Qa Ea .exit = Ea.1 .exit := by
-  simp only [cfgEPosts, ↓reduceIte]
-
-end
-
 /-! ## The run of a block program -/
 
 theorem wp_BlockM_eq {Aσ α : Type} (x : BlockM Aσ α) (Qa : α → Aσ → Prop)
@@ -245,6 +176,113 @@ theorem UB.bind_eq_some {α β : Type} (x : UB α) (f : α → UB β) (b : β) :
     (x >>= f) = some b ↔ ∃ a, x = some a ∧ f a = some b := Option.bind_eq_some_iff
 theorem UB.map_eq_some {α β : Type} (g : α → β) (x : UB α) (b : β) :
     (g <$> x) = some b ↔ ∃ a, x = some a ∧ g a = b := Option.map_eq_some_iff
+
+
+/-- The fixpoint, at the state-passing type that carries the `CCPO`. -/
+def cfgFix {Aσ : Type} (ablock : CfgLabel → BlockM Aσ Unit) (next : CfgLabel → CfgLabel)
+    (l : CfgLabel) (s : Aσ) : UB (Except CfgLabel Unit × Aσ) :=
+  if l = .exit then pure (.ok (), s) else
+    (ablock l).run.run s >>= fun p =>
+      match p.1 with
+      | .ok _ => cfgFix ablock next (next l) p.2
+      | .error l' => if l' = .exit then pure (.error .exit, p.2) else cfgFix ablock next l' p.2
+partial_fixpoint
+
+def cfgLoop {Aσ : Type} (ablock : CfgLabel → BlockM Aσ Unit) (next : CfgLabel → CfgLabel)
+    (l : CfgLabel) : BlockM Aσ Unit :=
+  cfgFix ablock next l
+
+section
+variable {Aσ : Type} (ablock : CfgLabel → BlockM Aσ Unit) (next : CfgLabel → CfgLabel)
+
+def cfgStep (f : CfgLabel → BlockM Aσ Unit) (l : CfgLabel) : BlockM Aσ Unit :=
+  show Aσ → UB (Except CfgLabel Unit × Aσ) from fun s =>
+    if l = .exit then pure (Except.ok (), s) else do
+      let p ← (ExceptT.run (ablock l)).run s
+      match p.fst with
+      | Except.ok _ => (f (next l)).run.run p.snd
+      | Except.error l' =>
+        if l' = .exit then pure (Except.error .exit, p.snd) else (f l').run.run p.snd
+
+theorem cfgStep_run_of_ne (f : CfgLabel → BlockM Aσ Unit) {l : CfgLabel} (hl : l ≠ .exit) (s : Aσ) :
+    (cfgStep ablock next f l).run.run s = ((ablock l).run.run s >>= fun p =>
+      match p.fst with
+      | Except.ok _ => (f (next l)).run.run p.snd
+      | Except.error l' =>
+        if l' = .exit then pure (Except.error .exit, p.snd) else (f l').run.run p.snd) := by
+  show (if l = .exit then _ else _) = _
+  rw [if_neg hl]
+
+theorem cfgStep_exit (f : CfgLabel → BlockM Aσ Unit) : cfgStep ablock next f .exit = pure () := rfl
+
+theorem cfgLoop_induct (motive : (CfgLabel → BlockM Aσ Unit) → Prop) (hadm : admissible motive)
+    (h : ∀ f, motive f → motive (cfgStep ablock next f)) : motive (cfgLoop ablock next) :=
+  cfgFix.fixpoint_induct ablock next motive hadm h
+
+theorem wp_cfgStep (f : CfgLabel → BlockM Aσ Unit) {l : CfgLabel} (hl : l ≠ .exit)
+    (Qa : Unit → Aσ → Prop) (Ea : (CfgLabel → Aσ → Prop) × EStack⟨⟩) (s : Aσ) :
+    wp (cfgStep ablock next f l) Qa Ea s
+      = wp (ablock l) (fun _ => wp (f (next l)) Qa Ea)
+          (fun l' => if l' = .exit then Ea.1 .exit else wp (f l') Qa Ea, Ea.2) s := by
+  rw [wp_BlockM_eq, wp_BlockM_eq]
+  rw [cfgStep_run_of_ne _ _ _ hl]
+  rcases (ablock l).run.run s with _ | ⟨l' | _, s'⟩
+  · rfl
+  · simp only [UB.some_bind]
+    by_cases h : l' = .exit
+    · subst h; simp only [↓reduceIte]; rfl
+    · simp only [h, ↓reduceIte]; rw [wp_BlockM_eq]
+  · simp only [UB.some_bind]; rw [wp_BlockM_eq]
+
+theorem cfgLoop_eq_cfgStep : cfgLoop ablock next = cfgStep ablock next (cfgLoop ablock next) := by
+  funext l
+  show (cfgFix ablock next l : Aσ → UB (Except CfgLabel Unit × Aσ)) = cfgStep ablock next _ l
+  funext s
+  rw [cfgFix]
+  rfl
+
+end
+
+section
+variable {Aσ : Type} (ablock : CfgLabel → BlockM Aσ Unit) (next : CfgLabel → CfgLabel)
+  (Qa : Unit → Aσ → Prop) (Ea : (CfgLabel → Aσ → Prop) × EStack⟨⟩) (s : Aσ)
+
+theorem cfgLoop_run (l : CfgLabel) : (cfgLoop ablock next l).run.run s = cfgFix ablock next l s :=
+  rfl
+
+theorem wp_cfgLoop_exit : wp (cfgLoop ablock next .exit) Qa Ea s = Qa () s := by
+  rw [ExceptT.wp_apply_eq, StateT.wp_apply_eq, cfgLoop_run, cfgFix]
+  simp only [eq_self, ↓reduceIte, UB.wp_pure_eq]
+  rfl
+
+/-- The exception post of one block: the loop continues at a thrown label, and `.exit` is final. -/
+def cfgEPosts (l' : CfgLabel) : Aσ → Prop :=
+  if l' = .exit then Ea.1 .exit else wp (cfgLoop ablock next l') Qa Ea
+
+theorem wp_cfgLoop {l : CfgLabel} (hl : l ≠ .exit) :
+    wp (cfgLoop ablock next l) Qa Ea s
+      = wp (ablock l) (fun _ => wp (cfgLoop ablock next (next l)) Qa Ea)
+          (cfgEPosts ablock next Qa Ea, Ea.2) s := by
+  rw [congrFun (cfgLoop_eq_cfgStep ablock next) l, wp_cfgStep _ _ _ hl]
+  rfl
+
+theorem wp_cfgLoop_exit_fn : wp (cfgLoop ablock next .exit) Qa Ea = Qa () :=
+  funext (wp_cfgLoop_exit ablock next Qa Ea)
+
+theorem wp_cfgLoop_fn {l : CfgLabel} (hl : l ≠ .exit) :
+    wp (cfgLoop ablock next l) Qa Ea
+      = wp (ablock l) (fun _ => wp (cfgLoop ablock next (next l)) Qa Ea)
+          (cfgEPosts ablock next Qa Ea, Ea.2) :=
+  funext fun s => wp_cfgLoop ablock next Qa Ea s hl
+
+theorem cfgEPosts_label (l : Label) :
+    cfgEPosts ablock next Qa Ea (.label l) = wp (cfgLoop ablock next (.label l)) Qa Ea := by
+  simp only [cfgEPosts, reduceCtorEq, ↓reduceIte]
+
+theorem cfgEPosts_exit : cfgEPosts ablock next Qa Ea .exit = Ea.1 .exit := by
+  simp only [cfgEPosts, ↓reduceIte]
+
+end
 
 /-! ## The number of blocks a run executes -/
 

@@ -48,56 +48,27 @@ end
 section
 variable {σ : Type} (ablock : CfgLabel → BlockM σ Unit) (next : CfgLabel → CfgLabel)
 
-def cfgStep (f : CfgLabel → BlockM σ Unit) (l : CfgLabel) : BlockM σ Unit :=
-  show σ → UB (Except CfgLabel Unit × σ) from fun s =>
-    if l = .exit then pure (Except.ok (), s) else do
-      let p ← (ExceptT.run (ablock l)).run s
-      match p.fst with
-      | Except.ok _ => (f (next l)).run.run p.snd
-      | Except.error l' =>
-        if l' = .exit then pure (Except.error .exit, p.snd) else (f l').run.run p.snd
-
-theorem cfgStep_run_of_ne (f : CfgLabel → BlockM σ Unit) {l : CfgLabel} (hl : l ≠ .exit) (s : σ) :
-    (cfgStep ablock next f l).run.run s = ((ablock l).run.run s >>= fun p =>
-      match p.fst with
-      | Except.ok _ => (f (next l)).run.run p.snd
-      | Except.error l' =>
-        if l' = .exit then pure (Except.error .exit, p.snd) else (f l').run.run p.snd) := by
-  show (if l = .exit then _ else _) = _
-  rw [if_neg hl]
-
-theorem cfgStep_exit (f : CfgLabel → BlockM σ Unit) : cfgStep ablock next f .exit = pure () := rfl
-
-theorem cfgLoop_induct (motive : (CfgLabel → BlockM σ Unit) → Prop) (hadm : admissible motive)
-    (h : ∀ f, motive f → motive (cfgStep ablock next f)) : motive (cfgLoop ablock next) :=
-  cfgFix.fixpoint_induct ablock next motive hadm h
-
-theorem wp_cfgStep (f : CfgLabel → BlockM σ Unit) {l : CfgLabel} (hl : l ≠ .exit)
-    (Qa : Unit → σ → Prop) (Ea : (CfgLabel → σ → Prop) × EStack⟨⟩) (s : σ) :
-    wp (cfgStep ablock next f l) Qa Ea s
-      = wp (ablock l) (fun _ => wp (f (next l)) Qa Ea)
-          (fun l' => if l' = .exit then Ea.1 .exit else wp (f l') Qa Ea, Ea.2) s := by
-  rw [wp_BlockM_eq, wp_BlockM_eq]
-  rw [cfgStep_run_of_ne _ _ _ hl]
-  rcases (ablock l).run.run s with _ | ⟨l' | _, s'⟩
-  · rfl
-  · simp only [UB.some_bind]
-    by_cases h : l' = .exit
-    · subst h; simp only [↓reduceIte]; rfl
-    · simp only [h, ↓reduceIte]; rw [wp_BlockM_eq]
-  · simp only [UB.some_bind]; rw [wp_BlockM_eq]
-
-theorem cfgLoop_eq_cfgStep : cfgLoop ablock next = cfgStep ablock next (cfgLoop ablock next) := by
-  funext l
-  show (cfgFix ablock next l : σ → UB (Except CfgLabel Unit × σ)) = cfgStep ablock next _ l
-  funext s
-  rw [cfgFix]
-  rfl
-
 theorem admissible_wp_imp_fn (P : CfgLabel → (Unit → σ → Prop) → ((CfgLabel → σ → Prop) × EStack⟨⟩) → σ → Prop) :
     admissible fun f : CfgLabel → BlockM σ Unit => ∀ l Qa Ea s, wp (f l) Qa Ea s → P l Qa Ea s :=
   admissible_pi _ fun l => admissible_pi _ fun Qa => admissible_pi _ fun Ea => admissible_pi _ fun s =>
     admissible_apply (fun _ u => wp u Qa Ea s → P l Qa Ea s) l (admissible_wp_imp _ Ea s _)
+
+theorem wp_cfgStep_mono {f g : CfgLabel → BlockM σ Unit} {Ea Ea' : (CfgLabel → σ → Prop) × EStack⟨⟩}
+    (hf : ∀ l Qa s, wp (f l) Qa Ea s → wp (g l) Qa Ea' s) (hE : ∀ s, Ea.1 .exit s → Ea'.1 .exit s)
+    (l : CfgLabel) (Qa : Unit → σ → Prop) (s : σ) :
+    wp (cfgStep ablock next f l) Qa Ea s → wp (cfgStep ablock next g l) Qa Ea' s := by
+  intro hw
+  by_cases hl : l = .exit
+  · subst hl
+    rw [cfgStep_exit] at hw ⊢
+    exact hw
+  rw [wp_cfgStep _ _ _ hl] at hw ⊢
+  refine WP.wp_monotone (x := ablock l) (fun _ t ht => hf _ _ t ht) ?_ s hw
+  refine Prod.mk_le _ _ _ ?_ PartialOrder.rel_refl
+  intro l' t ht
+  by_cases h : l' = .exit
+  · subst h; simp only [↓reduceIte] at ht ⊢; exact hE t ht
+  · simp only [h, ↓reduceIte] at ht ⊢; exact hf _ _ t ht
 
 theorem wp_cfgLoop_epost {l : CfgLabel} {Qa : Unit → σ → Prop} {Ea Ea' : (CfgLabel → σ → Prop) × EStack⟨⟩}
     (hE : ∀ s, Ea.1 .exit s → Ea'.1 .exit s) {s : σ} :
@@ -105,40 +76,11 @@ theorem wp_cfgLoop_epost {l : CfgLabel} {Qa : Unit → σ → Prop} {Ea Ea' : (C
   have := cfgLoop_induct ablock next
     (fun f => ∀ l Qa s, wp (f l) Qa Ea s → wp (cfgLoop ablock next l) Qa Ea' s)
     (admissible_pi _ fun l => admissible_pi _ fun Qa => admissible_pi _ fun s =>
-      admissible_apply (fun _ u => wp u Qa Ea s → _) l (admissible_wp_imp _ Ea s _)) ?_
-  · exact this l Qa s
-  intro f ih l Qa s hw
-  by_cases hl : l = .exit
-  · subst hl
-    rw [cfgStep_exit] at hw
-    rw [cfgLoop_eq_cfgStep, cfgStep_exit]
-    exact hw
-  rw [wp_cfgStep _ _ _ hl] at hw
-  rw [cfgLoop_eq_cfgStep, wp_cfgStep _ _ _ hl]
-  refine WP.wp_monotone (x := ablock l) (fun _ t ht => ih _ _ t ht) ?_ s hw
-  refine Prod.mk_le _ _ _ ?_ PartialOrder.rel_refl
-  intro l' t ht
-  by_cases h : l' = .exit
-  · subst h; simp only [↓reduceIte] at ht ⊢; exact hE t ht
-  · simp only [h, ↓reduceIte] at ht ⊢; exact ih _ _ t ht
-
-theorem wp_cfgStep_imp (f : CfgLabel → BlockM σ Unit)
-    (ih : ∀ l Qa Ea s, wp (f l) Qa Ea s → wp (cfgLoop ablock next l) Qa Ea s) :
-    ∀ l Qa Ea s, wp (cfgStep ablock next f l) Qa Ea s → wp (cfgLoop ablock next l) Qa Ea s := by
-  intro l Qa Ea s hw
-  by_cases hl : l = .exit
-  · subst hl
-    rw [cfgStep_exit] at hw
-    rw [cfgLoop_eq_cfgStep, cfgStep_exit]
-    exact hw
-  rw [wp_cfgStep _ _ _ hl] at hw
-  rw [cfgLoop_eq_cfgStep, wp_cfgStep _ _ _ hl]
-  refine WP.wp_monotone (x := ablock l) (fun _ t ht => ih _ _ _ t ht) ?_ s hw
-  refine Prod.mk_le _ _ _ ?_ PartialOrder.rel_refl
-  intro l' t ht
-  by_cases h : l' = .exit
-  · subst h; simp only [↓reduceIte] at ht ⊢; exact ht
-  · simp only [h, ↓reduceIte] at ht ⊢; exact ih _ _ _ t ht
+      admissible_apply (fun _ u => wp u Qa Ea s → _) l (admissible_wp_imp _ Ea s _))
+    fun f ih l Qa s hw => by
+      rw [congrFun (cfgLoop_eq_cfgStep ablock next) l]
+      exact wp_cfgStep_mono ablock next ih hE l Qa s hw
+  exact this l Qa s
 
 def loopBody (l : CfgLabel) (_ : Unit) (_ : PUnit) : BlockM σ (ForInStep PUnit) :=
   tryCatch (ablock l >>= fun _ => cfgLoop ablock next (next l) >>= fun _ =>
@@ -188,7 +130,9 @@ theorem wp_cfgLoop_imp_loop {l : CfgLabel} (hl : l ≠ .exit) (Q : Unit → σ �
         admissible_apply (fun _ u => wp u Q E s → _) l (admissible_wp_imp _ E s _)))
   refine (this ?_).2 Q E s
   intro f ⟨ih1, ih2⟩
-  refine ⟨wp_cfgStep_imp ablock next f ih1, ?_⟩
+  refine ⟨fun l Qa Ea s hw => ?_, ?_⟩
+  · rw [congrFun (cfgLoop_eq_cfgStep ablock next) l]
+    exact wp_cfgStep_mono ablock next (ih1 · · Ea ·) (fun _ h => h) l Qa s hw
   intro Q E s hw
   rw [wp_cfgStep _ _ _ hl] at hw
   rw [FixLoop.wp_forIn_eq, wp_loopBody _ _ hl]
@@ -233,23 +177,14 @@ theorem cfgLoop_eq_loop {l : CfgLabel} (hl : l ≠ .exit) :
     cfgLoop ablock next l = FixLoop.mk.forIn PUnit.unit (loopBody ablock next l) :=
   BlockM.ext_wp (wp_cfgLoop_imp_loop ablock next hl) (wp_loop_imp_cfgLoop ablock next hl)
 
-theorem cfgLoop_label (L : Label) :
-    cfgLoop ablock next (.label L) = FixLoop.mk.forIn PUnit.unit (fun _ _ =>
-      tryCatch (ablock (.label L) >>= fun _ => cfgLoop ablock next (next (.label L)) >>= fun _ =>
+theorem cfgLoop_eq_repeat {l : CfgLabel} (hl : l ≠ .exit) :
+    cfgLoop ablock next l = FixLoop.mk.forIn PUnit.unit (fun _ _ =>
+      tryCatch (ablock l >>= fun _ => cfgLoop ablock next (next l) >>= fun _ =>
           pure (ForInStep.done PUnit.unit))
-        (fun l' => if l' = .label L then pure (ForInStep.yield PUnit.unit)
+        (fun l' => if l' = l then pure (ForInStep.yield PUnit.unit)
           else if l' = .exit then throw .exit
           else cfgLoop ablock next l' >>= fun _ => pure (ForInStep.done PUnit.unit))) :=
-  cfgLoop_eq_loop ablock next (l := .label L) (by simp)
-
-theorem cfgLoop_entry :
-    cfgLoop ablock next .entry = FixLoop.mk.forIn PUnit.unit (fun _ _ =>
-      tryCatch (ablock .entry >>= fun _ => cfgLoop ablock next (next .entry) >>= fun _ =>
-          pure (ForInStep.done PUnit.unit))
-        (fun l' => if l' = .entry then pure (ForInStep.yield PUnit.unit)
-          else if l' = .exit then throw .exit
-          else cfgLoop ablock next l' >>= fun _ => pure (ForInStep.done PUnit.unit))) :=
-  cfgLoop_eq_loop ablock next (l := .entry) (by simp)
+  cfgLoop_eq_loop ablock next hl
 
 theorem cfgLoop_exit : cfgLoop ablock next .exit = pure () := by
   rw [cfgLoop_eq_cfgStep, cfgStep_exit]
@@ -276,23 +211,22 @@ theorem tryCatch_bind_assoc {α γ : Type} (x : BlockM σ α) (f : α → BlockM
     tryCatch ((x >>= f) >>= k) h = tryCatch (x >>= fun a => f a >>= k) h := by
   rw [bind_assoc]
 
-theorem tryCatch_pure_bind {α : Type} (a : α) (k : α → BlockM σ β) (h : CfgLabel → BlockM σ β) :
-    tryCatch (pure a >>= k) h = tryCatch (k a) h := by
-  rw [pure_bind]
-
 theorem tryCatch_pure (b : β) (h : CfgLabel → BlockM σ β) : tryCatch (pure b : BlockM σ β) h = pure b := by
   apply BlockM.ext_wp <;> intro Q E s <;> simp only [wp_tryCatch_block, WPMonadExact.wp_pure_eq] <;>
     exact id
-
-theorem tryCatch_throw (l : CfgLabel) (h : CfgLabel → BlockM σ β) :
-    tryCatch (throw l : BlockM σ β) h = h l := by
-  apply BlockM.ext_wp <;> intro Q E s <;> simp only [wp_tryCatch_block, wp_throw_block] <;> exact id
 
 theorem tryCatch_modifyIf_bind (g : σ → Prop) (f : σ → σ) (k : Unit → BlockM σ β)
     (h : CfgLabel → BlockM σ β) :
     tryCatch (AInstr.modifyIf g f >>= k) h = AInstr.modifyIf g f >>= fun a => tryCatch (k a) h := by
   apply BlockM.ext_wp <;> intro Q E s <;>
     simp only [wp_tryCatch_block, WPMonadExact.wp_bind_eq, AInstr.wp_modifyIf] <;> exact id
+
+theorem tryCatch_exitIf_bind (g : σ → Prop) (f : σ → σ) (l : CfgLabel) (k : Unit → BlockM σ β)
+    (h : CfgLabel → BlockM σ β) (hh : h l = throw l) :
+    tryCatch (AInstr.exitIf g f l >>= k) h = AInstr.exitIf g f l >>= k := by
+  apply BlockM.ext_wp <;> intro Q E s <;>
+    simp only [wp_tryCatch_block, WPMonadExact.wp_bind_eq, AInstr.wp_exitIf, hh, wp_throw_block] <;>
+    exact id
 
 def condState (c : σ → Bool) (x y : BlockM σ β) : BlockM σ β :=
   get >>= fun st => if c st then x else y
@@ -315,10 +249,6 @@ def toDone (x : BlockM σ PUnit) : BlockM σ (ForInStep PUnit) :=
 
 theorem pure_done_eq : (pure (ForInStep.done PUnit.unit) : BlockM σ (ForInStep PUnit)) = toDone (pure ()) := by
   rw [toDone, pure_bind]
-
-theorem throw_eq_toDone (l : CfgLabel) : (throw l : BlockM σ (ForInStep PUnit)) = toDone (throw l) := by
-  apply BlockM.ext_wp <;> intro Q E s <;> simp only [toDone, WPMonadExact.wp_bind_eq, wp_throw_block] <;>
-    exact id
 
 theorem bind_toDone {α : Type} (x : BlockM σ α) (y : BlockM σ PUnit) :
     (x >>= fun _ => toDone y) = toDone (x >>= fun _ => y) := by
@@ -349,52 +279,6 @@ theorem Table.get_cons {κ β : Type} [DecidableEq κ] [Inhabited β] (k k' : κ
 
 theorem CfgLabel.label_eq_label (a b : Label) : (CfgLabel.label a = CfgLabel.label b) = (@Eq String a b) := by
   simp
-
-theorem CfgLabel.label_eq_exit (a : Label) : (CfgLabel.label a = .exit) = False := by simp
-theorem CfgLabel.exit_eq_label (a : Label) : (CfgLabel.exit = .label a) = False := by simp
-theorem CfgLabel.label_eq_entry (a : Label) : (CfgLabel.label a = .entry) = False := by simp
-theorem CfgLabel.entry_eq_label (a : Label) : (CfgLabel.entry = .label a) = False := by simp
-theorem CfgLabel.entry_eq_exit : (CfgLabel.entry = .exit) = False := by simp
-theorem CfgLabel.exit_eq_entry : (CfgLabel.exit = .entry) = False := by simp
-theorem CfgLabel.eq_self (l : CfgLabel) : (l = l) = True := by simp
-
-/-! ## The steps of the example -/
-
-namespace AInstr
-variable {β : Type} (k : Unit → BlockM MachineData β) (h : CfgLabel → BlockM MachineData β)
-
-theorem tryCatch_movRegSib8_bind (r b i : Reg64) (d : Int64) :
-    tryCatch (movRegSib8 r b i d >>= k) h = movRegSib8 r b i d >>= fun a => tryCatch (k a) h :=
-  tryCatch_modifyIf_bind _ _ k h
-theorem tryCatch_addRegSib8_bind (rd b i : Reg64) (d : Int64) :
-    tryCatch (addRegSib8 rd b i d >>= k) h = addRegSib8 rd b i d >>= fun a => tryCatch (k a) h :=
-  tryCatch_modifyIf_bind _ _ k h
-theorem tryCatch_movSib8Reg_bind (b i : Reg64) (d : Int64) (rs : Reg64) :
-    tryCatch (movSib8Reg b i d rs >>= k) h = movSib8Reg b i d rs >>= fun a => tryCatch (k a) h :=
-  tryCatch_modifyIf_bind _ _ k h
-theorem tryCatch_incReg_bind (r : Reg64) :
-    tryCatch (incReg r >>= k) h = incReg r >>= fun a => tryCatch (k a) h :=
-  tryCatch_modifyIf_bind _ _ k h
-theorem tryCatch_xorReg32Reg32_bind (rd rs : Reg64) :
-    tryCatch (xorReg32Reg32 rd rs >>= k) h = xorReg32Reg32 rd rs >>= fun a => tryCatch (k a) h :=
-  tryCatch_modifyIf_bind _ _ k h
-theorem tryCatch_cmpJcc_bind (ra rb : Reg64) (cc : CondCode) (l : Label) :
-    tryCatch (cmpJcc ra rb cc l >>= k) h
-      = condState (fun st => cc.cmp (st.regs.get64 ra) (st.regs.get64 rb)) (h (.label l))
-          (tryCatch (k ()) h) :=
-  tryCatch_branch_bind _ _ k h
-theorem tryCatch_testJcc_bind (ra rb : Reg64) (cc : CondCode) (l : Label) :
-    tryCatch (testJcc ra rb cc l >>= k) h
-      = condState (fun st => cc.cmp (st.regs.get64 ra &&& st.regs.get64 rb) 0) (h (.label l))
-          (tryCatch (k ()) h) :=
-  tryCatch_branch_bind _ _ k h
-
-theorem tryCatch_ret_bind (hh : h .exit = throw .exit) : tryCatch (ret >>= k) h = ret >>= k := by
-  apply BlockM.ext_wp <;> intro Q E s <;>
-    simp only [wp_tryCatch_block, WPMonadExact.wp_bind_eq, ret, wp_exitIf, hh, wp_throw_block] <;>
-    exact id
-
-end AInstr
 
 theorem tryCatch_table_get_bind {σ α β : Type} [Inhabited (BlockM σ α)] (k k' : CfgLabel) (c : BlockM σ α)
     (t : Table CfgLabel (BlockM σ α)) (K : α → BlockM σ β) (h : CfgLabel → BlockM σ β) :

@@ -20,7 +20,7 @@ attribute [local vcgen_simp] zipWithAdd
 
 simp_def zipWithAddN [Host] [FunDecls] [Embeds zipWithAdd] (s : MachineData) (ra : Int64) :
     BlockM MachineData Unit from zipWithAddA s ra
-  using [zipWithAddA, bind_pure_unit, Ascent.bind_seq_assoc, testJcc, cmpJcc]
+  using [zipWithAddA, bind_pure_unit, Ascent.bind_seq_assoc]
 
 ascend_def zipWithAddS' [Host] [FunDecls] [Embeds zipWithAdd] (s : MachineData) (ra : Int64) :
     BlockM MachineData Unit from
