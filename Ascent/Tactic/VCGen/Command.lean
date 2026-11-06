@@ -118,4 +118,51 @@ elab_rules : command
       type := ← mkForallFVars xs (← mkEq c (mkAppN (mkConst name.getId) xs)),
       value := ← mkLambdaFVars xs proof }
 
+syntax (name := symSimpDefCmd)
+  "sym_simp_def " ident bracketedBinder* " : " term " from " term
+    " using " &"pre " "[" ident,* "]" &" post " "[" ident,* "]" : command
+
+def symSimpTheorems (ids : Array Ident) : MetaM Sym.Simp.Theorems := do
+  let mut thms : Sym.Simp.Theorems := {}
+  for id in ids do
+    for thm in ← Sym.Simp.mkTheoremsFromDecl (← realizeGlobalConstNoOverload id) do
+      thms := thms.insert thm
+  return thms
+
+/-- `sym_simp_def f xs : T from c using pre [ps] post [qs]` defines `f : ∀ xs, T` as `c` simplified by
+`Sym.simp`, rewriting with `ps` before and with `qs` and the `vcgen_simp` set after visiting the
+subterms of a term, and proves `f.eq : ∀ xs, c = f xs`. -/
+elab_rules : command
+  | `(sym_simp_def $name $binders* : $type from $c using pre [$pres,*] post [$posts,*]) =>
+    liftTermElabM <| Term.elabBinders binders fun xs => do
+    let T ← elabType type
+    let c ← Term.elabTermEnsuringType c T
+    synthesizeSyntheticMVarsNoPostponing
+    let c ← instantiateMVars c
+    let preThms ← symSimpTheorems pres.getElems
+    let postThms ← symSimpTheorems posts.getElems
+    let vcThms ← vcgenSimpExt.getTheorems
+    let (value, proof) ← Sym.SymM.run do
+      let c ← Sym.shareCommon c
+      let methods : Sym.Simp.Methods :=
+        { pre := Sym.Simp.beta >> Sym.Simp.reduceProj >> Sym.Simp.reduceMatcher >>
+            Sym.Simp.reduceControl >> preThms.rewrite Sym.Simp.dischargeSimpSelf
+          post := Sym.Simp.evalGround >> vcThms.rewrite >>
+            postThms.rewrite Sym.Simp.dischargeSimpSelf }
+      let (r, _) ← Sym.Simp.SimpM.run (Sym.Simp.simp c) methods
+      match r with
+      | .rfl .. => return (c, ← mkEqRefl c)
+      | .step e h .. => return (e, h)
+    let value ← instantiateMVars value
+    if value.hasMVar then throwError "sym_simp_def: the simplified program has holes:{indentExpr value}"
+    addDecl <| .defnDecl {
+      name := name.getId, levelParams := [], type := ← mkForallFVars xs T,
+      value := ← mkLambdaFVars xs value, hints := .regular 0, safety := .safe }
+    enableRealizationsForConst name.getId
+    let proof ← instantiateMVars proof
+    addDecl <| .thmDecl {
+      name := name.getId ++ `eq, levelParams := [],
+      type := ← mkForallFVars xs (← mkEq c (mkAppN (mkConst name.getId) xs)),
+      value := ← mkLambdaFVars xs proof }
+
 end Lean.Elab.Tactic.VCGen.Ascend

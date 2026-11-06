@@ -10,3 +10,5 @@ import Demo.Loops
 import Demo.ZipL
 import Demo.ZipPure
 import Demo.Walkthrough
+import Demo.CfgRewrite
+import Demo.ZipStruct
