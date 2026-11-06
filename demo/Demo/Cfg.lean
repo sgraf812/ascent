@@ -177,6 +177,49 @@ theorem UB.bind_eq_some {α β : Type} (x : UB α) (f : α → UB β) (b : β) :
 theorem UB.map_eq_some {α β : Type} (g : α → β) (x : UB α) (b : β) :
     (g <$> x) = some b ↔ ∃ a, x = some a ∧ g a = b := Option.map_eq_some_iff
 
+section
+variable {σ α : Type}
+
+theorem wp_get_bind (k : σ → BlockM σ α) (Q : α → σ → Prop) (E : (CfgLabel → σ → Prop) × EStack⟨⟩)
+    (s : σ) : wp (get >>= k) Q E s = wp (k s) Q E s := by
+  rw [wp_BlockM_eq, wp_BlockM_eq]
+  rfl
+
+theorem wp_get (Q : σ → σ → Prop) (E : (CfgLabel → σ → Prop) × EStack⟨⟩) (s : σ) :
+    wp (get : BlockM σ σ) Q E s = Q s s := by
+  rw [wp_BlockM_eq]
+  rfl
+
+theorem wp_throw_block (l : CfgLabel) (Q : α → σ → Prop) (E : (CfgLabel → σ → Prop) × EStack⟨⟩)
+    (s : σ) : wp (throw l : BlockM σ α) Q E s = E.1 l s := by
+  rw [wp_BlockM_eq]
+  rfl
+
+theorem wp_tryCatch_block (x : BlockM σ α) (h : CfgLabel → BlockM σ α) (Q : α → σ → Prop)
+    (E : (CfgLabel → σ → Prop) × EStack⟨⟩) (s : σ) :
+    wp (tryCatch x h) Q E s = wp x Q (fun l => wp (h l) Q E, E.2) s := by
+  rw [wp_BlockM_eq, wp_BlockM_eq]
+  show (match (ExceptT.tryCatch x h).run.run s with
+    | none => False | some (.ok a, st') => Q a st' | some (.error e, st') => E.1 e st') = _
+  simp only [ExceptT.tryCatch, ExceptT.run_mk, StateT.run_bind]
+  rw [show StateT.run x s = x.run.run s from rfl]
+  rcases hx : x.run.run s with _ | ⟨l | a, s'⟩
+  · rfl
+  · simp only [UB.some_bind]
+    rw [wp_BlockM_eq]
+    rfl
+  · rfl
+
+theorem admissible_wp_imp (Q : α → σ → Prop) (E : (CfgLabel → σ → Prop) × EStack⟨⟩) (s : σ)
+    (R : Prop) : Lean.Order.admissible fun u : BlockM σ α => wp u Q E s → R := by
+  intro ch hch hall hw
+  have := WPCont.wp_csup (Prog := BlockM σ α) hch Q E s hw
+  simp only [iSup_apply, iSup_prop_eq_exists] at this
+  obtain ⟨⟨u, hu⟩, hwu⟩ := this
+  exact hall u hu hwu
+
+end
+
 
 /-- The fixpoint, at the state-passing type that carries the `CCPO`. -/
 def cfgFix {Aσ : Type} (ablock : CfgLabel → BlockM Aσ Unit) (next : CfgLabel → CfgLabel)

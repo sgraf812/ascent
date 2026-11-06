@@ -1,4 +1,5 @@
-import Demo.Loops
+import Demo.L1
+import Ascent.FixLoop
 
 /-!
 # Structuring a block loop by rewriting
@@ -246,6 +247,11 @@ theorem tryCatch_branch_bind (c : σ → Bool) (l : CfgLabel) (k : Unit → Bloc
 
 def toDone (x : BlockM σ PUnit) : BlockM σ (ForInStep PUnit) :=
   x >>= fun _ => pure (ForInStep.done PUnit.unit)
+
+theorem wp_toDone (x : BlockM σ PUnit) (Q : ForInStep PUnit → σ → Prop)
+    (E : (CfgLabel → σ → Prop) × EStack⟨⟩) (s : σ) :
+    wp (toDone x) Q E s = wp x (fun _ => Q (.done PUnit.unit)) E s := by
+  simp only [toDone, WPMonadExact.wp_bind_eq, WPMonadExact.wp_pure_eq]
 
 theorem pure_done_eq : (pure (ForInStep.done PUnit.unit) : BlockM σ (ForInStep PUnit)) = toDone (pure ()) := by
   rw [toDone, pure_bind]

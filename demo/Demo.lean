@@ -2,13 +2,9 @@ import Demo.Kraken
 import Demo.Cfg
 import Demo.L1
 import Demo.Zip
+import Demo.CfgRewrite
+import Demo.ZipStruct
 import Demo.Words
-import Demo.Structure
-import Demo.ZipS
-import Demo.ZipSynth
-import Demo.Loops
 import Demo.ZipL
 import Demo.ZipPure
 import Demo.Walkthrough
-import Demo.CfgRewrite
-import Demo.ZipStruct

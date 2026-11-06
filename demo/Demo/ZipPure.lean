@@ -6,7 +6,7 @@ import Demo.Words
 
 `wp_zipWithAddL` states the result of `zipWithAddL` as the pure function `List.zipWith (· + ·)` on
 the arrays it reads, and `zipWithAdd_correct` carries it back to the x64 text through
-`zipWithAddS` and the first layer.
+`zipWithAddT` and the first refinement.
 -/
 
 open Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
@@ -45,9 +45,11 @@ theorem wp_zipWithAddL {m : DataMem} {A B O rsp : BitVec 64} {n : Nat} (h : ZipA
         let x ← load8 (B + __s * 8)
         let y ← load8 (A + __s * 8)
         store8 rsp (O + __s * 8) (y + x)
-        if (!CondCode.cmp .nz (BitVec.ofNat 64 n) (__s + 1)) = true then pure (ForInStep.done (__s + 1))
-          else pure (ForInStep.yield (__s + 1)))
-        (fun _ => wp (retAt rsp) (fun _ _ => False)
+        if CondCode.cmp .nz (BitVec.ofNat 64 n) (__s + 1) = true then pure (ForInStep.yield (__s + 1))
+          else do
+            retAt rsp
+            pure (ForInStep.done (__s + 1)))
+        (fun _ => wp (pure () : BlockM DataMem Unit) (fun _ _ => False)
           (fun l m' => l = .exit ∧ words m' O n = List.zipWith (· + ·) (words m A n) (words m B n),
             estack⟨⟩))
         (fun l m' => l = .exit ∧ words m' O n = List.zipWith (· + ·) (words m A n) (words m B n),
@@ -74,8 +76,8 @@ theorem wp_zipWithAddL {m : DataMem} {A B O rsp : BitVec 64} {n : Nat} (h : ZipA
       ⟨Mem.Mapped.loadInt_isSome (stores_mapped h.mapO k) (cell_inside hk hlen),
         Mem.Blocks.Disjoint.of_inside_right_pair h.disjR (cell_inside hk hlen)⟩, ?_⟩
     by_cases hkn : k + 1 = n
-    · simp only [hkn, ne_eq, not_true_eq_false, decide_false, Bool.not_false, ↓reduceIte,
-        WPMonadExact.wp_pure_eq, wp_retAt]
+    · simp only [hkn, ne_eq, not_true_eq_false, decide_false, Bool.false_eq_true, ↓reduceIte,
+        WPMonadExact.wp_bind_eq, wp_retAt]
       have hslot : Mem.loadInt (stores m A B O n) rsp 8 = Mem.loadInt m rsp 8 :=
         loadInt_stores_of_disjoint n fun i hi =>
           Mem.Blocks.Disjoint.of_inside_right_pair h.disjR (cell_inside hi hlen)
@@ -83,8 +85,7 @@ theorem wp_zipWithAddL {m : DataMem} {A B O rsp : BitVec 64} {n : Nat} (h : ZipA
       refine ⟨by rw [hslot]; exact h.ret, trivial, ?_⟩
       rw [hkn]
       exact words_stores_out hlen
-    · simp only [hkn, ne_eq, not_false_eq_true, decide_true, Bool.not_true, Bool.false_eq_true,
-        ↓reduceIte, WPMonadExact.wp_pure_eq]
+    · simp only [hkn, ne_eq, not_false_eq_true, decide_true, ↓reduceIte, WPMonadExact.wp_pure_eq]
       rw [ofNat_succ]
       exact ih (n - (k + 1)) (by omega) (k + 1) rfl (by omega)
 
@@ -135,11 +136,10 @@ theorem zipWithAdd_correct (s : MachineData) (ra : Int64) {A B O : BitVec 64} {n
     (fun l m' => l = .exit ∧ words m' O n = List.zipWith (· + ·) (words t₀.dmem A n) (words t₀.dmem B n),
       estack⟨⟩)
   have hL := wp_zipWithAddL hmem
-  have hS := wp_zipWithAddS_of_L (rdi := A) (rsi := B) (rdx := O) (rcx := BitVec.ofNat 64 n)
+  have hS := wp_zipWithAddT_of_L s ra (rdi := A) (rsi := B) (rdx := O) (rcx := BitVec.ofNat 64 n)
     (rsp := rsp) (fun _ _ => False) Ea (abs t₀) ⟨hrdi, hrsi, hrdx, hrcx, rfl, rfl⟩ hL
-  have hA := wp_zipWithAddA_of_S s ra _ _ (abs t₀) hS
-  have hT := Refinement.transport (zipWithAddA.refines s ra)
-    (Pa := (· = abs t₀)) ⟨fun t ht => by subst ht; exact hA⟩
+  have hT := Refinement.transport (zipWithAddT.refines s ra)
+    (Pa := (· = abs t₀)) ⟨fun t ht => by subst ht; exact hS⟩
   refine ⟨fun t ht => ?_⟩
   refine WP.wp_monotone (x := zipWithAdd) ?_ ?_ t (hT.le_wp t ?_)
   · intro _ _ _

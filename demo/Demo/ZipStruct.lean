@@ -1,6 +1,15 @@
 import Demo.CfgRewrite
 import Demo.Zip
 
+/-!
+# The structured program of `zipWithAdd`
+
+`zipWithAddT` is the block loop `zipWithAddA` rewritten by the equations of `Demo.CfgRewrite`: the
+entry test is a `condState`, the loop block a `repeat'` loop that continues on its jump to itself,
+and the return block ends both branches. `zipWithAddT.refines` is the refinement of `zipWithAddA`,
+rewritten along `zipWithAddT.eq`.
+-/
+
 open Std.WP Lean.Order Ascent Ascent.Kraken.AInstr
 open Ascent.Concretization (ofStateRepr)
 open scoped Program.WP
@@ -15,12 +24,8 @@ sym_simp_def zipWithAddT [Host] [FunDecls] [Embeds zipWithAdd] (s : MachineData)
   post [zipWithAddA, zipWithAdd, cfgLoop_exit, cfgLoop_eq_repeat,
     CfgLabel.label_eq_label, bind_pure_unit, pure_done_eq, bind_toDone, condState_toDone, forIn_toDone]
 
-#print zipWithAddT
-
 theorem zipWithAddT.refines [Host] [FunDecls] [Embeds zipWithAdd] (s : MachineData) (ra : Int64) :
     ⦃(· = s.push64 ra)⦄ zipWithAdd ⪯[ofStateRepr abs] (zipWithAddT s ra) ⦃fun _ _ => ⊤; RetRel s ra⦄ :=
   zipWithAddT.eq s ra ▸ zipWithAddA.refines s ra
-
-#print axioms zipWithAddT.refines
 
 end Ascent.Kraken
