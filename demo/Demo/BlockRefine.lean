@@ -260,4 +260,49 @@ theorem refines_cfgLoop
           (by simp only [meet_apply, meet_prop_eq_and]; exact ⟨hpre, hg'⟩)
 end
 
+/-! ## Total correctness of the loop
+
+`wp_cfgLoop_of_inv` proves a `wp` of `cfgLoop` from an invariant `I` at every label and a variant
+`V` that every step to a label other than `.exit` decreases. -/
+
+section
+variable {σ : Type} (ablock : CfgLabel → BlockM σ Unit) (next : CfgLabel → CfgLabel)
+  (Qa : Unit → σ → Prop) (Ea : (CfgLabel → σ → Prop) × EStack⟨⟩)
+
+theorem wp_cfgLoop_of_inv (I : CfgLabel → σ → Prop) (V : CfgLabel → σ → Nat)
+    (hexit : ∀ s, I .exit s → Qa () s)
+    (hstep : ∀ l s, l ≠ .exit → I l s →
+      wp (ablock l)
+        (fun _ s' => I (next l) s' ∧ (next l ≠ .exit → V (next l) s' < V l s))
+        (fun l' s' => if l' = .exit then Ea.1 .exit s' else I l' s' ∧ V l' s' < V l s, Ea.2) s) :
+    ∀ l s, I l s → wp (cfgLoop ablock next l) Qa Ea s := by
+  intro l s
+  induction h : V l s using Nat.strongRecOn generalizing l s with
+  | _ v ih =>
+    intro hI
+    by_cases hl : l = .exit
+    · subst hl
+      rw [wp_cfgLoop_exit]
+      exact hexit s hI
+    · rw [wp_cfgLoop _ _ _ _ _ hl]
+      refine WP.wp_monotone (x := ablock l) ?_ ?_ s (hstep l s hl hI)
+      · rintro _ s' ⟨hI', hV⟩
+        by_cases hn : next l = .exit
+        · rw [hn] at hI' ⊢
+          rw [wp_cfgLoop_exit]
+          exact hexit s' hI'
+        · exact ih _ (h ▸ hV hn) (next l) s' rfl hI'
+      · refine Prod.mk_le _ _ _ ?_ PartialOrder.rel_refl
+        intro l' s' h'
+        by_cases hx : l' = .exit
+        · subst hx
+          simp only [↓reduceIte] at h'
+          simp only [cfgEPosts, ↓reduceIte]
+          exact h'
+        · simp only [hx, ↓reduceIte] at h'
+          simp only [cfgEPosts, hx, ↓reduceIte]
+          exact ih _ (h ▸ h'.2) l' s' rfl h'.1
+
+end
+
 end Ascent.Kraken
