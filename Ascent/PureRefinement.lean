@@ -45,6 +45,10 @@ theorem PureRefinement.of_val_eq {av' : AV} (h : PureRefinement cv av P Q) (e : 
     PureRefinement cv av' P Q :=
   e ▸ h
 
+theorem PureRefinement.of_cv_eq {cv' : CV} (h : PureRefinement cv' av P Q) (e : cv = cv') :
+    PureRefinement cv av P Q :=
+  e ▸ h
+
 theorem PureRefinement.funRel {f : CV → AV} : PureRefinement cv (f cv) True (FunRel f) :=
   PureRefinement.of_rel rfl
 

@@ -4,6 +4,8 @@ import Demo.L1
 import Demo.Zip
 import Demo.CfgRewrite
 import Demo.ZipStruct
+import Demo.Lift
+import Demo.LiftTest
 import Demo.Words
 import Demo.ZipL
 import Demo.ZipPure

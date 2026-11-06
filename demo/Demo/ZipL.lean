@@ -1,4 +1,4 @@
-import Demo.ZipStruct
+import Demo.Lift
 
 /-!
 # `zipWithAdd` with its registers lifted
@@ -12,49 +12,6 @@ from the return slot at `rsp`, and the return needs a mapped return slot.
 open Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
 
 namespace Ascent.Kraken
-
-/-! ## Memory steps -/
-
-/-- The eight-byte word at `a`, undefined behaviour when the cell is not mapped. -/
-noncomputable def load8 (a : BitVec 64) : BlockM DataMem (BitVec 64) := fun m =>
-  UB.guardRet ((Mem.loadInt m a 8).isSome = true) (.ok (BitVec.ofInt 64 (Mem.loadInt m a 8).get!), m)
-
-/-- Store the word `v` at `a`, undefined behaviour unless the cell is mapped and apart from the
-return slot at `rsp`. -/
-noncomputable def store8 (rsp a v : BitVec 64) : BlockM DataMem Unit :=
-  modifyIf (fun m => (Mem.loadInt m a 8).isSome = true ∧ Mem.Blocks.Disjoint [(rsp, 8)] [(a, 8)])
-    fun m => Mem.storeInt m a 8 v.toInt
-
-/-- Return through the return slot at `rsp`. -/
-noncomputable def retAt (rsp : BitVec 64) : BlockM DataMem Unit :=
-  exitIf (fun m => (Mem.loadInt m rsp 8).isSome = true) id .exit
-
-section
-variable (Q : BitVec 64 → DataMem → Prop) (Qu : Unit → DataMem → Prop)
-  (E : (CfgLabel → DataMem → Prop) × EStack⟨⟩) (m : DataMem)
-
-theorem wp_load8 (a : BitVec 64) :
-    wp (load8 a) Q E m
-      = ((Mem.loadInt m a 8).isSome = true ∧ Q (BitVec.ofInt 64 (Mem.loadInt m a 8).get!) m) := by
-  rw [wp_BlockM_eq, show (load8 a).run.run m = load8 a m from rfl, load8]
-  by_cases h : (Mem.loadInt m a 8).isSome = true
-  · rw [UB.guardRet_of_pos h]
-    simp only [h, true_and]
-    rfl
-  · rw [UB.guardRet_of_neg h, UB.fail_eq]
-    simp only [Bool.not_eq_true] at h
-    simp [h]
-
-theorem wp_store8 (rsp a v : BitVec 64) :
-    wp (store8 rsp a v) Qu E m
-      = (((Mem.loadInt m a 8).isSome = true ∧ Mem.Blocks.Disjoint [(rsp, 8)] [(a, 8)])
-          ∧ Qu () (Mem.storeInt m a 8 v.toInt)) := wp_modifyIf _ _ _ _ _
-
-theorem wp_retAt (rsp : BitVec 64) :
-    wp (retAt rsp) Qu E m = ((Mem.loadInt m rsp 8).isSome = true ∧ E.1 .exit m) :=
-  wp_exitIf _ _ _ _ _ _
-
-end
 
 /-! ## The lifted program -/
 

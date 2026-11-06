@@ -1,5 +1,6 @@
 import Lean.Elab.Tactic.VCGen.Context
 import Lean.Elab.Tactic.VCGen.Util
+import Lean.Elab.Tactic.VCGen.Entails
 import Lean.Meta.Sym.Grind
 import Ascent.PureRefinement
 
@@ -7,14 +8,18 @@ import Ascent.PureRefinement
 # The `PureRefinement` solver
 
 `@[ascend_pure]` registers a rule whose conclusion is `PureRefinement cv av P Q`, keyed on `cv`.
-Each environment entry `hx : PureRefinement c x True Q` of the local context, which
-`Refinement.pure_rel` introduces at each bind, contributes two backward rules: `hx` itself, keyed
-on `c`, and `PureRefinement.rel hx : Q c x`, keyed on its type.
+Each environment entry `hx : PureRefinement c x True Q` contributes two backward rules: `hx`
+itself, keyed on `c`, and `PureRefinement.rel hx : Q c x`, keyed on its type. The entries are the
+hypotheses of the local context in the `simp` normal form of the run, and the conjuncts of such
+hypotheses. `Refinement.pure_rel` introduces an entry at each bind, with a variable `c`. An entry
+with a compound `c`, such as the register read `t.regs.get64 .rsi` of a state `t`, abstracts that
+term.
 
-The solver closes a goal `PureRefinement cv ?av ?P Q` by recursion over `cv`. It applies the
+The solver closes a goal `PureRefinement cv ?av ?P Q` by recursion over `cv`, at the `simp`
+normal form of each `cv`, and also under a `⊤ ⊑` precondition. It applies the
 environment rules for `cv` and then the `@[ascend_pure]` rules by priority, solves the premises in
 order, and backtracks to the next rule when a premise fails. A rule without premises applies only
-if its abstract value mentions no concrete variable `c` of an environment entry.
+if its abstract value mentions no free variable of the `c` of an environment entry.
 
 The solver solves the goal at a fresh precondition `?P₀`, simplifies `?P₀` to `P` with the `simp`
 methods of the run, and assigns `?P := P`. A verification condition `Q c x` closes by the rule
@@ -79,10 +84,31 @@ structure PureEnv where
 
 initialize pureEnvExt : SymExtension PureEnv ← registerSymExtension (pure {})
 
-/-- Add the rules of the local declarations that the environment has not seen. A local context
-extends a context that the environment scanned, so the scan stops at the last declaration that it
-has seen. -/
-def updatePureEnv : SymM PureEnv := do
+/-- Simplify `e` with the `simp` methods of the run. Returns the result and a proof of
+`e = result`, or `none` if `simp` makes no progress. -/
+def simpRun (e : Expr) : VCGenM (Expr × Option Expr) := do
+  let some methods := (← read).simpMethods | return (e, none)
+  let (result, simpState') ← Sym.Simp.SimpM.run (Sym.Simp.simp e) methods {} (← get).simpState
+  modify fun s => { s with simpState := simpState' }
+  match result with
+  | .rfl .. => return (e, none)
+  | .step e' proof .. => return (← shareCommon e', some (← shareCommon proof))
+
+/-- The entries `PureRefinement c x True Q` that the proof `h : type` contains, with their proofs:
+`h` itself, and the entries of both sides of a conjunction. -/
+partial def pureEntries (type h : Expr) : SymM (Array (Expr × Expr)) := do
+  let type ← instantiateMVarsS type
+  if type.isAppOfArity ``Ascent.PureRefinement 6 && type.getArg! 4 matches .const ``True _ then
+    return #[(type, h)]
+  let_expr And a b := type | return #[]
+  let ha ← mkAppNS (← mkConstS ``And.left []) #[a, b, h]
+  let hb ← mkAppNS (← mkConstS ``And.right []) #[a, b, h]
+  return (← pureEntries a ha) ++ (← pureEntries b hb)
+
+/-- Add the rules of the local declarations that the environment has not seen. The entries of a
+hypothesis are read from its type in the `simp` normal form of the run. A local context extends a
+context that the environment scanned, so the scan stops at the last declaration that it has seen. -/
+def updatePureEnv : VCGenM PureEnv := do
   let lctx ← getLCtx
   let mut env ← pureEnvExt.getState
   let mut i := lctx.decls.size
@@ -91,32 +117,48 @@ def updatePureEnv : SymM PureEnv := do
     let some decl := lctx.decls[i]! | continue
     if env.seen.contains decl.fvarId then break
     env := { env with seen := env.seen.insert decl.fvarId }
+    if decl.isImplementationDetail then continue
     let type ← instantiateMVarsS decl.type
-    unless type.isAppOfArity ``Ascent.PureRefinement 6 && type.getArg! 4 matches .const ``True _ do
-      continue
-    let .fvar c := type.getArg! 2 | continue
-    -- The pattern builders infer the type of `hx`, and the declared type can mention assigned
-    -- metavariables, so `hx` is stated at its instantiated type.
-    let hx ← mkAppNS (← mkConstS ``id [0]) #[type, ← mkFVarS decl.fvarId]
-    let (key, _) ← Sym.mkPatternFromExprWithKey hx [] selectCV
-    let entry : PureRule := { key, rule := ← (← mkBackwardRuleFromExpr hx).shareCommon }
-    let args := type.getAppArgs
-    let rel ← mkAppNS (← mkConstS ``Ascent.PureRefinement.rel type.getAppFn.constLevels!)
-      #[args[0]!, args[1]!, args[2]!, args[3]!, args[5]!, hx]
-    let relRule ← (← mkBackwardRuleFromExpr rel).shareCommon
-    env := { env with
-      keys := env.keys.insert c
-      entries := Sym.insertPattern env.entries entry.key entry
-      rels := Sym.insertPattern env.rels relRule.pattern { key := relRule.pattern, rule := relRule } }
+    unless (← Sym.inferType type).isProp do continue
+    let h ← mkFVarS decl.fvarId
+    let (type', e?) ← simpRun type
+    let h ← match e? with
+      | some e => mkAppNS (← mkConstS ``Eq.mp [0]) #[type, type', e, h]
+      | none => pure h
+    for (type, h) in ← pureEntries type' h do
+      let c := type.getArg! 2
+      -- The pattern builders infer the type of `hx`, and the declared type can mention assigned
+      -- metavariables, so `hx` is stated at its instantiated type.
+      let hx ← mkAppNS (← mkConstS ``id [0]) #[type, h]
+      let (key, _) ← Sym.mkPatternFromExprWithKey hx [] selectCV
+      let entry : PureRule := { key, rule := ← (← mkBackwardRuleFromExpr hx).shareCommon }
+      let args := type.getAppArgs
+      let rel ← mkAppNS (← mkConstS ``Ascent.PureRefinement.rel type.getAppFn.constLevels!)
+        #[args[0]!, args[1]!, args[2]!, args[3]!, args[5]!, hx]
+      let relRule ← (← mkBackwardRuleFromExpr rel).shareCommon
+      env := { env with
+        keys := (collectFVars {} c).fvarIds.foldl (·.insert ·) env.keys
+        entries := Sym.insertPattern env.entries entry.key entry
+        rels := Sym.insertPattern env.rels relRule.pattern { key := relRule.pattern, rule := relRule } }
   pureEnvExt.modifyState fun _ => env
   return env
 
 /-- Solve the goal `PureRefinement cv ?av ?P Q` from the environment and the rules. Returns `none`
 on success, and otherwise the subterm of `cv` that no rule abstracts. -/
 partial def solveCore (rules : DiscrTree PureRule) (env : PureEnv) (goal : MVarId) :
-    SymM (Option Expr) := goal.withContext do
+    VCGenM (Option Expr) := goal.withContext do
   let type ← instantiateMVarsS (← goal.getType)
-  let some cv := pureRefinementCV? type | return some type
+  let some cv₀ := pureRefinementCV? type | return some type
+  let (cv, e?) ← simpRun cv₀
+  let (goal, type) ← match e? with
+    | none => pure (goal, type)
+    | some e =>
+      let args := type.getAppArgs
+      let type' ← mkAppNS type.getAppFn (args.set! 2 cv)
+      let g ← shareCommon (← mkFreshExprMVar type')
+      goal.assign (← mkAppNS (← mkConstS ``Ascent.PureRefinement.of_cv_eq type.getAppFn.constLevels!)
+        #[args[0]!, args[1]!, cv₀, args[3]!, args[4]!, args[5]!, cv, g, e])
+      pure (g.mvarId!, type')
   let mctx ← getMCtx
   let candidates := Sym.getMatch mctx env.entries cv ++
     (Sym.getMatch mctx rules cv).qsort (·.priority > ·.priority)
@@ -136,51 +178,47 @@ partial def solveCore (rules : DiscrTree PureRule) (env : PureEnv) (goal : MVarI
     (saved.restore : MetaM Unit)
   return some failure
 
-/-- `true` iff `goal` is a `PureRefinement` goal. -/
+/-- `true` iff `goal` is a `PureRefinement` goal, or a `PureRefinement` goal under `⊤ ⊑`. -/
 def isPureRefinementGoal (goal : MVarId) : SymM Bool := do
   let type ← instantiateMVarsIfMVarAppS (← goal.getType)
+  if let some (.sort .zero, _, pre, rhs) := type.app4? ``Lean.Order.PartialOrder.rel then
+    return (← instantiateMVarsIfMVarAppS pre).isAppOf ``Lean.Order.top
+      && (← instantiateMVarsIfMVarAppS rhs).isAppOfArity ``Ascent.PureRefinement 6
   return type.isAppOfArity ``Ascent.PureRefinement 6
 
-/-- Simplify `e` with the `simp` methods of the run. Returns the result and a proof of
-`e = result`, or `none` if `simp` makes no progress. -/
-def simpRun (e : Expr) : VCGenM (Expr × Option Expr) := do
-  let some methods := (← read).simpMethods | return (e, none)
-  let (result, simpState') ← Sym.Simp.SimpM.run (Sym.Simp.simp e) methods {} (← get).simpState
-  modify fun s => { s with simpState := simpState' }
-  match result with
-  | .rfl .. => return (e, none)
-  | .step e' proof .. => return (← shareCommon e', some (← shareCommon proof))
-
 /-- Close the goal `PureRefinement cv ?av ?P Q`. The precondition and the abstract value are
-simplified with the `simp` methods of the run. Throws if no rule abstracts a subterm of `cv`. -/
-def solvePureRefinement (goal : MVarId) : VCGenM Unit := goal.withContext do
-  let type ← instantiateMVarsS (← goal.getType)
-  let head := type.getAppFn
-  let args := type.getAppArgs
-  let av₀ ← shareCommon (← mkFreshExprMVar args[1]!)
-  let P₀ ← shareCommon (← mkFreshExprMVar (mkSort .zero))
-  let aux ← shareCommon (← mkFreshExprMVar (← mkAppNS head ((args.set! 3 av₀).set! 4 P₀)))
-  if let some t ← solveCore (ascendPureExt.getState (← getEnv)) (← updatePureEnv) aux.mvarId! then
-    throwError "ascend: no `@[ascend_pure]` rule abstracts{indentExpr t}"
-  let av₀ ← instantiateMVarsS av₀
-  let P₀ ← instantiateMVarsS P₀
-  let (av, eav?) ← simpRun av₀
-  let (P, eP?) ← simpRun P₀
-  unless (← isDefEqS args[3]! av) && (← isDefEqS args[4]! P) do
-    throwError "ascend: the abstract value does not fit{indentExpr type}"
-  let us := head.constLevels!
-  let mut prf := aux
-  if let some eP := eP? then
-    prf ← mkAppNS (← mkConstS ``Ascent.PureRefinement.of_pre_eq us)
-      #[args[0]!, args[1]!, args[2]!, av₀, P₀, P, args[5]!, prf, eP]
-  if let some eav := eav? then
-    prf ← mkAppNS (← mkConstS ``Ascent.PureRefinement.of_val_eq us)
-      #[args[0]!, args[1]!, args[2]!, av₀, P, args[5]!, av, prf, eav]
-  goal.assign prf
+simplified with the `simp` methods of the run. Throws if no rule abstracts a
+subterm of `cv`. -/
+def solvePureRefinement (goal : MVarId) : VCGenM Unit := do
+  let goal ← elimTopPre goal
+  goal.withContext do
+    let type ← instantiateMVarsS (← goal.getType)
+    let head := type.getAppFn
+    let args := type.getAppArgs
+    let av₀ ← shareCommon (← mkFreshExprMVar args[1]!)
+    let P₀ ← shareCommon (← mkFreshExprMVar (mkSort .zero))
+    let aux ← shareCommon (← mkFreshExprMVar (← mkAppNS head ((args.set! 3 av₀).set! 4 P₀)))
+    if let some t ← solveCore (ascendPureExt.getState (← getEnv)) (← updatePureEnv) aux.mvarId! then
+      throwError "ascend: no `@[ascend_pure]` rule abstracts{indentExpr t}"
+    let av₀ ← instantiateMVarsS av₀
+    let P₀ ← instantiateMVarsS P₀
+    let (av, eav?) ← simpRun av₀
+    let (P, eP?) ← simpRun P₀
+    unless (← isDefEqS args[3]! av) && (← isDefEqS args[4]! P) do
+      throwError "ascend: the abstract value does not fit{indentExpr type}"
+    let us := head.constLevels!
+    let mut prf := aux
+    if let some eP := eP? then
+      prf ← mkAppNS (← mkConstS ``Ascent.PureRefinement.of_pre_eq us)
+        #[args[0]!, args[1]!, args[2]!, av₀, P₀, P, args[5]!, prf, eP]
+    if let some eav := eav? then
+      prf ← mkAppNS (← mkConstS ``Ascent.PureRefinement.of_val_eq us)
+        #[args[0]!, args[1]!, args[2]!, av₀, P, args[5]!, av, prf, eav]
+    goal.assign prf
 
 /-- Close a verification condition `Q c x` with the rule `PureRefinement.rel hx` of an environment
 entry `hx`. -/
-def closeByEntry (goal : MVarId) : SymM Bool := goal.withContext do
+def closeByEntry (goal : MVarId) : VCGenM Bool := goal.withContext do
   let env ← updatePureEnv
   let type ← instantiateMVarsS (← goal.getType)
   for r in Sym.getMatch (← getMCtx) env.rels type do
