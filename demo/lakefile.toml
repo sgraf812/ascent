@@ -7,7 +7,7 @@ path = ".."
 
 [[require]]
 name = "Kraken"
-path = "../../kraken"
+path = "../../kraken-ascent-demo"
 
 [[lean_lib]]
 name = "Demo"

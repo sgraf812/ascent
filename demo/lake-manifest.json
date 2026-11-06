@@ -6,7 +6,7 @@
    "name": "Kraken",
    "manifestFile": "lake-manifest.json",
    "inherited": false,
-   "dir": "../../kraken",
+   "dir": "../../kraken-ascent-demo",
    "copy": false,
    "configFile": "lakefile.toml"},
   {"type": "path",
