@@ -88,6 +88,31 @@ theorem wp_zipWithAddL {m : DataMem} {A B O rsp : BitVec 64} {n : Nat} (h : ZipA
       rw [ofNat_succ]
       exact ih (n - (k + 1)) (by omega) (k + 1) rfl (by omega)
 
+/-- The pure program of `zipWithAdd`: the arrays of the inputs, added elementwise. -/
+def zipWithAddP (a b : Array (BitVec 64)) : Id (Array (BitVec 64)) := pure (Array.zipWith (· + ·) a b)
+
+/-- `zipWithAddL` refines the pure program on the arrays it reads, under the concretization that
+forgets the memory. The result is the output array at the return. -/
+theorem zipWithAddL_refines_P {m : DataMem} {A B O rsp : BitVec 64} {n : Nat}
+    (h : ZipArrays m A B O rsp n) :
+    ⦃(· = m)⦄ (zipWithAddL A B O (BitVec.ofNat 64 n) rsp) ⪯[purify DataMem]
+      (zipWithAddP (words m A n).toArray (words m B n).toArray)
+      ⦃fun _ _ _ => False; (fun l m' => l = .exit ∧ (words m' O n).toArray
+        = Id.run (zipWithAddP (words m A n).toArray (words m B n).toArray), estack⟨⟩)⦄ := by
+  refine ⟨wrp_intro fun Qa Ea => ?_⟩
+  intro m' hm'
+  simp only [meet_apply, meet_prop_eq_and] at hm'
+  obtain ⟨rfl, -⟩ := hm'
+  refine WP.wp_monotone (x := zipWithAddL A B O (BitVec.ofNat 64 n) _) ?_ ?_ _ (wp_zipWithAddL h)
+  · intro _ _ hq
+    exact hq.elim
+  · refine Prod.mk_le _ _ _ ?_ PartialOrder.rel_refl
+    intro l m'' ⟨hl, hw⟩
+    refine ⟨hl, ?_⟩
+    rw [hw]
+    simp [zipWithAddP, Id.run]
+    rfl
+
 /-! ## The machine code -/
 
 section
@@ -111,7 +136,7 @@ theorem zipWithAdd_correct (s : MachineData) (ra : Int64) {A B O : BitVec 64} {n
       estack⟨⟩)
   have hL := wp_zipWithAddL hmem
   have hS := wp_zipWithAddS_of_L (rdi := A) (rsi := B) (rdx := O) (rcx := BitVec.ofNat 64 n)
-    (rsp := rsp) Ea (abs t₀) ⟨hrdi, hrsi, hrdx, hrcx, rfl, rfl⟩ hL
+    (rsp := rsp) (fun _ _ => False) Ea (abs t₀) ⟨hrdi, hrsi, hrdx, hrcx, rfl, rfl⟩ hL
   have hA := wp_zipWithAddA_of_S s ra _ _ (abs t₀) hS
   have hT := Refinement.transport (zipWithAddA.refines s ra)
     (Pa := (· = abs t₀)) ⟨fun t ht => by subst ht; exact hA⟩

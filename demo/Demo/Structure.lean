@@ -170,4 +170,29 @@ theorem wp_cfgLoop_rotated (hLX : L ≠ X) (he : NoThrow e) (hb : NoThrow b) (hx
 
 end
 
+/-- `wp_cfgLoop_rotated` as a refinement: the rotated block loop refines its structured form under
+the identity view, with the thrown labels related by equality. -/
+theorem refines_cfgLoop_rotated {σ : Type} {c₀ c : σ → Bool} {e b x : BlockM σ Unit} {L X : Label}
+    {next : CfgLabel → CfgLabel} (hLX : L ≠ X) (he : NoThrow e) (hb : NoThrow b) (hx : Exits x)
+    (hn₀ : next .entry = .label L) (hn₂ : next (.label L) = .label X)
+    (hn₃ : next (.label X) = .exit) :
+    ⦃(⊤ : σ → Prop)⦄
+      (cfgLoop (Table.get [(.entry, AInstr.branch c₀ (.label X) >>= fun _ => e),
+        (.label L, b >>= fun _ => AInstr.branch c (.label L)), (.label X, x)]) next .entry)
+      ⪯[Concretization.ofStateRepr id] (rotated c₀ c e b x)
+      ⦃fun _ _ _ => True; (fun l l' _ => l = l', estack⟨⟩)⦄ := by
+  refine ⟨wrp_intro fun Qa Ea => ?_⟩
+  intro s hs
+  simp only [meet_apply, meet_prop_eq_and, Concretization.ofStateRepr_pred, id] at hs
+  refine wp_cfgLoop_rotated _ _ hLX he hb hx hn₀ hn₂ hn₃ s ?_
+  refine WP.wp_monotone (x := rotated c₀ c e b x) ?_ ?_ s hs.2
+  · intro u s' hq
+    rw [Concretization.post_pi]
+    exact ⟨u, trivial, hq⟩
+  · refine Prod.mk_le _ _ _ ?_ PartialOrder.rel_refl
+    intro l s' hq
+    simp only [EPostsConcretization.ePosts_cons]
+    rw [Concretization.post_pi]
+    exact ⟨l, rfl, hq⟩
+
 end Ascent.Kraken

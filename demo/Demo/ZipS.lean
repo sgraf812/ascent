@@ -95,16 +95,24 @@ theorem zipWithAddA_eq (s : MachineData) (ra : Int64) :
   unfold zipWithAddBody
   simp only [bind_assoc, bind_pure_unit, testJcc, cmpJcc]
 
+theorem zipWithAddBody_noThrow : NoThrow zipWithAddBody := by
+  unfold zipWithAddBody
+  exact NoThrow.bind (NoThrow.modifyIf _ _) fun _ => NoThrow.bind (NoThrow.modifyIf _ _) fun _ =>
+    NoThrow.bind (NoThrow.modifyIf _ _) fun _ => NoThrow.modifyIf _ _
+
+theorem zipWithAddA_refines_S (s : MachineData) (ra : Int64) :
+    ⦃(⊤ : MachineData → Prop)⦄ (zipWithAddA s ra) ⪯[Concretization.ofStateRepr id] zipWithAddS
+      ⦃fun _ _ _ => True; (fun l l' _ => l = l', estack⟨⟩)⦄ := by
+  rw [zipWithAddA_eq]
+  exact refines_cfgLoop_rotated (by simp) (NoThrow.modifyIf _ _) zipWithAddBody_noThrow
+    (Exits.exitIf _ _) rfl rfl rfl
+
 theorem wp_zipWithAddA_of_S (s : MachineData) (ra : Int64) (Qa : Unit → MachineData → Prop)
     (Ea : (CfgLabel → MachineData → Prop) × EStack⟨⟩) (t : MachineData)
     (h : wp zipWithAddS Qa Ea t) : wp (zipWithAddA s ra) Qa Ea t := by
   rw [zipWithAddA_eq]
-  refine wp_cfgLoop_rotated Qa Ea (by simp) (NoThrow.modifyIf _ _) ?_ (Exits.exitIf _ _) rfl rfl rfl
-    t ?_
-  · unfold zipWithAddBody
-    exact NoThrow.bind (NoThrow.modifyIf _ _) fun _ => NoThrow.bind (NoThrow.modifyIf _ _) fun _ =>
-      NoThrow.bind (NoThrow.modifyIf _ _) fun _ => NoThrow.modifyIf _ _
-  · exact h
+  exact wp_cfgLoop_rotated Qa Ea (by simp) (NoThrow.modifyIf _ _) zipWithAddBody_noThrow
+    (Exits.exitIf _ _) rfl rfl rfl t h
 
 end
 

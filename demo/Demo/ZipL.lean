@@ -112,6 +112,43 @@ theorem wp_fixLoop_lockstep
 
 end
 
+/-- The relation of one iteration of two lockstep loops: both continue, or both stop, with the loop
+values related by `R`. -/
+def StepRel {βa : Type} (R : MachineData → βa → Prop) : ForInStep PUnit → ForInStep βa → MachineData → Prop
+  | .done _, .done v, t => R t v
+  | .yield _, .yield v, t => R t v
+  | _, _, _ => False
+
+/-- `wp_fixLoop_lockstep` as a refinement: a concrete loop over the machine state refines an
+abstract loop over the memory when each iteration refines with `StepRel R`. -/
+theorem refines_fixLoop_lockstep {βa : Type} (R : MachineData → βa → Prop)
+    {fa : Unit → βa → BlockM DataMem (ForInStep βa)}
+    {fc : Unit → PUnit → BlockM MachineData (ForInStep PUnit)}
+    {E : (CfgLabel → CfgLabel → MachineData → Prop) × EStack⟨⟩}
+    (hbody : ∀ ab, ⦃(R · ab)⦄ (fc () PUnit.unit) ⪯[Concretization.ofStateRepr MachineData.dmem]
+      (fa () ab) ⦃StepRel R; E⦄) (ab : βa) :
+    ⦃(R · ab)⦄ (FixLoop.mk.forIn PUnit.unit fc) ⪯[Concretization.ofStateRepr MachineData.dmem]
+      (FixLoop.mk.forIn ab fa) ⦃fun _ v t => R t v; E⦄ := by
+  refine ⟨wrp_intro fun Qa Ea => ?_⟩
+  intro t ht
+  simp only [meet_apply, meet_prop_eq_and, Concretization.ofStateRepr_pred] at ht
+  refine wp_fixLoop_lockstep R fa fc Qa _ Ea _ ?_ ?_ ab t ht.1 ht.2
+  · intro ab t' hR Ka Kc hK hQ hw
+    have hb := wrp_transport (hbody ab).le_wrp
+      (fun r m => match r with | .done v => Qa v m | .yield v => Ka v m) Ea t'
+      (by simp only [meet_apply, meet_prop_eq_and, Concretization.ofStateRepr_pred]; exact ⟨hR, hw⟩)
+    refine WP.wp_monotone_post (x := fc () PUnit.unit) ?_ t' hb
+    intro rc t'' h''
+    rw [Concretization.post_pi] at h''
+    obtain ⟨ra, hrel, hq⟩ := h''
+    simp only [Concretization.ofStateRepr_pred] at hq
+    cases rc <;> cases ra <;> simp only [StepRel] at hrel
+    · exact hQ _ t'' hrel hq
+    · exact hK _ t'' hrel hq
+  · intro v t' hR hq
+    rw [Concretization.post_pi]
+    exact ⟨v, hR, hq⟩
+
 /-! ## `zipWithAddS` refines to `zipWithAddL` -/
 
 /-- The registers that `zipWithAddL` takes as parameters, and `rax` as its loop value. -/
@@ -120,8 +157,8 @@ def LiftRel (rdi rsi rdx rcx rsp : BitVec 64) (t : MachineData) (rax : BitVec 64
     ∧ t.regs.get64 .rcx = rcx ∧ t.regs.get64 .rsp = rsp ∧ t.regs.get64 .rax = rax
 
 theorem wp_ret_of_retAt {rsp : BitVec 64} {Ea : (CfgLabel → DataMem → Prop) × EStack⟨⟩}
-    {Qc : Unit → MachineData → Prop} {t : MachineData} (hrsp : t.regs.get64 .rsp = rsp)
-    (h : wp (retAt rsp) (fun _ _ => False) Ea t.dmem) :
+    {Qu : Unit → DataMem → Prop} {Qc : Unit → MachineData → Prop} {t : MachineData}
+    (hrsp : t.regs.get64 .rsp = rsp) (h : wp (retAt rsp) Qu Ea t.dmem) :
     wp ret Qc (fun l t' => Ea.1 l t'.dmem ∧ t'.regs.get64 .rsp = rsp + 8, Ea.2) t := by
   rw [wp_retAt] at h
   rw [ret, wp_exitIf]
@@ -129,11 +166,11 @@ theorem wp_ret_of_retAt {rsp : BitVec 64} {Ea : (CfgLabel → DataMem → Prop) 
   rw [Reg64s.get64_set64]
   simp [hrsp]
 
-theorem wp_zipWithAddS_of_L {rdi rsi rdx rcx rsp : BitVec 64}
+theorem wp_zipWithAddS_of_L {rdi rsi rdx rcx rsp : BitVec 64} (Qa : Unit → DataMem → Prop)
     (Ea : (CfgLabel → DataMem → Prop) × EStack⟨⟩) (t : MachineData)
     (hargs : LiftRel rdi rsi rdx rcx rsp t (t.regs.get64 .rax))
-    (h : wp (zipWithAddL rdi rsi rdx rcx rsp) (fun _ _ => False) Ea t.dmem) :
-    wp zipWithAddS (fun _ _ => False)
+    (h : wp (zipWithAddL rdi rsi rdx rcx rsp) Qa Ea t.dmem) :
+    wp zipWithAddS (fun u t' => Qa u t'.dmem)
       (fun l t' => Ea.1 l t'.dmem ∧ t'.regs.get64 .rsp = rsp + 8, Ea.2) t := by
   obtain ⟨hrdi, hrsi, hrdx, hrcx, hrsp, -⟩ := hargs
   unfold zipWithAddS zipWithAddL at *
@@ -172,5 +209,27 @@ theorem wp_zipWithAddS_of_L {rdi rsi rdx rcx rsp : BitVec 64}
       simp
   · simp only [hc, ↓reduceIte] at h ⊢
     exact wp_ret_of_retAt hrsp h
+
+end Ascent.Kraken
+
+namespace Ascent.Kraken
+
+/-- `wp_zipWithAddS_of_L` as a refinement under the view that keeps the memory. -/
+theorem zipWithAddS_refines_L (rdi rsi rdx rcx rsp : BitVec 64) :
+    ⦃(fun t => LiftRel rdi rsi rdx rcx rsp t (t.regs.get64 .rax))⦄ zipWithAddS
+      ⪯[Concretization.ofStateRepr MachineData.dmem] (zipWithAddL rdi rsi rdx rcx rsp)
+      ⦃fun _ _ _ => True; (fun l l' t => l = l' ∧ t.regs.get64 .rsp = rsp + 8, estack⟨⟩)⦄ := by
+  refine ⟨wrp_intro fun Qa Ea => ?_⟩
+  intro t ht
+  simp only [meet_apply, meet_prop_eq_and, Concretization.ofStateRepr_pred] at ht
+  refine WP.wp_monotone (x := zipWithAddS) ?_ ?_ t (wp_zipWithAddS_of_L Qa Ea t ht.1 ht.2)
+  · intro u t' hq
+    rw [Concretization.post_pi]
+    exact ⟨u, trivial, hq⟩
+  · refine Prod.mk_le _ _ _ ?_ PartialOrder.rel_refl
+    intro l t' ⟨hq, hrsp⟩
+    simp only [EPostsConcretization.ePosts_cons]
+    rw [Concretization.post_pi]
+    exact ⟨l, ⟨rfl, hrsp⟩, hq⟩
 
 end Ascent.Kraken
