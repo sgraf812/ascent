@@ -1,0 +1,176 @@
+import Demo.ZipS
+
+/-!
+# `zipWithAdd` with its registers lifted
+
+`zipWithAddL` is `zipWithAddS` over the data memory alone. The registers the loop only reads are
+parameters, `rax` is a `let mut` of the loop, and `r8` is a pair of bound values. The memory steps
+keep the guards of the first layer: a load needs a mapped cell, a store also needs the cell apart
+from the return slot at `rsp`, and the return needs a mapped return slot.
+-/
+
+open Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
+
+namespace Ascent.Kraken
+
+/-! ## Memory steps -/
+
+/-- The eight-byte word at `a`, undefined behaviour when the cell is not mapped. -/
+noncomputable def load8 (a : BitVec 64) : BlockM DataMem (BitVec 64) := fun m =>
+  UB.guardRet ((Mem.loadInt m a 8).isSome = true) (.ok (BitVec.ofInt 64 (Mem.loadInt m a 8).get!), m)
+
+/-- Store the word `v` at `a`, undefined behaviour unless the cell is mapped and apart from the
+return slot at `rsp`. -/
+noncomputable def store8 (rsp a v : BitVec 64) : BlockM DataMem Unit :=
+  modifyIf (fun m => (Mem.loadInt m a 8).isSome = true ∧ Mem.Blocks.Disjoint [(rsp, 8)] [(a, 8)])
+    fun m => Mem.storeInt m a 8 v.toInt
+
+/-- Return through the return slot at `rsp`. -/
+noncomputable def retAt (rsp : BitVec 64) : BlockM DataMem Unit :=
+  exitIf (fun m => (Mem.loadInt m rsp 8).isSome = true) id .exit
+
+section
+variable (Q : BitVec 64 → DataMem → Prop) (Qu : Unit → DataMem → Prop)
+  (E : (CfgLabel → DataMem → Prop) × EStack⟨⟩) (m : DataMem)
+
+theorem wp_load8 (a : BitVec 64) :
+    wp (load8 a) Q E m
+      = ((Mem.loadInt m a 8).isSome = true ∧ Q (BitVec.ofInt 64 (Mem.loadInt m a 8).get!) m) := by
+  rw [wp_BlockM_eq, show (load8 a).run.run m = load8 a m from rfl, load8]
+  by_cases h : (Mem.loadInt m a 8).isSome = true
+  · rw [UB.guardRet_of_pos h]
+    simp only [h, true_and]
+    rfl
+  · rw [UB.guardRet_of_neg h, UB.fail_eq]
+    simp only [Bool.not_eq_true] at h
+    simp [h]
+
+theorem wp_store8 (rsp a v : BitVec 64) :
+    wp (store8 rsp a v) Qu E m
+      = (((Mem.loadInt m a 8).isSome = true ∧ Mem.Blocks.Disjoint [(rsp, 8)] [(a, 8)])
+          ∧ Qu () (Mem.storeInt m a 8 v.toInt)) := wp_modifyIf _ _ _ _ _
+
+theorem wp_retAt (rsp : BitVec 64) :
+    wp (retAt rsp) Qu E m = ((Mem.loadInt m rsp 8).isSome = true ∧ E.1 .exit m) :=
+  wp_exitIf _ _ _ _ _ _
+
+end
+
+/-! ## The lifted program -/
+
+noncomputable def zipWithAddL (rdi rsi rdx rcx rsp : BitVec 64) : BlockM DataMem Unit := do
+  if CondCode.cmp .le (rcx &&& rcx) 0 then retAt rsp
+  else
+    let mut rax : BitVec 64 := 0
+    repeat'
+      let x ← load8 (rsi + rax * 8)
+      let y ← load8 (rdi + rax * 8)
+      store8 rsp (rdx + rax * 8) (y + x)
+      rax := rax + 1
+      if !(CondCode.cmp .nz rcx rax) then break
+    retAt rsp
+
+/-! ## Lockstep loops
+
+`wp_fixLoop_lockstep`: a concrete loop over the machine state refines an abstract loop over the
+memory when one abstract iteration simulates one concrete iteration under the relation `R` between
+the machine state and the abstract loop value. The proof is fixpoint induction over the abstract
+loop. -/
+
+section
+variable {βa : Type} (R : MachineData → βa → Prop)
+  (fa : Unit → βa → BlockM DataMem (ForInStep βa)) (fc : Unit → PUnit → BlockM MachineData (ForInStep PUnit))
+  (Qa : βa → DataMem → Prop) (Qc : PUnit → MachineData → Prop)
+  (Ea : (CfgLabel → DataMem → Prop) × EStack⟨⟩) (Ec : (CfgLabel → MachineData → Prop) × EStack⟨⟩)
+
+theorem wp_fixLoop_lockstep
+    (hbody : ∀ ab t, R t ab → ∀ (Ka : βa → DataMem → Prop) (Kc : MachineData → Prop),
+      (∀ ab' t', R t' ab' → Ka ab' t'.dmem → Kc t') → (∀ v t', R t' v → Qa v t'.dmem → Qc () t') →
+      wp (fa () ab) (fun r m => match r with | .done v => Qa v m | .yield v => Ka v m) Ea t.dmem →
+      wp (fc () PUnit.unit) (fun r t' => match r with | .done _ => Qc () t' | .yield _ => Kc t') Ec t)
+    (hQ : ∀ v t', R t' v → Qa v t'.dmem → Qc () t')
+    (ab : βa) (t : MachineData) (hR : R t ab)
+    (h : wp (FixLoop.mk.forIn ab fa) Qa Ea t.dmem) : wp (FixLoop.mk.forIn PUnit.unit fc) Qc Ec t := by
+  haveI : Nonempty βa := ⟨ab⟩
+  have := FixLoop.forIn_induct fa
+    (fun g => ∀ ab t, R t ab → wp (g ab) Qa Ea t.dmem → wp (FixLoop.mk.forIn PUnit.unit fc) Qc Ec t)
+    (admissible_pi _ fun ab => admissible_pi _ fun t => admissible_pi _ fun _ =>
+      admissible_apply (fun _ u => wp u Qa Ea t.dmem → wp (FixLoop.mk.forIn PUnit.unit fc) Qc Ec t) ab
+        (admissible_wp_imp _ Ea t.dmem _)) ?_
+  · exact this ab t hR h
+  intro g ih ab t hR hw
+  rw [FixLoop.forIn_eq, WPMonadExact.wp_bind_eq]
+  simp only [FixLoop.step, WPMonadExact.wp_bind_eq] at hw
+  refine WP.wp_monotone_post (x := fc () PUnit.unit) ?_ t
+    (hbody ab t hR (fun v m => wp (g v) Qa Ea m) (fun t' => wp (FixLoop.mk.forIn PUnit.unit fc) Qc Ec t')
+      (fun ab' t' hR' hK => ih ab' t' hR' hK) hQ ?_)
+  · intro r t' hr
+    cases r <;> simp only [WPMonadExact.wp_pure_eq] at hr ⊢ <;> exact hr
+  · refine WP.wp_monotone_post (x := fa () ab) ?_ t.dmem hw
+    intro r m hr
+    cases r <;> simp only [WPMonadExact.wp_pure_eq] at hr ⊢ <;> exact hr
+
+end
+
+/-! ## `zipWithAddS` refines to `zipWithAddL` -/
+
+/-- The registers that `zipWithAddL` takes as parameters, and `rax` as its loop value. -/
+def LiftRel (rdi rsi rdx rcx rsp : BitVec 64) (t : MachineData) (rax : BitVec 64) : Prop :=
+  t.regs.get64 .rdi = rdi ∧ t.regs.get64 .rsi = rsi ∧ t.regs.get64 .rdx = rdx
+    ∧ t.regs.get64 .rcx = rcx ∧ t.regs.get64 .rsp = rsp ∧ t.regs.get64 .rax = rax
+
+theorem wp_ret_of_retAt {rsp : BitVec 64} {Ea : (CfgLabel → DataMem → Prop) × EStack⟨⟩}
+    {Qc : Unit → MachineData → Prop} {t : MachineData} (hrsp : t.regs.get64 .rsp = rsp)
+    (h : wp (retAt rsp) (fun _ _ => False) Ea t.dmem) :
+    wp ret Qc (fun l t' => Ea.1 l t'.dmem ∧ t'.regs.get64 .rsp = rsp + 8, Ea.2) t := by
+  rw [wp_retAt] at h
+  rw [ret, wp_exitIf]
+  refine ⟨by rw [hrsp]; exact h.1, h.2, ?_⟩
+  rw [Reg64s.get64_set64]
+  simp [hrsp]
+
+theorem wp_zipWithAddS_of_L {rdi rsi rdx rcx rsp : BitVec 64}
+    (Ea : (CfgLabel → DataMem → Prop) × EStack⟨⟩) (t : MachineData)
+    (hargs : LiftRel rdi rsi rdx rcx rsp t (t.regs.get64 .rax))
+    (h : wp (zipWithAddL rdi rsi rdx rcx rsp) (fun _ _ => False) Ea t.dmem) :
+    wp zipWithAddS (fun _ _ => False)
+      (fun l t' => Ea.1 l t'.dmem ∧ t'.regs.get64 .rsp = rsp + 8, Ea.2) t := by
+  obtain ⟨hrdi, hrsi, hrdx, hrcx, hrsp, -⟩ := hargs
+  unfold zipWithAddS zipWithAddL at *
+  rw [wp_get_bind, hrcx]
+  cases hc : CondCode.cmp .le (rcx &&& rcx) 0
+  · simp only [hc, Bool.false_eq_true, ↓reduceIte] at h ⊢
+    rw [WPMonadExact.wp_bind_eq] at h
+    rw [WPMonadExact.wp_bind_eq, xorReg32Reg32, wp_modifyIf, WPMonadExact.wp_bind_eq]
+    refine ⟨trivial, ?_⟩
+    refine wp_fixLoop_lockstep (fun t' rax => LiftRel rdi rsi rdx rcx rsp t' rax) _ _ _ _ _ _ ?_
+      (fun _ t' hR hq => wp_ret_of_retAt hR.2.2.2.2.1 hq) 0 _ ?_ h
+    · intro ab t' hR Ka Kc hK hQ' hw
+      obtain ⟨hrdi', hrsi', hrdx', hrcx', hrsp', hrax'⟩ := hR
+      have hoff : BitVec.ofInt 64 (Int64.toInt 0) = 0 := rfl
+      have hz : ∀ x : BitVec 64, x + 0 = x := fun x => BitVec.add_zero x
+      unfold zipWithAddBody
+      simp only [WPMonadExact.wp_bind_eq, wp_load8, wp_store8] at hw
+      simp only [WPMonadExact.wp_bind_eq, movRegSib8, addRegSib8, movSib8Reg, incReg, wp_modifyIf,
+        wp_get, Reg64s.get64_set64, reduceCtorEq, ↓reduceIte, hrdi', hrsi', hrdx', hrcx', hrsp',
+        hrax', hoff, hz, true_and]
+      obtain ⟨hB, hA, hO, hw'⟩ := hw
+      refine ⟨hB, hA, hO, ?_⟩
+      have hR' : ∀ v₈ v (m : DataMem), LiftRel rdi rsi rdx rcx rsp
+          { t' with regs := ((t'.regs.set64 .r8 v₈).set64 .r8 v).set64 .rax (ab + 1), dmem := m }
+            (ab + 1) := by
+        intro v₈ v m
+        refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩ <;>
+          simp only [Reg64s.get64_set64, reduceCtorEq, ↓reduceIte, hrdi', hrsi', hrdx', hrcx', hrsp']
+      cases hn : CondCode.cmp .nz rcx (ab + 1)
+      · simp only [hn, Bool.not_false, ↓reduceIte, WPMonadExact.wp_pure_eq] at hw' ⊢
+        exact hQ' (ab + 1) _ (hR' _ _ _) hw'
+      · simp only [hn, Bool.not_true, Bool.false_eq_true, ↓reduceIte, WPMonadExact.wp_pure_eq] at hw' ⊢
+        exact hK (ab + 1) _ (hR' _ _ _) hw'
+    · refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩ <;>
+        simp only [Reg64s.get64_set64, reduceCtorEq, ↓reduceIte, hrdi, hrsi, hrdx, hrcx, hrsp]
+      simp
+  · simp only [hc, ↓reduceIte] at h ⊢
+    exact wp_ret_of_retAt hrsp h
+
+end Ascent.Kraken
