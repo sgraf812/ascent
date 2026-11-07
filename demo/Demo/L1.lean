@@ -127,8 +127,8 @@ noncomputable def modifyIf (g : σ → Prop) (f : σ → σ) : BlockM σ Unit :=
 noncomputable def exitIf {α : Type} (g : σ → Prop) (f : σ → σ) (l : CfgLabel) : BlockM σ α :=
   fun st => UB.assume (g st) >>= fun _ => pure (.error l, f st)
 
-noncomputable def assume (g : σ → Prop) : BlockM σ Unit :=
-  fun st => UB.assume (g st) >>= fun _ => pure (.ok (), st)
+noncomputable def assume (g : σ → Prop) : BlockM σ Unit := do
+  UB.assume (g (← get))
 
 def branch (c : σ → Bool) (l : CfgLabel) : BlockM σ Unit :=
   fun st => if c st then pure (.error l, st) else pure (.ok (), st)
@@ -164,11 +164,8 @@ theorem wp_exitIf {α : Type} {Qa : α → σ → Prop} (g f l) :
   · rw [UB.assume_bind_of_neg h]
     simp only [UB.wp_fail_eq, bot_prop_eq, h, false_and]
 
-theorem modifyIf_id (g : σ → Prop) : modifyIf g id = assume g := rfl
-
 theorem wp_assume (g) : wp (assume g) Qa Ea st = (g st ∧ Qa () st) := by
-  rw [← modifyIf_id]
-  exact wp_modifyIf Qa Ea st g id
+  rw [assume, wp_get_bind, wp_monadLift_UB, UB.wp_assume_eq]
 
 theorem exitIf_bind {σ α β : Type} (g : σ → Prop) (f : σ → σ) (l : CfgLabel)
     (k : α → BlockM σ β) : (exitIf g f l >>= k) = exitIf g f l := by

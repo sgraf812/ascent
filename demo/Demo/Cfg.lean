@@ -190,6 +190,13 @@ theorem wp_get (Q : σ → σ → Prop) (E : (CfgLabel → σ → Prop) × EStac
   rw [wp_BlockM_eq]
   rfl
 
+theorem wp_monadLift_UB (x : UB α) (Q : α → σ → Prop) (E : (CfgLabel → σ → Prop) × EStack⟨⟩)
+    (s : σ) : wp (monadLift x : BlockM σ α) Q E s = wp x (fun a => Q a s) E.2 := by
+  rw [wp_BlockM_eq]
+  cases x with
+  | none => exact ((UB.wp_fail_eq _ _).trans bot_prop_eq).symm
+  | some a => rfl
+
 theorem wp_throw_block (l : CfgLabel) (Q : α → σ → Prop) (E : (CfgLabel → σ → Prop) × EStack⟨⟩)
     (s : σ) : wp (throw l : BlockM σ α) Q E s = E.1 l s := by
   rw [wp_BlockM_eq]
