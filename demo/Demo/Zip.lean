@@ -54,9 +54,9 @@ example [Host] [FunDecls] [Embeds zipWithAdd] (s : MachineData) (ra : Int64) :
         modifyIf (fun _ => True) (xorReg32Reg32 .rax .rax)
         pure ()),
       (.label "LBB0_2", do
-        modifyIf (loadOk8 .rsi .rax 0) (movRegSib8 .r8 .rsi .rax 0)
-        modifyIf (loadOk8 .rdi .rax 0) (addRegSib8 .r8 .rdi .rax 0)
-        modifyIf (storeOk8 .rdx .rax 0) (movSib8Reg .rdx .rax 0 .r8)
+        modifyIf (loadOk8 (sib8 .rsi .rax 0)) (movRegSib8 .r8 .rsi .rax 0)
+        modifyIf (loadOk8 (sib8 .rdi .rax 0)) (addRegSib8 .r8 .rdi .rax 0)
+        modifyIf (storeOk8 (sib8 .rdx .rax 0)) (movSib8Reg .rdx .rax 0 .r8)
         modifyIf (fun _ => True) (incReg .rax)
         branch (fun st => CondCode.nz.cmp (st.regs.get64 .rcx) (st.regs.get64 .rax)) (.label "LBB0_2")
         pure ()),

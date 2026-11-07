@@ -232,19 +232,19 @@ end
 
 /-! ## The instructions of the example
 
-A memory operand `d(b, i, 8)` reads the address `sib8 b i d st`. The guard `loadOk8 b i d` of a load
-is that the eight bytes are mapped. The guard `storeOk8 b i d` of a store adds that the cell is apart
-from the return slot of the frame. Each instruction is a state function, and its step is
-`modifyIf` of its guard and that function. -/
+A memory operand `d(b, i, 8)` reads the address `sib8 b i d st`. The guard `loadOk8 a` of a load
+from the address `a st` is that the eight bytes are mapped. The guard `storeOk8 a` of a store adds
+that the cell is apart from the return slot of the frame. Each instruction is a state function, and
+its step is `modifyIf` of its guard and that function. -/
 
 def sib8 (b i : Reg64) (d : Int64) (st : MachineData) : BitVec 64 :=
   st.regs.get64 b + st.regs.get64 i * 8 + BitVec.ofInt 64 d.toInt
 
-def loadOk8 (b i : Reg64) (d : Int64) (st : MachineData) : Prop :=
-  (Mem.loadInt st.dmem (sib8 b i d st) 8).isSome = true
+def loadOk8 (a : MachineData → BitVec 64) (st : MachineData) : Prop :=
+  (Mem.loadInt st.dmem (a st) 8).isSome = true
 
-def storeOk8 (b i : Reg64) (d : Int64) (st : MachineData) : Prop :=
-  loadOk8 b i d st ∧ Mem.Blocks.Disjoint [(st.regs.get64 .rsp, 8)] [(sib8 b i d st, 8)]
+def storeOk8 (a : MachineData → BitVec 64) (st : MachineData) : Prop :=
+  loadOk8 a st ∧ Mem.Blocks.Disjoint [(st.regs.get64 .rsp, 8)] [(a st, 8)]
 
 def retOk (st : MachineData) : Prop := (Mem.loadInt st.dmem (st.regs.get64 .rsp) 8).isSome = true
 
@@ -266,6 +266,60 @@ def xorReg32Reg32 (rd rs : Reg64) (st : MachineData) : MachineData :=
 def ret (st : MachineData) : MachineData :=
   { st with regs := st.regs.set64 .rsp (st.regs.get64 .rsp + 8) }
 
+/-! ## Normal forms of the steps
+
+Every state function of the example is one of three writes. `setReg64 r e` writes the value `e st`
+to the register `r`. `loadReg8 r a e` reads the word `w` at the address `a st` and writes `e w st`
+to `r`. `storeWord8 a v` writes the word `v st` to the address `a st`. The equations below put each
+instruction into its normal form, and the guards `loadOk8` and `storeOk8` are stated over the
+address of the step. -/
+
+def word8 (a : BitVec 64) (st : MachineData) : BitVec 64 :=
+  BitVec.ofInt 64 (Mem.loadInt st.dmem a 8).get!
+
+def setReg64 (r : Reg64) (e : MachineData → BitVec 64) (st : MachineData) : MachineData :=
+  { st with regs := st.regs.set64 r (e st) }
+
+def loadReg8 (r : Reg64) (a : MachineData → BitVec 64) (e : BitVec 64 → MachineData → BitVec 64)
+    (st : MachineData) : MachineData :=
+  { st with regs := st.regs.set64 r (e (word8 (a st) st) st) }
+
+def storeWord8 (a v : MachineData → BitVec 64) (st : MachineData) : MachineData :=
+  { st with dmem := Mem.storeInt st.dmem (a st) 8 (v st).toInt }
+
+section
+variable (st : MachineData)
+
+@[vcgen_simp] theorem setReg64_regs (r : Reg64) (e : MachineData → BitVec 64) :
+    (setReg64 r e st).regs = st.regs.set64 r (e st) := rfl
+@[vcgen_simp] theorem setReg64_dmem (r : Reg64) (e : MachineData → BitVec 64) :
+    (setReg64 r e st).dmem = st.dmem := rfl
+@[vcgen_simp] theorem loadReg8_regs (r : Reg64) (a : MachineData → BitVec 64)
+    (e : BitVec 64 → MachineData → BitVec 64) :
+    (loadReg8 r a e st).regs = st.regs.set64 r (e (word8 (a st) st) st) := rfl
+@[vcgen_simp] theorem loadReg8_dmem (r : Reg64) (a : MachineData → BitVec 64)
+    (e : BitVec 64 → MachineData → BitVec 64) : (loadReg8 r a e st).dmem = st.dmem := rfl
+@[vcgen_simp] theorem storeWord8_regs (a v : MachineData → BitVec 64) :
+    (storeWord8 a v st).regs = st.regs := rfl
+@[vcgen_simp] theorem storeWord8_dmem (a v : MachineData → BitVec 64) :
+    (storeWord8 a v st).dmem = Mem.storeInt st.dmem (a st) 8 (v st).toInt := rfl
+
+end
+
+@[vcgen_simp] theorem movRegSib8_eq (r b i : Reg64) (d : Int64) :
+    movRegSib8 r b i d = loadReg8 r (sib8 b i d) (fun w _ => w) := rfl
+@[vcgen_simp] theorem addRegSib8_eq (rd b i : Reg64) (d : Int64) :
+    addRegSib8 rd b i d = loadReg8 rd (sib8 b i d) (fun w st => w + st.regs.get64 rd) := rfl
+@[vcgen_simp] theorem movSib8Reg_eq (b i : Reg64) (d : Int64) (rs : Reg64) :
+    movSib8Reg b i d rs = storeWord8 (sib8 b i d) (fun st => st.regs.get64 rs) := rfl
+@[vcgen_simp] theorem incReg_eq (r : Reg64) :
+    incReg r = setReg64 r (fun st => st.regs.get64 r + 1) := rfl
+@[vcgen_simp] theorem xorReg32Reg32_eq (rd rs : Reg64) :
+    xorReg32Reg32 rd rs = setReg64 rd
+      (fun st => ((st.regs.get64 rd).take 32 ^^^ (st.regs.get64 rs).take 32).zeroExtend 64) := rfl
+@[vcgen_simp] theorem ret_eq : ret = setReg64 .rsp (fun st => st.regs.get64 .rsp + 8) := rfl
+@[vcgen_simp] theorem retOk_eq : retOk = loadOk8 (fun st => st.regs.get64 .rsp) := rfl
+
 /-! ## The rules of the example -/
 
 section
@@ -280,9 +334,9 @@ variable [Host] [FunDecls] {Q : Unit → Unit → MachineData → Prop}
       ⊑ wrp (ofStateRepr abs)
           (Directive.instr (.regular .W64 .W64
             (.mov (.reg (.low r .W64)) (.regOrMem (.mem ⟨some (.reg b), some ⟨i, .W64⟩, .int64 d⟩)))))
-          (modifyIf (loadOk8 b i d) (movRegSib8 r b i d)) Q E :=
+          (modifyIf (loadOk8 (sib8 b i d)) (movRegSib8 r b i d)) Q E :=
   by
-  refine wrp_modifyIf (g := loadOk8 b i d)
+  refine wrp_modifyIf (g := loadOk8 (sib8 b i d))
     (fun Q E s hp hq => (Program.WP.Spec.mov_reg_sib8 (Q := Q) (E := E) r b i d).le_wp s ⟨hp, hq⟩) ?_
   intro s hg
   exact ⟨hg, rfl⟩
@@ -298,9 +352,9 @@ variable [Host] [FunDecls] {Q : Unit → Unit → MachineData → Prop}
       ⊑ wrp (ofStateRepr abs)
           (Directive.instr (.regular .W64 .W64
             (.add (.reg (.low rd .W64)) (.regOrMem (.mem ⟨some (.reg b), some ⟨i, .W64⟩, .int64 d⟩)))))
-          (modifyIf (loadOk8 b i d) (addRegSib8 rd b i d)) Q E :=
+          (modifyIf (loadOk8 (sib8 b i d)) (addRegSib8 rd b i d)) Q E :=
   by
-  refine wrp_modifyIf (g := loadOk8 b i d)
+  refine wrp_modifyIf (g := loadOk8 (sib8 b i d))
     (fun Q E s hp hq => (Program.WP.Spec.add_reg_sib8 (Q := Q) (E := E) rd b i d).le_wp s ⟨hp, hq⟩) ?_
   intro s hg
   exact ⟨hg, rfl⟩
@@ -313,10 +367,10 @@ variable [Host] [FunDecls] {Q : Unit → Unit → MachineData → Prop}
       ⊑ wrp (ofStateRepr abs)
           (Directive.instr (.regular .W64 .W64
             (.mov (.mem ⟨some (.reg b), some ⟨i, .W64⟩, .int64 d⟩) (.regOrMem (.reg (.low rs .W64))))))
-          (modifyIf (storeOk8 b i d) (movSib8Reg b i d rs)) Q E :=
+          (modifyIf (storeOk8 (sib8 b i d)) (movSib8Reg b i d rs)) Q E :=
   by
   refine PartialOrder.rel_trans ?_ (wrp_modifyIf
-    (g := storeOk8 b i d)
+    (g := storeOk8 (sib8 b i d))
     (fun Q E s hp hq => (Program.WP.Spec.mov_sib8_reg (Q := Q) (E := E) b i d rs).le_wp s ⟨hp, hq⟩)
     fun s hg => ⟨hg.1, rfl⟩)
   intro s h hg

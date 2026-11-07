@@ -9,6 +9,11 @@ abstract program: the hypothesis `PureRefinement (t.regs.get64 r) x True Eq` rel
 `r` of the state `t` to the abstract value `x`, and the `@[ascend_pure]` rules below abstract a
 value computed from registers to the same computation on the abstract values. A step that writes a
 register binds the abstract value of the written value to a variable of the abstract program.
+
+The step rules know no instruction. They match the normal forms of `Demo.L1`: a load into a
+register `loadReg8` becomes `load8` and binds the loaded word, a store `storeWord8` becomes
+`store8`, a register write `setReg64` leaves the memory unchanged and adds no abstract step, and an
+exit through a mapped word becomes `retAt`.
 -/
 
 open Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
@@ -62,39 +67,6 @@ end
 /-- `c ≐ x`: the concrete value `c` abstracts to the abstract value `x`. -/
 scoped notation:50 c:51 " ≐ " x:51 => PureRefinement c x True Eq
 
-/-! ## The registers and the memory after a step -/
-
-section
-variable (st : MachineData)
-
-@[vcgen_simp] theorem movRegSib8_regs (r b i : Reg64) (d : Int64) :
-    (movRegSib8 r b i d st).regs
-      = st.regs.set64 r (BitVec.ofInt 64 (Mem.loadInt st.dmem (sib8 b i d st) 8).get!) := rfl
-@[vcgen_simp] theorem movRegSib8_dmem (r b i : Reg64) (d : Int64) :
-    (movRegSib8 r b i d st).dmem = st.dmem := rfl
-@[vcgen_simp] theorem addRegSib8_regs (r b i : Reg64) (d : Int64) :
-    (addRegSib8 r b i d st).regs = st.regs.set64 r
-      (BitVec.ofInt 64 (Mem.loadInt st.dmem (sib8 b i d st) 8).get! + st.regs.get64 r) := rfl
-@[vcgen_simp] theorem addRegSib8_dmem (r b i : Reg64) (d : Int64) :
-    (addRegSib8 r b i d st).dmem = st.dmem := rfl
-@[vcgen_simp] theorem movSib8Reg_regs (b i : Reg64) (d : Int64) (r : Reg64) :
-    (movSib8Reg b i d r st).regs = st.regs := rfl
-@[vcgen_simp] theorem movSib8Reg_dmem (b i : Reg64) (d : Int64) (r : Reg64) :
-    (movSib8Reg b i d r st).dmem = Mem.storeInt st.dmem (sib8 b i d st) 8 (st.regs.get64 r).toInt :=
-  rfl
-@[vcgen_simp] theorem incReg_regs (r : Reg64) :
-    (incReg r st).regs = st.regs.set64 r (st.regs.get64 r + 1) := rfl
-@[vcgen_simp] theorem incReg_dmem (r : Reg64) : (incReg r st).dmem = st.dmem := rfl
-@[vcgen_simp] theorem xorReg32Reg32_regs (rd rs : Reg64) :
-    (xorReg32Reg32 rd rs st).regs = st.regs.set64 rd
-      (((st.regs.get64 rd).take 32 ^^^ (st.regs.get64 rs).take 32).zeroExtend 64) := rfl
-@[vcgen_simp] theorem xorReg32Reg32_dmem (rd rs : Reg64) :
-    (xorReg32Reg32 rd rs st).dmem = st.dmem := rfl
-@[vcgen_simp] theorem ret_regs : (ret st).regs = st.regs.set64 .rsp (st.regs.get64 .rsp + 8) := rfl
-@[vcgen_simp] theorem ret_dmem : (ret st).dmem = st.dmem := rfl
-
-end
-
 /-! ## Values -/
 
 section
@@ -140,57 +112,38 @@ variable {Q : Unit → BitVec 64 → MachineData → Prop} {Qu : Unit → Unit �
       (pure () : BlockM DataMem Unit) Qu E :=
   wrp_pure () ()
 
-@[ascend] theorem wrp_movRegSib8_load8 (r b i : Reg64) (d : Int64) (a : BitVec 64) :
-    (fun t => sib8 b i d t ≐ a ∧
-      (loadOk8 b i d t → ∀ y, (movRegSib8 r b i d t).regs.get64 r ≐ y →
-        Q () y (movRegSib8 r b i d t)))
-      ⊑ wrp (ofStateRepr MachineData.dmem) (modifyIf (loadOk8 b i d) (movRegSib8 r b i d))
-          (load8 a) Q E := by
+@[ascend] theorem wrp_loadReg8_load8 (r : Reg64) (a : MachineData → BitVec 64)
+    (e : BitVec 64 → MachineData → BitVec 64) (pa : BitVec 64) :
+    (fun t => a t ≐ pa ∧
+      (loadOk8 a t → ∀ w, word8 (a t) t ≐ w → Q () w (loadReg8 r a e t)))
+      ⊑ wrp (ofStateRepr MachineData.dmem) (modifyIf (loadOk8 a) (loadReg8 r a e))
+          (load8 pa) Q E := by
   refine wrp_intro fun Qa Ea => ?_
   intro t ht
   simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_load8] at ht
   obtain ⟨⟨ha, hk⟩, hl, hq⟩ := ht
-  have ha : sib8 b i d t = a := ha trivial
-  have hg : loadOk8 b i d t := by rw [loadOk8, ha]; exact hl
+  have ha : a t = pa := ha trivial
+  have hg : loadOk8 a t := by rw [loadOk8, ha]; exact hl
   rw [wp_modifyIf, Concretization.post_pi]
   refine ⟨hg, _, hk hg _ (PureRefinement.of_rel ?_), hq⟩
-  simp only [movRegSib8, Reg64s.get64_set64, ↓reduceIte, ha]
+  rw [word8, ha]
 
-@[ascend] theorem wrp_addRegSib8_load8 (r b i : Reg64) (d : Int64) (a : BitVec 64) :
-    (fun t => sib8 b i d t ≐ a ∧
-      (loadOk8 b i d t →
-        ∀ y, BitVec.ofInt 64 (Mem.loadInt t.dmem (sib8 b i d t) 8).get! ≐ y →
-          Q () y (addRegSib8 r b i d t)))
-      ⊑ wrp (ofStateRepr MachineData.dmem) (modifyIf (loadOk8 b i d) (addRegSib8 r b i d))
-          (load8 a) Q E := by
-  refine wrp_intro fun Qa Ea => ?_
-  intro t ht
-  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_load8] at ht
-  obtain ⟨⟨ha, hk⟩, hl, hq⟩ := ht
-  have ha : sib8 b i d t = a := ha trivial
-  have hg : loadOk8 b i d t := by rw [loadOk8, ha]; exact hl
-  rw [wp_modifyIf, Concretization.post_pi]
-  refine ⟨hg, _, hk hg _ (PureRefinement.of_rel ?_), hq⟩
-  rw [ha]
-
-@[ascend] theorem wrp_movSib8Reg_store8 (b i : Reg64) (d : Int64) (rs : Reg64)
-    (sp a v : BitVec 64) :
-    (fun t => t.regs.get64 .rsp ≐ sp ∧ sib8 b i d t ≐ a ∧
-      t.regs.get64 rs ≐ v ∧
-      (storeOk8 b i d t → Qu () () (movSib8Reg b i d rs t)))
-      ⊑ wrp (ofStateRepr MachineData.dmem) (modifyIf (storeOk8 b i d) (movSib8Reg b i d rs))
-          (store8 sp a v) Qu E := by
+@[ascend] theorem wrp_storeWord8_store8 (a v : MachineData → BitVec 64) (sp pa pv : BitVec 64) :
+    (fun t => t.regs.get64 .rsp ≐ sp ∧ a t ≐ pa ∧ v t ≐ pv ∧
+      (storeOk8 a t → Qu () () (storeWord8 a v t)))
+      ⊑ wrp (ofStateRepr MachineData.dmem) (modifyIf (storeOk8 a) (storeWord8 a v))
+          (store8 sp pa pv) Qu E := by
   refine wrp_intro fun Qa Ea => ?_
   intro t ht
   simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_store8] at ht
   obtain ⟨⟨hsp, ha, hv, hk⟩, ⟨hl, hd⟩, hq⟩ := ht
   have hsp : t.regs.get64 .rsp = sp := hsp trivial
-  have ha : sib8 b i d t = a := ha trivial
-  have hv : t.regs.get64 rs = v := hv trivial
-  have hg : storeOk8 b i d t := by rw [storeOk8, loadOk8, ha, hsp]; exact ⟨hl, hd⟩
+  have ha : a t = pa := ha trivial
+  have hv : v t = pv := hv trivial
+  have hg : storeOk8 a t := by rw [storeOk8, loadOk8, ha, hsp]; exact ⟨hl, hd⟩
   rw [wp_modifyIf, Concretization.post_pi]
   refine ⟨hg, (), hk hg, ?_⟩
-  simp only [ofStateRepr_pred, movSib8Reg, ha, hv]
+  simp only [ofStateRepr_pred, storeWord8, ha, hv]
   exact hq
 
 end
@@ -358,21 +311,25 @@ theorem wrp_forIn_lockstep_unit {βa : Type} (R : MachineData → βa → Prop) 
   simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, hf]
   exact ⟨hk, hw⟩
 
-@[ascend] theorem wrp_exitIf_retAt {Q : Unit → Unit → MachineData → Prop} (sp : BitVec 64) :
-    (fun t => t.regs.get64 .rsp ≐ sp ∧ (retOk t → E.1 .exit .exit (ret t)))
-      ⊑ wrp (ofStateRepr MachineData.dmem) (exitIf retOk ret .exit : BlockM MachineData Unit)
-          (retAt sp) Q E := by
+@[ascend] theorem wrp_exitIf_retAt {Q : Unit → Unit → MachineData → Prop}
+    (a : MachineData → BitVec 64) (f : MachineData → MachineData) (pa : BitVec 64)
+    (hf : ∀ t, (f t).dmem = t.dmem) :
+    (fun t => a t ≐ pa ∧ (loadOk8 a t → E.1 .exit .exit (f t)))
+      ⊑ wrp (ofStateRepr MachineData.dmem) (exitIf (loadOk8 a) f .exit : BlockM MachineData Unit)
+          (retAt pa) Q E := by
   refine wrp_intro fun Qa Ea => ?_
   intro t ht
   simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_retAt] at ht
-  obtain ⟨⟨hsp, hk⟩, hl, he⟩ := ht
-  have hsp : t.regs.get64 .rsp = sp := hsp trivial
-  have hg : retOk t := by rw [retOk, hsp]; exact hl
+  obtain ⟨⟨ha, hk⟩, hl, he⟩ := ht
+  have ha : a t = pa := ha trivial
+  have hg : loadOk8 a t := by rw [loadOk8, ha]; exact hl
   rw [wp_exitIf]
   refine ⟨hg, ?_⟩
   simp only [EPostsConcretization.ePosts_cons]
   rw [Concretization.post_pi]
-  exact ⟨.exit, hk hg, he⟩
+  refine ⟨.exit, hk hg, ?_⟩
+  simp only [ofStateRepr_pred, hf]
+  exact he
 
 @[ascend] theorem wrp_yield {βa : Type} {Q : ForInStep PUnit → ForInStep βa → MachineData → Prop}
     (v : βa) :

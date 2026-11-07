@@ -16,9 +16,10 @@ ascend_def body (rdi rsi rdx rsp rax : BitVec 64) : BlockM DataMem Unit from
   ⦃fun t => t.regs.get64 .rdi ≐ rdi ∧ t.regs.get64 .rsi ≐ rsi ∧ t.regs.get64 .rdx ≐ rdx ∧
     t.regs.get64 .rsp ≐ rsp ∧ t.regs.get64 .rax ≐ rax⦄
   (do
-    modifyIf (loadOk8 .rsi .rax 0) (movRegSib8 .r8 .rsi .rax 0)
-    modifyIf (loadOk8 .rdi .rax 0) (addRegSib8 .r8 .rdi .rax 0)
-    modifyIf (storeOk8 .rdx .rax 0) (movSib8Reg .rdx .rax 0 .r8)
+    modifyIf (loadOk8 (sib8 .rsi .rax 0)) (loadReg8 .r8 (sib8 .rsi .rax 0) fun w _ => w)
+    modifyIf (loadOk8 (sib8 .rdi .rax 0))
+      (loadReg8 .r8 (sib8 .rdi .rax 0) fun w st => w + st.regs.get64 .r8)
+    modifyIf (storeOk8 (sib8 .rdx .rax 0)) (storeWord8 (sib8 .rdx .rax 0) fun st => st.regs.get64 .r8)
     pure () : BlockM MachineData Unit)
   ⪯[ofStateRepr MachineData.dmem] body ⦃fun _ _ _ => True; (fun l l' _ => l = l', estack⟨⟩)⦄
   ascend []

@@ -37,8 +37,9 @@ cleared and `cmp; jcc` fused into one branch. `ascend_def` synthesized it and pr
 
 `sym_simp_def` rewrites the block loop of `zipWithAddA` into an `if` and a `repeat'` loop over the
 machine state: the jump of the loop block to itself becomes `continue`, and the return is the
-exit of both branches. The command proves the equation `zipWithAddT.eq`, so the first refinement
-carries over to `zipWithAddT`: -/
+exit of both branches. The same pass puts each instruction into its normal form: a register
+write `setReg64`, a load into a register `loadReg8`, or a store `storeWord8`. The command proves
+the equation `zipWithAddT.eq`, so the first refinement carries over to `zipWithAddT`: -/
 
 #print zipWithAddT
 #check @zipWithAddT.refines
