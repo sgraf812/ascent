@@ -77,6 +77,11 @@ ascend_def zipWithAddP [Host] [FunDecls] [Embeds zipWithAdd] (s : MachineData) (
 
 /-! ## The chain of refinements -/
 
+noncomputable abbrev memToArray (O : BitVec 64) (n : Nat) :=
+  ((ofStateRepr MachineData.dmem).comp (ofStateRepr (outView O n))).comp (purify (Array (BitVec 64)))
+
+noncomputable abbrev machineToArray (O : BitVec 64) (n : Nat) := (ofStateRepr abs).comp (memToArray O n)
+
 section
 variable [Host] [FunDecls] [Embeds zipWithAdd] (s : MachineData) (ra : Int64)
 
@@ -107,7 +112,7 @@ theorem zipWithAddT_refines_P {A B O rsp : BitVec 64} {n : Nat} {a b : Array (Bi
     ⦃fun t => RegsRel [(.rdi, A), (.rsi, B), (.rdx, O), (.rcx, BitVec.ofNat 64 n), (.rsp, rsp)] t ∧
       (A ≐ₐ a ∧ B ≐ₐ b ∧ a.size = n ∧ b.size = n ∧ ArrayLayout [(A, a), (B, b)] O n [rsp] t.dmem)⦄
       (zipWithAddT s ra)
-      ⪯[((ofStateRepr MachineData.dmem).comp (ofStateRepr (outView O n))).comp (purify _)]
+      ⪯[memToArray O n]
       (zipWithAddP s ra A B O rsp n a b ha hb)
       ⦃fun _ _ _ => False; (fun l t => l = .exit ∧
         outView O n t.dmem = Id.run (zipWithAddP s ra A B O rsp n a b ha hb), estack⟨⟩)⦄ := by
@@ -132,8 +137,7 @@ theorem zipWithAdd_refines_P {A B O : BitVec 64} {n : Nat}
     (hrdx : (s.push64 ra).regs.get64 .rdx = O) (hrcx : (s.push64 ra).regs.get64 .rcx = BitVec.ofNat 64 n)
     (hmem : ZipArrays (s.push64 ra).dmem A B O ((s.push64 ra).regs.get64 .rsp) n) :
     ⦃(· = s.push64 ra)⦄ zipWithAdd
-      ⪯[(ofStateRepr abs).comp
-        (((ofStateRepr MachineData.dmem).comp (ofStateRepr (outView O n))).comp (purify _))]
+      ⪯[machineToArray O n]
       (zipWithAddP s ra A B O ((s.push64 ra).regs.get64 .rsp) n
         (words (s.push64 ra).dmem A n).toArray (words (s.push64 ra).dmem B n).toArray
         (size_words_toArray _ _ _) (size_words_toArray _ _ _))
