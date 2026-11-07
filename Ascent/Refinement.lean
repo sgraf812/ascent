@@ -196,6 +196,27 @@ theorem Refinement.comp
   simp only [Concretization.post_eq, Concretization.comp, Function.comp]
   exact PartialOrder.rel_refl
 
+theorem Refinement.comp_le
+    {γ₁ : Concretization CPred BPred} {γ₂ : Concretization BPred APred}
+    {Q₁ : CVal → BVal → CPred} {Q₂ : BVal → AVal → BPred} {Q : CVal → AVal → CPred}
+    {E₁ : ERels₁} {E₂ : ERels₂} {E : ERels} {P : CPred} {P_B : BPred}
+    {c : CProg} {b : BProg} {a : AProg}
+    (hQ : ∀ Qa : AVal → APred, γ₁.post Q₁ (γ₂.post Q₂ Qa) ⊑ (γ₁.comp γ₂).post Q Qa)
+    (hE : ∀ Ea : AEPosts, EPostsConcretization.ePosts (CEPosts := CEPosts) γ₁ E₁
+        (EPostsConcretization.ePosts (CEPosts := BEPosts) γ₂ E₂ Ea)
+      ⊑ EPostsConcretization.ePosts (CEPosts := CEPosts) (γ₁.comp γ₂) E Ea)
+    (hP : ∀ X, P ⊓ γ₁.pred X ⊑ γ₁.pred (P_B ⊓ X))
+    (h₂ : ⦃P_B⦄ b ⪯[γ₂] a ⦃Q₂; E₂⦄) (h₁ : ⦃P⦄ c ⪯[γ₁] b ⦃Q₁; E₁⦄) :
+    ⦃P⦄ c ⪯[γ₁.comp γ₂] a ⦃Q; E⦄ := by
+  refine ⟨wrp_intro fun Qa Ea => ?_⟩
+  have hb := wrp_transport h₂.le_wrp Qa Ea
+  have hc := wrp_transport h₁.le_wrp (γ₂.post Q₂ Qa)
+    (EPostsConcretization.ePosts (CEPosts := BEPosts) γ₂ E₂ Ea)
+  refine PartialOrder.rel_trans
+    (le_meet _ _ _ (meet_le_left _ _)
+      (PartialOrder.rel_trans (hP (γ₂.pred (wp a Qa Ea))) (γ₁.pred_mono hb))) ?_
+  exact PartialOrder.rel_trans hc (WP.wp_monotone (hQ Qa) (hE Ea))
+
 theorem Concretization.meet_pred_le_pred_top_meet {CPred BPred : Type w}
     [Assertion CPred] [Assertion BPred] (γ : Concretization CPred BPred) (P : CPred) (X : BPred) :
     P ⊓ γ.pred X ⊑ γ.pred (⊤ ⊓ X) :=

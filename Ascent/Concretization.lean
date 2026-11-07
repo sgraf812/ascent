@@ -101,6 +101,25 @@ def comp {BPred : Type w} [Assertion BPred] (r₁ : Concretization CPred BPred)
   pred := r₁.pred ∘ r₂.pred
   pred_mono h := r₁.pred_mono (r₂.pred_mono h)
 
+theorem ofStateRepr_post_post {Cσ Bσ Aσ : Type} {CVal BVal AVal : Type _} (f : Cσ → Bσ)
+    (g : Bσ → Aσ) (Q₁ : CVal → BVal → Cσ → Prop) (Q₂ : BVal → AVal → Bσ → Prop)
+    (Qa : AVal → Aσ → Prop) :
+    (ofStateRepr f).post Q₁ ((ofStateRepr g).post Q₂ Qa)
+      = ((ofStateRepr f).comp (ofStateRepr g)).post
+          (fun cv av cs => ∃ bv, Q₁ cv bv cs ∧ Q₂ bv av (f cs)) Qa := by
+  funext cv cs
+  simp only [post_pi, ofStateRepr_pred]
+  apply propext
+  constructor
+  · rintro ⟨bv, h₁, av, h₂, h⟩
+    exact ⟨av, ⟨bv, h₁, h₂⟩, h⟩
+  · rintro ⟨av, ⟨bv, h₁, h₂⟩, h⟩
+    exact ⟨bv, h₁, av, h₂, h⟩
+
+@[simp] theorem comp_pred {BPred : Type w} [Assertion BPred] (r₁ : Concretization CPred BPred)
+    (r₂ : Concretization BPred APred) (X : APred) : (r₁.comp r₂).pred X = r₁.pred (r₂.pred X) :=
+  rfl
+
 /-- The identity concretization. -/
 def id (Pred : Type w) [Assertion Pred] : Concretization Pred Pred where
   pred := _root_.id
@@ -120,6 +139,8 @@ section Purify
 noncomputable def purify (σ : Type) : Concretization (σ → Prop) Prop where
   pred φ := fun _ => φ
   pred_mono h := fun _ => h
+
+@[simp] theorem purify_pred (σ : Type) (φ : Prop) : (purify σ).pred φ = fun _ => φ := rfl
 
 /-- The return relation that reads the final state into the abstract result. -/
 def purifyRel {σ α : Type} : α → (α × σ) → (σ → Prop) :=
