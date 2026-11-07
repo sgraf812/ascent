@@ -28,4 +28,12 @@ example : progA = (do
     let b ← (do UB.assume (a + wordVal 7 < 2 ^ 64); pure (a + wordVal 7))
     (do UB.assume (b + wordVal 7 < 2 ^ 64); pure (b + wordVal 7))) := rfl
 
+sym_simp_def progS : Id UInt64 from prog using pre [] post [prog]
+
+/-- info: [15, 15, 31, 31] -/
+#guard_msgs in
+#eval show Lean.Elab.Command.CommandElabM (List Nat) from do
+  let names := [``chainA3, ``chainA3.refines, ``progS, ``progS.eq]
+  names.mapM fun n => return ((← Lean.findDeclarationRanges? n).map (·.range.pos.line)).getD 0
+
 end AscendDef

@@ -84,6 +84,8 @@ elab_rules : command
       value := ← instantiateMVars (← mkLambdaFVars ys value), hints := .regular 0,
       safety := .safe }
     enableRealizationsForConst declName
+    addDeclarationRangesFromSyntax declName (← getRef) name
+    addTermInfo' (isBinder := true) name (mkConst declName)
     let proof ← instantiateMVars proof
     if proof.hasMVar then
       throwError "ascend_def: the refinement proof has holes"
@@ -92,6 +94,7 @@ elab_rules : command
       type := ← instantiateMVars
         (← mkForallFVars xs (stmtFn.beta #[mkAppN (mkConst declName) ys])),
       value := ← instantiateMVars (← mkLambdaFVars xs proof) }
+    addDeclarationRangesFromSyntax (declName ++ `refines) (← getRef) name
 
 syntax (name := symSimpDefCmd)
   "sym_simp_def " ident bracketedBinder* " : " term " from " term
@@ -136,10 +139,13 @@ elab_rules : command
       name := declName, levelParams := [], type := ← instantiateMVars (← mkForallFVars ys T),
       value := ← instantiateMVars (← mkLambdaFVars ys value), hints := .regular 0, safety := .safe }
     enableRealizationsForConst declName
+    addDeclarationRangesFromSyntax declName (← getRef) name
+    addTermInfo' (isBinder := true) name (mkConst declName)
     let proof ← instantiateMVars proof
     addDecl <| .thmDecl {
       name := declName ++ `eq, levelParams := [],
       type := ← instantiateMVars (← mkForallFVars xs (← mkEq c (mkAppN (mkConst declName) ys))),
       value := ← instantiateMVars (← mkLambdaFVars xs proof) }
+    addDeclarationRangesFromSyntax (declName ++ `eq) (← getRef) name
 
 end Lean.Elab.Tactic.VCGen.Ascend
