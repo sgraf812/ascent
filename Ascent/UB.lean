@@ -3,8 +3,8 @@ import Ascent.Refinement
 /-!
 # The `UB` effect
 
-`UB α` is `Option α` with `wp none = ⊥`: a failed guard has no postcondition. `UB.guardRet g a`
-returns `a` if `g` holds and fails otherwise. An abstract program carries its side conditions,
+`UB α` is `Option α` with `wp none = ⊥`: a failed guard has no postcondition. `UB.assume g`
+continues if `g` holds and fails otherwise. An abstract program carries its side conditions,
 such as the absence of overflow, as guards, and `wp` threads them through `bind`.
 -/
 
@@ -21,17 +21,25 @@ instance : LawfulMonad UB := inferInstanceAs (LawfulMonad Option)
 /-- Undefined behaviour. -/
 def fail : UB α := none
 
-/-- Returns `a` if `g` holds. Fails otherwise. -/
-noncomputable def guardRet (g : Prop) (a : α) : UB α :=
-  @ite _ g (Classical.propDecidable g) (pure a) fail
+/-- Continues if `g` holds. Fails otherwise. -/
+noncomputable def assume (g : Prop) : UB Unit :=
+  @ite _ g (Classical.propDecidable g) (pure ()) fail
 
-theorem guardRet_of_pos {g : Prop} {a : α} (h : g) : guardRet g a = pure a :=
+theorem assume_of_pos {g : Prop} (h : g) : assume g = pure () :=
   ite_eq_left (h := Classical.propDecidable g) h
 
-theorem guardRet_of_neg {g : Prop} {a : α} (h : ¬g) : guardRet g a = fail :=
+theorem assume_of_neg {g : Prop} (h : ¬g) : assume g = fail :=
   ite_eq_right (h := Classical.propDecidable g) h
 
-@[simp] theorem guardRet_true {a : α} : guardRet True a = pure a := guardRet_of_pos trivial
+@[simp] theorem assume_true : assume True = pure () := assume_of_pos trivial
+
+theorem assume_bind_of_pos {g : Prop} (h : g) (f : Unit → UB α) : (assume g >>= f) = f () := by
+  rw [assume_of_pos h]
+  rfl
+
+theorem assume_bind_of_neg {g : Prop} (h : ¬g) (f : Unit → UB α) : (assume g >>= f) = fail := by
+  rw [assume_of_neg h]
+  rfl
 
 /-- The `wp` of `UB`: `⊥` on `none`, `post a` on `some a`. -/
 @[instance_reducible] def wpInst {α} : WP (UB α) α Prop EStack⟨⟩ where
@@ -55,6 +63,14 @@ instance instWPMonad : WPMonad UB Prop EStack⟨⟩ where
 
 @[simp] theorem wp_map_eq {α β} (f : α → β) (x : UB α) (Q : β → Prop) (E : EStack⟨⟩) :
     wp (f <$> x) Q E = wp x (fun a => Q (f a)) E := by cases x <;> rfl
+
+theorem wp_assume_eq (g : Prop) (Q : Unit → Prop) (E : EStack⟨⟩) :
+    wp (assume g) Q E = (g ∧ Q ()) := by
+  by_cases h : g
+  · rw [assume_of_pos h]
+    simp [h]
+  · rw [assume_of_neg h]
+    simp [h]
 
 @[spec] theorem UB.fail_spec :
     ⦃⊥⦄ UB.fail ⦃Q; E⦄ := ⟨bot_le _⟩
@@ -105,15 +121,15 @@ instance {α} (x : UB α) : WPConjunctive x where
       rw [show (Q₁ ⊓ Q₂) = fun v => Q₁ v ⊓ Q₂ v from funext fun v => meet_apply Q₁ Q₂ v]
       exact PartialOrder.rel_refl
 
-theorem Ascent.Refinement.guardRet {AV CV : Type} {g : Prop} {P : Prop}
+theorem Ascent.Refinement.assume_pure {AV CV : Type} {g : Prop} {P : Prop}
     {Q : CV → AV → Prop} (c : CV) (a : AV) (h : g → P ⊑ Q c a) :
-    ⦃P⦄ (Pure.pure c : Id CV) ⪯[Concretization.id Prop] (UB.guardRet g a) ⦃Q⦄ := by
+    ⦃P⦄ (Pure.pure c : Id CV) ⪯[Concretization.id Prop] (UB.assume g >>= fun _ => Pure.pure a) ⦃Q⦄ := by
   refine ⟨wrp_intro fun Qa Ea => ?_⟩
   by_cases hg : g
-  · rw [UB.guardRet_of_pos hg]
+  · rw [UB.assume_bind_of_pos hg]
     show P ⊓ Qa a ⊑ (Concretization.id Prop).post Q Qa c
     refine le_iSup_of_le a ?_
     exact le_meet _ _ _ (PartialOrder.rel_trans (meet_le_left _ _) (h hg)) (meet_le_right _ _)
-  · rw [UB.guardRet_of_neg hg]
+  · rw [UB.assume_bind_of_neg hg]
     show P ⊓ (⊥ : Prop) ⊑ _
     exact PartialOrder.rel_trans (meet_le_right _ _) (bot_le _)

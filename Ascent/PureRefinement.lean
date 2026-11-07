@@ -9,7 +9,7 @@ abstract value `av`: under the precondition `P`, the values are related by `Q`. 
 an abstract value `x` contributes the hypothesis `PureRefinement c x True Q`.
 
 `Refinement.pure_rel` lifts `PureRefinement` to programs: the abstract program of `pure cv` is
-`UB.guardRet P av`, and the continuation receives `cv` as a variable `c` together with the
+`do UB.assume P; pure av`, and the continuation receives `cv` as a variable `c` together with the
 hypothesis `PureRefinement c x True Q`.
 -/
 
@@ -63,12 +63,12 @@ theorem Refinement.pure_rel {CM : Type → Type} [Monad CM] [WPMonad CM Prop ESt
     {CV AV : Type} {cv : CV} {av : AV} {P : Prop} {R : CV → AV → Prop}
     (h : PureRefinement cv av P R) {Q : CV → AV → Prop} {E : EStack⟨⟩} :
     ⦃(∀ c x, c = cv → PureRefinement c x True R → Q c x)⦄ (Pure.pure cv : CM CV)
-      ⪯[Concretization.id Prop] (UB.guardRet P av) ⦃Q; E⦄ := by
+      ⪯[Concretization.id Prop] (UB.assume P >>= fun _ => Pure.pure av) ⦃Q; E⦄ := by
   by_cases hP : P
-  · rw [UB.guardRet_of_pos hP]
+  · rw [UB.assume_bind_of_pos hP]
     exact (Refinement.pure cv av).weaken fun hpre =>
       hpre cv av rfl (PureRefinement.of_rel (h hP))
-  · rw [UB.guardRet_of_neg hP]
+  · rw [UB.assume_bind_of_neg hP]
     exact Refinement.fail _
 
 end Ascent

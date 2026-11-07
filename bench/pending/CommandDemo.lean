@@ -33,5 +33,5 @@ ascend_def progA from
 /-- The `do`-block abstracts to the guarded chain, threading each output into the next guard. -/
 example : progA = (do
     let a ← pure (wordVal 7)
-    let b ← UB.guardRet (a + wordVal 7 < 2 ^ 64) (a + wordVal 7)
-    UB.guardRet (b + wordVal 7 < 2 ^ 64) (b + wordVal 7)) := rfl
+    let b ← (do UB.assume (a + wordVal 7 < 2 ^ 64); pure (a + wordVal 7))
+    (do UB.assume (b + wordVal 7 < 2 ^ 64); pure (b + wordVal 7))) := rfl

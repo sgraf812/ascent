@@ -122,13 +122,13 @@ section
 variable {σ : Type}
 
 noncomputable def modifyIf (g : σ → Prop) (f : σ → σ) : BlockM σ Unit :=
-  fun st => UB.guardRet (g st) (.ok (), f st)
+  fun st => UB.assume (g st) >>= fun _ => pure (.ok (), f st)
 
 noncomputable def exitIf {α : Type} (g : σ → Prop) (f : σ → σ) (l : CfgLabel) : BlockM σ α :=
-  fun st => UB.guardRet (g st) (.error l, f st)
+  fun st => UB.assume (g st) >>= fun _ => pure (.error l, f st)
 
 noncomputable def assume (g : σ → Prop) : BlockM σ Unit :=
-  modifyIf g id
+  fun st => UB.assume (g st) >>= fun _ => pure (.ok (), st)
 
 def branch (c : σ → Bool) (l : CfgLabel) : BlockM σ Unit :=
   fun st => if c st then pure (.error l, st) else pure (.ok (), st)
@@ -147,10 +147,10 @@ theorem wp_modifyIf (g f) :
   rw [ExceptT.wp_apply_eq, StateT.wp_apply_eq, modifyIf_run]
   unfold modifyIf
   by_cases h : g st
-  · rw [UB.guardRet_of_pos h]
+  · rw [UB.assume_bind_of_pos h]
     simp only [UB.wp_pure_eq, h, true_and]
     rfl
-  · rw [UB.guardRet_of_neg h]
+  · rw [UB.assume_bind_of_neg h]
     simp only [UB.wp_fail_eq, bot_prop_eq, h, false_and]
 
 theorem wp_exitIf {α : Type} {Qa : α → σ → Prop} (g f l) :
@@ -158,14 +158,17 @@ theorem wp_exitIf {α : Type} {Qa : α → σ → Prop} (g f l) :
   rw [ExceptT.wp_apply_eq, StateT.wp_apply_eq, exitIf_run]
   unfold exitIf
   by_cases h : g st
-  · rw [UB.guardRet_of_pos h]
+  · rw [UB.assume_bind_of_pos h]
     simp only [UB.wp_pure_eq, h, true_and]
     rfl
-  · rw [UB.guardRet_of_neg h]
+  · rw [UB.assume_bind_of_neg h]
     simp only [UB.wp_fail_eq, bot_prop_eq, h, false_and]
 
-theorem wp_assume (g) : wp (assume g) Qa Ea st = (g st ∧ Qa () st) :=
-  wp_modifyIf Qa Ea st g id
+theorem modifyIf_id (g : σ → Prop) : modifyIf g id = assume g := rfl
+
+theorem wp_assume (g) : wp (assume g) Qa Ea st = (g st ∧ Qa () st) := by
+  rw [← modifyIf_id]
+  exact wp_modifyIf Qa Ea st g id
 
 theorem exitIf_bind {σ α β : Type} (g : σ → Prop) (f : σ → σ) (l : CfgLabel)
     (k : α → BlockM σ β) : (exitIf g f l >>= k) = exitIf g f l := by
@@ -175,9 +178,9 @@ theorem exitIf_bind {σ α β : Type} (g : σ → Prop) (f : σ → σ) (l : Cfg
   rw [ExceptT.run_bind, StateT.run_bind, exitIf_run, exitIf_run]
   unfold exitIf
   by_cases h : g st
-  · rw [UB.guardRet_of_pos h, UB.guardRet_of_pos h]
+  · rw [UB.assume_bind_of_pos h, UB.assume_bind_of_pos h]
     rfl
-  · rw [UB.guardRet_of_neg h, UB.guardRet_of_neg h]
+  · rw [UB.assume_bind_of_neg h, UB.assume_bind_of_neg h]
     rfl
 
 theorem wp_branch (c l) :

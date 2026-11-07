@@ -46,8 +46,8 @@ noncomputable def chain2 : { a : UB Int //
 /-- Each addition acquires its no-overflow guard, at the abstract value of the previous step. -/
 example : chain2.1 = (do
     let a ← (do
-      let b ← UB.guardRet True (wordVal 7)
-      UB.guardRet (b + wordVal 7 < 2 ^ 64) (b + wordVal 7))
-    UB.guardRet (a + wordVal 7 < 2 ^ 64) (a + wordVal 7)) := rfl
+      let b ← (do UB.assume True; pure (wordVal 7))
+      (do UB.assume (b + wordVal 7 < 2 ^ 64); pure (b + wordVal 7)))
+    (do UB.assume (a + wordVal 7 < 2 ^ 64); pure (a + wordVal 7))) := rfl
 
 end WordAbsEngine

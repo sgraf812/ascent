@@ -36,8 +36,8 @@ theorem addW_spec (av : Int) (cv y : UInt64) {Q : UInt64 → Int → Prop} {E : 
         (av + wordVal y < 2 ^ 64 → wordVal (cv + y) = av + wordVal y →
           Q (cv + y) (av + wordVal y)) : Prop)⦄
       (pure (cv + y) : Id UInt64)
-      ⪯[γw] (UB.guardRet (av + wordVal y < 2 ^ 64) (av + wordVal y)) ⦃Q; E⦄ := by
-  refine Refinement.guardRet _ _ fun hovf hp => hp.2 hovf ?_
+      ⪯[γw] ((do UB.assume (av + wordVal y < 2 ^ 64); pure (av + wordVal y))) ⦃Q; E⦄ := by
+  refine Refinement.assume_pure _ _ fun hovf hp => hp.2 hovf ?_
   obtain ⟨hav, -⟩ := hp
   subst hav
   show wordVal (cv + y) = wordVal cv + wordVal y
@@ -50,7 +50,7 @@ no-overflow guard, the sum stays related. -/
 @[ascend] theorem refines_addW (av : Int) (cv y : UInt64) {E : EStack⟨⟩} :
     ⦃(⌜wordVal cv = av⌝ : Prop)⦄
       (pure (cv + y) : Id UInt64)
-      ⪯[γw] (UB.guardRet (av + wordVal y < 2 ^ 64) (av + wordVal y)) ⦃(⌜wordVal · = ·⌝); E⦄ := by
+      ⪯[γw] ((do UB.assume (av + wordVal y < 2 ^ 64); pure (av + wordVal y))) ⦃(⌜wordVal · = ·⌝); E⦄ := by
   refine (addW_spec av cv y).weaken ?_
   simp only [CompleteLattice.ofProp_prop_eq]
   intro hav
@@ -95,6 +95,6 @@ def chainC (c : UInt64) : Nat → Id UInt64
 /-- The expected abstract image of `chainC`: the guarded integer chain, for the golden check. -/
 noncomputable def chainA (c : UInt64) : Nat → UB Int
   | 0 => pure (wordVal c)
-  | n+1 => do let r ← chainA c n; UB.guardRet (r + wordVal c < 2 ^ 64) (r + wordVal c)
+  | n+1 => do let r ← chainA c n; (do UB.assume (r + wordVal c < 2 ^ 64); pure (r + wordVal c))
 
 end AscendBench

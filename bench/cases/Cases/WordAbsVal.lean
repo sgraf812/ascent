@@ -45,19 +45,19 @@ def chainC (c : UInt64) : Nat → Id UInt64
   | n+1 => do let r ← chainC c n; pure (r + c)
 
 noncomputable def chainASteps (c : UInt64) : Int → Nat → UB Int
-  | acc, 0 => UB.guardRet (acc + wordVal c < 2 ^ 64) (acc + wordVal c)
-  | acc, n+1 => do let r ← UB.guardRet (acc + wordVal c < 2 ^ 64) (acc + wordVal c); chainASteps c r n
+  | acc, 0 => (do UB.assume (acc + wordVal c < 2 ^ 64); pure (acc + wordVal c))
+  | acc, n+1 => do let r ← (do UB.assume (acc + wordVal c < 2 ^ 64); pure (acc + wordVal c)); chainASteps c r n
 
 noncomputable def chainA (c : UInt64) : Nat → UB Int
-  | 0 => UB.guardRet True (wordVal c)
-  | n+1 => do let r ← UB.guardRet True (wordVal c); chainASteps c r n
+  | 0 => (do UB.assume True; pure (wordVal c))
+  | n+1 => do let r ← (do UB.assume True; pure (wordVal c)); chainASteps c r n
 
 def chainCR (c : UInt64) : UInt64 → Nat → Id UInt64
   | acc, 0 => pure acc
   | acc, n+1 => do let r ← pure (acc + c); chainCR c r n
 
 noncomputable def chainAR (c : UInt64) : Int → Nat → UB Int
-  | acc, 0 => UB.guardRet True acc
-  | acc, n+1 => do let r ← UB.guardRet (acc + wordVal c < 2 ^ 64) (acc + wordVal c); chainAR c r n
+  | acc, 0 => (do UB.assume True; pure acc)
+  | acc, n+1 => do let r ← (do UB.assume (acc + wordVal c < 2 ^ 64); pure (acc + wordVal c)); chainAR c r n
 
 end AscendBenchVal

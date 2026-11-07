@@ -41,9 +41,16 @@ example : ⦃(⊤ : Prop)⦄ prog ⪯[Concretization.id Prop] progN ⦃(⌜FunRe
 /--
 info: def PureRefinementTest.progN : UB Nat :=
 do
-  let x ← UB.guardRet True 7
-  let x ← UB.guardRet (x + 7 < 2 ^ 64) (x + 7)
-  UB.guardRet (x + 7 < 2 ^ 64) (x + 7)
+  let x ←
+    do
+      UB.assume True
+      pure 7
+  let x ←
+    do
+      UB.assume (x + 7 < 2 ^ 64)
+      pure (x + 7)
+  UB.assume (x + 7 < 2 ^ 64)
+  pure (x + 7)
 -/
 #guard_msgs in
 #print progN

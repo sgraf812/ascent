@@ -24,8 +24,8 @@ def prog : Id UInt64 := do let a ← pure (7 : UInt64); let b ← pure (a + 7); 
 ascend_def progA : UB Int from ⦃(⊤ : Prop)⦄ prog ⪯[γw] progA ⦃(⌜FunRel wordVal · ·⌝)⦄
 
 example : progA = (do
-    let a ← UB.guardRet True (wordVal 7)
-    let b ← UB.guardRet (a + wordVal 7 < 2 ^ 64) (a + wordVal 7)
-    UB.guardRet (b + wordVal 7 < 2 ^ 64) (b + wordVal 7)) := rfl
+    let a ← (do UB.assume True; pure (wordVal 7))
+    let b ← (do UB.assume (a + wordVal 7 < 2 ^ 64); pure (a + wordVal 7))
+    (do UB.assume (b + wordVal 7 < 2 ^ 64); pure (b + wordVal 7))) := rfl
 
 end AscendDef

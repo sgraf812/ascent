@@ -25,7 +25,8 @@ namespace Ascent.Kraken
 
 /-- The eight-byte word at `a`, undefined behaviour when the cell is not mapped. -/
 noncomputable def load8 (a : BitVec 64) : BlockM DataMem (BitVec 64) := fun m =>
-  UB.guardRet ((Mem.loadInt m a 8).isSome = true) (.ok (BitVec.ofInt 64 (Mem.loadInt m a 8).get!), m)
+  UB.assume ((Mem.loadInt m a 8).isSome = true) >>= fun _ =>
+    pure (.ok (BitVec.ofInt 64 (Mem.loadInt m a 8).get!), m)
 
 /-- Store the word `v` at `a`, undefined behaviour unless the cell is mapped and apart from the
 return slot at `rsp`. -/
@@ -47,10 +48,10 @@ theorem wp_load8 (a : BitVec 64) :
       = ((Mem.loadInt m a 8).isSome = true ∧ Q (BitVec.ofInt 64 (Mem.loadInt m a 8).get!) m) := by
   rw [wp_BlockM_eq, show (load8 a).run.run m = load8 a m from rfl, load8]
   by_cases h : (Mem.loadInt m a 8).isSome = true
-  · rw [UB.guardRet_of_pos h]
+  · rw [UB.assume_bind_of_pos h]
     simp only [h, true_and]
     rfl
-  · rw [UB.guardRet_of_neg h, UB.fail_eq]
+  · rw [UB.assume_bind_of_neg h, UB.fail_eq]
     simp only [Bool.not_eq_true] at h
     simp [h]
 
