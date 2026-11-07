@@ -133,3 +133,13 @@ theorem Ascent.Refinement.assume_pure {AV CV : Type} {g : Prop} {P : Prop}
   · rw [UB.assume_bind_of_neg hg]
     show P ⊓ (⊥ : Prop) ⊑ _
     exact PartialOrder.rel_trans (meet_le_right _ _) (bot_le _)
+
+/-! Monad lifts print as the lifted computation, the way the `do` elaborator inserts them. -/
+
+@[app_unexpander liftM] def unexpandLiftM : Lean.PrettyPrinter.Unexpander
+  | `($_ $x) => `($x)
+  | _ => throw ()
+
+@[app_unexpander MonadLiftT.monadLift] def unexpandMonadLift : Lean.PrettyPrinter.Unexpander
+  | `($_ $x) => `($x)
+  | _ => throw ()
