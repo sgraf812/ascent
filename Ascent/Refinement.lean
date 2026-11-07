@@ -237,6 +237,22 @@ theorem Refinement.purify {CProg σ α : Type} [WP CProg α (σ → Prop) EStack
   refine PartialOrder.rel_trans ?_ (hc (fun cv s => Qa (cv, s)) _)
   exact le_of_forall_le fun s => PartialOrder.rel_refl
 
+theorem wrp_purify_throw {CProg σ ε CV : Type}
+    [WP CProg CV (σ → Prop) ((ε → σ → Prop) × EStack⟨⟩)] {c : CProg} {P : σ → Prop} {v : σ}
+    {l : ε} {Q : CV → σ → σ → Prop} {E : (ε → σ → Prop) × EStack⟨⟩}
+    (h : Triple c P (fun _ _ => False) (fun l' o => l' = l ∧ o = v, estack⟨⟩)) :
+    (fun o => P o ∧ E.1 l v) ⊑ wrp (Ascent.purify σ) c (Pure.pure v : Id σ) Q E := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro o ho
+  simp only [meet_apply, meet_prop_eq_and] at ho
+  obtain ⟨⟨hP, hE⟩, -⟩ := ho
+  refine WP.wp_monotone (x := c) ?_ ?_ o (h.le_wp o hP)
+  · intro _ _ hq
+    exact hq.elim
+  · refine Prod.mk_le _ _ _ ?_ PartialOrder.rel_refl
+    rintro l' o' ⟨rfl, rfl⟩
+    exact hE
+
 /-! ## Exceptions, for `Except` -/
 
 section
