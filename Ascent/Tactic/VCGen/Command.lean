@@ -115,13 +115,13 @@ elab_rules : command
     let value ← instantiateMVars value
     if value.hasMVar then throwError "sym_simp_def: the simplified program has holes:{indentExpr value}"
     addDecl <| .defnDecl {
-      name := name.getId, levelParams := [], type := ← mkForallFVars xs T,
-      value := ← mkLambdaFVars xs value, hints := .regular 0, safety := .safe }
+      name := name.getId, levelParams := [], type := ← instantiateMVars (← mkForallFVars xs T),
+      value := ← instantiateMVars (← mkLambdaFVars xs value), hints := .regular 0, safety := .safe }
     enableRealizationsForConst name.getId
     let proof ← instantiateMVars proof
     addDecl <| .thmDecl {
       name := name.getId ++ `eq, levelParams := [],
-      type := ← mkForallFVars xs (← mkEq c (mkAppN (mkConst name.getId) xs)),
-      value := ← mkLambdaFVars xs proof }
+      type := ← instantiateMVars (← mkForallFVars xs (← mkEq c (mkAppN (mkConst name.getId) xs))),
+      value := ← instantiateMVars (← mkLambdaFVars xs proof) }
 
 end Lean.Elab.Tactic.VCGen.Ascend
