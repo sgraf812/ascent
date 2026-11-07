@@ -1,5 +1,6 @@
 import Demo.L1
 import Kraken.X64.Parser
+import Kraken.X64.PrettyPrint
 import Ascent.Tactic.VCGen.Command
 
 /-!
