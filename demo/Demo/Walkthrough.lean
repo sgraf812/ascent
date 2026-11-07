@@ -18,6 +18,7 @@ Each section below is one refinement, from the machine code to the pure program.
 
 open Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
 open Ascent.Concretization (ofStateRepr)
+open StateT (assume)
 open scoped Program.WP
 
 namespace Ascent.Kraken.Walkthrough
