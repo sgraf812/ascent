@@ -1,6 +1,7 @@
 import Ascent.UB.WhileLoop
 import Ascent.WPMonadExact
 import Init.Internal.Order.MonadTail
+import Std.WP.Triple.SpecLemmas
 
 /-!
 # Loops as least fixed points
@@ -19,6 +20,8 @@ do
 
 elaborates to `forIn FixLoop.mk 0 fun _ i => if i < n then … pure (.yield (i + 1)) else pure (.done i)`.
 `FixLoop.forIn_eq` unfolds one iteration, as `Lean.Loop.forIn_eq_of_monadTail` does for `repeat`.
+`FixLoop.Spec.forIn_fixLoop` is the `vcgen` specification of the loop, with an invariant and a
+measure as for `repeat`.
 -/
 
 open Lean.Order Std.WP
@@ -91,6 +94,47 @@ theorem wp_forIn_eq (l : FixLoop) (b : β) (f : Unit → β → m (ForInStep β)
   congr 1
   funext r
   cases r <;> simp only [WPMonadExact.wp_pure_eq]
+
+end
+
+section
+variable {m : Type u → Type v} {Pred : Type w} {EPosts : Type w'} [Monad m] [MonadTail m]
+  [Assertion Pred] [Assertion EPosts] [WPMonad m Pred EPosts] {β : Type u}
+
+@[spec]
+theorem Spec.forIn_fixLoop [∀ P : Pred, PreservesSup (meet P)] {l : FixLoop} {init : β}
+    {f : Unit → β → m (ForInStep β)} (measure : Variant β Pred) (inv : WhileInvariant β Pred)
+    (einv : EPosts)
+    (step : ∀ b (mb : measure.γ),
+      Triple (f () b) (measure.EvalsTo b mb ⊓ inv false b)
+        (fun r => match r with
+          | .yield b' => measure.EvalsBelow b' mb ⊓ inv false b'
+          | .done b' => inv true b')
+        einv) :
+    Triple (l.forIn init f) (inv false init) (fun b => inv true b) einv := by
+  refine Triple.intro <| measure.le_of_total_le init ?_
+  refine iSup_le _ _ fun minit => ?_
+  suffices key : ∀ (n : measure.γ), Acc measure.rel n → ∀ b,
+      Triple (l.forIn b f) (measure.EvalsTo b n ⊓ inv false b) (fun b => inv true b) einv
+    from (key minit (measure.wf.apply minit) init).le_wp
+  intro n hacc
+  induction hacc with
+  | intro n _ ih =>
+    intro b
+    rw [forIn_eq]
+    refine Triple.bind (f := fun r => match r with
+      | .done val => Pure.pure val
+      | .yield val => l.forIn val f)
+      (f () b) (fun r => match r with
+        | .yield b' => measure.EvalsBelow b' n ⊓ inv false b'
+        | .done b' => inv true b')
+      (step b n) ?_
+    rintro (b' | b')
+    · exact Triple.pure b' PartialOrder.rel_refl
+    · refine Triple.intro ?_
+      refine iSup_meet_le fun mb' => ?_
+      rw [meet_comm (P := measure.EvalsTo b' mb'), meet_assoc]
+      exact CompleteLattice.ofProp_meet_le fun hlt => (ih mb' hlt b').le_wp
 
 end
 
