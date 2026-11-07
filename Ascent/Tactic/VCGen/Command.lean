@@ -64,16 +64,18 @@ elab_rules : command
     if value.hasMVar then
       throwError "ascend_def: the synthesized program has holes:{indentExpr value}"
     addDecl <| .defnDecl {
-      name := name.getId, levelParams := [], type := ← mkForallFVars xs T,
-      value := ← mkLambdaFVars xs value, hints := .regular 0, safety := .safe }
+      name := name.getId, levelParams := [], type := ← instantiateMVars (← mkForallFVars xs T),
+      value := ← instantiateMVars (← mkLambdaFVars xs value), hints := .regular 0,
+      safety := .safe }
     enableRealizationsForConst name.getId
     let proof ← instantiateMVars proof
     if proof.hasMVar then
       throwError "ascend_def: the refinement proof has holes"
     addDecl <| .thmDecl {
       name := name.getId ++ `refines, levelParams := [],
-      type := ← mkForallFVars xs (stmtFn.beta #[mkAppN (mkConst name.getId) xs]),
-      value := ← mkLambdaFVars xs proof }
+      type := ← instantiateMVars
+        (← mkForallFVars xs (stmtFn.beta #[mkAppN (mkConst name.getId) xs])),
+      value := ← instantiateMVars (← mkLambdaFVars xs proof) }
 
 syntax (name := symSimpDefCmd)
   "sym_simp_def " ident bracketedBinder* " : " term " from " term

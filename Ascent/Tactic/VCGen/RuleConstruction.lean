@@ -395,41 +395,65 @@ def tryMkBackwardRuleFromSpec (specThm : SpecTheorem) (info : WRPApp)
 /-! ## Split rules -/
 
 open Lean.Elab.Tactic.Do in
+/-- The abstract program of a two-sided split: the split of the concrete program `abstractInfo`
+over fresh abstract branches of type `aTy`, which `k` receives as free variables. A matcher keeps
+the abstract program `a`. -/
+def withAbstractBranches {α : Type} (abstractInfo : SplitInfo) (aTy a : Expr)
+    (k : Expr → Array Expr → MetaM α) : MetaM α := do
+  let u ← getLevel aTy
+  match abstractInfo with
+  | .ite e =>
+    withLocalDeclD `at aTy fun bt => withLocalDeclD `ae aTy fun ae =>
+      k (mkApp5 (mkConst ``ite [u]) aTy (e.getArg! 1) (e.getArg! 2) bt ae) #[bt, ae]
+  | .dite e =>
+    let c := e.getArg! 1
+    let tTy ← mkArrow c aTy
+    let eTy ← mkArrow (mkNot c) aTy
+    withLocalDeclD `at tTy fun bt => withLocalDeclD `ae eTy fun ae =>
+      k (mkApp5 (mkConst ``dite [u]) aTy c (e.getArg! 2) bt ae) #[bt, ae]
+  | .cond e =>
+    withLocalDeclD `at aTy fun bt => withLocalDeclD `ae aTy fun ae =>
+      k (mkApp4 (mkConst ``cond [u]) aTy (e.getArg! 1) bt ae) #[bt, ae]
+  | .matcher _ => k a #[]
+
+open Lean.Elab.Tactic.Do in
 /-- Creates a reusable backward rule for splitting `ite`, `dite`, `cond`, or matchers.
 
 Uses `SplitInfo.withAbstract` to introduce abstract fvars for the split components,
 then `SplitInfo.splitWith` to build the splitting proof. Hypothesis types are
-discovered via `rwIfOrMatcher` inside the splitter telescope. -/
+discovered via `rwIfOrMatcher` inside the splitter telescope. An `ite`, `dite` or `cond` splits
+both programs on the same condition: the abstract program of the conclusion is the same split over
+fresh abstract branches, one for each alternative. -/
 def mkBackwardRuleForSplit
     (splitInfo : SplitInfo) (info : WRPApp) : MetaM BackwardRule := do
   -- The rule takes the concrete side of the goal verbatim. On the abstract side the value type,
   -- the `WP` instance and the program are replaced by metavariables that become rule parameters.
   let info ← info.schematic
-  let a := info.Value
   let ma := info.Prog
   let prf ←
     splitInfo.withAbstract ma fun abstractInfo splitFVars => do
     -- Eta-reduce matcher alts for the backward rule pattern to avoid expensive
     -- higher-order unification. The alts are eta-expanded by `withAbstract` so that
     -- `splitWith`/`matcherApp.transform` can `instantiateLambda` them directly.
-    let abstractProg := match abstractInfo with
+    let concreteProg := match abstractInfo with
       | .ite e | .dite e | .cond e => e
       | .matcher matcherApp =>
         { matcherApp with alts := matcherApp.alts.map Expr.eta }.toExpr
+    withAbstractBranches abstractInfo info.args[1]! info.abs fun abstractProg absFVars => do
     let excessArgNamesTypes ← info.excessArgs.mapM fun arg =>
       return (`s, ← Meta.inferType arg)
     withLocalDeclsDND excessArgNamesTypes fun ss => do
-    withLocalDeclD `Post (← mkArrow a info.Pred) fun post => do
+    withLocalDeclD `Post (← mkArrow info.Value (← mkArrow info.AValue info.Pred)) fun post => do
     withLocalDeclD `EPosts info.EPosts fun eposts => do
-    let mkWP (prog : Expr) : Expr :=
-      let args := info.lemmaPrefix ++ #[prog, post, eposts]
+    let mkWP (prog abs : Expr) : Expr :=
+      let args := ((info.args.set! 17 prog).set! 18 abs |>.set! 19 post).set! 20 eposts
       mkAppN (mkAppN info.head args) ss
-    let Pred' ← Meta.inferType (mkWP abstractProg)
+    let Pred' ← Meta.inferType (mkWP concreteProg abstractProg)
     withLocalDeclD `Pre Pred' fun pre => do
-    let sampleGoal ← mkAppM ``PartialOrder.rel #[pre, mkWP abstractProg]
+    let sampleGoal ← mkAppM ``PartialOrder.rel #[pre, mkWP concreteProg abstractProg]
     let relArgs := sampleGoal.getAppArgs
     let relHead := mkAppN sampleGoal.getAppFn (relArgs.extract 0 3)
-    let mkGoal (prog : Expr) : Expr := mkApp relHead (mkWP prog)
+    let mkGoal (prog abs : Expr) : Expr := mkApp relHead (mkWP prog abs)
     -- Use synthetic opaque mvars so that `rwIfOrMatcher`'s `assumption` cannot
     -- accidentally assign our subgoal metavariables.
     let subgoals ← splitInfo.altInfos.mapM fun _ =>
@@ -439,25 +463,34 @@ def mkBackwardRuleForSplit
     let prf ←
       abstractInfo.splitWith
         (useSplitter := true)
-        (mkGoal abstractProg)
+        (mkGoal concreteProg abstractProg)
         (fun _name bodyType idx altFVars => do
-          -- Extract the program from `bodyType` (the substituted alt goal type).
+          -- Extract the programs from `bodyType` (the substituted alt goal type).
           -- For matchers, `bodyType` has the discriminant replaced by the constructor
           -- pattern (e.g., `Nat.zero` instead of `discr`), which is required for
           -- `rwMatcher` to discharge the equality hypotheses of congr equation theorems.
-          -- For ite/dite, `bodyType` equals `mkGoal abstractProg` so this is equivalent.
-          let prog := bodyType.getArg! 3 |>.getArg! WRPApp.progIdx
+          -- For ite/dite, `bodyType` equals `mkGoal concreteProg abstractProg`.
+          let rhs := bodyType.getArg! 3
+          let prog := rhs.getArg! WRPApp.progIdx
+          let abs := rhs.getArg! (WRPApp.progIdx + 1)
           let res ← rwIfOrMatcher idx prog
           if res.proof?.isNone then
             throwError "mkBackwardRuleForSplit: rwIfOrMatcher failed for alt {idx}"
+          let resA ← if absFVars.isEmpty then pure { expr := abs } else rwIfOrMatcher idx abs
+          if !absFVars.isEmpty && resA.proof?.isNone then
+            throwError "mkBackwardRuleForSplit: rwIfOrMatcher failed for the abstract alt {idx}"
           let altParams := altFVars.all
-          subgoals[idx]!.mvarId!.assign (← mkForallFVars altParams (mkGoal res.expr))
+          subgoals[idx]!.mvarId!.assign (← mkForallFVars altParams (mkGoal res.expr resA.expr))
           let context ← withLocalDecl `x .default ma fun x =>
-            mkLambdaFVars #[x] (mkGoal x)
-          let eqProof ← mkAppM ``congrArg #[context, res.proof?.get!]
+            mkLambdaFVars #[x] (mkGoal x abs)
+          let mut eqProof ← mkAppM ``congrArg #[context, res.proof?.get!]
+          if let some pa := resA.proof? then
+            let contextA ← withLocalDecl `y .default info.args[1]! fun y =>
+              mkLambdaFVars #[y] (mkGoal res.expr y)
+            eqProof ← mkEqTrans eqProof (← mkAppM ``congrArg #[contextA, pa])
           mkEqMPR eqProof (mkAppN subgoalHyps[idx]! altParams))
     let prf ← instantiateMVars prf
-    mkLambdaFVars (splitFVars ++ ss ++ #[post, eposts, pre] ++ subgoalHyps) prf
+    mkLambdaFVars (splitFVars ++ absFVars ++ ss ++ #[post, eposts, pre] ++ subgoalHyps) prf
   let prf ← instantiateMVars prf
   let res ← abstractMVars prf
   mkBackwardRuleFromExpr res.expr res.paramNames.toList

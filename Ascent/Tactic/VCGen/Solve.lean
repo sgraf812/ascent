@@ -347,6 +347,53 @@ def wpSimpStateArgs? (goal : MVarId) (info : WRPApp) :
     | .noProgress => return none
   | _ => return none
 
+/-- Fill an unassigned hole in the abstract program of `goal` with a fresh metavariable `?b` of the
+goal's context, which a rule then assigns. A bare hole is assigned `?b`. A hole `?h xs` applied to
+distinct free variables gets the delayed assignment `?h xs := ?b`. A hole applied to closed terms,
+such as the continuation `?k ()` of a bind whose first action returns `()`, is assigned the
+constant function `fun _ => ?b`. A table slot `Table.get ?tbl k` at a closed key gets the cell of
+`k` (`tableCell`). In every case the goal's abstract program becomes the cell. The frontend
+resolves the delayed assignments after the run. Returns the new goal and, for a filled hole, the
+hole's context, the hole's arguments and `?b`. -/
+def fillAbstractHole (goal : MVarId) (info : WRPApp) :
+    VCGenM (MVarId × Option (LocalContext × Array Expr × Expr)) := do
+  let mut goal := goal
+  let mut filled : Option (LocalContext × Array Expr × Expr) := none
+  let abs ← instantiateMVarsIfMVarAppS info.abs
+  if abs.isAppOfArity ``Ascent.Table.get 6 then
+    if let some (lctx?, b) ← tableCell abs then
+      if let some lctx := lctx? then filled := some (lctx, #[], b)
+      goal ← setAbs goal info b
+  else if let .mvar hole := abs.getAppFn then
+    let xs := abs.getAppArgs
+    let distinct := xs.all (·.isFVar) && (xs.toList.map (·.fvarId!)).eraseDups.length == xs.size
+    let closed := xs.all fun x => !x.hasFVar && !x.hasMVar
+    if (← hole.getKind) matches .natural && !(← hole.isDelayedAssigned) && (distinct || closed) then
+      let b ← shareCommon (← mkFreshExprMVar (← Sym.inferType abs))
+      filled := some ((← hole.getDecl).lctx, if closed then #[] else xs, b)
+      if xs.isEmpty then
+        hole.assign b
+      else if closed then
+        let mut ty ← instantiateMVars (← hole.getType)
+        let mut doms := #[]
+        for _ in [0:xs.size] do
+          let .forallE nm d body _ := ty
+            | throwError "ascend: the hole {mkMVar hole} applied to {xs} has no function type"
+          doms := doms.push (nm, d)
+          ty := body
+        hole.assign <| doms.foldr (fun (nm, d) acc => .lam nm d acc .default) b
+      else
+        assignDelayedMVar hole xs b.mvarId!
+        goal ← setAbs goal info b
+  return (goal, filled)
+
+/-- `true` iff the abstract program of the filled hole `filled` uses only the hole's context and the
+hole's arguments. -/
+def filledInScope (filled : Option (LocalContext × Array Expr × Expr)) : VCGenM Bool := do
+  let some (lctx, xs, b) := filled | return true
+  let v ← instantiateMVarsS b
+  return !v.hasAnyFVar fun fv => !lctx.contains fv && !xs.contains (.fvar fv)
+
 /-- Strategy 11b: split an `ite`/`dite`/`cond`/match program, or iota-reduce a matcher with a
 concrete discriminant. -/
 def wpMatch? (goal : MVarId) (info : WRPApp) :
@@ -356,8 +403,12 @@ def wpMatch? (goal : MVarId) (info : WRPApp) :
     if let some prog ← liftMetaM <| withReducible <| reduceRecMatcher? info.prog then
       return some [← replaceProgDefEq goal info (← shareCommonInc prog)]
   let rule ← mkBackwardRuleForSplitCached splitInfo info
+  let (goal, filled) ← fillAbstractHole goal info
   let .goals goals ← rule.applyChecked goal m!"split rule for{indentExpr info.prog}"
     | throwError "Failed to apply split rule for {indentExpr info.prog}"
+  unless ← filledInScope filled do
+    throwError "ascend: the abstract split of{indentExpr info.prog}\nmentions a variable outside \
+      the context of the abstract program"
   let mut simpGoals := #[]
   for g in goals do
     match ← simpGoalTelescope g with
@@ -448,48 +499,12 @@ def applySpec (scope : Scope) (goal : MVarId) (info : WRPApp) (thm : SpecTheorem
     | return none
   trace[Elab.Tactic.Do.vcgen] "Applying spec {thm.proof} for {info.prog}. Excess args: {info.excessArgs}"
   let saved ← (saveState : MetaM Meta.SavedState)
-  -- An unassigned hole in the abstract program is filled through a fresh metavariable `?b` of
-  -- the goal's context, which the rule then assigns. A bare hole is assigned `?b`. A hole `?h xs`
-  -- applied to distinct free variables gets the delayed assignment `?h xs := ?b`. A hole applied
-  -- to closed terms, such as the continuation `?k ()` of a bind whose first action returns `()`,
-  -- is assigned the constant function `fun _ => ?b`. A table slot `Table.get ?tbl k` at a closed
-  -- key gets the cell of `k` (`tableCell`). In every case the goal's abstract program becomes
-  -- the cell. The frontend resolves the delayed assignments after the run.
-  let mut goal := goal
-  let mut filled : Option (LocalContext × Array Expr × Expr) := none
-  let abs ← instantiateMVarsIfMVarAppS info.abs
-  if abs.isAppOfArity ``Ascent.Table.get 6 then
-    if let some (lctx?, b) ← tableCell abs then
-      if let some lctx := lctx? then filled := some (lctx, #[], b)
-      goal ← setAbs goal info b
-  else if let .mvar hole := abs.getAppFn then
-    let xs := abs.getAppArgs
-    let distinct := xs.all (·.isFVar) && (xs.toList.map (·.fvarId!)).eraseDups.length == xs.size
-    let closed := xs.all fun x => !x.hasFVar && !x.hasMVar
-    if (← hole.getKind) matches .natural && !(← hole.isDelayedAssigned) && (distinct || closed) then
-      let b ← shareCommon (← mkFreshExprMVar (← Sym.inferType abs))
-      filled := some ((← hole.getDecl).lctx, if closed then #[] else xs, b)
-      if xs.isEmpty then
-        hole.assign b
-      else if closed then
-        let mut ty ← instantiateMVars (← hole.getType)
-        let mut doms := #[]
-        for _ in [0:xs.size] do
-          let .forallE nm d body _ := ty
-            | throwError "ascend: the hole {mkMVar hole} applied to {xs} has no function type"
-          doms := doms.push (nm, d)
-          ty := body
-        hole.assign <| doms.foldr (fun (nm, d) acc => .lam nm d acc .default) b
-      else
-        assignDelayedMVar hole xs b.mvarId!
-        goal ← setAbs goal info b
+  let (goal, filled) ← fillAbstractHole goal info
   let .goals goals ← specRule.applyChecked goal m!"spec rule for{indentExpr info.prog}"
     | (saved.restore : MetaM Unit); return none
   -- The rule's abstract program may use only the hole's context and the hole's arguments.
-  if let some (lctx, xs, b) := filled then
-    let v ← instantiateMVarsS b
-    if v.hasAnyFVar fun fv => !lctx.contains fv && !xs.contains (.fvar fv) then
-      (saved.restore : MetaM Unit); return none
+  unless ← filledInScope filled do
+    (saved.restore : MetaM Unit); return none
   return some (.goals scope goals)
 
 /--
