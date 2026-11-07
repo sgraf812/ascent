@@ -19,7 +19,8 @@ do
 The body prints as a `do` sequence: `pure (.yield e)` is `i := e; continue`, `pure (.done e)` is
 `i := e; break`, a bind is `let x ← …`, and `ite` is `if … then … else …`. A `continue` at the end of
 the body is left out. A loop over `PUnit` has no `let mut`. A bind of a loop prints as the loop
-statement inside the enclosing block, and the rest of the block reads the loop variable. A loop whose body
+statement inside the enclosing block, and the rest of the block reads the loop variable. A loop
+followed only by `pure ()` is the last statement of its block. A loop whose body
 mentions `ForInStep` anywhere else prints as a term, and so does every loop under `pp.explicit`.
 -/
 
@@ -93,6 +94,9 @@ private partial def delabBody (v : Option (Ident × Expr)) :
   if mentionsForInStep e then failure
   return #[← `(doElem| $(← delab):term)]
 
+private def isPureUnit (e : Expr) : Bool :=
+  e.isAppOfArity ``Pure.pure 4 && (e.appArg!.isConstOf ``PUnit.unit || e.appArg!.isConstOf ``Unit.unit)
+
 private def loopArgs? (e : Expr) : Option (Nat × Nat × Nat) :=
   if e.isAppOfArity ``FixLoop.forIn 7 then some (3, 5, 6)
   else if e.isAppOfArity ``ForIn.forIn 8 && (e.getArg! 1).isConstOf ``FixLoop then some (4, 6, 7)
@@ -139,6 +143,9 @@ def delabBindForIn : Delab := whenNotPPOption getPPExplicit do
   guard <| e.isAppOfArity ``Bind.bind 6 && (loopArgs? (e.getArg! 4)).isSome
   let .lam _ _ body _ := e.getArg! 5 | failure
   let (loop, v) ← withNaryArg 4 delabLoopElems
+  if isPureUnit body then
+    let items ← loop.mapM fun i => `(doSeqItem| $i:doElem)
+    return ← `(do $items:doSeqItem*)
   let rest ← withNaryArg 5 <|
     match v with
     | some n => withBindingBody n.getId delabDoElems

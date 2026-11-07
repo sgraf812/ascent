@@ -101,7 +101,6 @@ fun rdi rsi rdx rcx rsp =>
       else
         assume fun m => (Mem.loadInt m rsp 8).isSome = true
         throw CfgLabel.exit
-    pure PUnit.unit
 -/
 #guard_msgs in
 #print zipWithAddL
@@ -137,7 +136,6 @@ fun n a b =>
         i := i + 1
       else
         throw CfgLabel.exit
-    pure PUnit.unit
 -/
 #guard_msgs in
 #print zipWithAddArr

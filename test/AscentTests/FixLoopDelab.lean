@@ -19,7 +19,6 @@ fun n => do
       i := i + 1
     else
       break
-  pure ()
 -/
 #guard_msgs in
 #print fill
@@ -32,7 +31,6 @@ noncomputable def fill' (n : Nat) : StateM (Array Nat) Unit := do
       i := i + 1
     else
       break
-  pure ()
 
 example : fill = fill' := rfl
 
