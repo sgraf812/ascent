@@ -92,12 +92,15 @@ info: def Ascent.Kraken.zipWithAddL : [inst : Host] →
 fun [Host] [FunDecls] [Embeds zipWithAdd] s ra rdi rsi rdx rcx rsp =>
   if rcx.toInt ≤ 0 then retAt rsp
   else do
-    let _ ←
-      { }.forIn 0#64 fun x v => do
-          let x ← load8 (rsi + v * 8#64)
-          let x_1 ← load8 (rdi + v * 8#64)
-          store8 rsp (rdx + v * 8#64) (x_1 + x)
-          if ¬rcx = v + 1#64 then pure (ForInStep.yield (v + 1#64)) else retAt rsp
+    let mut v := 0#64
+    repeat'
+      let x ← load8 (rsi + v * 8#64)
+      let x_1 ← load8 (rdi + v * 8#64)
+      store8 rsp (rdx + v * 8#64) (x_1 + x)
+      if ¬rcx = v + 1#64 then 
+        v := v + 1#64
+      else
+        retAt rsp
     pure PUnit.unit
 -/
 #guard_msgs in
@@ -135,10 +138,13 @@ info: def Ascent.Kraken.zipWithAddArr : [inst : Host] →
 fun [Host] [FunDecls] [Embeds zipWithAdd] s ra A B O rsp n a b =>
   if n = 0 then throw CfgLabel.exit
   else do
-    let _ ←
-      { }.forIn 0 fun x i => do
-          modify fun o => o.set! i (a[i]! + b[i]!)
-          if ¬n = i + 1 then pure (ForInStep.yield (i + 1)) else throw CfgLabel.exit
+    let mut i := 0
+    repeat'
+      modify fun o => o.set! i (a[i]! + b[i]!)
+      if ¬n = i + 1 then 
+        i := i + 1
+      else
+        throw CfgLabel.exit
     pure PUnit.unit
 -/
 #guard_msgs in

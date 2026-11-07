@@ -1,5 +1,6 @@
 import Demo.L1
 import Ascent.FixLoop
+import Ascent.FixLoop.Delab
 
 /-!
 # Structuring a block loop by rewriting

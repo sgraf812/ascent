@@ -4,6 +4,7 @@ import Ascent.UB
 import Ascent.PureRefinement
 import Ascent.UB.WhileLoop
 import Ascent.FixLoop
+import Ascent.FixLoop.Delab
 import Ascent.UB.StateT
 import Ascent.SP
 import Ascent.Concretization
