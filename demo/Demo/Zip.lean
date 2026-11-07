@@ -1,5 +1,4 @@
 import Demo.L1
-import Demo.PrintParse
 import Kraken.X64.Parser
 import Ascent.Tactic.VCGen.Command
 
