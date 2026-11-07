@@ -470,22 +470,6 @@ def wpFVarZeta? (goal : MVarId) (info : WRPApp) :
   let prog ← shareCommonInc (val.betaRev info.prog.getAppRevArgs)
   return some (← replaceProgDefEq goal info prog)
 
-/-- Strategy 12: on the `Prop` lattice, unfold the reducible head constant of an `rhs` that no
-other strategy decomposes, and reduce the result with `reduceHead?`. A relation such as
-`StepRel R Q (.yield u) (.yield v) t` becomes `R t v`, which the lattice steps decompose. -/
-def unfoldRhsHead? (goal : MVarId) (target : Expr) : VCGenM (Option MVarId) := do
-  let_expr c@PartialOrder.rel α inst pre rhs := target | return none
-  unless α.isProp do return none
-  let .const name _ := rhs.getAppFn | return none
-  let rhs' ← match ← reduceHead? rhs with
-    | some rhs' => pure rhs'
-    | none =>
-      unless (← getReducibilityStatus name) matches .reducible do return none
-      let some rhs' ← liftMetaM <| withReducible <| Meta.unfoldDefinition? rhs | return none
-      let rhs' ← shareCommonInc rhs'
-      pure ((← reduceHead? rhs').getD rhs')
-  return some (← goal.replaceTargetDefEqFast (← mkAppNS c #[α, inst, pre, rhs']))
-
 /-- Stop or raise on a program with no applicable spec. With `errorOnMissingSpec` (default), raise a
 hard error naming the program and the candidate specs; otherwise stop and emit the goal as a VC. -/
 def stopOrErrorOnMissingSpec (prog monad : Expr) (thms : Array SpecTheorem) :
@@ -648,7 +632,6 @@ def solve (scope : Scope) (goal : MVarId) : VCGenM SolveResult := goal.withConte
       return ← applySpecs scope goal info
     return ← stopOrErrorOnMissingSpec info.prog info.M #[]
 
-  if let some g ← unfoldRhsHead? goal target then return .goals scope [g]
   return .stop (.noProgress pre rhs)
 
 

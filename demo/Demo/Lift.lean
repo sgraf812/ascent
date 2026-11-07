@@ -207,14 +207,6 @@ end
 
 /-! ## Control -/
 
-/-- One iteration of two lockstep loops: both continue with the loop values related by `R`, or
-both stop with the results related by `Q`. -/
-@[reducible] def StepRel {σ βc βa : Type} (R : βc → σ → βa → Prop) (Q : βc → βa → σ → Prop) :
-    ForInStep βc → ForInStep βa → σ → Prop
-  | .yield c, .yield a, t => R c t a
-  | .done c, .done a, t => Q c a t
-  | _, _, _ => False
-
 section
 variable {σc σa : Type} {view : σc → σa} {E : (CfgLabel → CfgLabel → σc → Prop) × EStack⟨⟩}
 
@@ -222,7 +214,10 @@ theorem wrp_forIn_lockstep {βc βa : Type} (R : βc → σc → βa → Prop) (
     {fc : Unit → βc → BlockM σc (ForInStep βc)} {fa : Unit → βa → BlockM σa (ForInStep βa)}
     {Q : βc → βa → σc → Prop}
     (hbody : ∀ c a, (fun t => R c t a) ⊑
-      wrp (ofStateRepr view) (fc () c) (fa () a) (StepRel R Q) E) :
+      wrp (ofStateRepr view) (fc () c) (fa () a) (fun rc ra t => match rc, ra with
+        | .yield c', .yield a' => R c' t a'
+        | .done c', .done a' => Q c' a' t
+        | _, _ => False) E) :
     (fun t => R cinit t ainit) ⊑ wrp (ofStateRepr view) (FixLoop.mk.forIn cinit fc)
       (FixLoop.mk.forIn ainit fa) Q E := by
   refine wrp_intro fun Qa Ea => ?_
@@ -252,7 +247,7 @@ theorem wrp_forIn_lockstep {βc βa : Type} (R : βc → σc → βa → Prop) (
   rw [Concretization.post_pi] at h'
   obtain ⟨ra, hrel, hq⟩ := h'
   simp only [ofStateRepr_pred] at hq
-  cases rc <;> cases ra <;> simp only [StepRel] at hrel
+  cases rc <;> cases ra <;> simp only at hrel
   · simp only [WPMonadExact.wp_pure_eq]
     rw [Concretization.post_pi]
     exact ⟨_, hrel, hq⟩
@@ -262,7 +257,10 @@ theorem wrp_forIn_lockstep_bind_unit {βc βa : Type} (R : βc → σc → βa �
     (ainit : βa) {fc : Unit → βc → BlockM σc (ForInStep βc)}
     {fa : βa → BlockM σa (ForInStep βa)} {Q : Unit → Unit → σc → Prop}
     (hbody : ∀ c i, (fun t => R c t i) ⊑ wrp (ofStateRepr view) (fc () c) (fa i)
-      (StepRel R fun _ _ t => Q () () t) E) :
+      (fun rc ra t => match rc, ra with
+        | .yield c', .yield a' => R c' t a'
+        | .done _, .done _ => Q () () t
+        | _, _ => False) E) :
     (fun t => R cinit t ainit) ⊑ wrp (ofStateRepr view)
       (FixLoop.mk.forIn cinit fc >>= fun _ => pure ())
       (FixLoop.mk.forIn ainit (fun _ v => fa v) >>= fun _ => pure ()) Q E := by
@@ -270,7 +268,9 @@ theorem wrp_forIn_lockstep_bind_unit {βc βa : Type} (R : βc → σc → βa �
   intro t ht
   simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, WPMonadExact.wp_bind_eq,
     WPMonadExact.wp_pure_eq] at ht
-  have h := wrp_transport (wrp_forIn_lockstep R cinit ainit (fa := fun _ v => fa v) hbody)
+  have h := wrp_transport (wrp_forIn_lockstep R cinit ainit (fa := fun _ v => fa v)
+    (Q := fun _ _ t => Q () () t) fun c i => PartialOrder.rel_trans (hbody c i)
+      (wrp_mono_post fun rc ra t h => by cases rc <;> cases ra <;> exact h))
     (fun _ => Qa ()) Ea t
     (by simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred]; exact ht)
   rw [WPMonadExact.wp_bind_eq]
@@ -297,7 +297,10 @@ theorem wrp_forIn_lockstep_unit {βa : Type} (R : MachineData → βa → Prop) 
     {fa : βa → BlockM DataMem (ForInStep βa)}
     {Q : PUnit → Unit → MachineData → Prop}
     (hbody : ∀ v, (fun t => R t v) ⊑ wrp (ofStateRepr MachineData.dmem) (fc () PUnit.unit) (fa v)
-      (StepRel (fun _ t a => R t a) fun u _ t => Q u () t) E) :
+      (fun rc ra t => match rc, ra with
+        | .yield _, .yield a' => R t a'
+        | .done u, .done _ => Q u () t
+        | _, _ => False) E) :
     (fun t => R t ab) ⊑ wrp (ofStateRepr MachineData.dmem) (FixLoop.mk.forIn PUnit.unit fc)
       (FixLoop.mk.forIn ab (fun _ v => fa v) >>= fun _ => pure ()) Q E := by
   refine wrp_intro fun Qa Ea => ?_
@@ -306,7 +309,9 @@ theorem wrp_forIn_lockstep_unit {βa : Type} (R : MachineData → βa → Prop) 
     WPMonadExact.wp_pure_eq] at ht
   have h := wrp_transport
     (wrp_forIn_lockstep (fun _ t a => R t a) PUnit.unit ab (fa := fun _ v => fa v)
-      (Q := fun u _ t => Q u () t) fun _ v => hbody v) (fun _ => Qa ()) Ea t
+      (Q := fun u _ t => Q u () t) fun _ v => PartialOrder.rel_trans (hbody v)
+        (wrp_mono_post fun rc ra t h => by cases rc <;> cases ra <;> exact h))
+      (fun _ => Qa ()) Ea t
     (by simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred]; exact ht)
   refine WP.wp_monotone_post (x := FixLoop.mk.forIn PUnit.unit fc) ?_ t h
   intro u t' h'
