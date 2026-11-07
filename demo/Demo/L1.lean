@@ -46,6 +46,12 @@ def CondCode.cmp (cc : CondCode) (a b : BitVec 64) : Bool :=
   | .g => b.slt a
   | cc => cc.interp (StatusFlags.ofSub a b)
 
+theorem CondCode.cmp_nz_eq_true (a b : BitVec 64) : (CondCode.nz.cmp a b = true) = (a ≠ b) := by
+  simp [CondCode.cmp]
+
+theorem CondCode.cmp_le_eq_true (a b : BitVec 64) : (CondCode.le.cmp a b = true) = (a.toInt ≤ b.toInt) := by
+  simp [CondCode.cmp, BitVec.sle_iff_toInt_le]
+
 theorem StatusFlags.zf_ofSub_eq (a b : BitVec 64) : (StatusFlags.ofSub a b).zf = (a == b) := by
   rw [StatusFlags.zf_ofSub, Bool.eq_iff_iff, beq_iff_eq, beq_iff_eq, BitVec.zero_eq]
   constructor
@@ -118,7 +124,7 @@ variable {σ : Type}
 noncomputable def modifyIf (g : σ → Prop) (f : σ → σ) : BlockM σ Unit :=
   fun st => UB.guardRet (g st) (.ok (), f st)
 
-noncomputable def exitIf (g : σ → Prop) (f : σ → σ) (l : CfgLabel) : BlockM σ Unit :=
+noncomputable def exitIf {α : Type} (g : σ → Prop) (f : σ → σ) (l : CfgLabel) : BlockM σ α :=
   fun st => UB.guardRet (g st) (.error l, f st)
 
 def branch (c : σ → Bool) (l : CfgLabel) : BlockM σ Unit :=
@@ -130,7 +136,7 @@ section
 variable {σ : Type} (Qa : Unit → σ → Prop) (Ea : (CfgLabel → σ → Prop) × EStack⟨⟩) (st : σ)
 
 theorem modifyIf_run (g f) : (modifyIf g f).run.run st = modifyIf g f st := rfl
-theorem exitIf_run (g f l) : (exitIf g f l).run.run st = exitIf g f l st := rfl
+theorem exitIf_run {α : Type} (g f l) : (exitIf g f l : BlockM σ α).run.run st = exitIf g f l st := rfl
 theorem branch_run (c l) : (branch c l).run.run st = branch c l st := rfl
 
 theorem wp_modifyIf (g f) :
@@ -144,8 +150,8 @@ theorem wp_modifyIf (g f) :
   · rw [UB.guardRet_of_neg h]
     simp only [UB.wp_fail_eq, bot_prop_eq, h, false_and]
 
-theorem wp_exitIf (g f l) :
-    wp (exitIf g f l) Qa Ea st = (g st ∧ Ea.1 l (f st)) := by
+theorem wp_exitIf {α : Type} {Qa : α → σ → Prop} (g f l) :
+    wp (exitIf g f l : BlockM σ α) Qa Ea st = (g st ∧ Ea.1 l (f st)) := by
   rw [ExceptT.wp_apply_eq, StateT.wp_apply_eq, exitIf_run]
   unfold exitIf
   by_cases h : g st
@@ -154,6 +160,19 @@ theorem wp_exitIf (g f l) :
     rfl
   · rw [UB.guardRet_of_neg h]
     simp only [UB.wp_fail_eq, bot_prop_eq, h, false_and]
+
+theorem exitIf_bind {σ α β : Type} (g : σ → Prop) (f : σ → σ) (l : CfgLabel)
+    (k : α → BlockM σ β) : (exitIf g f l >>= k) = exitIf g f l := by
+  apply ExceptT.ext
+  apply StateT.ext
+  intro st
+  rw [ExceptT.run_bind, StateT.run_bind, exitIf_run, exitIf_run]
+  unfold exitIf
+  by_cases h : g st
+  · rw [UB.guardRet_of_pos h, UB.guardRet_of_pos h]
+    rfl
+  · rw [UB.guardRet_of_neg h, UB.guardRet_of_neg h]
+    rfl
 
 theorem wp_branch (c l) :
     wp (branch c l) Qa Ea st = if c st then Ea.1 l st else Qa () st := by
@@ -471,19 +490,6 @@ writes are cleared by `abs`. -/
     (fun Q E s hp he => (Program.WP.Spec.ret (Q := Q) (E := E) asz osz).le_wp s ⟨hp, he⟩) ?_ .exit
   intro s hg
   exact ⟨by simpa [MachineData.retAddr_eq, loadOk8] using hg, rfl⟩
-
-theorem exitIf_bind (g : MachineData → Prop) (f : MachineData → MachineData) (l : CfgLabel)
-    (k : Unit → BlockM MachineData Unit) : (exitIf g f l >>= k) = exitIf g f l := by
-  apply ExceptT.ext
-  apply StateT.ext
-  intro st
-  rw [ExceptT.run_bind, StateT.run_bind, exitIf_run]
-  unfold exitIf
-  by_cases h : g st
-  · rw [UB.guardRet_of_pos h]
-    rfl
-  · rw [UB.guardRet_of_neg h]
-    rfl
 
 /-- A `ret` ends the block, and the directives after it are unreachable. -/
 @[ascend default + 1] theorem wrp_ret_cons (asz osz : Width) (p : Program)

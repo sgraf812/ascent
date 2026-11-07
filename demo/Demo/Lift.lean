@@ -34,7 +34,7 @@ noncomputable def store8 (rsp a v : BitVec 64) : BlockM DataMem Unit :=
     fun m => Mem.storeInt m a 8 v.toInt
 
 /-- Return through the return slot at `rsp`. -/
-noncomputable def retAt (rsp : BitVec 64) : BlockM DataMem Unit :=
+noncomputable def retAt {α : Type} (rsp : BitVec 64) : BlockM DataMem α :=
   exitIf (fun m => (Mem.loadInt m rsp 8).isSome = true) id .exit
 
 section
@@ -58,9 +58,13 @@ theorem wp_store8 (rsp a v : BitVec 64) :
       = (((Mem.loadInt m a 8).isSome = true ∧ Mem.Blocks.Disjoint [(rsp, 8)] [(a, 8)])
           ∧ Qu () (Mem.storeInt m a 8 v.toInt)) := wp_modifyIf _ _ _ _ _
 
-theorem wp_retAt (rsp : BitVec 64) :
-    wp (retAt rsp) Qu E m = ((Mem.loadInt m rsp 8).isSome = true ∧ E.1 .exit m) :=
-  wp_exitIf _ _ _ _ _ _
+theorem wp_retAt {α : Type} {Qα : α → DataMem → Prop} (rsp : BitVec 64) :
+    wp (retAt rsp : BlockM DataMem α) Qα E m = ((Mem.loadInt m rsp 8).isSome = true ∧ E.1 .exit m) :=
+  wp_exitIf _ _ _ _ _
+
+theorem retAt_bind {α β : Type} (rsp : BitVec 64) (k : α → BlockM DataMem β) :
+    (retAt rsp >>= k) = retAt rsp :=
+  exitIf_bind _ _ _ _
 
 end
 
@@ -318,12 +322,12 @@ theorem wrp_forIn_lockstep_unit {βa : Type} (R : MachineData → βa → Prop) 
   simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, hf]
   exact ⟨hk, hw⟩
 
-@[ascend] theorem wrp_exitIf_retAt {Q : Unit → Unit → MachineData → Prop}
+@[ascend] theorem wrp_exitIf_retAt {CV AV : Type} {Q : CV → AV → MachineData → Prop}
     (a : MachineData → BitVec 64) (f : MachineData → MachineData) (pa : BitVec 64)
     (hf : ∀ t, (f t).dmem = t.dmem) :
     (fun t => a t ≐ pa ∧ (loadOk8 a t → E.1 .exit .exit (f t)))
-      ⊑ wrp (ofStateRepr MachineData.dmem) (exitIf (loadOk8 a) f .exit : BlockM MachineData Unit)
-          (retAt pa) Q E := by
+      ⊑ wrp (ofStateRepr MachineData.dmem) (exitIf (loadOk8 a) f .exit : BlockM MachineData CV)
+          (retAt pa : BlockM DataMem AV) Q E := by
   refine wrp_intro fun Qa Ea => ?_
   intro t ht
   simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_retAt] at ht
@@ -344,29 +348,6 @@ theorem wrp_forIn_lockstep_unit {βa : Type} (R : MachineData → βa → Prop) 
       (pure (.yield PUnit.unit) : BlockM MachineData (ForInStep PUnit))
       (pure (.yield v) : BlockM DataMem (ForInStep βa)) Q E :=
   wrp_pure (Q := Q) (ForInStep.yield PUnit.unit) (ForInStep.yield v)
-
-@[ascend] theorem wrp_toDone {βa : Type} {Q : ForInStep PUnit → ForInStep βa → MachineData → Prop}
-    (v : βa)
-    {x : BlockM MachineData PUnit} {ax : BlockM DataMem PUnit} :
-    (fun t => Q (.yield PUnit.unit) (.yield v) t ∧
-      wrp (ofStateRepr MachineData.dmem) x ax (fun _ _ t' => Q (.done PUnit.unit) (.done v) t') E t)
-      ⊑ wrp (ofStateRepr MachineData.dmem) (toDone x) (ax >>= fun _ => pure (.done v)) Q E := by
-  refine wrp_intro fun Qa Ea => ?_
-  intro t ht
-  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, WPMonadExact.wp_bind_eq,
-    WPMonadExact.wp_pure_eq] at ht
-  obtain ⟨⟨-, hx⟩, hw⟩ := ht
-  rw [wp_toDone]
-  have hb := wrp_transport
-    (P := wrp (ofStateRepr MachineData.dmem) x ax
-      (fun _ _ t' => Q (.done PUnit.unit) (.done v) t') E)
-    PartialOrder.rel_refl (fun _ => Qa (.done v)) Ea t
-    (by simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred]; exact ⟨hx, hw⟩)
-  refine WP.wp_monotone_post (x := x) ?_ t hb
-  intro u t' h'
-  rw [Concretization.post_pi] at h' ⊢
-  obtain ⟨_, hq, hqa⟩ := h'
-  exact ⟨.done v, hq, hqa⟩
 
 end
 

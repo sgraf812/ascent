@@ -7,8 +7,8 @@ import Ascent.FixLoop
 `cfgLoop_eq_loop` unfolds the block loop at a label `l` into a `repeat'` loop: the cell at `l`
 runs inside `try`, a jump back to `l` continues the loop, and every other exit leaves it with the
 rest of the program. Pushing the `try` into the cell with the `tryCatch` equations of this file
-and deciding the literal labels then structures the program, and a loop whose body never
-continues collapses to its body.
+and deciding the literal labels then structures the program. An exit discards the rest of its
+block, and a loop whose body never continues collapses to its body.
 -/
 
 open Std.WP Lean.Order Ascent
@@ -245,31 +245,49 @@ theorem tryCatch_branch_bind (c : σ → Bool) (l : CfgLabel) (k : Unit → Bloc
     simp only [wp_tryCatch_block, WPMonadExact.wp_bind_eq, AInstr.wp_branch, wp_condState] <;>
     split <;> exact id
 
-def toDone (x : BlockM σ PUnit) : BlockM σ (ForInStep PUnit) :=
-  x >>= fun _ => pure (ForInStep.done PUnit.unit)
-
-theorem wp_toDone (x : BlockM σ PUnit) (Q : ForInStep PUnit → σ → Prop)
-    (E : (CfgLabel → σ → Prop) × EStack⟨⟩) (s : σ) :
-    wp (toDone x) Q E s = wp x (fun _ => Q (.done PUnit.unit)) E s := by
-  simp only [toDone, WPMonadExact.wp_bind_eq, WPMonadExact.wp_pure_eq]
-
-theorem pure_done_eq : (pure (ForInStep.done PUnit.unit) : BlockM σ (ForInStep PUnit)) = toDone (pure ()) := by
-  rw [toDone, pure_bind]
-
-theorem bind_toDone {α : Type} (x : BlockM σ α) (y : BlockM σ PUnit) :
-    (x >>= fun _ => toDone y) = toDone (x >>= fun _ => y) := by
-  simp only [toDone, bind_assoc]
-
-theorem condState_toDone (c : σ → Bool) (x y : BlockM σ PUnit) :
-    condState c (toDone x) (toDone y) = toDone (condState c x y) := by
+theorem tryCatch_exitIf {α : Type} (g : σ → Prop) (f : σ → σ) (l : CfgLabel) (h : CfgLabel → BlockM σ α)
+    (hh : h l = throw l) : tryCatch (AInstr.exitIf g f l : BlockM σ α) h = AInstr.exitIf g f l := by
   apply BlockM.ext_wp <;> intro Q E s <;>
-    simp only [toDone, WPMonadExact.wp_bind_eq, wp_condState] <;> split <;> exact id
+    simp only [wp_tryCatch_block, AInstr.wp_exitIf, hh, wp_throw_block] <;> exact id
 
-theorem forIn_toDone (x : BlockM σ PUnit) :
-    FixLoop.mk.forIn PUnit.unit (fun _ _ => toDone x) = x := by
-  rw [FixLoop.forIn_eq, toDone, bind_assoc]
+theorem pure_done_eq (u : PUnit) :
+    (pure (ForInStep.done u) : BlockM σ (ForInStep PUnit)) = ForInStep.done <$> (pure u : BlockM σ PUnit) :=
+  (map_pure _ _).symm
+
+theorem bind_map {α γ δ : Type} (x : BlockM σ α) (y : α → BlockM σ γ) (f : γ → δ) :
+    (x >>= fun a => f <$> y a) = f <$> (x >>= y) :=
+  (map_bind _ _ _).symm
+
+theorem condState_map {γ δ : Type} (c : σ → Bool) (f : γ → δ) (x y : BlockM σ γ) :
+    condState c (f <$> x) (f <$> y) = f <$> condState c x y := by
+  simp only [condState, map_bind]
+  congr 1
+  funext st
+  split <;> rfl
+
+theorem map_exitIf {γ δ : Type} (f : γ → δ) (g : σ → Prop) (h : σ → σ) (l : CfgLabel) :
+    f <$> (AInstr.exitIf g h l : BlockM σ γ) = AInstr.exitIf g h l := by
+  rw [map_eq_pure_bind, AInstr.exitIf_bind]
+
+theorem condState_exitIf_map {γ δ : Type} (c : σ → Bool) (g : σ → Prop) (h : σ → σ) (l : CfgLabel)
+    (f : γ → δ) (y : BlockM σ γ) :
+    condState c (AInstr.exitIf g h l) (f <$> y) = f <$> condState c (AInstr.exitIf g h l) y := by
+  rw [← condState_map, map_exitIf]
+
+theorem condState_map_exitIf {γ δ : Type} (c : σ → Bool) (g : σ → Prop) (h : σ → σ) (l : CfgLabel)
+    (f : γ → δ) (x : BlockM σ γ) :
+    condState c (f <$> x) (AInstr.exitIf g h l) = f <$> condState c x (AInstr.exitIf g h l) := by
+  rw [← condState_map, map_exitIf]
+
+theorem forIn_map_done (x : BlockM σ PUnit) :
+    FixLoop.mk.forIn PUnit.unit (fun _ _ => ForInStep.done <$> x) = x := by
+  rw [FixLoop.forIn_eq, map_eq_pure_bind, bind_assoc]
   simp only [pure_bind]
   exact bind_pure_unit
+
+theorem forIn_exitIf {β : Type} (b : β) (g : σ → Prop) (h : σ → σ) (l : CfgLabel) :
+    FixLoop.mk.forIn b (fun _ _ => (AInstr.exitIf g h l : BlockM σ (ForInStep β))) = AInstr.exitIf g h l := by
+  rw [FixLoop.forIn_eq, AInstr.exitIf_bind]
 
 end
 

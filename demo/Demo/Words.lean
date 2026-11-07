@@ -6,8 +6,8 @@ import Demo.L1
 `words m p n` is the list of the first `n` eight-byte words of the array at `p`. After `k`
 iterations of the loop of `zipWithAdd` the memory is `stores m A B O k`: the first `k` cells of
 `O` hold `word m A j + word m B j`, read in the memory before the loop, and every other cell of the
-inputs, the output and the return slot is as it was. The lemmas on the branch conditions read the
-condition codes of `test` and `cmp` on a length below `2 ^ 61`.
+inputs, the output and the return slot is as it was. The lemmas on the branch conditions decide the
+tests of the loop on a length below `2 ^ 61`.
 -/
 
 open Std.WP Lean.Order Ascent Ascent.Kraken
@@ -102,25 +102,10 @@ end
 
 /-! ## The branch conditions -/
 
-theorem cmp_le_self_of_pos {n : Nat} (h0 : 0 < n) (hn : n < 2 ^ 61) :
-    CondCode.cmp .le (BitVec.ofNat 64 n &&& BitVec.ofNat 64 n) 0 = false := by
-  simp only [CondCode.cmp, BitVec.and_self, BitVec.sle_eq_decide, decide_eq_false_iff_not]
+theorem toInt_ofNat_nonpos {n : Nat} (hn : n < 2 ^ 61) : ((BitVec.ofNat 64 n).toInt ≤ 0) = (n = 0) := by
   rw [BitVec.toInt_eq_toNat_cond, BitVec.toNat_ofNat]
-  split <;> simp <;> omega
-
-theorem cmp_le_self_zero : CondCode.cmp .le (BitVec.ofNat 64 0 &&& BitVec.ofNat 64 0) 0 = true :=
-  rfl
-
-theorem cmp_le_self_eq {n : Nat} (hn : n < 2 ^ 61) :
-    CondCode.cmp .le (BitVec.ofNat 64 n &&& BitVec.ofNat 64 n) 0#64 = decide (n = 0) := by
-  by_cases h0 : n = 0
-  · subst h0; simp only [decide_true]; exact cmp_le_self_zero
-  · simp only [h0, decide_false]; exact cmp_le_self_of_pos (Nat.pos_of_ne_zero h0) hn
-
-theorem pos_of_not_cmp_le_self {n : Nat} (hn : n < 2 ^ 61)
-    (h : ¬CondCode.cmp .le (BitVec.ofNat 64 n &&& BitVec.ofNat 64 n) 0#64 = true) : 0 < n := by
-  rw [cmp_le_self_eq hn, decide_eq_true_iff] at h
-  omega
+  apply propext
+  split <;> omega
 
 theorem toNat_add_one {v : BitVec 64} (hv : v.toNat < 2 ^ 61) :
     (v + 1#64).toNat = v.toNat + 1 := by
@@ -128,31 +113,25 @@ theorem toNat_add_one {v : BitVec 64} (hv : v.toNat < 2 ^ 61) :
   simp only [show (1#64 : BitVec 64).toNat = 1 from rfl]
   omega
 
-theorem cmp_nz_add_one {n : Nat} {v : BitVec 64} (hv : v.toNat < n) (hn : n < 2 ^ 61) :
-    CondCode.cmp .nz (BitVec.ofNat 64 n) (v + 1#64) = decide (v.toNat + 1 ≠ n) := by
-  simp only [CondCode.cmp]
-  rw [Bool.eq_iff_iff, bne_iff_ne, decide_eq_true_iff, ne_eq, ne_eq, BitVec.toNat_eq,
-    toNat_add_one (by omega), BitVec.toNat_ofNat]
+theorem ofNat_eq_add_one {n : Nat} {v : BitVec 64} (hv : v.toNat < n) (hn : n < 2 ^ 61) :
+    BitVec.ofNat 64 n = v + 1#64 ↔ v.toNat + 1 = n := by
+  rw [BitVec.toNat_eq, toNat_add_one (by omega), BitVec.toNat_ofNat]
   omega
 
-theorem toNat_add_one_of_cmp_nz {n : Nat} {v : BitVec 64} (hv : v.toNat < n) (hn : n < 2 ^ 61)
-    (_ : CondCode.cmp .nz (BitVec.ofNat 64 n) (v + 1#64) = true) :
-    (v + 1#64).toNat = v.toNat + 1 :=
+theorem toNat_add_one_of_ne {n : Nat} {v : BitVec 64} (hv : v.toNat < n) (hn : n < 2 ^ 61)
+    (_ : ¬BitVec.ofNat 64 n = v + 1#64) : (v + 1#64).toNat = v.toNat + 1 :=
   toNat_add_one (by omega)
 
-theorem toNat_succ_lt_of_cmp_nz {n : Nat} {v : BitVec 64} (hv : v.toNat < n) (hn : n < 2 ^ 61)
-    (h : CondCode.cmp .nz (BitVec.ofNat 64 n) (v + 1#64) = true) : (v + 1#64).toNat < n := by
-  rw [cmp_nz_add_one hv hn, decide_eq_true_iff] at h
+theorem toNat_succ_lt_of_ne {n : Nat} {v : BitVec 64} (hv : v.toNat < n) (hn : n < 2 ^ 61)
+    (h : ¬BitVec.ofNat 64 n = v + 1#64) : (v + 1#64).toNat < n := by
+  rw [ofNat_eq_add_one hv hn] at h
   rw [toNat_add_one (by omega)]
   omega
 
-theorem toNat_add_one_eq_of_not_cmp_nz {n : Nat} {v : BitVec 64} (hv : v.toNat < n)
-    (hn : n < 2 ^ 61) (h : ¬CondCode.cmp .nz (BitVec.ofNat 64 n) (v + 1#64) = true) :
-    v.toNat + 1 = n := by
-  rw [cmp_nz_add_one hv hn, decide_eq_true_iff] at h
-  omega
+theorem toNat_add_one_eq_of_eq {n : Nat} {v : BitVec 64} (hv : v.toNat < n) (hn : n < 2 ^ 61)
+    (h : BitVec.ofNat 64 n = v + 1#64) : v.toNat + 1 = n :=
+  (ofNat_eq_add_one hv hn).mp h
 
-attribute [grind →] pos_of_not_cmp_le_self toNat_add_one_of_cmp_nz toNat_succ_lt_of_cmp_nz
-  toNat_add_one_eq_of_not_cmp_nz
+attribute [grind →] toNat_add_one_of_ne toNat_succ_lt_of_ne toNat_add_one_eq_of_eq
 
 end Ascent.Kraken

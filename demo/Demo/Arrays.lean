@@ -226,13 +226,13 @@ variable {σa : Type} {view : DataMem → σa}
   rw [outView_storeInt hi hn, hv]
   exact hq
 
-@[ascend] theorem wrp_retAt_throw {Q : Unit → Unit → DataMem → Prop} (sp : BitVec 64) :
-    (fun m => (Mem.loadInt m sp 8).isSome = true ∧ E.1 .exit .exit m ∧ Q () () m)
-      ⊑ wrp (ofStateRepr view) (retAt sp) (throw CfgLabel.exit : BlockM σa Unit) Q E := by
+@[ascend] theorem wrp_retAt_throw {CV AV : Type} {Q : CV → AV → DataMem → Prop} (sp : BitVec 64) :
+    (fun m => (Mem.loadInt m sp 8).isSome = true ∧ E.1 .exit .exit m)
+      ⊑ wrp (ofStateRepr view) (retAt sp : BlockM DataMem CV) (throw CfgLabel.exit : BlockM σa AV) Q E := by
   refine wrp_intro fun Qa Ea => ?_
   intro m hm
   simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_throw_block] at hm
-  obtain ⟨⟨hl, he, -⟩, hw⟩ := hm
+  obtain ⟨⟨hl, he⟩, hw⟩ := hm
   rw [wp_retAt]
   refine ⟨hl, ?_⟩
   simp only [EPostsConcretization.ePosts_cons]

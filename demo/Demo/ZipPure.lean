@@ -61,7 +61,7 @@ theorem zipWithAddArr_spec [Host] [FunDecls] [Embeds zipWithAdd] (s : MachineDat
     · WhileInvariant.mk fun (done : Bool) (v : BitVec 64) (o' : Array (BitVec 64)) =>
         done = false ∧ v.toNat < n ∧ o'.size = n ∧ ∀ i < v.toNat, o'[i]! = a[i]! + b[i]!
     · Variant.ofMeasure fun (v : BitVec 64) => n - v.toNat
-    simp [cmp_le_self_eq hn, Variant.evalsBelow_ofMeasure_nat]
+    simp [toInt_ofNat_nonpos hn, Variant.evalsBelow_ofMeasure_nat]
     with finish
 
 section

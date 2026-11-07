@@ -37,8 +37,8 @@ register `loadReg8`, or a store `storeWord8`. `ascend_def` synthesized it and pr
 /-! ## 3. A structured loop, by rewriting
 
 `sym_simp_def` rewrites the block loop of `zipWithAddA` into an `if` and a `repeat'` loop over the
-machine state: the jump of the loop block to itself becomes `continue`, and the return is the
-exit of both branches. The command proves
+machine state: the jump of the loop block to itself becomes `continue`, and the return ends the
+program in both branches. The command proves
 the equation `zipWithAddT.eq`, so the first refinement carries over to `zipWithAddT`: -/
 
 #print zipWithAddT
@@ -48,8 +48,9 @@ the equation `zipWithAddT.eq`, so the first refinement carries over to `zipWithA
 
 The state is the data memory alone. The lifting relation, the one hint of the run, is
 `RegsRel [(.rdi, rdi), …, (.rax, rax)]`: it names the registers that become values. `rdi`, `rsi`,
-`rdx`, `rcx` and `rsp` are parameters, and `rax` is the value of the loop. The loaded values of `r8` become variables. `ascend_def` synthesized
-`zipWithAddL` and proved: -/
+`rdx`, `rcx` and `rsp` are parameters, and `rax` is the value of the loop. The loaded values of
+`r8` become variables. `ascend_def` synthesized `zipWithAddL₀`, and `sym_simp_def` states its
+branch conditions as comparisons of the values in `zipWithAddL`: -/
 
 #print zipWithAddL
 #check @zipWithAddL.refines
@@ -59,7 +60,8 @@ The state is the data memory alone. The lifting relation, the one hint of the ru
 The state is the output array. The input arrays are parameters, named by their base addresses, and
 the loads and the store become array reads and an array update. The relation of the loop, the hint
 of the run, states the layout `ArrayLayout [(A, a), (B, b)] O n [rsp]` of the memory: the input
-arrays, the written array, and the return slot. `ascend_def` synthesized `zipWithAddArr` and proved: -/
+arrays, the written array, and the return slot. `ascend_def` synthesized `zipWithAddArr₀`, and
+`sym_simp_def` puts the array reads in place in `zipWithAddArr`: -/
 
 #print zipWithAddArr
 #check @zipWithAddArr.refines
