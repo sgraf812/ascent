@@ -13,7 +13,8 @@ register binds the abstract value of the written value to a variable of the abst
 The step rules know no instruction. They match the three writes of `Demo.L1`: a load into a
 register `loadReg8` becomes `load8` and binds the loaded word, a store `storeWord8` becomes
 `store8`, a register write `setReg64` leaves the memory unchanged and adds no abstract step, and an
-exit through a mapped word becomes `retAt`.
+exit `exitIf g f l` whose guard `g` reads a mapped word becomes `assume g'; throw l` with the guard
+`g'` restated over the data memory.
 -/
 
 open Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
@@ -33,11 +34,6 @@ return slot at `rsp`. -/
 noncomputable def store8 (rsp a v : BitVec 64) : BlockM DataMem Unit :=
   modifyIf (fun m => (Mem.loadInt m a 8).isSome = true ∧ Mem.Blocks.Disjoint [(rsp, 8)] [(a, 8)])
     fun m => Mem.storeInt m a 8 v.toInt
-
-/-- Return through the return slot at `rsp`. -/
-noncomputable def retAt {α : Type} (rsp : BitVec 64) : BlockM DataMem α := do
-  StateT.assume (fun m => (Mem.loadInt m rsp 8).isSome = true)
-  throw CfgLabel.exit
 
 section
 variable (Q : BitVec 64 → DataMem → Prop) (Qu : Unit → DataMem → Prop)
@@ -60,9 +56,9 @@ theorem wp_store8 (rsp a v : BitVec 64) :
       = (((Mem.loadInt m a 8).isSome = true ∧ Mem.Blocks.Disjoint [(rsp, 8)] [(a, 8)])
           ∧ Qu () (Mem.storeInt m a 8 v.toInt)) := wp_modifyIf _ _ _ _ _
 
-theorem wp_retAt {α : Type} {Qα : α → DataMem → Prop} (rsp : BitVec 64) :
-    wp (retAt rsp : BlockM DataMem α) Qα E m = ((Mem.loadInt m rsp 8).isSome = true ∧ E.1 .exit m) := by
-  rw [retAt, WPMonadExact.wp_bind_eq, ExceptT.wp_monadLift_StateT_UB, StateT.wp_assume_eq, wp_throw_block]
+theorem wp_assume_throw {α : Type} {Qα : α → DataMem → Prop} (g : DataMem → Prop) (l : CfgLabel) :
+    wp (do StateT.assume g; throw l : BlockM DataMem α) Qα E m = (g m ∧ E.1 l m) := by
+  rw [WPMonadExact.wp_bind_eq, ExceptT.wp_monadLift_StateT_UB, StateT.wp_assume_eq, wp_throw_block]
 
 end
 
@@ -356,15 +352,16 @@ theorem wrp_forIn_lockstep_unit {βa : Type} (R : MachineData → βa → Prop) 
   simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, hf]
   exact ⟨hk, hw⟩
 
-@[ascend] theorem wrp_exitIf_retAt {CV AV : Type} {Q : CV → AV → MachineData → Prop}
-    (a : MachineData → BitVec 64) (f : MachineData → MachineData) (pa : BitVec 64)
+@[ascend] theorem wrp_exitIf_assume {CV AV : Type} {Q : CV → AV → MachineData → Prop}
+    (a : MachineData → BitVec 64) (f : MachineData → MachineData) (l : CfgLabel) (pa : BitVec 64)
     (hf : ∀ t, (f t).dmem = t.dmem) :
-    (fun t => a t ≐ pa ∧ (loadOk8 a t → E.1 .exit .exit (f t)))
-      ⊑ wrp (ofStateRepr MachineData.dmem) (exitIf (loadOk8 a) f .exit : BlockM MachineData CV)
-          (retAt pa : BlockM DataMem AV) Q E := by
+    (fun t => a t ≐ pa ∧ (loadOk8 a t → E.1 l l (f t)))
+      ⊑ wrp (ofStateRepr MachineData.dmem) (exitIf (loadOk8 a) f l : BlockM MachineData CV)
+          (do StateT.assume (fun m => (Mem.loadInt m pa 8).isSome = true); throw l : BlockM DataMem AV)
+          Q E := by
   refine wrp_intro fun Qa Ea => ?_
   intro t ht
-  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_retAt] at ht
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_assume_throw] at ht
   obtain ⟨⟨ha, hk⟩, hl, he⟩ := ht
   have ha : a t = pa := ha trivial
   have hg : loadOk8 a t := by rw [loadOk8, ha]; exact hl
@@ -372,7 +369,7 @@ theorem wrp_forIn_lockstep_unit {βa : Type} (R : MachineData → βa → Prop) 
   refine ⟨hg, ?_⟩
   simp only [EPostsConcretization.ePosts_cons]
   rw [Concretization.post_pi]
-  refine ⟨.exit, hk hg, ?_⟩
+  refine ⟨l, hk hg, ?_⟩
   simp only [ofStateRepr_pred, hf]
   exact he
 
