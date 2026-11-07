@@ -10,7 +10,7 @@ abstract program: the hypothesis `PureRefinement (t.regs.get64 r) x True Eq` rel
 value computed from registers to the same computation on the abstract values. A step that writes a
 register binds the abstract value of the written value to a variable of the abstract program.
 
-The step rules know no instruction. They match the normal forms of `Demo.L1`: a load into a
+The step rules know no instruction. They match the three writes of `Demo.L1`: a load into a
 register `loadReg8` becomes `load8` and binds the loaded word, a store `storeWord8` becomes
 `store8`, a register write `setReg64` leaves the memory unchanged and adds no abstract step, and an
 exit through a mapped word becomes `retAt`.

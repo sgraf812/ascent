@@ -51,13 +51,16 @@ example [Host] [FunDecls] [Embeds zipWithAdd] (s : MachineData) (ra : Int64) :
     zipWithAddA s ra = cfgLoop (Table.get [
       (.entry, do
         branch (fun st => CondCode.le.cmp (st.regs.get64 .rcx &&& st.regs.get64 .rcx) 0) (.label "LBB0_3")
-        modifyIf (fun _ => True) (xorReg32Reg32 .rax .rax)
+        modifyIf (fun _ => True) (setReg64 .rax fun st =>
+          ((st.regs.get64 .rax).take 32 ^^^ (st.regs.get64 .rax).take 32).zeroExtend 64)
         pure ()),
       (.label "LBB0_2", do
-        modifyIf (loadOk8 (sib8 .rsi .rax 0)) (movRegSib8 .r8 .rsi .rax 0)
-        modifyIf (loadOk8 (sib8 .rdi .rax 0)) (addRegSib8 .r8 .rdi .rax 0)
-        modifyIf (storeOk8 (sib8 .rdx .rax 0)) (movSib8Reg .rdx .rax 0 .r8)
-        modifyIf (fun _ => True) (incReg .rax)
+        modifyIf (loadOk8 (sib8 .rsi .rax 0)) (loadReg8 .r8 (sib8 .rsi .rax 0) fun w _ => w)
+        modifyIf (loadOk8 (sib8 .rdi .rax 0))
+          (loadReg8 .r8 (sib8 .rdi .rax 0) fun w st => w + st.regs.get64 .r8)
+        modifyIf (storeOk8 (sib8 .rdx .rax 0)) (storeWord8 (sib8 .rdx .rax 0) fun st => st.regs.get64 .r8)
+        modifyIf (fun _ => True) (setReg64 .rax fun st => st.regs.get64 .rax + 1)
         branch (fun st => CondCode.nz.cmp (st.regs.get64 .rcx) (st.regs.get64 .rax)) (.label "LBB0_2")
         pure ()),
-      (.label "LBB0_3", exitIf retOk ret .exit)]) (Program.next zipWithAdd) .entry := rfl
+      (.label "LBB0_3", exitIf (loadOk8 fun st => st.regs.get64 .rsp)
+        (setReg64 .rsp fun st => st.regs.get64 .rsp + 8) .exit)]) (Program.next zipWithAdd) .entry := rfl

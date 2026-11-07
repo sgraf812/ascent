@@ -6,8 +6,7 @@ import Demo.Zip
 
 `zipWithAddT` is the block loop `zipWithAddA` rewritten by the equations of `Demo.CfgRewrite`: the
 entry test is a `condState`, the loop block a `repeat'` loop that continues on its jump to itself,
-and the return block ends both branches. The `vcgen_simp` equations of `Demo.L1` put each
-instruction into its normal form. `zipWithAddT.refines` is the refinement of `zipWithAddA`,
+and the return block ends both branches. `zipWithAddT.refines` is the refinement of `zipWithAddA`,
 rewritten along `zipWithAddT.eq`.
 -/
 

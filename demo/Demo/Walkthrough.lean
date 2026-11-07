@@ -29,7 +29,8 @@ namespace Ascent.Kraken.Walkthrough
 /-! ## 2. Blocks, synthesized by `ascend_def`
 
 `zipWithAddA` is a loop over the blocks of the text, one guarded step per instruction, with the flags
-cleared and `cmp; jcc` fused into one branch. `ascend_def` synthesized it and proved: -/
+cleared and `cmp; jcc` fused into one branch. Each step is a register write `setReg64`, a load into a
+register `loadReg8`, or a store `storeWord8`. `ascend_def` synthesized it and proved: -/
 
 #check @zipWithAddA.refines
 
@@ -37,8 +38,7 @@ cleared and `cmp; jcc` fused into one branch. `ascend_def` synthesized it and pr
 
 `sym_simp_def` rewrites the block loop of `zipWithAddA` into an `if` and a `repeat'` loop over the
 machine state: the jump of the loop block to itself becomes `continue`, and the return is the
-exit of both branches. The same pass puts each instruction into its normal form: a register
-write `setReg64`, a load into a register `loadReg8`, or a store `storeWord8`. The command proves
+exit of both branches. The command proves
 the equation `zipWithAddT.eq`, so the first refinement carries over to `zipWithAddT`: -/
 
 #print zipWithAddT
