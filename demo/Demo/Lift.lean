@@ -34,8 +34,9 @@ noncomputable def store8 (rsp a v : BitVec 64) : BlockM DataMem Unit :=
     fun m => Mem.storeInt m a 8 v.toInt
 
 /-- Return through the return slot at `rsp`. -/
-noncomputable def retAt {α : Type} (rsp : BitVec 64) : BlockM DataMem α :=
-  exitIf (fun m => (Mem.loadInt m rsp 8).isSome = true) id .exit
+noncomputable def retAt {α : Type} (rsp : BitVec 64) : BlockM DataMem α := do
+  assume (fun m => (Mem.loadInt m rsp 8).isSome = true)
+  throw CfgLabel.exit
 
 section
 variable (Q : BitVec 64 → DataMem → Prop) (Qu : Unit → DataMem → Prop)
@@ -59,12 +60,8 @@ theorem wp_store8 (rsp a v : BitVec 64) :
           ∧ Qu () (Mem.storeInt m a 8 v.toInt)) := wp_modifyIf _ _ _ _ _
 
 theorem wp_retAt {α : Type} {Qα : α → DataMem → Prop} (rsp : BitVec 64) :
-    wp (retAt rsp : BlockM DataMem α) Qα E m = ((Mem.loadInt m rsp 8).isSome = true ∧ E.1 .exit m) :=
-  wp_exitIf _ _ _ _ _
-
-theorem retAt_bind {α β : Type} (rsp : BitVec 64) (k : α → BlockM DataMem β) :
-    (retAt rsp >>= k) = retAt rsp :=
-  exitIf_bind _ _ _ _
+    wp (retAt rsp : BlockM DataMem α) Qα E m = ((Mem.loadInt m rsp 8).isSome = true ∧ E.1 .exit m) := by
+  rw [retAt, WPMonadExact.wp_bind_eq, wp_assume, wp_throw_block]
 
 end
 

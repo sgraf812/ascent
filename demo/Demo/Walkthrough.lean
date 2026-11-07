@@ -82,7 +82,8 @@ The state is the data memory alone. The lifting relation, the one hint of the ru
 `RegsRel [(.rdi, rdi), …, (.rax, rax)]`: it names the registers that become values. `rdi`, `rsi`,
 `rdx`, `rcx` and `rsp` are parameters, and `rax` is the value of the loop. The loaded values of
 `r8` become variables. `ascend_def` synthesized `zipWithAddL₀`, and `sym_simp_def` states its
-branch conditions as comparisons of the values in `zipWithAddL`: -/
+branch conditions as comparisons of the values in `zipWithAddL`. The return is an `assume` that the
+return slot is mapped, followed by `throw CfgLabel.exit`: -/
 
 /--
 info: def Ascent.Kraken.zipWithAddL : [inst : Host] →
@@ -90,7 +91,9 @@ info: def Ascent.Kraken.zipWithAddL : [inst : Host] →
     [Embeds zipWithAdd] →
       MachineData → Int64 → BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → BlockM DataMem Unit :=
 fun [Host] [FunDecls] [Embeds zipWithAdd] s ra rdi rsi rdx rcx rsp =>
-  if rcx.toInt ≤ 0 then retAt rsp
+  if rcx.toInt ≤ 0 then do
+    assume fun m => (Mem.loadInt m rsp 8).isSome = true
+    throw CfgLabel.exit
   else do
     let mut v := 0#64
     repeat'
@@ -100,7 +103,8 @@ fun [Host] [FunDecls] [Embeds zipWithAdd] s ra rdi rsi rdx rcx rsp =>
       if ¬rcx = v + 1#64 then 
         v := v + 1#64
       else
-        retAt rsp
+        assume fun m => (Mem.loadInt m rsp 8).isSome = true
+        throw CfgLabel.exit
     pure PUnit.unit
 -/
 #guard_msgs in
