@@ -63,23 +63,23 @@ instance (priority := low) {εc : Type u} {C : Type v₁} {A : Type v₂} {ERels
     EPostsConcretization CPred APred ((εc → CPred) × C) A ((εc → CPred) × ERels) where
   ePosts γ E Ea := (E.1, EPostsConcretization.ePosts γ E.2 Ea)
 
-@[simp] theorem ePosts_nil (γ : Concretization CPred APred) (E Ea : EStack⟨⟩) :
+@[simp, grind norm] theorem ePosts_nil (γ : Concretization CPred APred) (E Ea : EStack⟨⟩) :
     ePosts γ E Ea = estack⟨⟩ := rfl
 
-@[simp] theorem ePosts_fun {εc εa : Type u} (γ : Concretization CPred APred)
+@[simp, grind norm] theorem ePosts_fun {εc εa : Type u} (γ : Concretization CPred APred)
     (R : εc → εa → CPred) (Ea : εa → APred) :
     ePosts γ R Ea = γ.post R Ea := rfl
 
-@[simp] theorem ePosts_fill {εc : Type u} (γ : Concretization CPred APred)
+@[simp, grind norm] theorem ePosts_fill {εc : Type u} (γ : Concretization CPred APred)
     (E : εc → CPred) (Ea : EStack⟨⟩) :
     ePosts γ E Ea = E := rfl
 
-@[simp] theorem ePosts_cons {εc εa : Type u} {C : Type v₁} {A : Type v₂} {ERels : Type v₃}
+@[simp, grind norm] theorem ePosts_cons {εc εa : Type u} {C : Type v₁} {A : Type v₂} {ERels : Type v₃}
     [EPostsConcretization CPred APred C A ERels] (γ : Concretization CPred APred)
     (E : (εc → εa → CPred) × ERels) (Ea : (εa → APred) × A) :
     ePosts (CEPosts := (εc → CPred) × C) γ E Ea = (γ.post E.1 Ea.1, ePosts γ E.2 Ea.2) := rfl
 
-@[simp] theorem ePosts_cons_fill {εc : Type u} {C : Type v₁} {A : Type v₂} {ERels : Type v₃}
+@[simp, grind norm] theorem ePosts_cons_fill {εc : Type u} {C : Type v₁} {A : Type v₂} {ERels : Type v₃}
     [EPostsConcretization CPred APred C A ERels] (γ : Concretization CPred APred)
     (E : (εc → CPred) × ERels) (Ea : A) :
     ePosts (CEPosts := (εc → CPred) × C) γ E Ea = (E.1, ePosts γ E.2 Ea) := rfl

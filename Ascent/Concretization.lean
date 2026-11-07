@@ -18,6 +18,8 @@ some abstract value is related to `cv` and satisfies `Qa`. For a functional retu
 
 open Std.WP Lean.Order
 
+attribute [grind norm] meet_apply meet_prop_eq_and
+
 namespace Ascent
 
 universe u v w
@@ -55,7 +57,7 @@ theorem post_prop {APred : Type} [Assertion APred]
     r.post Q Qa cv = ∃ av, Q cv av ∧ r.pred (Qa av) := by
   simp only [Concretization.post, iSup_prop_eq_exists, meet_prop_eq_and]
 
-theorem post_pi {σ : Type} {APred : Type} [Assertion APred]
+@[grind norm] theorem post_pi {σ : Type} {APred : Type} [Assertion APred]
     (r : Concretization (σ → Prop) APred) {CVal AVal : Type _}
     (Q : CVal → AVal → σ → Prop) (Qa : AVal → APred) (cv : CVal) (s : σ) :
     r.post Q Qa cv s = ∃ av, Q cv av s ∧ r.pred (Qa av) s := by
@@ -67,7 +69,7 @@ def ofStateRepr {Cσ Aσ : Type w} (st : Cσ → Aσ) : Concretization (Cσ → 
   pred P := fun cs => P (st cs)
   pred_mono h := fun cs => h (st cs)
 
-@[simp] theorem ofStateRepr_pred {Cσ Aσ : Type w} (st : Cσ → Aσ) (P : Aσ → Prop) :
+@[simp, grind norm] theorem ofStateRepr_pred {Cσ Aσ : Type w} (st : Cσ → Aσ) (P : Aσ → Prop) :
     (ofStateRepr st).pred P = fun cs => P (st cs) := rfl
 
 /-- The concretization of a state relation `J : Cσ → Aσ → Prop`:
@@ -116,7 +118,7 @@ theorem ofStateRepr_post_post {Cσ Bσ Aσ : Type} {CVal BVal AVal : Type _} (f 
   · rintro ⟨av, ⟨bv, h₁, h₂⟩, h⟩
     exact ⟨bv, h₁, av, h₂, h⟩
 
-@[simp] theorem comp_pred {BPred : Type w} [Assertion BPred] (r₁ : Concretization CPred BPred)
+@[simp, grind norm] theorem comp_pred {BPred : Type w} [Assertion BPred] (r₁ : Concretization CPred BPred)
     (r₂ : Concretization BPred APred) (X : APred) : (r₁.comp r₂).pred X = r₁.pred (r₂.pred X) :=
   rfl
 
@@ -140,7 +142,7 @@ noncomputable def purify (σ : Type) : Concretization (σ → Prop) Prop where
   pred φ := fun _ => φ
   pred_mono h := fun _ => h
 
-@[simp] theorem purify_pred (σ : Type) (φ : Prop) : (purify σ).pred φ = fun _ => φ := rfl
+@[simp, grind norm] theorem purify_pred (σ : Type) (φ : Prop) : (purify σ).pred φ = fun _ => φ := rfl
 
 /-- The return relation that reads the final state into the abstract result. -/
 def purifyRel {σ α : Type} : α → (α × σ) → (σ → Prop) :=

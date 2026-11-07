@@ -37,6 +37,9 @@ theorem PureRefinement.rel (h : PureRefinement cv av True Q) : Q cv av := h triv
 
 theorem PureRefinement.of_rel (h : Q cv av) : PureRefinement cv av True Q := fun _ => h
 
+@[grind norm] theorem PureRefinement.true_eq : PureRefinement cv av True Q = Q cv av :=
+  propext ⟨PureRefinement.rel, PureRefinement.of_rel⟩
+
 theorem PureRefinement.of_pre_eq (h : PureRefinement cv av P Q) (e : P = P') :
     PureRefinement cv av P' Q :=
   e ▸ h
