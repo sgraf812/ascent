@@ -64,9 +64,10 @@ of the run, states the layout of the memory. `ascend_def` synthesized `zipWithAd
 
 /-! ## 6. The pure program
 
-The array program exits with `Array.zipWith (· + ·)` of its inputs, and so refines the pure
-program. -/
+`vcgen` proves that the array program exits with `Array.zipWith (· + ·)` of its inputs, from a loop
+invariant and a measure. So the array program refines the pure program. -/
 
+#check @zipWithAddArr_spec
 #print zipWithAddP
 #check @zipWithAddArr_refines_P
 

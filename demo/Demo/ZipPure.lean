@@ -3,15 +3,19 @@ import Demo.ZipArr
 /-!
 # What `zipWithAdd` computes, from the array program
 
-`wp_zipWithAddArr` states the result of the synthesized array program `zipWithAddArr`: it exits
-with the output array `Array.zipWith (· + ·) a b`. `wp_zipWithAddL` carries this result to the
-lifted program through `zipWithAddArr.refines`, and `zipWithAdd_correct` carries it back to the
-x64 text through the refinements of `zipWithAddL`, `zipWithAddT` and the first layer.
+`zipWithAddArr_spec` states the result of the synthesized array program `zipWithAddArr`: it exits
+with the output array `Array.zipWith (· + ·) a b`. `vcgen` proves it with the loop invariant
+"the first `v` cells hold the sums" and the measure `n - v`, and `finish` closes the verification
+conditions. `wp_zipWithAddL` carries this result to the lifted program through
+`zipWithAddArr.refines`, and `zipWithAdd_correct` carries it back to the x64 text through the
+refinements of `zipWithAddL`, `zipWithAddT` and the first layer.
 -/
 
 open Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
 open Ascent.Concretization (ofStateRepr ofStateRepr_pred)
 open scoped Program.WP
+
+set_option experimental.vcgen true
 
 namespace Ascent.Kraken
 
@@ -43,71 +47,19 @@ theorem ZipArrays.layout {m : DataMem} {A B O rsp : BitVec 64} {n : Nat}
   disjR := h.disjR
   ret := h.ret
 
-theorem eq_zipWith_of_getElem! {o a b : Array (BitVec 64)} {n : Nat} (ho : o.size = n)
-    (ha : a.size = n) (hb : b.size = n) (h : ∀ i < n, o[i]! = a[i]! + b[i]!) :
-    o = Array.zipWith (· + ·) a b := by
-  apply Array.ext
-  · simp [ho, ha, hb]
-  · intro i h₁ _
-    rw [Array.getElem_zipWith]
-    have hi := h i (ho ▸ h₁)
-    rwa [getElem!_pos o i h₁, getElem!_pos a i (by omega), getElem!_pos b i (by omega)] at hi
-
-theorem wp_zipWithAddArr [Host] [FunDecls] [Embeds zipWithAdd] (s : MachineData) (ra : Int64)
+theorem zipWithAddArr_spec [Host] [FunDecls] [Embeds zipWithAdd] (s : MachineData) (ra : Int64)
     (A B O rsp : BitVec 64) {n : Nat} {a b o : Array (BitVec 64)} (hn : n < 2 ^ 61)
     (ha : a.size = n) (hb : b.size = n) (ho : o.size = n) :
-    wp (zipWithAddArr s ra A B O rsp n a b) (fun _ _ => False)
-      (fun (l : CfgLabel) (o' : Array (BitVec 64)) => l = CfgLabel.exit ∧ o' = Array.zipWith (· + ·) a b, estack⟨⟩) o := by
-  have h0 : (0#64 : BitVec 64) = 0 := rfl
-  have h1 : (1#64 : BitVec 64) = 1 := rfl
-  unfold zipWithAddArr
-  simp only [h0, h1]
-  by_cases hn0 : n = 0
-  · subst hn0
-    simp only [cmp_le_self_zero, ↓reduceIte, wp_throw_block]
-    exact ⟨trivial, eq_zipWith_of_getElem! ho ha hb fun i hi => absurd hi (Nat.not_lt_zero i)⟩
-  simp only [cmp_le_self_of_pos (Nat.pos_of_ne_zero hn0) hn, Bool.false_eq_true, ↓reduceIte,
-    WPMonadExact.wp_bind_eq]
-  suffices hloop : ∀ j k (o : Array (BitVec 64)), n - k = j → k < n → o.size = n →
-      (∀ i < k, o[i]! = a[i]! + b[i]!) →
-      wp (FixLoop.mk.forIn (BitVec.ofNat 64 k) fun _ (v : BitVec 64) => do
-        let x ← (pure b[v.toNat]! : BlockM (Array (BitVec 64)) (BitVec 64))
-        let x_1 ← (pure a[v.toNat]! : BlockM (Array (BitVec 64)) (BitVec 64))
-        modify fun (o : Array (BitVec 64)) => o.set! v.toNat (x_1 + x)
-        if CondCode.cmp .nz (BitVec.ofNat 64 n) (v + 1) = true then pure (ForInStep.yield (v + 1))
-          else do
-            throw CfgLabel.exit
-            pure (ForInStep.done (v + 1)))
-        (fun _ => wp (pure PUnit.unit : BlockM (Array (BitVec 64)) Unit) (fun _ _ => False)
-          (fun (l : CfgLabel) (o' : Array (BitVec 64)) => l = CfgLabel.exit ∧ o' = Array.zipWith (· + ·) a b, estack⟨⟩))
-        (fun (l : CfgLabel) (o' : Array (BitVec 64)) => l = CfgLabel.exit ∧ o' = Array.zipWith (· + ·) a b, estack⟨⟩) o by
-    exact hloop n 0 o (Nat.sub_zero n) (Nat.pos_of_ne_zero hn0) ho fun i hi => absurd hi (Nat.not_lt_zero i)
-  intro j
-  induction j using Nat.strongRecOn with
-  | _ j ih =>
-    intro k o hj hk ho hpre
-    rw [FixLoop.forIn_eq]
-    simp only [WPMonadExact.wp_bind_eq, WPMonadExact.wp_pure_eq, wp_modify,
-      toNat_ofNat_lt (show k < 2 ^ 61 by omega)]
-    rw [cmp_nz_succ hk hn]
-    have hset : ∀ i < k + 1, (o.set! k (a[k]! + b[k]!))[i]! = a[i]! + b[i]! := by
-      intro i hi
-      have hio : i < o.size := by omega
-      have hs : (o.set! k (a[k]! + b[k]!))[i]! = if k = i then a[k]! + b[k]! else o[i]! := by
-        simp [Array.set!_eq_setIfInBounds, getElem!_pos, hio, Array.getElem_setIfInBounds]
-      rw [hs]
-      by_cases hki : k = i
-      · simp only [hki, ↓reduceIte]
-      · simp only [hki, ↓reduceIte]
-        exact hpre i (by omega)
-    by_cases hkn : k + 1 = n
-    · simp only [hkn, ne_eq, not_true_eq_false, decide_false, Bool.false_eq_true, ↓reduceIte,
-        WPMonadExact.wp_bind_eq, wp_throw_block]
-      refine ⟨trivial, eq_zipWith_of_getElem! (by simp [ho]) ha hb fun i hi => hset i (by omega)⟩
-    · simp only [hkn, ne_eq, not_false_eq_true, decide_true, ↓reduceIte, WPMonadExact.wp_pure_eq]
-      rw [ofNat_succ]
-      exact ih (n - (k + 1)) (by omega) (k + 1) _ rfl (by omega) (by simp [ho]) hset
-
+    ⦃(· = o)⦄ zipWithAddArr s ra A B O rsp n a b
+      ⦃fun _ _ => False; (fun (l : CfgLabel) (o' : Array (BitVec 64)) =>
+        l = .exit ∧ o' = Array.zipWith (· + ·) a b, estack⟨⟩)⦄ := by
+  vcgen [zipWithAddArr]
+    invariants
+    · WhileInvariant.mk fun (done : Bool) (v : BitVec 64) (o' : Array (BitVec 64)) =>
+        done = false ∧ v.toNat < n ∧ o'.size = n ∧ ∀ i < v.toNat, o'[i]! = a[i]! + b[i]!
+    · Variant.ofMeasure fun (v : BitVec 64) => n - v.toNat
+    simp [cmp_le_self_eq hn, Variant.evalsBelow_ofMeasure_nat]
+    with finish
 
 section
 variable [Host] [FunDecls] [Embeds zipWithAdd] (s : MachineData) (ra : Int64)
@@ -124,7 +76,8 @@ theorem wp_zipWithAddL {m : DataMem} {A B O rsp : BitVec 64} {n : Nat} (h : ZipA
       o = Array.zipWith (· + ·) (words m A n).toArray (words m B n).toArray, estack⟨⟩))
     ⟨fun o ho => by
       subst ho
-      exact wp_zipWithAddArr s ra A B O rsp hl.len hl.sizeA hl.sizeB (by simp [outView, words])⟩
+      exact (zipWithAddArr_spec s ra A B O rsp hl.len hl.sizeA hl.sizeB
+        (by simp [outView, words])).le_wp _ rfl⟩
   refine WP.wp_monotone (x := zipWithAddL s ra A B O (BitVec.ofNat 64 n) rsp) ?_ ?_ m
     (hT.le_wp m (by
       simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred]
@@ -157,7 +110,7 @@ theorem zipWithAddArr_refines_P {A B O rsp : BitVec 64} {n : Nat} {a b o : Array
   simp only [meet_apply, meet_prop_eq_and] at ho'
   obtain ⟨rfl, -⟩ := ho'
   refine WP.wp_monotone (x := zipWithAddArr s ra A B O rsp n a b) ?_ ?_ _
-    (wp_zipWithAddArr s ra A B O rsp hn ha hb ho)
+    ((zipWithAddArr_spec s ra A B O rsp hn ha hb ho).le_wp _ rfl)
   · intro _ _ hq
     exact hq.elim
   · exact Prod.mk_le _ _ _ (fun _ _ h => h) PartialOrder.rel_refl

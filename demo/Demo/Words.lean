@@ -108,41 +108,51 @@ theorem cmp_le_self_of_pos {n : Nat} (h0 : 0 < n) (hn : n < 2 ^ 61) :
   rw [BitVec.toInt_eq_toNat_cond, BitVec.toNat_ofNat]
   split <;> simp <;> omega
 
-theorem cmp_le_self_zero : CondCode.cmp .le (BitVec.ofNat 64 0 &&& BitVec.ofNat 64 0) 0 = true := by
-  decide
+theorem cmp_le_self_zero : CondCode.cmp .le (BitVec.ofNat 64 0 &&& BitVec.ofNat 64 0) 0 = true :=
+  rfl
 
-theorem cmp_nz_succ {k n : Nat} (hk : k < n) (hn : n < 2 ^ 61) :
-    CondCode.cmp .nz (BitVec.ofNat 64 n) (BitVec.ofNat 64 k + 1) = decide (k + 1 ≠ n) := by
-  simp only [CondCode.cmp]
-  rw [Bool.eq_iff_iff, bne_iff_ne, decide_eq_true_iff, ne_eq, ne_eq, BitVec.toNat_eq,
-    BitVec.toNat_add, BitVec.toNat_ofNat, BitVec.toNat_ofNat]
-  simp only [show (1 : BitVec 64).toNat = 1 from rfl]
-  omega
-
-theorem toNat_ofNat_succ {k : Nat} (hk : k < 2 ^ 61) : (BitVec.ofNat 64 k + 1).toNat = k + 1 := by
-  rw [BitVec.toNat_add, BitVec.toNat_ofNat]
-  simp only [show (1 : BitVec 64).toNat = 1 from rfl]
-  omega
-
-theorem toNat_ofNat_lt {k : Nat} (hk : k < 2 ^ 61) : (BitVec.ofNat 64 k).toNat = k := by
-  rw [BitVec.toNat_ofNat]; omega
-
-theorem ofNat_succ (k : Nat) : BitVec.ofNat 64 k + 1 = BitVec.ofNat 64 (k + 1) := by
-  rw [BitVec.ofNat_add]; rfl
+theorem cmp_le_self_eq {n : Nat} (hn : n < 2 ^ 61) :
+    CondCode.cmp .le (BitVec.ofNat 64 n &&& BitVec.ofNat 64 n) 0#64 = decide (n = 0) := by
+  by_cases h0 : n = 0
+  · subst h0; simp only [decide_true]; exact cmp_le_self_zero
+  · simp only [h0, decide_false]; exact cmp_le_self_of_pos (Nat.pos_of_ne_zero h0) hn
 
 theorem pos_of_not_cmp_le_self {n : Nat} (hn : n < 2 ^ 61)
     (h : ¬CondCode.cmp .le (BitVec.ofNat 64 n &&& BitVec.ofNat 64 n) 0#64 = true) : 0 < n := by
-  refine Nat.pos_of_ne_zero fun h0 => h ?_
-  subst h0
-  exact cmp_le_self_zero
+  rw [cmp_le_self_eq hn, decide_eq_true_iff] at h
+  omega
+
+theorem toNat_add_one {v : BitVec 64} (hv : v.toNat < 2 ^ 61) :
+    (v + 1#64).toNat = v.toNat + 1 := by
+  rw [BitVec.toNat_add]
+  simp only [show (1#64 : BitVec 64).toNat = 1 from rfl]
+  omega
+
+theorem cmp_nz_add_one {n : Nat} {v : BitVec 64} (hv : v.toNat < n) (hn : n < 2 ^ 61) :
+    CondCode.cmp .nz (BitVec.ofNat 64 n) (v + 1#64) = decide (v.toNat + 1 ≠ n) := by
+  simp only [CondCode.cmp]
+  rw [Bool.eq_iff_iff, bne_iff_ne, decide_eq_true_iff, ne_eq, ne_eq, BitVec.toNat_eq,
+    toNat_add_one (by omega), BitVec.toNat_ofNat]
+  omega
+
+theorem toNat_add_one_of_cmp_nz {n : Nat} {v : BitVec 64} (hv : v.toNat < n) (hn : n < 2 ^ 61)
+    (_ : CondCode.cmp .nz (BitVec.ofNat 64 n) (v + 1#64) = true) :
+    (v + 1#64).toNat = v.toNat + 1 :=
+  toNat_add_one (by omega)
 
 theorem toNat_succ_lt_of_cmp_nz {n : Nat} {v : BitVec 64} (hv : v.toNat < n) (hn : n < 2 ^ 61)
     (h : CondCode.cmp .nz (BitVec.ofNat 64 n) (v + 1#64) = true) : (v + 1#64).toNat < n := by
-  have h1 : (1#64 : BitVec 64) = 1 := rfl
-  have hv' : v = BitVec.ofNat 64 v.toNat := by simp
-  rw [h1] at h ⊢
-  rw [hv', cmp_nz_succ hv hn, decide_eq_true_iff] at h
-  rw [hv', toNat_ofNat_succ (by omega)]
+  rw [cmp_nz_add_one hv hn, decide_eq_true_iff] at h
+  rw [toNat_add_one (by omega)]
   omega
+
+theorem toNat_add_one_eq_of_not_cmp_nz {n : Nat} {v : BitVec 64} (hv : v.toNat < n)
+    (hn : n < 2 ^ 61) (h : ¬CondCode.cmp .nz (BitVec.ofNat 64 n) (v + 1#64) = true) :
+    v.toNat + 1 = n := by
+  rw [cmp_nz_add_one hv hn, decide_eq_true_iff] at h
+  omega
+
+attribute [grind →] pos_of_not_cmp_le_self toNat_add_one_of_cmp_nz toNat_succ_lt_of_cmp_nz
+  toNat_add_one_eq_of_not_cmp_nz
 
 end Ascent.Kraken

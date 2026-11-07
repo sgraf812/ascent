@@ -158,3 +158,32 @@ variable {σa : Type} {view : DataMem → σa}
 end
 
 end Ascent.Kraken
+
+/-! ## `Array.zipWith` from its elements -/
+
+namespace Array
+
+theorem eq_zipWith_of_getElem! {α β γ : Type} [Inhabited α] [Inhabited β] [Inhabited γ]
+    {o : Array γ} {a : Array α} {b : Array β} {f : α → β → γ} (ho : o.size = a.size)
+    (hb : b.size = a.size) (h : ∀ i < a.size, o[i]! = f a[i]! b[i]!) :
+    o = Array.zipWith f a b := by
+  apply Array.ext
+  · simp [ho, hb]
+  · intro i h₁ _
+    rw [Array.getElem_zipWith]
+    have hi := h i (ho ▸ h₁)
+    rwa [getElem!_pos o i h₁, getElem!_pos a i (by omega), getElem!_pos b i (by omega)] at hi
+
+theorem set!_eq_zipWith {α β γ : Type} [Inhabited α] [Inhabited β] [Inhabited γ]
+    {o : Array γ} {a : Array α} {b : Array β} {f : α → β → γ} {k : Nat} (ho : o.size = a.size)
+    (hb : b.size = a.size) (hk : k + 1 = a.size) (h : ∀ i < k, o[i]! = f a[i]! b[i]!) :
+    o.set! k (f a[k]! b[k]!) = Array.zipWith f a b := by
+  refine eq_zipWith_of_getElem! (by simp [ho]) hb fun i hi => ?_
+  by_cases hik : k = i
+  · subst hik; exact Array.getElem!_set!_self _ _ _ (by omega)
+  · rw [Array.getElem!_set!_ne _ _ _ _ hik]; exact h i (by omega)
+
+grind_pattern set!_eq_zipWith => o.set! k (f a[k]! b[k]!), Array.zipWith f a b
+
+end Array
+

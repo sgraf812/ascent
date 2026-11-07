@@ -56,8 +56,6 @@ theorem ZipLayout.storeInt_out {A B O rsp : BitVec 64} {n : Nat} {a b : Array (B
 grind_pattern ZipLayout.storeInt_out =>
   Mem.storeInt m (O + v * 8#64) 8 x, ZipLayout A B O rsp n a b m
 
-attribute [grind →] pos_of_not_cmp_le_self toNat_succ_lt_of_cmp_nz
-
 end Ascent.Kraken
 
 namespace Ascent.Kraken
