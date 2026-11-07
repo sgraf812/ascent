@@ -1,4 +1,4 @@
-import Demo.ZipPure
+import Demo.Binary
 
 /-!
 # From x64 to `Array.zipWith`
@@ -214,5 +214,19 @@ info: @zipWithAdd_correct : ∀ [inst : Host] [inst_1 : FunDecls] [Embeds zipWit
 #guard_msgs in
 #check @zipWithAdd_correct
 #print axioms zipWithAdd_correct
+
+/-! ## 8. Bonus: the bytes
+
+`zipWithAddBinary` is the 28 bytes of machine code that the assembler emits for the text, mapped at
+`0x401000`. Its semantics fetches and decodes one instruction at the program counter and runs
+kraken's semantics of that instruction. The decoded bytes agree with the text at every address, so
+the binary refines the text: -/
+
+#check @zipWithAddBinary_refines_zipWithAdd
+
+/-! Composed with the chain of refinements, the result holds for the bytes: -/
+
+#check @zipWithAddBinary_correct
+#print axioms zipWithAddBinary_correct
 
 end Ascent.Kraken.Walkthrough
