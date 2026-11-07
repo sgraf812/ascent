@@ -199,7 +199,7 @@ end
 
 /-- One iteration of two lockstep loops: both continue with the loop values related by `R`, or
 both stop with the results related by `Q`. -/
-def StepRel {βa : Type} (R : MachineData → βa → Prop) (Q : PUnit → βa → MachineData → Prop) :
+@[reducible] def StepRel {βa : Type} (R : MachineData → βa → Prop) (Q : PUnit → βa → MachineData → Prop) :
     ForInStep PUnit → ForInStep βa → MachineData → Prop
   | .yield _, .yield v, t => R t v
   | .done u, .done v, t => Q u v t

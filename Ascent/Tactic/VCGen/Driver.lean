@@ -151,10 +151,7 @@ def work (scope coreScope : Scope) (goal : Grind.Goal) : VCGenM Unit := do
       continue
     match ← solve s.scope goal.mvarId with
     | .stop reason =>
-      if let some g ← simpPureRefinementRhs? goal.mvarId then
-        worklist := worklist.push { s with goal := { goal with mvarId := g } }
-      else
-        emitVC goal reason
+      emitVC goal reason
     | .goals scope subgoals =>
       -- A `PureRefinement` subgoal is solved at once, so that the continuation sees the abstract
       -- value and the precondition.

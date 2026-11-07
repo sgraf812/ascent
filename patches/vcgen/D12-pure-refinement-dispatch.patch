@@ -1,6 +1,40 @@
+diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
+--- a/Ascent/Tactic/VCGen/Solve.lean	2026-11-07 00:31:40.227579417 +0000
++++ b/Ascent/Tactic/VCGen/Solve.lean	2026-11-07 00:31:40.229581491 +0000
+@@ -379,6 +379,22 @@
+   let prog ← betaRevS f' info.prog.getAppRevArgs
+   return some (← replaceProgDefEq goal info prog)
+ 
++/-- Strategy 12: on the `Prop` lattice, unfold the reducible head constant of an `rhs` that no
++other strategy decomposes, and reduce the result with `reduceHead?`. A relation such as
++`StepRel R Q (.yield u) (.yield v) t` becomes `R t v`, which the lattice steps decompose. -/
++def unfoldRhsHead? (goal : MVarId) (target : Expr) : VCGenM (Option MVarId) := do
++  let_expr c@PartialOrder.rel α inst pre rhs := target | return none
++  unless α.isProp do return none
++  let .const name _ := rhs.getAppFn | return none
++  let rhs' ← match ← reduceHead? rhs with
++    | some rhs' => pure rhs'
++    | none =>
++      unless (← getReducibilityStatus name) matches .reducible do return none
++      let some rhs' ← liftMetaM <| withReducible <| Meta.unfoldDefinition? rhs | return none
++      let rhs' ← shareCommonInc rhs'
++      pure ((← reduceHead? rhs').getD rhs')
++  return some (← goal.replaceTargetDefEqFast (← mkAppNS c #[α, inst, pre, rhs']))
++
+ /-- Stop or raise on a program with no applicable spec. With `errorOnMissingSpec` (default), raise a
+ hard error naming the program and the candidate specs; otherwise stop and emit the goal as a VC. -/
+ def stopOrErrorOnMissingSpec (prog monad : Expr) (thms : Array SpecTheorem) :
+@@ -578,6 +594,7 @@
+       return ← applySpecs scope goal info
+     return ← stopOrErrorOnMissingSpec info.prog info.M #[]
+ 
++  if let some g ← unfoldRhsHead? goal target then return .goals scope [g]
+   return .stop (.noProgress pre rhs)
+ 
+ 
 diff -ruN a/Ascent/Tactic/VCGen/Driver.lean b/Ascent/Tactic/VCGen/Driver.lean
---- a/Ascent/Tactic/VCGen/Driver.lean	2026-11-06 23:31:36.453609444 +0000
-+++ b/Ascent/Tactic/VCGen/Driver.lean	2026-11-06 23:28:48.407353579 +0000
+--- a/Ascent/Tactic/VCGen/Driver.lean	2026-11-07 00:31:40.227057842 +0000
++++ b/Ascent/Tactic/VCGen/Driver.lean	2026-11-07 00:29:12.725297141 +0000
 @@ -9,6 +9,7 @@
  import Lean.Elab.Tactic.VCGen.Context
  import Lean.Elab.Tactic.VCGen.Solve
@@ -17,15 +51,9 @@ diff -ruN a/Ascent/Tactic/VCGen/Driver.lean b/Ascent/Tactic/VCGen/Driver.lean
    if reason matches .noEntailment .. | .noProgress .. then
      -- An invariant from an `invariants` alternative is assigned while the target is built, as in
      -- `?inv pref suff (a, b)`. Instantiating it lets `simp` reduce the body of the invariant.
-@@ -149,8 +151,16 @@
-       continue
-     match ← solve s.scope goal.mvarId with
+@@ -151,6 +153,11 @@
      | .stop reason =>
--      emitVC goal reason
-+      if let some g ← simpPureRefinementRhs? goal.mvarId then
-+        worklist := worklist.push { s with goal := { goal with mvarId := g } }
-+      else
-+        emitVC goal reason
+       emitVC goal reason
      | .goals scope subgoals =>
 +      -- A `PureRefinement` subgoal is solved at once, so that the continuation sees the abstract
 +      -- value and the precondition.

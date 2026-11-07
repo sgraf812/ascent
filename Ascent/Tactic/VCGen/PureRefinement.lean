@@ -225,20 +225,4 @@ def closeByEntry (goal : MVarId) : VCGenM Bool := goal.withContext do
     if (← r.rule.apply goal) matches .goals [] then return true
   return false
 
-/-- Simplify the right-hand side `rhs` of a goal `pre ⊑ rhs` on `Prop` when the simplified `rhs`
-holds `PureRefinement` obligations, such as the relation of a loop value that a `StepRel` post
-states. The new goal goes back to the worklist, which decomposes it and solves the obligations. -/
-def simpPureRefinementRhs? (goal : MVarId) : VCGenM (Option MVarId) := goal.withContext do
-  let target ← instantiateMVarsS (← goal.getType)
-  let some (α, _, pre, rhs) := target.app4? ``Lean.Order.PartialOrder.rel | return none
-  unless α.isProp do return none
-  let (rhs', some e) ← simpRun rhs | return none
-  unless (rhs'.find? (·.isAppOfArity ``Ascent.PureRefinement 6)).isSome do return none
-  let f ← mkAppNS target.getAppFn (target.getAppArgs.pop)
-  let newTarget ← mkAppNS f #[rhs']
-  let g ← liftMetaM <| mkFreshExprSyntheticOpaqueMVar newTarget
-  let h := mkApp6 (mkConst ``congrArg [1, 1]) α α rhs rhs' f e
-  goal.assign (mkApp4 (mkConst ``Eq.mpr [0]) target newTarget h g)
-  return some g.mvarId!
-
 end Lean.Elab.Tactic.VCGen.Ascend
