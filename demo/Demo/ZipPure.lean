@@ -31,21 +31,24 @@ structure ZipArrays (m : DataMem) (A B O rsp : BitVec 64) (n : Nat) : Prop where
   disjR : Mem.Blocks.Disjoint [(rsp, 8)] [(O, 8 * n)]
   ret : (Mem.loadInt m rsp 8).isSome = true
 
+theorem size_words_toArray (m : DataMem) (p : BitVec 64) (n : Nat) : (words m p n).toArray.size = n := by
+  simp [words]
+
+theorem ZipArrays.inputAt {m : DataMem} {O p : BitVec 64} {n : Nat} (hn : n < 2 ^ 61)
+    (hmap : Mem.Mapped [(p, 8 * n)] m) (hd : Mem.Blocks.Disjoint [(O, 8 * n)] [(p, 8 * n)]) :
+    InputAt m O n p (words m p n).toArray := by
+  refine ⟨?_, ?_, ?_, ?_⟩ <;> rw [size_words_toArray]
+  · exact hn
+  · exact hmap
+  · exact hd
+
 theorem ZipArrays.layout {m : DataMem} {A B O rsp : BitVec 64} {n : Nat}
     (h : ZipArrays m A B O rsp n) :
-    ZipLayout A B O rsp n (words m A n).toArray (words m B n).toArray m where
+    ArrayLayout [(A, (words m A n).toArray), (B, (words m B n).toArray)] O n [rsp] m where
   len := h.len
-  sizeA := by simp [words]
-  sizeB := by simp [words]
-  wordsA := by simp [words]
-  wordsB := by simp [words]
-  mapA := h.mapA
-  mapB := h.mapB
-  mapO := h.mapO
-  disjA := h.disjA
-  disjB := h.disjB
-  disjR := h.disjR
-  ret := h.ret
+  mapped := h.mapO
+  inputs := ⟨ZipArrays.inputAt h.len h.mapA h.disjA, ZipArrays.inputAt h.len h.mapB h.disjB, trivial⟩
+  reserved := ⟨⟨h.ret, h.disjR⟩, trivial⟩
 
 theorem zipWithAddArr_spec [Host] [FunDecls] [Embeds zipWithAdd] (s : MachineData) (ra : Int64)
     (A B O rsp : BitVec 64) {n : Nat} {a b o : Array (BitVec 64)} (hn : n < 2 ^ 61)
@@ -76,12 +79,13 @@ theorem wp_zipWithAddL {m : DataMem} {A B O rsp : BitVec 64} {n : Nat} (h : ZipA
       o = Array.zipWith (· + ·) (words m A n).toArray (words m B n).toArray, estack⟨⟩))
     ⟨fun o ho => by
       subst ho
-      exact (zipWithAddArr_spec s ra A B O rsp hl.len hl.sizeA hl.sizeB
+      exact (zipWithAddArr_spec s ra A B O rsp hl.len (size_words_toArray _ _ _) (size_words_toArray _ _ _)
         (by simp [outView, words])).le_wp _ rfl⟩
   refine WP.wp_monotone (x := zipWithAddL s ra A B O (BitVec.ofNat 64 n) rsp) ?_ ?_ m
     (hT.le_wp m (by
       simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred]
-      exact ⟨⟨PureRefinement.of_rel trivial, PureRefinement.of_rel trivial, hl⟩, trivial⟩))
+      exact ⟨⟨PureRefinement.of_rel trivial, PureRefinement.of_rel trivial, size_words_toArray _ _ _,
+        size_words_toArray _ _ _, hl⟩, trivial⟩))
   · intro _ m' hq
     rw [Concretization.post_pi] at hq
     obtain ⟨_, -, hq⟩ := hq

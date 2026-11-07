@@ -65,16 +65,16 @@ theorem words_storeInt_self {k : Nat} (hk : k < n) (hn : n < 2 ^ 61) (v : BitVec
     rw [word, Mem.loadInt_storeInt_of_disjoint (cell_disjoint h₁ hk (Ne.symm hjk) hn) _]
     rfl
 
-theorem words_storeInt_of_disjoint {k : Nat}
-    (hd : Mem.Blocks.Disjoint [(q, 8 * n)] [(p, 8 * n)]) (hk : k < n) (hn : n < 2 ^ 61)
-    (v : Int) : words (Mem.storeInt m (cell q k) 8 v) p n = words m p n := by
+theorem words_storeInt_of_disjoint {k nq : Nat}
+    (hd : Mem.Blocks.Disjoint [(q, 8 * nq)] [(p, 8 * n)]) (hk : k < nq) (hq : nq < 2 ^ 61)
+    (hn : n < 2 ^ 61) (v : Int) : words (Mem.storeInt m (cell q k) 8 v) p n = words m p n := by
   apply List.ext_getElem
   · simp [words]
   intro j h₁ _
   simp only [words, List.length_ofFn] at h₁
   simp only [words, List.getElem_ofFn]
   rw [word, Mem.loadInt_storeInt_of_disjoint
-    (Mem.Blocks.Disjoint.of_inside' hd (cell_inside h₁ hn) (cell_inside hk hn)) _]
+    (Mem.Blocks.Disjoint.of_inside' hd (cell_inside h₁ hn) (cell_inside hk hq)) _]
   rfl
 
 theorem outView_storeInt {k : Nat} (hk : k < n) (hn : n < 2 ^ 61) (v : BitVec 64) :
@@ -88,6 +88,90 @@ theorem loadInt_storeInt_cell_of_disjoint {k : Nat} {x : BitVec 64}
   Mem.loadInt_storeInt_of_disjoint (Mem.Blocks.Disjoint.of_inside_right_pair hd (cell_inside hk hn)) v
 
 end
+
+/-! ## Layouts
+
+`ArrayLayout ins o n rsv m` states the memory `m` of a program that writes the array of `n` words
+at `o`: each input `(p, a)` of `ins` holds the array `a` at `p`, each reserved word of `rsv`, such
+as a return slot, is mapped, and the written array is mapped and apart from the inputs and from the
+reserved words. A store into the written array keeps the layout. -/
+
+/-- The array `a` lies at `p`, apart from the written array of `n` words at `o`. -/
+structure InputAt (m : DataMem) (o : BitVec 64) (n : Nat) (p : BitVec 64) (a : Array (BitVec 64)) :
+    Prop where
+  len : a.size < 2 ^ 61
+  words : words m p a.size = a.toList
+  mapped : Mem.Mapped [(p, 8 * a.size)] m
+  disj : Mem.Blocks.Disjoint [(o, 8 * n)] [(p, 8 * a.size)]
+
+/-- The word at `p` is mapped and apart from the written array of `n` words at `o`. -/
+structure ReservedAt (m : DataMem) (o : BitVec 64) (n : Nat) (p : BitVec 64) : Prop where
+  loadInt_isSome : (Mem.loadInt m p 8).isSome = true
+  disj : Mem.Blocks.Disjoint [(p, 8)] [(o, 8 * n)]
+
+def Inputs (m : DataMem) (o : BitVec 64) (n : Nat) : List (BitVec 64 × Array (BitVec 64)) → Prop
+  | [] => True
+  | (p, a) :: ins => InputAt m o n p a ∧ Inputs m o n ins
+
+def Reserved (m : DataMem) (o : BitVec 64) (n : Nat) : List (BitVec 64) → Prop
+  | [] => True
+  | p :: rsv => ReservedAt m o n p ∧ Reserved m o n rsv
+
+structure ArrayLayout (ins : List (BitVec 64 × Array (BitVec 64))) (o : BitVec 64) (n : Nat)
+    (rsv : List (BitVec 64)) (m : DataMem) : Prop where
+  len : n < 2 ^ 61
+  mapped : Mem.Mapped [(o, 8 * n)] m
+  inputs : Inputs m o n ins
+  reserved : Reserved m o n rsv
+
+attribute [grind →] InputAt.len InputAt.words InputAt.mapped InputAt.disj ReservedAt.loadInt_isSome
+  ReservedAt.disj ArrayLayout.len ArrayLayout.mapped ArrayLayout.inputs ArrayLayout.reserved
+
+section
+variable {m : DataMem} {o : BitVec 64} {n : Nat}
+
+@[grind =] theorem Inputs.nil : Inputs m o n [] = True := rfl
+@[grind =] theorem Inputs.cons (p : BitVec 64) (a : Array (BitVec 64)) ins :
+    Inputs m o n ((p, a) :: ins) = (InputAt m o n p a ∧ Inputs m o n ins) := rfl
+@[grind =] theorem Reserved.nil : Reserved m o n [] = True := rfl
+@[grind =] theorem Reserved.cons (p : BitVec 64) rsv :
+    Reserved m o n (p :: rsv) = (ReservedAt m o n p ∧ Reserved m o n rsv) := rfl
+
+variable {k : Nat} (hk : k < n) (hn : n < 2 ^ 61) (x : Int)
+include hk hn
+
+theorem InputAt.storeInt {p : BitVec 64} {a : Array (BitVec 64)} (h : InputAt m o n p a) :
+    InputAt (Mem.storeInt m (cell o k) 8 x) o n p a where
+  len := h.len
+  words := by rw [words_storeInt_of_disjoint h.disj hk hn h.len]; exact h.words
+  mapped := Mem.Mapped.storeInt h.mapped _ _ _
+  disj := h.disj
+
+theorem ReservedAt.storeInt {p : BitVec 64} (h : ReservedAt m o n p) :
+    ReservedAt (Mem.storeInt m (cell o k) 8 x) o n p :=
+  ⟨by rw [loadInt_storeInt_cell_of_disjoint h.disj hk hn]; exact h.loadInt_isSome, h.disj⟩
+
+theorem Inputs.storeInt : ∀ {ins}, Inputs m o n ins → Inputs (Mem.storeInt m (cell o k) 8 x) o n ins
+  | [], _ => trivial
+  | (_, _) :: _, ⟨h, hs⟩ => ⟨h.storeInt hk hn x, Inputs.storeInt hs⟩
+
+theorem Reserved.storeInt : ∀ {rsv}, Reserved m o n rsv →
+    Reserved (Mem.storeInt m (cell o k) 8 x) o n rsv
+  | [], _ => trivial
+  | _ :: _, ⟨h, hs⟩ => ⟨h.storeInt hk hn x, Reserved.storeInt hs⟩
+
+end
+
+theorem ArrayLayout.storeInt_out {ins : List (BitVec 64 × Array (BitVec 64))} {o : BitVec 64}
+    {n : Nat} {rsv : List (BitVec 64)} {m : DataMem} (h : ArrayLayout ins o n rsv m)
+    {v : BitVec 64} (hv : v.toNat < n) (x : Int) :
+    ArrayLayout ins o n rsv (Mem.storeInt m (o + v * 8#64) 8 x) := by
+  rw [add_mul_eight]
+  exact ⟨h.len, Mem.Mapped.storeInt h.mapped _ _ _, h.inputs.storeInt hv h.len x,
+    h.reserved.storeInt hv h.len x⟩
+
+grind_pattern ArrayLayout.storeInt_out =>
+  Mem.storeInt m (o + v * 8#64) 8 x, ArrayLayout ins o n rsv m
 
 /-! ## Steps -/
 
