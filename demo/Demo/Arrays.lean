@@ -21,8 +21,13 @@ namespace Ascent.Kraken
 /-- The `n` words at the base address `p` as an array. -/
 def outView (p : BitVec 64) (n : Nat) (m : DataMem) : Array (BitVec 64) := (words m p n).toArray
 
+@[simp, grind =] theorem size_outView : (outView p n m).size = n := by
+  simp [outView, words]
+
 /-- The base address `p` names the array `a` of the abstract program. -/
 def ArrayBase (_ : BitVec 64) (_ : Array (BitVec 64)) : Prop := True
+
+@[grind norm] theorem ArrayBase_eq : ArrayBase p a = True := rfl
 
 /-- `q ≐ₐ a`: the base address `q` names the array parameter `a`. -/
 scoped notation:50 q:51 " ≐ₐ " a:51 => PureRefinement q a True ArrayBase

@@ -468,6 +468,9 @@ end
 def RetRel (s : MachineData) (ra : Int64) : Int64 → CfgLabel → MachineData → Prop :=
   fun a l' s' => a = ra ∧ l' = .exit ∧ s'.regs.get64 .rsp = s.regs.get64 .rsp
 
+@[grind norm] theorem RetRel_eq (s : MachineData) (ra a : Int64) (l : CfgLabel) (s' : MachineData) :
+    RetRel s ra a l s' = (a = ra ∧ l = .exit ∧ s'.regs.get64 .rsp = s.regs.get64 .rsp) := rfl
+
 /-- The stack discipline inside the function: the stack pointer and the return slot of the entry
 state `s₀`. -/
 def SameStackFrame (s₀ s : MachineData) : Prop :=
@@ -504,6 +507,10 @@ noncomputable instance {Aσ : Type} :
     EPostsConcretization (MachineData → Prop) (Aσ → Prop) (Int64 → MachineData → Prop)
       ((CfgLabel → Aσ → Prop) × EStack⟨⟩) (Int64 → CfgLabel → MachineData → Prop) where
   ePosts γ E Ea := γ.post E Ea.1
+
+@[simp, grind norm] theorem ePosts_ret {Aσ : Type} (γ : Concretization (MachineData → Prop) (Aσ → Prop))
+    (E : Int64 → CfgLabel → MachineData → Prop) (Ea : (CfgLabel → Aσ → Prop) × EStack⟨⟩) :
+    EPostsConcretization.ePosts (CEPosts := Int64 → MachineData → Prop) γ E Ea = γ.post E Ea.1 := rfl
 
 /-! ## The control-flow rule -/
 
