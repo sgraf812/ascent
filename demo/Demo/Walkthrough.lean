@@ -25,6 +25,23 @@ namespace Ascent.Kraken.Walkthrough
 
 /-! ## 1. The x64 text -/
 
+/--
+info: def zipWithAdd : Program :=
+[asm|
+    "test rcx, rcx"
+    "jle LBB0_3"
+    "xor eax, eax"
+    "LBB0_2:"
+    "mov r8, QWORD PTR [rsi+rax*8+0]"
+    "add r8, QWORD PTR [rdi+rax*8+0]"
+    "mov QWORD PTR [rdx+rax*8+0], r8"
+    "inc rax"
+    "cmp rcx, rax"
+    "jne LBB0_2"
+    "LBB0_3:"
+    "ret"]
+-/
+#guard_msgs in
 #print zipWithAdd
 
 /-! ## 2. Blocks, synthesized by `ascend_def`
