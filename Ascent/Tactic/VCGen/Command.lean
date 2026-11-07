@@ -12,6 +12,9 @@ specs of the `ascend` clause, and closes every VC with the `grind` step `tac`.
 `sym_simp_def a xs : T from c using pre [ps] post [qs]` is the simplification between two runs:
 it defines `a : ∀ xs, T` as `c` simplified by `Sym.simp` with the rewrite rules `ps` and `qs`, and
 proves `a.eq : ∀ xs, c = a xs`.
+
+Both commands give `a` only the binders among `xs` that `T` or the body of `a` mentions, and the
+binders that their types mention. The theorems `a.refines` and `a.eq` take all of `xs`.
 -/
 
 open Lean Meta Elab Command Term
@@ -30,6 +33,17 @@ def unfoldableHead? (c : Expr) : MetaM (Option Name) := do
   let some (.defnInfo _) := env.find? declName | return none
   if env.isProjectionFn declName || (← isInstance declName) then return none
   return some declName
+
+/-- The binders among `xs` that `es` mention, together with the binders that their types mention,
+in the order of `xs`. -/
+def usedBinders (xs : Array Expr) (es : Array Expr) : MetaM (Array Expr) := do
+  let mut used : CollectFVars.State := {}
+  for e in es do
+    used := collectFVars used (← instantiateMVars e)
+  for x in xs.reverse do
+    if used.fvarSet.contains x.fvarId! then
+      used := collectFVars used (← instantiateMVars (← inferType x))
+  return xs.filter (used.fvarSet.contains ·.fvarId!)
 
 /-- `ascend_def f xs : T from stmt ascend [specs] with tac` synthesizes `f : ∀ xs, T` from the
 refinement statement `stmt`, in which `f` stands for `f xs`, and proves `f.refines : ∀ xs, stmt`.
@@ -64,9 +78,10 @@ elab_rules : command
     let value ← instantiateMVars hole
     if value.hasMVar then
       throwError "ascend_def: the synthesized program has holes:{indentExpr value}"
+    let ys ← usedBinders xs #[T, value]
     addDecl <| .defnDecl {
-      name := declName, levelParams := [], type := ← instantiateMVars (← mkForallFVars xs T),
-      value := ← instantiateMVars (← mkLambdaFVars xs value), hints := .regular 0,
+      name := declName, levelParams := [], type := ← instantiateMVars (← mkForallFVars ys T),
+      value := ← instantiateMVars (← mkLambdaFVars ys value), hints := .regular 0,
       safety := .safe }
     enableRealizationsForConst declName
     let proof ← instantiateMVars proof
@@ -75,7 +90,7 @@ elab_rules : command
     addDecl <| .thmDecl {
       name := declName ++ `refines, levelParams := [],
       type := ← instantiateMVars
-        (← mkForallFVars xs (stmtFn.beta #[mkAppN (mkConst declName) xs])),
+        (← mkForallFVars xs (stmtFn.beta #[mkAppN (mkConst declName) ys])),
       value := ← instantiateMVars (← mkLambdaFVars xs proof) }
 
 syntax (name := symSimpDefCmd)
@@ -116,14 +131,15 @@ elab_rules : command
       | .step e h .. => return (e, h)
     let value ← instantiateMVars value
     if value.hasMVar then throwError "sym_simp_def: the simplified program has holes:{indentExpr value}"
+    let ys ← usedBinders xs #[T, value]
     addDecl <| .defnDecl {
-      name := declName, levelParams := [], type := ← instantiateMVars (← mkForallFVars xs T),
-      value := ← instantiateMVars (← mkLambdaFVars xs value), hints := .regular 0, safety := .safe }
+      name := declName, levelParams := [], type := ← instantiateMVars (← mkForallFVars ys T),
+      value := ← instantiateMVars (← mkLambdaFVars ys value), hints := .regular 0, safety := .safe }
     enableRealizationsForConst declName
     let proof ← instantiateMVars proof
     addDecl <| .thmDecl {
       name := declName ++ `eq, levelParams := [],
-      type := ← instantiateMVars (← mkForallFVars xs (← mkEq c (mkAppN (mkConst declName) xs))),
+      type := ← instantiateMVars (← mkForallFVars xs (← mkEq c (mkAppN (mkConst declName) ys))),
       value := ← instantiateMVars (← mkLambdaFVars xs proof) }
 
 end Lean.Elab.Tactic.VCGen.Ascend

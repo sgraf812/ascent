@@ -49,7 +49,7 @@ ascend_def zipWithAddA [Host] [FunDecls] [Embeds zipWithAdd] (s : MachineData) (
 
 /-- The synthesized L1 program: the text over the abstract machine, block by block. -/
 example [Host] [FunDecls] [Embeds zipWithAdd] (s : MachineData) (ra : Int64) :
-    zipWithAddA s ra = cfgLoop (Table.get [
+    zipWithAddA = cfgLoop (Table.get [
       (.entry, do
         branch (fun st => CondCode.le.cmp (st.regs.get64 .rcx &&& st.regs.get64 .rcx) 0) (.label "LBB0_3")
         modifyIf (fun _ => True) (setReg64 .rax fun st =>

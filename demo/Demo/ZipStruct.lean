@@ -16,8 +16,7 @@ open scoped Program.WP
 
 namespace Ascent.Kraken
 
-sym_simp_def zipWithAddT [Host] [FunDecls] [Embeds zipWithAdd] (s : MachineData) (ra : Int64) :
-    BlockM MachineData Unit from zipWithAddA s ra
+sym_simp_def zipWithAddT : BlockM MachineData Unit from zipWithAddA
   using pre [tryCatch_table_get_bind, tryCatch_bind_assoc, tryCatch_pure,
     tryCatch_cfgLoop_bind, tryCatch_modifyIf_bind, tryCatch_branch_bind,
     tryCatch_exitIf_bind, tryCatch_exitIf]
@@ -26,8 +25,8 @@ sym_simp_def zipWithAddT [Host] [FunDecls] [Embeds zipWithAdd] (s : MachineData)
     map_exitIf, condState_map, condState_exitIf_map, condState_map_exitIf, forIn_map_done, forIn_exitIf]
 
 theorem zipWithAddT.refines [Host] [FunDecls] [Embeds zipWithAdd] (s : MachineData) (ra : Int64) :
-    ⦃(· = s.push64 ra)⦄ zipWithAdd ⪯[ofStateRepr abs] (zipWithAddT s ra) ⦃fun _ _ => ⊤; RetRel s ra⦄ :=
-  zipWithAddT.eq s ra ▸ zipWithAddA.refines s ra
+    ⦃(· = s.push64 ra)⦄ zipWithAdd ⪯[ofStateRepr abs] zipWithAddT ⦃fun _ _ => ⊤; RetRel s ra⦄ :=
+  zipWithAddT.eq ▸ zipWithAddA.refines s ra
 
 
 end Ascent.Kraken
