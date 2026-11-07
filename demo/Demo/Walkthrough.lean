@@ -35,7 +35,7 @@ register `loadReg8`, or a store `storeWord8`. `ascend_def` synthesized it and pr
 
 /--
 info: @zipWithAddA.refines : ∀ [inst : Host] [inst_1 : FunDecls] [inst_2 : Embeds zipWithAdd] (s : MachineData) (ra : Int64),
-  Refinement zipWithAdd (zipWithAddA s ra) (ofStateRepr abs) (fun x => x = s.push64 ra) (fun x x_1 => ⊤) (RetRel s ra)
+  ⦃ fun x => x = s.push64 ra ⦄ zipWithAdd ⪯[ofStateRepr abs] (zipWithAddA s ra) ⦃ fun x x_1 => ⊤; RetRel s ra ⦄
 -/
 #guard_msgs in
 #check @zipWithAddA.refines
@@ -72,7 +72,7 @@ fun [Host] [FunDecls] [Embeds zipWithAdd] s ra =>
 #print zipWithAddT
 /--
 info: @zipWithAddT.refines : ∀ [inst : Host] [inst_1 : FunDecls] [inst_2 : Embeds zipWithAdd] (s : MachineData) (ra : Int64),
-  Refinement zipWithAdd (zipWithAddT s ra) (ofStateRepr abs) (fun x => x = s.push64 ra) (fun x x_1 => ⊤) (RetRel s ra)
+  ⦃ fun x => x = s.push64 ra ⦄ zipWithAdd ⪯[ofStateRepr abs] (zipWithAddT s ra) ⦃ fun x x_1 => ⊤; RetRel s ra ⦄
 -/
 #guard_msgs in
 #check @zipWithAddT.refines
@@ -113,9 +113,9 @@ fun [Host] [FunDecls] [Embeds zipWithAdd] s ra rdi rsi rdx rcx rsp =>
 /--
 info: @zipWithAddL.refines : ∀ [inst : Host] [inst_1 : FunDecls] [inst_2 : Embeds zipWithAdd] (s : MachineData) (ra : Int64)
   (rdi rsi rdx rcx rsp : BitVec 64),
-  Refinement (zipWithAddT s ra) (zipWithAddL s ra rdi rsi rdx rcx rsp) (ofStateRepr MachineData.dmem)
-    (RegsRel [(Reg64.rdi, rdi), (Reg64.rsi, rsi), (Reg64.rdx, rdx), (Reg64.rcx, rcx), (Reg64.rsp, rsp)])
-    (fun x x_1 x_2 => True) estack⟨fun l l' x => l = l'⟩
+  ⦃ RegsRel [(Reg64.rdi, rdi), (Reg64.rsi, rsi), (Reg64.rdx, rdx), (Reg64.rcx, rcx), (Reg64.rsp, rsp)] ⦄
+    (zipWithAddT s ra) ⪯[ofStateRepr MachineData.dmem] (zipWithAddL s ra rdi rsi rdx rcx rsp) ⦃ fun x x_1 x_2 => True;
+    estack⟨fun l l' x => l = l'⟩ ⦄
 -/
 #guard_msgs in
 #check @zipWithAddL.refines
@@ -157,10 +157,9 @@ fun [Host] [FunDecls] [Embeds zipWithAdd] s ra A B O rsp n a b =>
 /--
 info: @zipWithAddArr.refines : ∀ [inst : Host] [inst_1 : FunDecls] [inst_2 : Embeds zipWithAdd] (s : MachineData) (ra : Int64)
   (A B O rsp : BitVec 64) (n : Nat) (a b : Array (BitVec 64)),
-  Refinement (zipWithAddL s ra A B O (BitVec.ofNat 64 n) rsp) (zipWithAddArr s ra A B O rsp n a b)
-    (ofStateRepr (outView O n))
-    (fun m => A ≐ₐ a ∧ B ≐ₐ b ∧ a.size = n ∧ b.size = n ∧ ArrayLayout [(A, a), (B, b)] O n [rsp] m)
-    (fun x x_1 x_2 => True) estack⟨fun l l' x => l = l'⟩
+  ⦃ fun m => A ≐ₐ a ∧ B ≐ₐ b ∧ a.size = n ∧ b.size = n ∧ ArrayLayout [(A, a), (B, b)] O n [rsp] m ⦄
+    (zipWithAddL s ra A B O (BitVec.ofNat 64 n) rsp) ⪯[ofStateRepr (outView O n)] (zipWithAddArr s ra A B O rsp n a b) ⦃
+    fun x x_1 x_2 => True; estack⟨fun l l' x => l = l'⟩ ⦄
 -/
 #guard_msgs in
 #check @zipWithAddArr.refines

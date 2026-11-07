@@ -47,6 +47,10 @@ scoped macro_rules
   | `(⦃ $P ⦄ $c ⪯[$γ] $a ⦃ $Q ⦄) => `(Refinement $c $a $γ $P $Q Lean.Order.bot)
   | `(⦃ $P ⦄ $c ⪯[$γ] $a ⦃ $Q; $E ⦄) => `(Refinement $c $a $γ $P $Q $E)
 
+@[scoped app_unexpander Refinement] def unexpandRefinement : Lean.PrettyPrinter.Unexpander
+  | `($_ $c $a $γ $P $Q $E) => `(⦃ $P ⦄ $c ⪯[$γ] $a ⦃ $Q; $E ⦄)
+  | _ => throw ()
+
 section
 variable {CProg AProg : Type _} {CVal AVal : Type _}
   {CPred APred : Type w} {CEPosts AEPosts : Type w'} {ERels : Type u}
