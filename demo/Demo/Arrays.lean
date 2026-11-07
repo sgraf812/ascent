@@ -1,0 +1,160 @@
+import Demo.Lift
+import Demo.Words
+
+/-!
+# Arrays in the data memory
+
+A program over the data memory refines a program over an array of words, under the
+concretization `ofStateRepr (outView p n)` that reads the `n` words at the base address `p` as the
+abstract state. The program reads further arrays as parameters: the hypothesis `q ≐ₐ a` names the
+array at the base address `q` as the parameter `a`, and the load rule reads `a[i]!` where the
+concrete program loads the word at `q + i * 8`. A load and a store keep the guards of the memory
+steps as verification conditions.
+
+`wrp_forIn_diag_bind_unit` refines a loop to a loop with the same loop value. The relation `I` of
+the loop states the layout of the memory in each iteration.
+-/
+
+open Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
+open Ascent.Concretization (ofStateRepr ofStateRepr_pred)
+
+namespace Ascent.Kraken
+
+/-- The `n` words at the base address `p` as an array. -/
+def outView (p : BitVec 64) (n : Nat) (m : DataMem) : Array (BitVec 64) := (words m p n).toArray
+
+/-- The base address `p` names the array `a` of the abstract program. -/
+def ArrayBase (_ : BitVec 64) (_ : Array (BitVec 64)) : Prop := True
+
+/-- `q ≐ₐ a`: the base address `q` names the array parameter `a`. -/
+scoped notation:50 q:51 " ≐ₐ " a:51 => PureRefinement q a True ArrayBase
+
+/-! ## Words -/
+
+section
+variable {m : DataMem} {p q : BitVec 64} {n : Nat}
+
+theorem add_mul_eight (p i : BitVec 64) : p + i * 8#64 = cell p i.toNat := by
+  simp only [cell, BitVec.ofNat_toNat, BitVec.setWidth_eq]
+  rfl
+
+theorem word_eq_getElem {arr : Array (BitVec 64)} (h : words m p arr.size = arr.toList) {k : Nat}
+    (hk : k < arr.size) : word m p k = arr[k]! := by
+  have h' := congrArg (fun l => l[k]?) h
+  simp only [words, List.getElem?_ofFn, Array.getElem?_toList] at h'
+  rw [dite_eq_left hk, Array.getElem?_eq_getElem hk] at h'
+  rw [getElem!_pos arr k hk]
+  exact Option.some.inj h'
+
+theorem word_storeInt_self (k : Nat) (v : BitVec 64) :
+    word (Mem.storeInt m (cell p k) 8 v.toInt) p k = v := by
+  rw [word, Mem.loadInt_storeInt_64, Option.get!_some, BitVec.ofInt_ofBytes_toBytes_64,
+    BitVec.ofInt_toInt]
+
+theorem words_storeInt_self {k : Nat} (hk : k < n) (hn : n < 2 ^ 61) (v : BitVec 64) :
+    words (Mem.storeInt m (cell p k) 8 v.toInt) p n = (words m p n).set k v := by
+  apply List.ext_getElem
+  · simp [words]
+  intro j h₁ h₂
+  simp only [words, List.length_ofFn] at h₁
+  simp only [words, List.getElem_ofFn, List.getElem_set]
+  split
+  · subst_vars
+    exact word_storeInt_self j v
+  · rename_i hjk
+    rw [word, Mem.loadInt_storeInt_of_disjoint (cell_disjoint h₁ hk (Ne.symm hjk) hn) _]
+    rfl
+
+theorem words_storeInt_of_disjoint {k : Nat}
+    (hd : Mem.Blocks.Disjoint [(q, 8 * n)] [(p, 8 * n)]) (hk : k < n) (hn : n < 2 ^ 61)
+    (v : Int) : words (Mem.storeInt m (cell q k) 8 v) p n = words m p n := by
+  apply List.ext_getElem
+  · simp [words]
+  intro j h₁ _
+  simp only [words, List.length_ofFn] at h₁
+  simp only [words, List.getElem_ofFn]
+  rw [word, Mem.loadInt_storeInt_of_disjoint
+    (Mem.Blocks.Disjoint.of_inside' hd (cell_inside h₁ hn) (cell_inside hk hn)) _]
+  rfl
+
+theorem outView_storeInt {k : Nat} (hk : k < n) (hn : n < 2 ^ 61) (v : BitVec 64) :
+    outView p n (Mem.storeInt m (cell p k) 8 v.toInt) = (outView p n m).set! k v := by
+  rw [outView, outView, words_storeInt_self hk hn, Array.set!_eq_setIfInBounds,
+    List.setIfInBounds_toArray]
+
+theorem loadInt_storeInt_cell_of_disjoint {k : Nat} {x : BitVec 64}
+    (hd : Mem.Blocks.Disjoint [(x, 8)] [(q, 8 * n)]) (hk : k < n) (hn : n < 2 ^ 61) (v : Int) :
+    Mem.loadInt (Mem.storeInt m (cell q k) 8 v) x 8 = Mem.loadInt m x 8 :=
+  Mem.loadInt_storeInt_of_disjoint (Mem.Blocks.Disjoint.of_inside_right_pair hd (cell_inside hk hn)) v
+
+end
+
+/-! ## Steps -/
+
+theorem wp_modify {σ : Type} (f : σ → σ) (Q : Unit → σ → Prop) (E : (CfgLabel → σ → Prop) × EStack⟨⟩)
+    (s : σ) : wp (modify f : BlockM σ Unit) Q E s = Q () (f s) := by
+  rw [wp_BlockM_eq]
+  rfl
+
+
+section
+variable {σa : Type} {view : DataMem → σa}
+  {E : (CfgLabel → CfgLabel → DataMem → Prop) × EStack⟨⟩}
+
+@[ascend] theorem wrp_load8_getElem {Q : BitVec 64 → BitVec 64 → DataMem → Prop}
+    (p i : BitVec 64) (arr : Array (BitVec 64)) :
+    (fun m => p ≐ₐ arr ∧ words m p arr.size = arr.toList ∧ Mem.Mapped [(p, 8 * arr.size)] m ∧
+      i.toNat < arr.size ∧ arr.size < 2 ^ 61 ∧
+      ∀ y, BitVec.ofInt 64 (Mem.loadInt m (p + i * 8#64) 8).get! ≐ y →
+        Q (BitVec.ofInt 64 (Mem.loadInt m (p + i * 8#64) 8).get!) y m)
+      ⊑ wrp (ofStateRepr view) (load8 (p + i * 8#64))
+          (pure arr[i.toNat]! : BlockM σa (BitVec 64)) Q E := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro m hm
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, WPMonadExact.wp_pure_eq] at hm
+  obtain ⟨⟨-, hw, hmap, hi, hn, hk⟩, hq⟩ := hm
+  have hval : BitVec.ofInt 64 (Mem.loadInt m (p + i * 8#64) 8).get! = arr[i.toNat]! := by
+    rw [add_mul_eight, ← word, word_eq_getElem hw hi]
+  rw [wp_load8, Concretization.post_pi]
+  refine ⟨?_, arr[i.toNat]!, hk _ (PureRefinement.of_rel hval), ?_⟩
+  · rw [add_mul_eight]
+    exact Mem.Mapped.loadInt_isSome hmap (cell_inside hi hn)
+  · simp only [ofStateRepr_pred]
+    exact hq
+
+@[ascend] theorem wrp_store8_set {Q : Unit → Unit → DataMem → Prop} (sp p i v v' : BitVec 64)
+    (n : Nat) :
+    (fun m => v ≐ v' ∧ i.toNat < n ∧ n < 2 ^ 61 ∧ Mem.Mapped [(p, 8 * n)] m ∧
+      Mem.Blocks.Disjoint [(sp, 8)] [(p, 8 * n)] ∧
+      Q () () (Mem.storeInt m (p + i * 8#64) 8 v.toInt))
+      ⊑ wrp (ofStateRepr (outView p n)) (store8 sp (p + i * 8#64) v)
+          (modify fun o => o.set! i.toNat v' : BlockM (Array (BitVec 64)) Unit) Q E := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro m hm
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_modify] at hm
+  obtain ⟨⟨hv, hi, hn, hmap, hd, hk⟩, hq⟩ := hm
+  have hv : v = v' := hv trivial
+  rw [wp_store8, Concretization.post_pi]
+  rw [add_mul_eight] at hk ⊢
+  refine ⟨⟨Mem.Mapped.loadInt_isSome hmap (cell_inside hi hn),
+    Mem.Blocks.Disjoint.of_inside_right_pair hd (cell_inside hi hn)⟩, (), hk, ?_⟩
+  simp only [ofStateRepr_pred]
+  rw [outView_storeInt hi hn, hv]
+  exact hq
+
+@[ascend] theorem wrp_retAt_throw {Q : Unit → Unit → DataMem → Prop} (sp : BitVec 64) :
+    (fun m => (Mem.loadInt m sp 8).isSome = true ∧ E.1 .exit .exit m ∧ Q () () m)
+      ⊑ wrp (ofStateRepr view) (retAt sp) (throw CfgLabel.exit : BlockM σa Unit) Q E := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro m hm
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_throw_block] at hm
+  obtain ⟨⟨hl, he, -⟩, hw⟩ := hm
+  rw [wp_retAt]
+  refine ⟨hl, ?_⟩
+  simp only [EPostsConcretization.ePosts_cons]
+  rw [Concretization.post_pi]
+  exact ⟨.exit, he, hw⟩
+
+end
+
+end Ascent.Kraken

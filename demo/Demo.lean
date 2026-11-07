@@ -8,5 +8,7 @@ import Demo.Lift
 import Demo.LiftTest
 import Demo.Words
 import Demo.ZipL
+import Demo.Arrays
+import Demo.ZipArr
 import Demo.ZipPure
 import Demo.Walkthrough

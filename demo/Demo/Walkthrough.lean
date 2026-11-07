@@ -53,14 +53,24 @@ the value of the loop. The loaded values of `r8` become variables. `ascend_def` 
 #print zipWithAddL
 #check @zipWithAddL.refines
 
-/-! ## 5. The pure program
+/-! ## 5. Arrays, synthesized by `ascend_def`
 
-On arrays in place in memory, the lifted program refines `Array.zipWith (· + ·)`. -/
+The state is the output array. The input arrays are parameters, named by their base addresses, and
+the loads and the store become array reads and an array update. The relation of the loop, the hint
+of the run, states the layout of the memory. `ascend_def` synthesized `zipWithAddArr` and proved: -/
+
+#print zipWithAddArr
+#check @zipWithAddArr.refines
+
+/-! ## 6. The pure program
+
+The array program exits with `Array.zipWith (· + ·)` of its inputs, and so refines the pure
+program. -/
 
 #print zipWithAddP
-#check @zipWithAddL_refines_P
+#check @zipWithAddArr_refines_P
 
-/-! ## 6. Back to the machine code
+/-! ## 7. Back to the machine code
 
 The refinements carry the result of the pure program back to the x64 text. -/
 

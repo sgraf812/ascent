@@ -130,4 +130,19 @@ theorem toNat_ofNat_lt {k : Nat} (hk : k < 2 ^ 61) : (BitVec.ofNat 64 k).toNat =
 theorem ofNat_succ (k : Nat) : BitVec.ofNat 64 k + 1 = BitVec.ofNat 64 (k + 1) := by
   rw [BitVec.ofNat_add]; rfl
 
+theorem pos_of_not_cmp_le_self {n : Nat} (hn : n < 2 ^ 61)
+    (h : ¬CondCode.cmp .le (BitVec.ofNat 64 n &&& BitVec.ofNat 64 n) 0#64 = true) : 0 < n := by
+  refine Nat.pos_of_ne_zero fun h0 => h ?_
+  subst h0
+  exact cmp_le_self_zero
+
+theorem toNat_succ_lt_of_cmp_nz {n : Nat} {v : BitVec 64} (hv : v.toNat < n) (hn : n < 2 ^ 61)
+    (h : CondCode.cmp .nz (BitVec.ofNat 64 n) (v + 1#64) = true) : (v + 1#64).toNat < n := by
+  have h1 : (1#64 : BitVec 64) = 1 := rfl
+  have hv' : v = BitVec.ofNat 64 v.toNat := by simp
+  rw [h1] at h ⊢
+  rw [hv', cmp_nz_succ hv hn, decide_eq_true_iff] at h
+  rw [hv', toNat_ofNat_succ (by omega)]
+  omega
+
 end Ascent.Kraken
