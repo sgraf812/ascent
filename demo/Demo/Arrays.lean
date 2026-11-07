@@ -8,11 +8,9 @@ A program over the data memory refines a program over an array of words, under t
 concretization `ofStateRepr (outView p n)` that reads the `n` words at the base address `p` as the
 abstract state. The program reads further arrays as parameters: the hypothesis `q ≐ₐ a` names the
 array at the base address `q` as the parameter `a`, and the load rule reads `a[i]!` where the
-concrete program loads the word at `q + i * 8`. A load and a store keep the guards of the memory
-steps as verification conditions.
-
-`wrp_forIn_diag_bind_unit` refines a loop to a loop with the same loop value. The relation `I` of
-the loop states the layout of the memory in each iteration.
+concrete program loads the word at `q + v * 8` and `v ≐ₙ i`: the word `v` holds the number `i`. A
+store into the written array becomes `set!` at the index `i`. A load and a store keep the guards of
+the memory steps and the bound of the index as verification conditions.
 -/
 
 open Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
@@ -33,10 +31,6 @@ scoped notation:50 q:51 " ≐ₐ " a:51 => PureRefinement q a True ArrayBase
 
 section
 variable {m : DataMem} {p q : BitVec 64} {n : Nat}
-
-theorem add_mul_eight (p i : BitVec 64) : p + i * 8#64 = cell p i.toNat := by
-  simp only [cell, BitVec.ofNat_toNat, BitVec.setWidth_eq]
-  rfl
 
 theorem word_eq_getElem {arr : Array (BitVec 64)} (h : words m p arr.size = arr.toList) {k : Nat}
     (hk : k < arr.size) : word m p k = arr[k]! := by
@@ -162,16 +156,14 @@ theorem Reserved.storeInt : ∀ {rsv}, Reserved m o n rsv →
 
 end
 
-theorem ArrayLayout.storeInt_out {ins : List (BitVec 64 × Array (BitVec 64))} {o : BitVec 64}
+theorem ArrayLayout.storeInt_cell {ins : List (BitVec 64 × Array (BitVec 64))} {o : BitVec 64}
     {n : Nat} {rsv : List (BitVec 64)} {m : DataMem} (h : ArrayLayout ins o n rsv m)
-    {v : BitVec 64} (hv : v.toNat < n) (x : Int) :
-    ArrayLayout ins o n rsv (Mem.storeInt m (o + v * 8#64) 8 x) := by
-  rw [add_mul_eight]
-  exact ⟨h.len, Mem.Mapped.storeInt h.mapped _ _ _, h.inputs.storeInt hv h.len x,
-    h.reserved.storeInt hv h.len x⟩
+    {k : Nat} (hk : k < n) (x : Int) :
+    ArrayLayout ins o n rsv (Mem.storeInt m (cell o k) 8 x) :=
+  ⟨h.len, Mem.Mapped.storeInt h.mapped _ _ _, h.inputs.storeInt hk h.len x,
+    h.reserved.storeInt hk h.len x⟩
 
-grind_pattern ArrayLayout.storeInt_out =>
-  Mem.storeInt m (o + v * 8#64) 8 x, ArrayLayout ins o n rsv m
+grind_pattern ArrayLayout.storeInt_cell => Mem.storeInt m (cell o k) 8 x, ArrayLayout ins o n rsv m
 
 /-! ## Steps -/
 
@@ -186,44 +178,45 @@ variable {σa : Type} {view : DataMem → σa}
   {E : (CfgLabel → CfgLabel → DataMem → Prop) × EStack⟨⟩}
 
 @[ascend] theorem wrp_load8_getElem {Q : BitVec 64 → BitVec 64 → DataMem → Prop}
-    (p i : BitVec 64) (arr : Array (BitVec 64)) :
-    (fun m => p ≐ₐ arr ∧ words m p arr.size = arr.toList ∧ Mem.Mapped [(p, 8 * arr.size)] m ∧
-      i.toNat < arr.size ∧ arr.size < 2 ^ 61 ∧
+    (p i : BitVec 64) (arr : Array (BitVec 64)) (j : Nat) (P : Prop) :
+    (fun m => p ≐ₐ arr ∧ PureRefinement i j P WordNat ∧ P ∧ words m p arr.size = arr.toList ∧
+      Mem.Mapped [(p, 8 * arr.size)] m ∧ j < arr.size ∧ arr.size < 2 ^ 61 ∧
       ∀ y, BitVec.ofInt 64 (Mem.loadInt m (p + i * 8#64) 8).get! ≐ y →
         Q (BitVec.ofInt 64 (Mem.loadInt m (p + i * 8#64) 8).get!) y m)
       ⊑ wrp (ofStateRepr view) (load8 (p + i * 8#64))
-          (pure arr[i.toNat]! : BlockM σa (BitVec 64)) Q E := by
+          (pure arr[j]! : BlockM σa (BitVec 64)) Q E := by
   refine wrp_intro fun Qa Ea => ?_
   intro m hm
   simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, WPMonadExact.wp_pure_eq] at hm
-  obtain ⟨⟨-, hw, hmap, hi, hn, hk⟩, hq⟩ := hm
-  have hval : BitVec.ofInt 64 (Mem.loadInt m (p + i * 8#64) 8).get! = arr[i.toNat]! := by
-    rw [add_mul_eight, ← word, word_eq_getElem hw hi]
+  obtain ⟨⟨-, hij, hP, hw, hmap, hj, hn, hk⟩, hq⟩ := hm
+  have hcell : p + i * 8#64 = cell p j := by rw [hij hP]; rfl
+  have hval : BitVec.ofInt 64 (Mem.loadInt m (p + i * 8#64) 8).get! = arr[j]! := by
+    rw [hcell, ← word, word_eq_getElem hw hj]
   rw [wp_load8, Concretization.post_pi]
-  refine ⟨?_, arr[i.toNat]!, hk _ (PureRefinement.of_rel hval), ?_⟩
-  · rw [add_mul_eight]
-    exact Mem.Mapped.loadInt_isSome hmap (cell_inside hi hn)
+  refine ⟨?_, arr[j]!, hk _ (PureRefinement.of_rel hval), ?_⟩
+  · rw [hcell]
+    exact Mem.Mapped.loadInt_isSome hmap (cell_inside hj hn)
   · simp only [ofStateRepr_pred]
     exact hq
 
 @[ascend] theorem wrp_store8_set {Q : Unit → Unit → DataMem → Prop} (sp p i v v' : BitVec 64)
-    (n : Nat) :
-    (fun m => v ≐ v' ∧ i.toNat < n ∧ n < 2 ^ 61 ∧ Mem.Mapped [(p, 8 * n)] m ∧
-      Mem.Blocks.Disjoint [(sp, 8)] [(p, 8 * n)] ∧
-      Q () () (Mem.storeInt m (p + i * 8#64) 8 v.toInt))
+    (n j : Nat) (P : Prop) :
+    (fun m => v ≐ v' ∧ PureRefinement i j P WordNat ∧ P ∧ j < n ∧ n < 2 ^ 61 ∧
+      Mem.Mapped [(p, 8 * n)] m ∧ Mem.Blocks.Disjoint [(sp, 8)] [(p, 8 * n)] ∧
+      Q () () (Mem.storeInt m (cell p j) 8 v.toInt))
       ⊑ wrp (ofStateRepr (outView p n)) (store8 sp (p + i * 8#64) v)
-          (modify fun o => o.set! i.toNat v' : BlockM (Array (BitVec 64)) Unit) Q E := by
+          (modify fun o => o.set! j v' : BlockM (Array (BitVec 64)) Unit) Q E := by
   refine wrp_intro fun Qa Ea => ?_
   intro m hm
   simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_modify] at hm
-  obtain ⟨⟨hv, hi, hn, hmap, hd, hk⟩, hq⟩ := hm
+  obtain ⟨⟨hv, hij, hP, hj, hn, hmap, hd, hk⟩, hq⟩ := hm
   have hv : v = v' := hv trivial
-  rw [wp_store8, Concretization.post_pi]
-  rw [add_mul_eight] at hk ⊢
-  refine ⟨⟨Mem.Mapped.loadInt_isSome hmap (cell_inside hi hn),
-    Mem.Blocks.Disjoint.of_inside_right_pair hd (cell_inside hi hn)⟩, (), hk, ?_⟩
+  have hcell : p + i * 8#64 = cell p j := by rw [hij hP]; rfl
+  rw [wp_store8, Concretization.post_pi, hcell]
+  refine ⟨⟨Mem.Mapped.loadInt_isSome hmap (cell_inside hj hn),
+    Mem.Blocks.Disjoint.of_inside_right_pair hd (cell_inside hj hn)⟩, (), hk, ?_⟩
   simp only [ofStateRepr_pred]
-  rw [outView_storeInt hi hn, hv]
+  rw [outView_storeInt hj hn, hv]
   exact hq
 
 @[ascend] theorem wrp_retAt_throw {CV AV : Type} {Q : CV → AV → DataMem → Prop} (sp : BitVec 64) :

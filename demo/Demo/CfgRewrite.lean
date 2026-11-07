@@ -238,6 +238,10 @@ theorem wp_condState (c : σ → Bool) (x y : BlockM σ β) (Q : β → σ → P
   rw [condState, wp_get_bind]
   split <;> rfl
 
+theorem condState_const (b : Bool) (x y : BlockM σ β) :
+    condState (fun _ => b) x y = if b = true then x else y := by
+  cases b <;> apply BlockM.ext_wp <;> intro Q E s <;> simp [wp_condState]
+
 theorem tryCatch_branch_bind (c : σ → Bool) (l : CfgLabel) (k : Unit → BlockM σ β)
     (h : CfgLabel → BlockM σ β) :
     tryCatch (AInstr.branch c l >>= k) h = condState c (h l) (tryCatch (k ()) h) := by

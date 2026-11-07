@@ -32,6 +32,11 @@ namespace Ascent.Kraken.Walkthrough
 cleared and `cmp; jcc` fused into one branch. Each step is a register write `setReg64`, a load into a
 register `loadReg8`, or a store `storeWord8`. `ascend_def` synthesized it and proved: -/
 
+/--
+info: @zipWithAddA.refines : ∀ [inst : Host] [inst_1 : FunDecls] [inst_2 : Embeds zipWithAdd] (s : MachineData) (ra : Int64),
+  Refinement zipWithAdd (zipWithAddA s ra) (ofStateRepr abs) (fun x => x = s.push64 ra) (fun x x_1 => ⊤) (RetRel s ra)
+-/
+#guard_msgs in
 #check @zipWithAddA.refines
 
 /-! ## 3. A structured loop, by rewriting
@@ -41,7 +46,34 @@ machine state: the jump of the loop block to itself becomes `continue`, and the 
 program in both branches. The command proves
 the equation `zipWithAddT.eq`, so the first refinement carries over to `zipWithAddT`: -/
 
+/--
+info: def Ascent.Kraken.zipWithAddT : [inst : Host] →
+  [FunDecls] → [Embeds zipWithAdd] → MachineData → Int64 → BlockM MachineData Unit :=
+fun [Host] [FunDecls] [Embeds zipWithAdd] s ra =>
+  condState (fun st => CondCode.le.cmp (st.regs.rcx.toBitVec &&& st.regs.rcx.toBitVec) 0#64)
+    (exitIf (loadOk8 fun st => st.regs.rsp.toBitVec) (setReg64 Reg64.rsp fun st => st.regs.rsp.toBitVec + 8#64)
+      CfgLabel.exit)
+    do
+    modifyIf (fun x => True) (setReg64 Reg64.rax fun st => 0#64)
+    { }.forIn PUnit.unit fun x x_1 => do
+        modifyIf (loadOk8 (sib8 Reg64.rsi Reg64.rax 0)) (loadReg8 Reg64.r8 (sib8 Reg64.rsi Reg64.rax 0) fun w x => w)
+        modifyIf (loadOk8 (sib8 Reg64.rdi Reg64.rax 0))
+            (loadReg8 Reg64.r8 (sib8 Reg64.rdi Reg64.rax 0) fun w st => w + st.regs.r8.toBitVec)
+        modifyIf (storeOk8 (sib8 Reg64.rdx Reg64.rax 0))
+            (storeWord8 (sib8 Reg64.rdx Reg64.rax 0) fun st => st.regs.r8.toBitVec)
+        modifyIf (fun x => True) (setReg64 Reg64.rax fun st => st.regs.rax.toBitVec + 1#64)
+        condState (fun st => CondCode.nz.cmp st.regs.rcx.toBitVec st.regs.rax.toBitVec)
+            (pure (ForInStep.yield PUnit.unit))
+            (exitIf (loadOk8 fun st => st.regs.rsp.toBitVec) (setReg64 Reg64.rsp fun st => st.regs.rsp.toBitVec + 8#64)
+              CfgLabel.exit)
+-/
+#guard_msgs in
 #print zipWithAddT
+/--
+info: @zipWithAddT.refines : ∀ [inst : Host] [inst_1 : FunDecls] [inst_2 : Embeds zipWithAdd] (s : MachineData) (ra : Int64),
+  Refinement zipWithAdd (zipWithAddT s ra) (ofStateRepr abs) (fun x => x = s.push64 ra) (fun x x_1 => ⊤) (RetRel s ra)
+-/
+#guard_msgs in
 #check @zipWithAddT.refines
 
 /-! ## 4. Registers as values, synthesized by `ascend_def`
@@ -52,18 +84,74 @@ The state is the data memory alone. The lifting relation, the one hint of the ru
 `r8` become variables. `ascend_def` synthesized `zipWithAddL₀`, and `sym_simp_def` states its
 branch conditions as comparisons of the values in `zipWithAddL`: -/
 
+/--
+info: def Ascent.Kraken.zipWithAddL : [inst : Host] →
+  [FunDecls] →
+    [Embeds zipWithAdd] →
+      MachineData → Int64 → BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → BlockM DataMem Unit :=
+fun [Host] [FunDecls] [Embeds zipWithAdd] s ra rdi rsi rdx rcx rsp =>
+  if rcx.toInt ≤ 0 then retAt rsp
+  else do
+    let _ ←
+      { }.forIn 0#64 fun x v => do
+          let x ← load8 (rsi + v * 8#64)
+          let x_1 ← load8 (rdi + v * 8#64)
+          store8 rsp (rdx + v * 8#64) (x_1 + x)
+          if ¬rcx = v + 1#64 then pure (ForInStep.yield (v + 1#64)) else retAt rsp
+    pure PUnit.unit
+-/
+#guard_msgs in
 #print zipWithAddL
+/--
+info: @zipWithAddL.refines : ∀ [inst : Host] [inst_1 : FunDecls] [inst_2 : Embeds zipWithAdd] (s : MachineData) (ra : Int64)
+  (rdi rsi rdx rcx rsp : BitVec 64),
+  Refinement (zipWithAddT s ra) (zipWithAddL s ra rdi rsi rdx rcx rsp) (ofStateRepr MachineData.dmem)
+    (RegsRel [(Reg64.rdi, rdi), (Reg64.rsi, rsi), (Reg64.rdx, rdx), (Reg64.rcx, rcx), (Reg64.rsp, rsp)])
+    (fun x x_1 x_2 => True) estack⟨fun l l' x => l = l'⟩
+-/
+#guard_msgs in
 #check @zipWithAddL.refines
 
 /-! ## 5. Arrays, synthesized by `ascend_def`
 
 The state is the output array. The input arrays are parameters, named by their base addresses, and
-the loads and the store become array reads and an array update. The relation of the loop, the hint
-of the run, states the layout `ArrayLayout [(A, a), (B, b)] O n [rsp]` of the memory: the input
-arrays, the written array, and the return slot. `ascend_def` synthesized `zipWithAddArr₀`, and
-`sym_simp_def` puts the array reads in place in `zipWithAddArr`: -/
+the loads and the store become array reads and an array update. The words that count become
+numbers: the loop counter `v` of `zipWithAddL` holds the number `i` (`v ≐ₙ i`), the length `rcx`
+holds `n`, and the comparisons of the words become comparisons of the numbers. The relation of the
+loop, the hint of the run, states `v ≐ₙ i`, the bound `i < n`, and the layout
+`ArrayLayout [(A, a), (B, b)] O n [rsp]` of the memory: the input arrays, the written array, and the
+return slot. `ascend_def` synthesized `zipWithAddArr₀`, and `sym_simp_def` puts the array reads in
+place and states the conditions as propositions in `zipWithAddArr`: -/
 
+/--
+info: def Ascent.Kraken.zipWithAddArr : [inst : Host] →
+  [FunDecls] →
+    [Embeds zipWithAdd] →
+      MachineData →
+        Int64 →
+          BitVec 64 →
+            BitVec 64 →
+              BitVec 64 → BitVec 64 → Nat → Array (BitVec 64) → Array (BitVec 64) → BlockM (Array (BitVec 64)) Unit :=
+fun [Host] [FunDecls] [Embeds zipWithAdd] s ra A B O rsp n a b =>
+  if n = 0 then throw CfgLabel.exit
+  else do
+    let _ ←
+      { }.forIn 0 fun x i => do
+          modify fun o => o.set! i (a[i]! + b[i]!)
+          if ¬n = i + 1 then pure (ForInStep.yield (i + 1)) else throw CfgLabel.exit
+    pure PUnit.unit
+-/
+#guard_msgs in
 #print zipWithAddArr
+/--
+info: @zipWithAddArr.refines : ∀ [inst : Host] [inst_1 : FunDecls] [inst_2 : Embeds zipWithAdd] (s : MachineData) (ra : Int64)
+  (A B O rsp : BitVec 64) (n : Nat) (a b : Array (BitVec 64)),
+  Refinement (zipWithAddL s ra A B O (BitVec.ofNat 64 n) rsp) (zipWithAddArr s ra A B O rsp n a b)
+    (ofStateRepr (outView O n))
+    (fun m => A ≐ₐ a ∧ B ≐ₐ b ∧ a.size = n ∧ b.size = n ∧ ArrayLayout [(A, a), (B, b)] O n [rsp] m)
+    (fun x x_1 x_2 => True) estack⟨fun l l' x => l = l'⟩
+-/
+#guard_msgs in
 #check @zipWithAddArr.refines
 
 /-! ## 6. The pure program
@@ -71,14 +159,54 @@ arrays, the written array, and the return slot. `ascend_def` synthesized `zipWit
 `vcgen` proves that the array program exits with `Array.zipWith (· + ·)` of its inputs, from a loop
 invariant and a measure. So the array program refines the pure program. -/
 
+/--
+info: @zipWithAddArr_spec : ∀ [inst : Host] [inst_1 : FunDecls] [inst_2 : Embeds zipWithAdd] (s : MachineData) (ra : Int64)
+  (A B O rsp : BitVec 64) {n : Nat} {a b o : Array (BitVec 64)},
+  a.size = n →
+    b.size = n →
+      o.size = n →
+        ⦃ fun x => x = o ⦄ zipWithAddArr s ra A B O rsp n a b ⦃ fun x x_1 => False;
+          estack⟨fun l o' => l = CfgLabel.exit ∧ o' = Array.zipWith (fun x1 x2 => x1 + x2) a b⟩ ⦄
+-/
+#guard_msgs in
 #check @zipWithAddArr_spec
+/--
+info: def Ascent.Kraken.zipWithAddP : Array (BitVec 64) → Array (BitVec 64) → Id (Array (BitVec 64)) :=
+fun a b => pure (Array.zipWith (fun x1 x2 => x1 + x2) a b)
+-/
+#guard_msgs in
 #print zipWithAddP
+/--
+info: @zipWithAddArr_refines_P : ∀ [inst : Host] [inst_1 : FunDecls] [inst_2 : Embeds zipWithAdd] (s : MachineData)
+  (ra : Int64) {A B O rsp : BitVec 64} {n : Nat} {a b o : Array (BitVec 64)},
+  a.size = n →
+    b.size = n →
+      o.size = n →
+        Refinement (zipWithAddArr s ra A B O rsp n a b) (zipWithAddP a b) (purify (Array (BitVec 64))) (fun x => x = o)
+          (fun x x_1 x_2 => False) estack⟨fun l o' => l = CfgLabel.exit ∧ o' = (zipWithAddP a b).run⟩
+-/
+#guard_msgs in
 #check @zipWithAddArr_refines_P
 
 /-! ## 7. Back to the machine code
 
 The refinements carry the result of the pure program back to the x64 text. -/
 
+/--
+info: @zipWithAdd_correct : ∀ [inst : Host] [inst_1 : FunDecls] [Embeds zipWithAdd] (s : MachineData) (ra : Int64)
+  {A B O : BitVec 64} {n : Nat},
+  (s.push64 ra).regs.get64 Reg64.rdi = A →
+    (s.push64 ra).regs.get64 Reg64.rsi = B →
+      (s.push64 ra).regs.get64 Reg64.rdx = O →
+        (s.push64 ra).regs.get64 Reg64.rcx = BitVec.ofNat 64 n →
+          ZipArrays (s.push64 ra).dmem A B O ((s.push64 ra).regs.get64 Reg64.rsp) n →
+            ⦃ fun t => t = s.push64 ra ⦄ zipWithAdd ⦃ fun x x_1 => True; fun a t =>
+              a = ra ∧
+                t.regs.get64 Reg64.rsp = s.regs.get64 Reg64.rsp ∧
+                  words t.dmem O n =
+                    List.zipWith (fun x1 x2 => x1 + x2) (words (s.push64 ra).dmem A n) (words (s.push64 ra).dmem B n) ⦄
+-/
+#guard_msgs in
 #check @zipWithAdd_correct
 #print axioms zipWithAdd_correct
 

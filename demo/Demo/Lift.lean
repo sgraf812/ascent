@@ -110,6 +110,58 @@ variable {w : Nat} {a b x y : BitVec w} {P₁ P₂ : Prop}
 
 end
 
+/-! ## Words as numbers
+
+`WordNat x n` states that the word `x` holds the number `n`. Under `x ≐ₙ n`, an addition of words
+abstracts to the addition of the numbers, and a comparison of words abstracts to the comparison of
+the numbers with the range of the numbers as its precondition. -/
+
+def WordNat {w : Nat} (x : BitVec w) (n : Nat) : Prop := x = BitVec.ofNat w n
+
+scoped notation:50 c:51 " ≐ₙ " x:51 => PureRefinement c x True WordNat
+
+theorem beq_eq_true_eq {α : Type} [BEq α] [LawfulBEq α] (a b : α) : ((a == b) = true) = (a = b) :=
+  propext beq_iff_eq
+
+theorem bne_eq_true_eq {α : Type} [BEq α] [LawfulBEq α] (a b : α) : ((a != b) = true) = ¬a = b :=
+  propext bne_iff_ne
+
+section
+variable {w : Nat} {x y : BitVec w} {i j : Nat} {P₁ P₂ : Prop}
+
+@[ascend_pure] theorem absN_ofNat {n : Nat} : PureRefinement (BitVec.ofNat w n) n True WordNat :=
+  PureRefinement.of_rel rfl
+
+@[ascend_pure] theorem absN_add (h₁ : PureRefinement x i P₁ WordNat) (h₂ : PureRefinement y j P₂ WordNat) :
+    PureRefinement (x + y) (i + j) (P₁ ∧ P₂) WordNat := fun ⟨hp₁, hp₂⟩ => by
+  rw [WordNat, h₁ hp₁, h₂ hp₂, BitVec.ofNat_add]
+
+theorem ofNat_eq_ofNat_iff {n m : Nat} (hn : n < 2 ^ w) (hm : m < 2 ^ w) :
+    BitVec.ofNat w n = BitVec.ofNat w m ↔ n = m := by
+  rw [BitVec.toNat_eq, BitVec.toNat_ofNat, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hn,
+    Nat.mod_eq_of_lt hm]
+
+end
+
+section
+variable {a b : BitVec 64} {n m : Nat} {P₁ P₂ : Prop}
+
+@[ascend_pure high] theorem absN_cmp_nz (h₁ : PureRefinement a n P₁ WordNat)
+    (h₂ : PureRefinement b m P₂ WordNat) :
+    PureRefinement (CondCode.nz.cmp a b) (n != m) (P₁ ∧ P₂ ∧ n < 2 ^ 64 ∧ m < 2 ^ 64) Eq :=
+  fun ⟨hp₁, hp₂, hn, hm⟩ => by
+    rw [Bool.eq_iff_iff, CondCode.cmp_nz_eq_true, h₁ hp₁, h₂ hp₂, bne_iff_ne, ne_eq, ne_eq,
+      ofNat_eq_ofNat_iff hn hm]
+
+@[ascend_pure high] theorem absN_cmp_le_self_zero (h : PureRefinement a n P₁ WordNat) :
+    PureRefinement (CondCode.le.cmp (a &&& a) 0#64) (n == 0) (P₁ ∧ n < 2 ^ 63) Eq :=
+  fun ⟨hp, hn⟩ => by
+    rw [Bool.eq_iff_iff, CondCode.cmp_le_eq_true, BitVec.and_self, h hp, beq_iff_eq,
+      BitVec.toInt_eq_toNat_cond, BitVec.toNat_ofNat, BitVec.toInt_zero]
+    split <;> omega
+
+end
+
 /-! ## Steps -/
 
 attribute [ascend] wrp_bind
@@ -214,17 +266,18 @@ theorem wrp_forIn_lockstep {βc βa : Type} (R : βc → σc → βa → Prop) (
 
 theorem wrp_forIn_lockstep_bind_unit {βc βa : Type} (R : βc → σc → βa → Prop) (cinit : βc)
     (ainit : βa) {fc : Unit → βc → BlockM σc (ForInStep βc)}
-    {fa : Unit → βa → BlockM σa (ForInStep βa)} {Q : Unit → Unit → σc → Prop}
-    (hbody : ∀ c a, (fun t => R c t a) ⊑ wrp (ofStateRepr view) (fc () c) (fa () a)
+    {fa : βa → BlockM σa (ForInStep βa)} {Q : Unit → Unit → σc → Prop}
+    (hbody : ∀ c i, (fun t => R c t i) ⊑ wrp (ofStateRepr view) (fc () c) (fa i)
       (StepRel R fun _ _ t => Q () () t) E) :
     (fun t => R cinit t ainit) ⊑ wrp (ofStateRepr view)
       (FixLoop.mk.forIn cinit fc >>= fun _ => pure ())
-      (FixLoop.mk.forIn ainit fa >>= fun _ => pure ()) Q E := by
+      (FixLoop.mk.forIn ainit (fun _ v => fa v) >>= fun _ => pure ()) Q E := by
   refine wrp_intro fun Qa Ea => ?_
   intro t ht
   simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, WPMonadExact.wp_bind_eq,
     WPMonadExact.wp_pure_eq] at ht
-  have h := wrp_transport (wrp_forIn_lockstep R cinit ainit hbody) (fun _ => Qa ()) Ea t
+  have h := wrp_transport (wrp_forIn_lockstep R cinit ainit (fa := fun _ v => fa v) hbody)
+    (fun _ => Qa ()) Ea t
     (by simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred]; exact ht)
   rw [WPMonadExact.wp_bind_eq]
   refine WP.wp_monotone_post (x := FixLoop.mk.forIn cinit fc) ?_ t h
@@ -234,21 +287,6 @@ theorem wrp_forIn_lockstep_bind_unit {βc βa : Type} (R : βc → σc → βa �
   simp only [WPMonadExact.wp_pure_eq]
   rw [Concretization.post_pi]
   exact ⟨(), hq, hqa⟩
-
-theorem wrp_forIn_diag_bind_unit {β : Type} (I : σc → β → Prop) (init : β)
-    {fc : Unit → β → BlockM σc (ForInStep β)} {fa : β → BlockM σa (ForInStep β)}
-    {Q : Unit → Unit → σc → Prop}
-    (hbody : ∀ v, (fun t => I t v) ⊑ wrp (ofStateRepr view) (fc () v) (fa v)
-      (StepRel (fun c t a => c = a ∧ I t a) fun _ _ t => Q () () t) E) :
-    (fun t => I t init) ⊑ wrp (ofStateRepr view)
-      (FixLoop.mk.forIn init fc >>= fun _ => pure ())
-      (FixLoop.mk.forIn init (fun _ v => fa v) >>= fun _ => pure ()) Q E := by
-  refine PartialOrder.rel_trans ?_ (wrp_forIn_lockstep_bind_unit
-    (fun c t a => c = a ∧ I t a) init init (fa := fun _ v => fa v) fun c a => ?_)
-  · exact fun t h => ⟨rfl, h⟩
-  · intro t ⟨hca, h⟩
-    subst hca
-    exact hbody c t h
 
 @[ascend] theorem wrp_pure_same {α : Type} {Q : α → α → σc → Prop} (x : α) :
     Q x x ⊑ wrp (ofStateRepr view) (pure x : BlockM σc α) (pure x : BlockM σa α) Q E :=
@@ -282,30 +320,28 @@ theorem wrp_forIn_lockstep_unit {βa : Type} (R : MachineData → βa → Prop) 
   obtain ⟨_, hq, hqa⟩ := h'
   exact ⟨(), hq, hqa⟩
 
-@[ascend] theorem wrp_condState {CV : Type} {Q : CV → AV → MachineData → Prop}
-    {c : MachineData → Bool}
-    {x y : BlockM MachineData CV} {ax ay : BlockM DataMem AV} (b : Bool) :
-    (fun t => c t ≐ b ∧
-      (c t = true → wrp (ofStateRepr MachineData.dmem) x ax Q E t) ∧
-      (c t = false → wrp (ofStateRepr MachineData.dmem) y ay Q E t))
-      ⊑ wrp (ofStateRepr MachineData.dmem) (condState c x y) (if b then ax else ay) Q E := by
+@[ascend] theorem wrp_condState {σc σa CV AV : Type} {view : σc → σa}
+    {E : (CfgLabel → CfgLabel → σc → Prop) × EStack⟨⟩} {Q : CV → AV → σc → Prop} {c : σc → Bool}
+    {x y : BlockM σc CV} {ax ay : BlockM σa AV} (b : Bool) (P : Prop) :
+    (fun t => PureRefinement (c t) b P Eq ∧ P ∧
+      (b = true → wrp (ofStateRepr view) x ax Q E t) ∧
+      (b = false → wrp (ofStateRepr view) y ay Q E t))
+      ⊑ wrp (ofStateRepr view) (condState c x y) (condState (fun _ => b) ax ay) Q E := by
   refine wrp_intro fun Qa Ea => ?_
   intro t ht
-  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred] at ht
-  obtain ⟨⟨hb, hx, hy⟩, hw⟩ := ht
-  have hb : c t = b := hb trivial
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_condState] at ht
+  obtain ⟨⟨hb, hP, hx, hy⟩, hw⟩ := ht
+  have hb : c t = b := hb hP
   rw [wp_condState]
   cases b with
   | true =>
     simp only [hb, ↓reduceIte] at hw ⊢
-    exact wrp_transport (P := wrp (ofStateRepr MachineData.dmem) x ax Q E) PartialOrder.rel_refl
-      Qa Ea t
-      (by simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred]; exact ⟨hx hb, hw⟩)
+    exact wrp_transport (P := wrp (ofStateRepr view) x ax Q E) PartialOrder.rel_refl Qa Ea t
+      (by simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred]; exact ⟨hx rfl, hw⟩)
   | false =>
     simp only [hb, Bool.false_eq_true, ↓reduceIte] at hw ⊢
-    exact wrp_transport (P := wrp (ofStateRepr MachineData.dmem) y ay Q E) PartialOrder.rel_refl
-      Qa Ea t
-      (by simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred]; exact ⟨hy hb, hw⟩)
+    exact wrp_transport (P := wrp (ofStateRepr view) y ay Q E) PartialOrder.rel_refl Qa Ea t
+      (by simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred]; exact ⟨hy rfl, hw⟩)
 
 @[ascend high] theorem wrp_stutter_bind {CV : Type} {Q : CV → AV → MachineData → Prop}
     (f : MachineData → MachineData)
@@ -342,12 +378,21 @@ theorem wrp_forIn_lockstep_unit {βa : Type} (R : MachineData → βa → Prop) 
   simp only [ofStateRepr_pred, hf]
   exact he
 
-@[ascend] theorem wrp_yield {βa : Type} {Q : ForInStep PUnit → ForInStep βa → MachineData → Prop}
-    (v : βa) :
-    (fun t => Q (.yield PUnit.unit) (.yield v) t) ⊑ wrp (ofStateRepr MachineData.dmem)
-      (pure (.yield PUnit.unit) : BlockM MachineData (ForInStep PUnit))
-      (pure (.yield v) : BlockM DataMem (ForInStep βa)) Q E :=
-  wrp_pure (Q := Q) (ForInStep.yield PUnit.unit) (ForInStep.yield v)
+end
+
+section
+variable {σc σa βc βa : Type} {view : σc → σa} {E : (CfgLabel → CfgLabel → σc → Prop) × EStack⟨⟩}
+  {Q : ForInStep βc → ForInStep βa → σc → Prop}
+
+@[ascend] theorem wrp_yield (c : βc) (a : βa) :
+    (fun t => Q (.yield c) (.yield a) t) ⊑ wrp (ofStateRepr view)
+      (pure (.yield c) : BlockM σc (ForInStep βc)) (pure (.yield a) : BlockM σa (ForInStep βa)) Q E :=
+  wrp_pure (Q := Q) (ForInStep.yield c) (ForInStep.yield a)
+
+@[ascend] theorem wrp_done (c : βc) (a : βa) :
+    (fun t => Q (.done c) (.done a) t) ⊑ wrp (ofStateRepr view)
+      (pure (.done c) : BlockM σc (ForInStep βc)) (pure (.done a) : BlockM σa (ForInStep βa)) Q E :=
+  wrp_pure (Q := Q) (ForInStep.done c) (ForInStep.done a)
 
 end
 

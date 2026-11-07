@@ -26,7 +26,7 @@ ascend_def zipWithAddL₀ [Host] [FunDecls] [Embeds zipWithAdd] (s : MachineData
 
 sym_simp_def zipWithAddL [Host] [FunDecls] [Embeds zipWithAdd] (s : MachineData) (ra : Int64)
     (rdi rsi rdx rcx rsp : BitVec 64) : BlockM DataMem Unit from zipWithAddL₀ s ra rdi rsi rdx rcx rsp
-  using pre [] post [zipWithAddL₀, CondCode.cmp_nz_eq_true, CondCode.cmp_le_eq_true, BitVec.and_self,
+  using pre [] post [zipWithAddL₀, condState_const, CondCode.cmp_nz_eq_true, CondCode.cmp_le_eq_true, BitVec.and_self,
     BitVec.toInt_zero, bind_pure_unit, pure_bind]
 
 theorem zipWithAddL.refines [Host] [FunDecls] [Embeds zipWithAdd] (s : MachineData) (ra : Int64)

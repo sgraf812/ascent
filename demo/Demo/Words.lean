@@ -100,38 +100,4 @@ theorem words_stores_out (hn : n < 2 ^ 61) :
 
 end
 
-/-! ## The branch conditions -/
-
-theorem toInt_ofNat_nonpos {n : Nat} (hn : n < 2 ^ 61) : ((BitVec.ofNat 64 n).toInt ≤ 0) = (n = 0) := by
-  rw [BitVec.toInt_eq_toNat_cond, BitVec.toNat_ofNat]
-  apply propext
-  split <;> omega
-
-theorem toNat_add_one {v : BitVec 64} (hv : v.toNat < 2 ^ 61) :
-    (v + 1#64).toNat = v.toNat + 1 := by
-  rw [BitVec.toNat_add]
-  simp only [show (1#64 : BitVec 64).toNat = 1 from rfl]
-  omega
-
-theorem ofNat_eq_add_one {n : Nat} {v : BitVec 64} (hv : v.toNat < n) (hn : n < 2 ^ 61) :
-    BitVec.ofNat 64 n = v + 1#64 ↔ v.toNat + 1 = n := by
-  rw [BitVec.toNat_eq, toNat_add_one (by omega), BitVec.toNat_ofNat]
-  omega
-
-theorem toNat_add_one_of_ne {n : Nat} {v : BitVec 64} (hv : v.toNat < n) (hn : n < 2 ^ 61)
-    (_ : ¬BitVec.ofNat 64 n = v + 1#64) : (v + 1#64).toNat = v.toNat + 1 :=
-  toNat_add_one (by omega)
-
-theorem toNat_succ_lt_of_ne {n : Nat} {v : BitVec 64} (hv : v.toNat < n) (hn : n < 2 ^ 61)
-    (h : ¬BitVec.ofNat 64 n = v + 1#64) : (v + 1#64).toNat < n := by
-  rw [ofNat_eq_add_one hv hn] at h
-  rw [toNat_add_one (by omega)]
-  omega
-
-theorem toNat_add_one_eq_of_eq {n : Nat} {v : BitVec 64} (hv : v.toNat < n) (hn : n < 2 ^ 61)
-    (h : BitVec.ofNat 64 n = v + 1#64) : v.toNat + 1 = n :=
-  (ofNat_eq_add_one hv hn).mp h
-
-attribute [grind →] toNat_add_one_of_ne toNat_succ_lt_of_ne toNat_add_one_eq_of_eq
-
 end Ascent.Kraken

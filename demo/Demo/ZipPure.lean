@@ -5,7 +5,7 @@ import Demo.ZipArr
 
 `zipWithAddArr_spec` states the result of the synthesized array program `zipWithAddArr`: it exits
 with the output array `Array.zipWith (· + ·) a b`. `vcgen` proves it with the loop invariant
-"the first `v` cells hold the sums" and the measure `n - v`, and `finish` closes the verification
+"the first `i` cells hold the sums" and the measure `n - i`, and `finish` closes the verification
 conditions. `wp_zipWithAddL` carries this result to the lifted program through
 `zipWithAddArr.refines`, and `zipWithAdd_correct` carries it back to the x64 text through the
 refinements of `zipWithAddL`, `zipWithAddT` and the first layer.
@@ -51,17 +51,16 @@ theorem ZipArrays.layout {m : DataMem} {A B O rsp : BitVec 64} {n : Nat}
   reserved := ⟨⟨h.ret, h.disjR⟩, trivial⟩
 
 theorem zipWithAddArr_spec [Host] [FunDecls] [Embeds zipWithAdd] (s : MachineData) (ra : Int64)
-    (A B O rsp : BitVec 64) {n : Nat} {a b o : Array (BitVec 64)} (hn : n < 2 ^ 61)
-    (ha : a.size = n) (hb : b.size = n) (ho : o.size = n) :
+    (A B O rsp : BitVec 64) {n : Nat} {a b o : Array (BitVec 64)} (ha : a.size = n) (hb : b.size = n) (ho : o.size = n) :
     ⦃(· = o)⦄ zipWithAddArr s ra A B O rsp n a b
       ⦃fun _ _ => False; (fun (l : CfgLabel) (o' : Array (BitVec 64)) =>
         l = .exit ∧ o' = Array.zipWith (· + ·) a b, estack⟨⟩)⦄ := by
   vcgen [zipWithAddArr]
     invariants
-    · WhileInvariant.mk fun (done : Bool) (v : BitVec 64) (o' : Array (BitVec 64)) =>
-        done = false ∧ v.toNat < n ∧ o'.size = n ∧ ∀ i < v.toNat, o'[i]! = a[i]! + b[i]!
-    · Variant.ofMeasure fun (v : BitVec 64) => n - v.toNat
-    simp [toInt_ofNat_nonpos hn, Variant.evalsBelow_ofMeasure_nat]
+    · WhileInvariant.mk fun (done : Bool) (i : Nat) (o' : Array (BitVec 64)) =>
+        done = false ∧ i < n ∧ o'.size = n ∧ ∀ j < i, o'[j]! = a[j]! + b[j]!
+    · Variant.ofMeasure fun (i : Nat) => n - i
+    simp [Variant.evalsBelow_ofMeasure_nat]
     with finish
 
 section
@@ -79,7 +78,7 @@ theorem wp_zipWithAddL {m : DataMem} {A B O rsp : BitVec 64} {n : Nat} (h : ZipA
       o = Array.zipWith (· + ·) (words m A n).toArray (words m B n).toArray, estack⟨⟩))
     ⟨fun o ho => by
       subst ho
-      exact (zipWithAddArr_spec s ra A B O rsp hl.len (size_words_toArray _ _ _) (size_words_toArray _ _ _)
+      exact (zipWithAddArr_spec s ra A B O rsp (size_words_toArray _ _ _) (size_words_toArray _ _ _)
         (by simp [outView, words])).le_wp _ rfl⟩
   refine WP.wp_monotone (x := zipWithAddL s ra A B O (BitVec.ofNat 64 n) rsp) ?_ ?_ m
     (hT.le_wp m (by
@@ -105,7 +104,7 @@ def zipWithAddP (a b : Array (BitVec 64)) : Id (Array (BitVec 64)) := pure (Arra
 /-- `zipWithAddArr` refines the pure program on its input arrays, under the concretization that
 forgets the output array. The result is the output array at the return. -/
 theorem zipWithAddArr_refines_P {A B O rsp : BitVec 64} {n : Nat} {a b o : Array (BitVec 64)}
-    (hn : n < 2 ^ 61) (ha : a.size = n) (hb : b.size = n) (ho : o.size = n) :
+    (ha : a.size = n) (hb : b.size = n) (ho : o.size = n) :
     ⦃(· = o)⦄ (zipWithAddArr s ra A B O rsp n a b) ⪯[purify (Array (BitVec 64))]
       (zipWithAddP a b)
       ⦃fun _ _ _ => False; (fun l o' => l = .exit ∧ o' = Id.run (zipWithAddP a b), estack⟨⟩)⦄ := by
@@ -114,7 +113,7 @@ theorem zipWithAddArr_refines_P {A B O rsp : BitVec 64} {n : Nat} {a b o : Array
   simp only [meet_apply, meet_prop_eq_and] at ho'
   obtain ⟨rfl, -⟩ := ho'
   refine WP.wp_monotone (x := zipWithAddArr s ra A B O rsp n a b) ?_ ?_ _
-    ((zipWithAddArr_spec s ra A B O rsp hn ha hb ho).le_wp _ rfl)
+    ((zipWithAddArr_spec s ra A B O rsp ha hb ho).le_wp _ rfl)
   · intro _ _ hq
     exact hq.elim
   · exact Prod.mk_le _ _ _ (fun _ _ h => h) PartialOrder.rel_refl
