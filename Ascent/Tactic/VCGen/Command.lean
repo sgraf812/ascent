@@ -38,6 +38,7 @@ The run unfolds the head of the concrete program and takes the specs of the `asc
 elab_rules : command
   | `(ascend_def $name $binders* : $type from $stmt $[ascend [$specs,*]]? $[with $tac?]?) =>
     liftTermElabM <| Term.elabBinders binders fun xs => do
+    let (declName, _) ← mkDeclName (← getCurrNamespace) {} name.getId
     let T ← elabType type
     synthesizeSyntheticMVarsNoPostponing
     let stmtFn ← withLocalDeclD name.getId T fun x => do
@@ -64,17 +65,17 @@ elab_rules : command
     if value.hasMVar then
       throwError "ascend_def: the synthesized program has holes:{indentExpr value}"
     addDecl <| .defnDecl {
-      name := name.getId, levelParams := [], type := ← instantiateMVars (← mkForallFVars xs T),
+      name := declName, levelParams := [], type := ← instantiateMVars (← mkForallFVars xs T),
       value := ← instantiateMVars (← mkLambdaFVars xs value), hints := .regular 0,
       safety := .safe }
-    enableRealizationsForConst name.getId
+    enableRealizationsForConst declName
     let proof ← instantiateMVars proof
     if proof.hasMVar then
       throwError "ascend_def: the refinement proof has holes"
     addDecl <| .thmDecl {
-      name := name.getId ++ `refines, levelParams := [],
+      name := declName ++ `refines, levelParams := [],
       type := ← instantiateMVars
-        (← mkForallFVars xs (stmtFn.beta #[mkAppN (mkConst name.getId) xs])),
+        (← mkForallFVars xs (stmtFn.beta #[mkAppN (mkConst declName) xs])),
       value := ← instantiateMVars (← mkLambdaFVars xs proof) }
 
 syntax (name := symSimpDefCmd)
@@ -94,6 +95,7 @@ subterms of a term, and proves `f.eq : ∀ xs, c = f xs`. -/
 elab_rules : command
   | `(sym_simp_def $name $binders* : $type from $c using pre [$pres,*] post [$posts,*]) =>
     liftTermElabM <| Term.elabBinders binders fun xs => do
+    let (declName, _) ← mkDeclName (← getCurrNamespace) {} name.getId
     let T ← elabType type
     let c ← Term.elabTermEnsuringType c T
     synthesizeSyntheticMVarsNoPostponing
@@ -115,13 +117,13 @@ elab_rules : command
     let value ← instantiateMVars value
     if value.hasMVar then throwError "sym_simp_def: the simplified program has holes:{indentExpr value}"
     addDecl <| .defnDecl {
-      name := name.getId, levelParams := [], type := ← instantiateMVars (← mkForallFVars xs T),
+      name := declName, levelParams := [], type := ← instantiateMVars (← mkForallFVars xs T),
       value := ← instantiateMVars (← mkLambdaFVars xs value), hints := .regular 0, safety := .safe }
-    enableRealizationsForConst name.getId
+    enableRealizationsForConst declName
     let proof ← instantiateMVars proof
     addDecl <| .thmDecl {
-      name := name.getId ++ `eq, levelParams := [],
-      type := ← instantiateMVars (← mkForallFVars xs (← mkEq c (mkAppN (mkConst name.getId) xs))),
+      name := declName ++ `eq, levelParams := [],
+      type := ← instantiateMVars (← mkForallFVars xs (← mkEq c (mkAppN (mkConst declName) xs))),
       value := ← instantiateMVars (← mkLambdaFVars xs proof) }
 
 end Lean.Elab.Tactic.VCGen.Ascend
