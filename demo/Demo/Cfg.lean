@@ -20,80 +20,59 @@ exception `.exit` through `RetRel s ra`.
 open Std.WP Lean.Order Ascent
 open scoped Program.WP
 
-/-! ## The blocks of a text as a list -/
+/-! ## Labels of the abstract control flow
 
-def Program.blocksFrom (b : CfgLabel) (j : Nat) (body : Program) :
-    List (Label × Program) → List Program.Block
-  | [] => [⟨b, j, body, .exit⟩]
-  | (l, body') :: bs => ⟨b, j, body, .label l⟩ :: Program.blocksFrom (.label l) (j + 1) body' bs
+A kraken block carries an optional label (`none` for the entry block) and an optional successor
+(`none` for the end of the text). `CfgLabel` names the three places of the abstract control flow:
+the entry, a labelled block, and the exit. -/
 
-def Program.blocks (p : Program) : List Program.Block :=
-  Program.blocksFrom .entry 0 (Program.view p).1 (Program.view p).2
+inductive CfgLabel where
+  | entry
+  | label (l : Label)
+  | exit
+  deriving DecidableEq, Repr
 
-theorem Program.forallBlocksFrom_iff {P : Program.Block → Prop} :
-    ∀ {b : CfgLabel} {j : Nat} {body : Program} {bs : List (Label × Program)},
-      Program.forallBlocksFrom P b j body bs ↔ ∀ blk ∈ Program.blocksFrom b j body bs, P blk
-  | _, _, _, [] => by simp [Program.forallBlocksFrom, Program.blocksFrom]
-  | _, _, _, (l, b') :: bs => by
-    simp only [Program.forallBlocksFrom, Program.blocksFrom, List.forall_mem_cons]
-    exact and_congr Iff.rfl Program.forallBlocksFrom_iff
+def CfgLabel.ofLabel : Option Label → CfgLabel
+  | none => .entry
+  | some l => .label l
 
-theorem Program.forallBlocks_iff {p : Program} {P : Program.Block → Prop} :
-    Program.ForallBlocks p P ↔ ∀ blk ∈ Program.blocks p, P blk :=
-  Program.forallBlocksFrom_iff
+def CfgLabel.ofNext : Option Label → CfgLabel
+  | none => .exit
+  | some l => .label l
 
-theorem Program.label_ne_exit_of_mem_blocksFrom {b : CfgLabel} (hb : b ≠ .exit) :
-    ∀ {j : Nat} {body : Program} {bs : List (Label × Program)} {blk : Program.Block},
-      blk ∈ Program.blocksFrom b j body bs → blk.label ≠ .exit
-  | _, _, [], blk, h => by
-    simp only [Program.blocksFrom, List.mem_singleton] at h
-    subst h
-    exact hb
-  | _, _, (l, b') :: bs, blk, h => by
-    simp only [Program.blocksFrom, List.mem_cons] at h
-    rcases h with rfl | h
-    · exact hb
-    · exact Program.label_ne_exit_of_mem_blocksFrom (by simp) h
+@[vcgen_simp, grind =] theorem CfgLabel.ofLabel_none : CfgLabel.ofLabel none = .entry := rfl
+@[vcgen_simp, grind =] theorem CfgLabel.ofLabel_some (l : Label) : CfgLabel.ofLabel (some l) = .label l := rfl
+@[vcgen_simp, grind =] theorem CfgLabel.ofNext_none : CfgLabel.ofNext none = .exit := rfl
+@[vcgen_simp, grind =] theorem CfgLabel.ofNext_some (l : Label) : CfgLabel.ofNext (some l) = .label l := rfl
 
-theorem Program.label_ne_exit_of_mem_blocks {p : Program} {blk : Program.Block}
-    (h : blk ∈ Program.blocks p) : blk.label ≠ .exit :=
-  Program.label_ne_exit_of_mem_blocksFrom (by simp) h
+theorem CfgLabel.ofLabel_ne_exit : ∀ b : Option Label, CfgLabel.ofLabel b ≠ .exit
+  | none => nofun
+  | some _ => nofun
 
-@[vcgen_simp] theorem Program.view_nil' : Program.view [] = ([], []) := rfl
-@[vcgen_simp] theorem Program.view_cons_label (l : Label) (p : Program) :
-    Program.view (.label l :: p) = ([], (l, (Program.view p).1) :: (Program.view p).2) := rfl
-@[vcgen_simp] theorem Program.view_cons_instr (i : Instr) (p : Program) :
-    Program.view (.instr i :: p) = (.instr i :: (Program.view p).1, (Program.view p).2) := rfl
-@[vcgen_simp] theorem Program.view_cons_byteArray (a : ByteArray) (p : Program) :
-    Program.view (.byteArray a :: p) = (.byteArray a :: (Program.view p).1, (Program.view p).2) :=
-  rfl
-@[vcgen_simp] theorem Program.blocks_eq (p : Program) :
-    Program.blocks p = Program.blocksFrom .entry 0 (Program.view p).1 (Program.view p).2 := rfl
-@[vcgen_simp] theorem Program.blocksFrom_nil (b : CfgLabel) (j : Nat) (body : Program) :
-    Program.blocksFrom b j body [] = [⟨b, j, body, .exit⟩] := rfl
-@[vcgen_simp] theorem Program.blocksFrom_cons (b : CfgLabel) (j : Nat) (body : Program)
-    (l : Label) (body' : Program) (bs : List (Label × Program)) :
-    Program.blocksFrom b j body ((l, body') :: bs)
-      = ⟨b, j, body, .label l⟩ :: Program.blocksFrom (.label l) (j + 1) body' bs := rfl
-attribute [vcgen_simp] List.forall_mem_cons List.forall_mem_nil
+attribute [vcgen_simp] Program.straight_nil Program.straight_cons_instr Program.straight_cons_label
+  Program.straight_cons_byteArray
+
+/-! ## The fallthrough targets of a text -/
 
 /-- The fallthrough target of the block at `l` in a list of blocks, `.exit` for a label without a
 block. -/
 def Program.nextIn : List Program.Block → CfgLabel → CfgLabel
   | [], _ => .exit
-  | blk :: bs, l => if blk.label = l then blk.next else Program.nextIn bs l
+  | blk :: bs, l => if CfgLabel.ofLabel blk.label = l then CfgLabel.ofNext blk.next else Program.nextIn bs l
 
 @[vcgen_simp, grind =] theorem Program.nextIn_nil (l : CfgLabel) : Program.nextIn [] l = .exit := rfl
 @[vcgen_simp, grind =] theorem Program.nextIn_cons (blk : Program.Block) (bs : List Program.Block)
     (l : CfgLabel) :
-    Program.nextIn (blk :: bs) l = if blk.label = l then blk.next else Program.nextIn bs l := rfl
+    Program.nextIn (blk :: bs) l
+      = if CfgLabel.ofLabel blk.label = l then CfgLabel.ofNext blk.next else Program.nextIn bs l := rfl
 
 theorem Program.nextIn_eq_find? (bs : List Program.Block) (l : CfgLabel) :
-    Program.nextIn bs l = ((bs.find? fun blk => blk.label = l).map (·.next)).getD .exit := by
+    Program.nextIn bs l
+      = ((bs.find? fun blk => CfgLabel.ofLabel blk.label = l).map (CfgLabel.ofNext ·.next)).getD .exit := by
   induction bs with
   | nil => rfl
   | cons blk bs ih =>
-    by_cases h : blk.label = l
+    by_cases h : CfgLabel.ofLabel blk.label = l
     · simp [Program.nextIn, h]
     · simp [Program.nextIn, h, ih]
 
@@ -103,9 +82,9 @@ def Program.next (p : Program) (l : CfgLabel) : CfgLabel := Program.nextIn (Prog
 @[vcgen_simp, grind =] theorem Program.next_eq (p : Program) (l : CfgLabel) :
     Program.next p l = Program.nextIn (Program.blocks p) l := rfl
 
-theorem Program.label_mem_blocksFrom {b : CfgLabel} :
+theorem Program.label_mem_blocksFrom {b : Option Label} :
     ∀ {j : Nat} {body : Program} {bs : List (Label × Program)} {blk : Program.Block},
-      blk ∈ Program.blocksFrom b j body bs → blk.label = b ∨ ∃ lb ∈ bs, blk.label = .label lb.1
+      blk ∈ Program.blocksFrom b j body bs → blk.label = b ∨ ∃ lb ∈ bs, blk.label = some lb.1
   | _, _, [], blk, h => by
     simp only [Program.blocksFrom, List.mem_singleton] at h
     subst h
@@ -118,10 +97,11 @@ theorem Program.label_mem_blocksFrom {b : CfgLabel} :
       · exact Or.inr ⟨(l, body'), List.mem_cons_self, h⟩
       · exact Or.inr ⟨lb, List.mem_cons_of_mem _ hlb, h⟩
 
-theorem Program.find?_blocksFrom {b : CfgLabel} :
+theorem Program.find?_blocksFrom {b : Option Label} :
     ∀ {j : Nat} {body : Program} {bs : List (Label × Program)}, (bs.map (·.1)).Nodup →
-      (∀ lb ∈ bs, b ≠ .label lb.1) → ∀ {blk : Program.Block}, blk ∈ Program.blocksFrom b j body bs →
-        (Program.blocksFrom b j body bs).find? (fun blk' => blk'.label = blk.label) = some blk
+      (∀ lb ∈ bs, b ≠ some lb.1) → ∀ {blk : Program.Block}, blk ∈ Program.blocksFrom b j body bs →
+        (Program.blocksFrom b j body bs).find?
+          (fun blk' => CfgLabel.ofLabel blk'.label = CfgLabel.ofLabel blk.label) = some blk
   | _, _, [], _, _, blk, h => by
     simp only [Program.blocksFrom, List.mem_singleton] at h
     subst h
@@ -134,17 +114,21 @@ theorem Program.find?_blocksFrom {b : CfgLabel} :
         rcases Program.label_mem_blocksFrom h with h' | ⟨lb, hlb, h'⟩
         · rw [h']; exact hb (l, body') List.mem_cons_self
         · rw [h']; exact hb lb (List.mem_cons_of_mem _ hlb)
+      have hne' : CfgLabel.ofLabel b ≠ CfgLabel.ofLabel blk.label := by
+        cases b <;> cases hbl : blk.label <;> simp_all [CfgLabel.ofLabel]
       simp only [List.map_cons, List.nodup_cons, List.mem_map] at hnd
-      rw [Program.blocksFrom, List.find?_cons_of_neg (by simpa using hne)]
-      exact Program.find?_blocksFrom hnd.2 (fun lb hlb heq => hnd.1 ⟨lb, hlb, (CfgLabel.label.inj heq).symm⟩) h
+      rw [Program.blocksFrom, List.find?_cons_of_neg (by simpa using hne')]
+      exact Program.find?_blocksFrom hnd.2
+        (fun lb hlb heq => hnd.1 ⟨lb, hlb, (Option.some.inj heq).symm⟩) h
 
 /-- With distinct labels, the fallthrough target of a block is its successor in the text. -/
 theorem Program.next_eq_of_nodup {p : Program} (hnd : (Program.labels p).Nodup) {blk : Program.Block}
-    (h : blk ∈ Program.blocks p) : Program.next p blk.label = blk.next := by
+    (h : blk ∈ Program.blocks p) :
+    Program.next p (CfgLabel.ofLabel blk.label) = CfgLabel.ofNext blk.next := by
   rw [Program.labels_view] at hnd
   rw [Program.next, Program.nextIn_eq_find?]
   unfold Program.blocks
-  rw [Program.find?_blocksFrom hnd (fun _ _ => CfgLabel.noConfusion) h]
+  rw [Program.find?_blocksFrom hnd (fun _ _ => by simp) h]
   rfl
 
 namespace Ascent.Kraken
@@ -518,11 +502,12 @@ section
 variable {Aσ : Type} (abs : MachineData → Aσ)
 
 theorem decreases_of_steps_lt {ablock : CfgLabel → BlockM Aσ Unit} {next : CfgLabel → CfgLabel}
-    {l b : CfgLabel} {i j : Nat} {t s : MachineData}
-    (h : b ≠ .exit → steps ablock next b (abs s) < steps ablock next l (abs t)) :
+    {l : Option Label} {b : Label} {i j : Nat} {t s : MachineData}
+    (h : steps ablock next (.label b) (abs s) < steps ablock next (CfgLabel.ofLabel l) (abs t)) :
     Program.Decreases (fun l t => steps ablock next (.label l) (abs t)) l i t b j s := by
-  cases l <;> cases b <;> simp only [Program.Decreases]
-  exact Or.inl (h (by simp))
+  cases l with
+  | none => trivial
+  | some l => exact Or.inl h
 
 end
 
@@ -530,10 +515,10 @@ section
 variable [Host] [FunDecls] {Aσ : Type} (abs : MachineData → Aσ)
 
 theorem wrp_cfg_le {p : Program} (next : CfgLabel → CfgLabel)
-    (hnext : ∀ blk ∈ Program.blocks p, next blk.label = blk.next)
+    (hnext : ∀ blk ∈ Program.blocks p, next (CfgLabel.ofLabel blk.label) = CfgLabel.ofNext blk.next)
     {ablock : CfgLabel → BlockM Aσ Unit} {s : MachineData} {ra : Int64}
     (h : ∀ blk ∈ Program.blocks p, ∀ t, SameStackFrame (s.push64 ra) t →
-      ⦃(· = t)⦄ blk.body ⪯[Concretization.ofStateRepr abs] (ablock blk.label)
+      ⦃(· = t)⦄ blk.body ⪯[Concretization.ofStateRepr abs] (ablock (CfgLabel.ofLabel blk.label))
         ⦃FallRel (s.push64 ra); JumpRel p (s.push64 ra)⦄) :
     (fun t => t = s.push64 ra) ⊑ wrp (Concretization.ofStateRepr abs) p
       (cfgLoop ablock next .entry) (fun _ _ => ⊤) (RetRel s ra) := by
@@ -541,109 +526,115 @@ theorem wrp_cfg_le {p : Program} (next : CfgLabel → CfgLabel)
   intro t ht
   simp only [meet_apply, meet_prop_eq_and, Concretization.ofStateRepr_pred] at ht
   obtain ⟨rfl, hpre⟩ := ht
-  let I : CfgLabel → MachineData → Prop := fun l t =>
-    wp (cfgLoop ablock next l) Qa Ea (abs t) ∧ SameStackFrame (s.push64 ra) t
-  have hcfg := Program.WP.cfg (p := p)
+  let I : Program.CfgInvariant := fun {_} l t =>
+    wp (cfgLoop ablock next (.label l)) Qa Ea (abs t) ∧ SameStackFrame (s.push64 ra) t
+  let Q : Unit → MachineData → Prop := fun _ u =>
+    (Concretization.ofStateRepr abs).post (fun _ _ => ⊤) Qa () u
+  let var : Program.CfgVariant := fun l t => steps ablock next (.label l) (abs t)
+  refine Program.WP.cfg (p := p) (Q := Q)
     (E := EPostsConcretization.ePosts (Concretization.ofStateRepr abs) (RetRel s ra) Ea)
-    (s₀ := s.push64 ra) I (fun l t => steps ablock next (.label l) (abs t)) ?_
-    ⟨hpre, rfl, rfl⟩
-  · refine Program.wp_mono (fun u hu => ?_) (fun _ hu => hu) hcfg
-    obtain ⟨hQ, -⟩ := hu
-    rw [wp_cfgLoop_exit_fn] at hQ
-    show (Concretization.ofStateRepr abs).post (fun _ _ => ⊤) Qa () u.data
+    (s₀ := s.push64 ra) @I var ?_
+  intro blk hmem t hI
+  have hIt : wp (cfgLoop ablock next (CfgLabel.ofLabel blk.label)) Qa Ea (abs t)
+      ∧ SameStackFrame (s.push64 ra) t := by
+    cases hl : blk.label with
+    | none =>
+      rw [hl] at hI
+      change t = s.push64 ra at hI
+      subst hI
+      exact ⟨hpre, rfl, rfl⟩
+    | some l =>
+      rw [hl] at hI
+      exact hI
+  obtain ⟨hIt, hst⟩ := hIt
+  have hl := CfgLabel.ofLabel_ne_exit blk.label
+  have hfix : ∃ r, cfgFix ablock next (CfgLabel.ofLabel blk.label) (abs t) = some r := by
+    rw [wp_BlockM_eq, cfgLoop_run] at hIt
+    revert hIt
+    cases cfgFix ablock next (CfgLabel.ofLabel blk.label) (abs t) <;> intro hIt
+    · exact hIt.elim
+    · exact ⟨_, rfl⟩
+  obtain ⟨r, hfix⟩ := hfix
+  rw [wp_cfgLoop_fn ablock next Qa Ea hl, wp_BlockM_eq] at hIt
+  let Qa' : Unit → Aσ → Prop := fun _ st' =>
+    wp (cfgLoop ablock next (next (CfgLabel.ofLabel blk.label))) Qa Ea st'
+      ∧ (ablock (CfgLabel.ofLabel blk.label)).run.run (abs t) = some (.ok (), st')
+  let Ea' : (CfgLabel → Aσ → Prop) × EStack⟨⟩ :=
+    (fun l' st' => cfgEPosts ablock next Qa Ea l' st'
+      ∧ (ablock (CfgLabel.ofLabel blk.label)).run.run (abs t) = some (.error l', st'), Ea.2)
+  have hpre' : wp (ablock (CfgLabel.ofLabel blk.label)) Qa' Ea' (abs t) := by
+    rw [wp_BlockM_eq]
+    revert hIt
+    rcases hrun : (ablock (CfgLabel.ofLabel blk.label)).run.run (abs t) with _ | ⟨l' | _, st'⟩ <;>
+      intro hIt
+    · exact hIt.elim
+    · exact ⟨hIt, hrun⟩
+    · exact ⟨hIt, hrun⟩
+  have hb := wrp_transport (h blk hmem t hst).le_wrp Qa' Ea'
+  have hmeet : ((fun t' => t' = t) ⊓ (Concretization.ofStateRepr abs).pred
+      (wp (ablock (CfgLabel.ofLabel blk.label)) Qa' Ea')) t := by
+    simp only [meet_apply, meet_prop_eq_and, Concretization.ofStateRepr_pred]
+    exact ⟨trivial, hpre'⟩
+  have hwp := hb t hmeet
+  refine Program.wp_mono (fun u hu => ?_) (fun u hu => ?_) hwp
+  · change (Concretization.ofStateRepr abs).post (FallRel (s.push64 ra)) Qa' () u.data at hu
     simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
-      meet_prop_eq_and, top_apply, top_prop_eq, Concretization.ofStateRepr_pred]
-    exact ⟨(), trivial, hQ⟩
-  · refine Program.forallBlocks_iff.mpr fun blk hmem t hI => ?_
-    intro I'
-    obtain ⟨hIt, hst⟩ := hI
-    have hl := Program.label_ne_exit_of_mem_blocks hmem
-    have hfix : ∃ r, cfgFix ablock next blk.label (abs t) = some r := by
-      rw [wp_BlockM_eq, cfgLoop_run] at hIt
-      revert hIt
-      cases cfgFix ablock next blk.label (abs t) <;> intro hIt
-      · exact hIt.elim
-      · exact ⟨_, rfl⟩
-    obtain ⟨r, hfix⟩ := hfix
-    rw [wp_cfgLoop_fn ablock next Qa Ea hl, wp_BlockM_eq] at hIt
-    let Qa' : Unit → Aσ → Prop := fun _ st' =>
-      wp (cfgLoop ablock next (next blk.label)) Qa Ea st'
-        ∧ (ablock blk.label).run.run (abs t) = some (.ok (), st')
-    let Ea' : (CfgLabel → Aσ → Prop) × EStack⟨⟩ :=
-      (fun l' st' => cfgEPosts ablock next Qa Ea l' st'
-        ∧ (ablock blk.label).run.run (abs t) = some (.error l', st'), Ea.2)
-    have hpre' : wp (ablock blk.label) Qa' Ea' (abs t) := by
-      rw [wp_BlockM_eq]
-      revert hIt
-      rcases hrun : (ablock blk.label).run.run (abs t) with _ | ⟨l' | _, st'⟩ <;> intro hIt
-      · exact hIt.elim
-      · exact ⟨hIt, hrun⟩
-      · exact ⟨hIt, hrun⟩
-    have hb := wrp_transport (h blk hmem t hst).le_wrp Qa' Ea'
-    have hmeet : ((fun t' => t' = t) ⊓ (Concretization.ofStateRepr abs).pred
-        (wp (ablock blk.label) Qa' Ea')) t := by
-      simp only [meet_apply, meet_prop_eq_and, Concretization.ofStateRepr_pred]
-      exact ⟨trivial, hpre'⟩
-    have hwp := hb t hmeet
-    refine Program.wp_mono (fun u hu => ?_) (fun u hu => ?_) hwp
-    · show I' blk.next (blk.idx + 1) () u.data
-      change (Concretization.ofStateRepr abs).post (FallRel (s.push64 ra)) Qa' () u.data at hu
-      simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
-        meet_prop_eq_and, Concretization.ofStateRepr_pred, FallRel] at hu
-      obtain ⟨-, hst', hQ, hrun⟩ := hu
-      rw [hnext blk hmem] at hQ
-      refine ⟨⟨hQ, hst'⟩, decreases_of_steps_lt abs fun _ => ?_⟩
-      rw [← hnext blk hmem]
-      exact steps_lt_of_ok ablock next hl hrun hfix
-    · show Program.Intercept (Program.labels p) (s.push64 ra) I'
-        (EPostsConcretization.ePosts (Concretization.ofStateRepr abs) (RetRel s ra) Ea)
-        u.pc u.data
-      change (Concretization.ofStateRepr abs).post (JumpRel p (s.push64 ra)) Ea'.1
-        u.pc u.data at hu
-      simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
-        meet_prop_eq_and, Concretization.ofStateRepr_pred, JumpRel] at hu
-      obtain ⟨l', hrel, hE, hrun⟩ := hu
-      rcases hrel with ⟨l, hmem', rfl, ha, hst'⟩ | ⟨rfl, ha, hrsp'⟩
-      · rw [cfgEPosts_label] at hE
-        refine Program.Intercept.intro (Or.inl ⟨?_, l, ha.symm, hmem', ⟨hE, hst'⟩, ?_⟩)
-        · show ¬ ((s.push64 ra).regs.get64 .rsp).SerialLt (u.data.regs.get64 .rsp)
-          rw [hst'.1]
-          exact BitVec.not_serialLt_self _
-        · exact decreases_of_steps_lt abs fun _ =>
-            steps_lt_of_error ablock next hl (by simp) hrun hfix
-      · rw [cfgEPosts_exit] at hE
-        have hrsp₀ : (s.push64 ra).regs.get64 .rsp = s.regs.get64 .rsp - 8#64 := by
-          simp only [MachineData.regs_push64, Reg64s.get64_set64, ↓reduceIte]
-        refine Program.Intercept.intro (Or.inr ⟨?_, fun _ _ _ => ?_⟩)
-        · show (Concretization.ofStateRepr abs).post (RetRel s ra) Ea.1 u.pc u.data
-          simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
-            meet_prop_eq_and, Concretization.ofStateRepr_pred, RetRel]
-          refine ⟨.exit, ⟨?_, rfl, ?_⟩, hE⟩
-          · rw [ha, MachineData.retAddr_push64, Option.get!_some]
-          · rw [hrsp', hrsp₀, BitVec.sub_add_cancel]
-        · show ((s.push64 ra).regs.get64 .rsp).SerialLt (u.data.regs.get64 .rsp)
-          rw [hrsp', hrsp₀, BitVec.sub_add_cancel]
-          exact BitVec.serialLt_sub _ _ (by decide)
+      meet_prop_eq_and, Concretization.ofStateRepr_pred, FallRel] at hu
+    obtain ⟨-, hst', hQ, hrun⟩ := hu
+    rw [hnext blk hmem] at hQ
+    show Program.Next @I (s.push64 ra) Q
+      (Program.Decreases var blk.label blk.idx t) blk.next (blk.idx + 1) u.data
+    cases hn : blk.next with
+    | none =>
+      rw [hn, CfgLabel.ofNext_none, wp_cfgLoop_exit_fn] at hQ
+      simp only [Program.Next, Q, Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
+        meet_prop_eq_and, top_apply, top_prop_eq, Concretization.ofStateRepr_pred]
+      exact ⟨(), trivial, hQ⟩
+    | some l' =>
+      rw [hn, CfgLabel.ofNext_some] at hQ
+      refine ⟨⟨hQ, hst'⟩, decreases_of_steps_lt abs ?_⟩
+      have hlt := steps_lt_of_ok ablock next hl hrun hfix
+      rw [hnext blk hmem, hn, CfgLabel.ofNext_some] at hlt
+      exact hlt
+  · show Program.Intercept (Program.labels p) (s.push64 ra)
+      (fun l j s' => I (s₀ := s.push64 ra) l s' ∧ Program.Decreases var blk.label blk.idx t l j s')
+      (EPostsConcretization.ePosts (Concretization.ofStateRepr abs) (RetRel s ra) Ea)
+      u.pc u.data
+    change (Concretization.ofStateRepr abs).post (JumpRel p (s.push64 ra)) Ea'.1
+      u.pc u.data at hu
+    simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
+      meet_prop_eq_and, Concretization.ofStateRepr_pred, JumpRel] at hu
+    obtain ⟨l', hrel, hE, hrun⟩ := hu
+    rcases hrel with ⟨l, hmem', rfl, ha, hst'⟩ | ⟨rfl, ha, hrsp'⟩
+    · rw [cfgEPosts_label] at hE
+      refine Program.Intercept.intro (Or.inl ⟨?_, l, ha.symm, hmem', ⟨hE, hst'⟩, ?_⟩)
+      · show ¬ ((s.push64 ra).regs.get64 .rsp).SerialLt (u.data.regs.get64 .rsp)
+        rw [hst'.1]
+        exact BitVec.not_serialLt_self _
+      · exact decreases_of_steps_lt abs (steps_lt_of_error ablock next hl (by simp) hrun hfix)
+    · rw [cfgEPosts_exit] at hE
+      have hrsp₀ : (s.push64 ra).regs.get64 .rsp = s.regs.get64 .rsp - 8#64 := by
+        simp only [MachineData.regs_push64, Reg64s.get64_set64, ↓reduceIte]
+      refine Program.Intercept.intro (Or.inr ⟨?_, fun _ _ _ => ?_⟩)
+      · show (Concretization.ofStateRepr abs).post (RetRel s ra) Ea.1 u.pc u.data
+        simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
+          meet_prop_eq_and, Concretization.ofStateRepr_pred, RetRel]
+        refine ⟨.exit, ⟨?_, rfl, ?_⟩, hE⟩
+        · rw [ha, MachineData.retAddr_push64, Option.get!_some]
+        · rw [hrsp', hrsp₀, BitVec.sub_add_cancel]
+      · show ((s.push64 ra).regs.get64 .rsp).SerialLt (u.data.regs.get64 .rsp)
+        rw [hrsp', hrsp₀, BitVec.sub_add_cancel]
+        exact BitVec.serialLt_sub _ _ (by decide)
 
 theorem wrp_cfg {p : Program} (next : CfgLabel → CfgLabel)
-    (hnext : ∀ blk ∈ Program.blocks p, next blk.label = blk.next)
+    (hnext : ∀ blk ∈ Program.blocks p, next (CfgLabel.ofLabel blk.label) = CfgLabel.ofNext blk.next)
     {ablock : CfgLabel → BlockM Aσ Unit} {s : MachineData} {ra : Int64}
     (h : ∀ blk ∈ Program.blocks p, ∀ t, SameStackFrame (s.push64 ra) t →
-      ⦃(· = t)⦄ blk.body ⪯[Concretization.ofStateRepr abs] (ablock blk.label)
+      ⦃(· = t)⦄ blk.body ⪯[Concretization.ofStateRepr abs] (ablock (CfgLabel.ofLabel blk.label))
         ⦃FallRel (s.push64 ra); JumpRel p (s.push64 ra)⦄) :
     wrp (Concretization.ofStateRepr abs) p (cfgLoop ablock next .entry) (fun _ _ => ⊤) (RetRel s ra)
       (s.push64 ra) :=
   wrp_cfg_le abs next hnext h (s.push64 ra) rfl
-
-@[vcgen_simp] theorem Program.Block.label_mk (l : CfgLabel) (i : Nat) (b : Program) (n : CfgLabel) :
-    (Program.Block.mk l i b n).label = l := rfl
-@[vcgen_simp] theorem Program.Block.body_mk (l : CfgLabel) (i : Nat) (b : Program) (n : CfgLabel) :
-    (Program.Block.mk l i b n).body = b := rfl
-@[vcgen_simp] theorem Program.Block.next_mk (l : CfgLabel) (i : Nat) (b : Program) (n : CfgLabel) :
-    (Program.Block.mk l i b n).next = n := rfl
-
-attribute [vcgen_simp] Program.blocks_eq Program.view_cons_instr Program.view_cons_label
-  Program.view_nil' Program.blocksFrom_cons Program.blocksFrom_nil
 
 /-! ## The grind theory of the block relations
 
@@ -692,7 +683,7 @@ labels are distinct and each block falls through to its successor in the text. -
 theorem refines_cfg {p : Program} [Embeds p] (tbl : Table CfgLabel (BlockM Aσ Unit))
     {s : MachineData} {ra : Int64}
     (h : ∀ blk ∈ Program.blocks p, ∀ t, SameStackFrame (s.push64 ra) t →
-      ⦃(· = t)⦄ blk.body ⪯[Concretization.ofStateRepr abs] (Table.get tbl blk.label)
+      ⦃(· = t)⦄ blk.body ⪯[Concretization.ofStateRepr abs] (Table.get tbl (CfgLabel.ofLabel blk.label))
         ⦃FallRel (s.push64 ra); JumpRel p (s.push64 ra)⦄) :
     ⦃(· = s.push64 ra)⦄ p ⪯[Concretization.ofStateRepr abs]
       (cfgLoop (Table.get tbl) (Program.next p) .entry) ⦃fun _ _ => ⊤; RetRel s ra⦄ :=

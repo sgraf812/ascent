@@ -62,24 +62,14 @@ theorem StatusFlags.zf_ofSub_eq (a b : BitVec 64) : (StatusFlags.ofSub a b).zf =
     exact BitVec.sub_self a
 
 theorem StatusFlags.cf_ofSub_eq (a b : BitVec 64) : (StatusFlags.ofSub a b).cf = a.ult b := by
-  rw [StatusFlags.cf_ofSub, BitVec.unsigned_eq, BitVec.unsigned_eq, BitVec.unsigned_eq,
-    BitVec.ult_eq_decide, Bool.eq_iff_iff, bne_iff_ne, decide_eq_true_iff]
-  have ⟨h₁, h₂⟩ := BitVec.toNat_sub_cases a b
-  have ha := a.isLt
-  have hb := b.isLt
-  by_cases h : b.toNat ≤ a.toNat
-  · rw [h₁ h]; omega
-  · rw [h₂ (by omega)]; omega
-
-theorem StatusFlags.neg_ofSub_eq (a b : BitVec 64) : (StatusFlags.ofSub a b).neg = a.slt b := by
-  rw [StatusFlags.neg_ofSub, BitVec.slt_eq_decide]
-  exact decide_eq_decide.mpr (BitVec.toInt_lt_toInt_iff_flip a b).symm
+  rw [StatusFlags.cf_ofSub, Bool.eq_iff_iff, BitVec.usubOverflow_eq_true_iff, BitVec.ult_eq_decide,
+    decide_eq_true_iff]
 
 theorem CondCode.interp_ofSub (cc : CondCode) (a b : BitVec 64) :
     cc.interp (StatusFlags.ofSub a b) = cc.cmp a b := by
   have hz := StatusFlags.zf_ofSub_eq a b
   have hc := StatusFlags.cf_ofSub_eq a b
-  have hn := StatusFlags.neg_ofSub_eq a b
+  have hn := StatusFlags.neg_ofSub a b
   cases cc <;> simp only [CondCode.cmp, CondCode.interp_z, CondCode.interp_nz, CondCode.interp_c,
     CondCode.interp_nc, CondCode.interp_a, CondCode.interp_be, CondCode.interp_l_neg,
     CondCode.interp_ge_neg, CondCode.interp_le_neg, CondCode.interp_g_neg, hz, hc, hn]
