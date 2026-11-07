@@ -1,30 +1,7 @@
-diff -ruN a/Ascent/Tactic/VCGen/RuleCache.lean b/Ascent/Tactic/VCGen/RuleCache.lean
---- a/Ascent/Tactic/VCGen/RuleCache.lean	2026-11-02 10:59:29.872157024 +0000
-+++ b/Ascent/Tactic/VCGen/RuleCache.lean	2026-11-02 10:59:29.884870697 +0000
-@@ -82,19 +82,4 @@
-   modify fun st => { st with latticeBackwardRuleCache := st.latticeBackwardRuleCache.insert key rule }
-   return rule
- 
--/--
--Cached version of `mkFrameBackwardRule`.
--
--Cache key: `(instWP, excessArgs.size)` (the operator is determined by the monad).
---/
--def mkFrameBackwardRuleCached (fp : FrameProc) (info : WRPApp) :
--    VCGenM FrameBackwardRule := do
--  let key := (ExprPtr.mk info.instWP, info.excessArgs.size)
--  if let some rule := (← get).frameBackwardRuleCache[key]? then return rule
--  let frule ← mkFrameBackwardRule fp info
--  let frule := { frule with rule := ← frule.rule.shareCommon }
--  modify fun st => { st with frameBackwardRuleCache := st.frameBackwardRuleCache.insert key frule }
--  return frule
--
--
- end Lean.Elab.Tactic.VCGen.Ascend
 diff -ruN a/Ascent/Tactic/VCGen/RuleConstruction.lean b/Ascent/Tactic/VCGen/RuleConstruction.lean
---- a/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-11-02 10:59:29.871748327 +0000
-+++ b/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-11-02 10:59:29.885006839 +0000
-@@ -449,65 +449,4 @@
+--- a/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-11-07 22:38:56.133061480 +0000
++++ b/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-11-07 22:38:56.141511998 +0000
+@@ -449,72 +449,4 @@
    let res ← abstractMVars prf
    mkBackwardRuleFromExpr res.expr res.paramNames.toList
  
@@ -62,7 +39,9 @@ diff -ruN a/Ascent/Tactic/VCGen/RuleConstruction.lean b/Ascent/Tactic/VCGen/Rule
 -condition `WP.Frames op prog F G`, with the frame `F` left schematic, the guard `G` the frame of
 -`pre` for the excess state arguments `fun u⃗ => ⌜u⃗ = s⃗⌝ ⊓ pre`, and the weakest footprint
 -`W = wp prog (fun a => upperAdjoint (op F) (Q a)) (upperAdjoint (opE F) E)` baked in, so a single
--rule serves every inferred frame. `analyzeFrameRule` records the positions of the schematic slots.
+-rule serves every inferred frame. When `FrameProc.framesThm?` applies to the frame condition, the
+-rule proves it, and the rule has no frame condition premise. `analyzeFrameRule` records the
+-positions of the schematic slots.
 --/
 -def mkFrameBackwardRule (fp : FrameProc) (info : WRPApp) :
 -    MetaM FrameBackwardRule := do
@@ -80,6 +59,11 @@ diff -ruN a/Ascent/Tactic/VCGen/RuleConstruction.lean b/Ascent/Tactic/VCGen/Rule
 -    (userName := `vc)
 -  let ssFrame ← ExcessArgsFrameInfo.new pre ss
 -  guard.mvarId!.assign ssFrame.frame
+-  if let some declName := fp.framesThm? then
+-    let hframes := xs.back!.mvarId!
+-    discard <| commitWhen do
+-      try return (← hframes.apply (← mkConstWithFreshMVarLevels declName)).isEmpty
+-      catch _ => return false
 -  let hop ← ssFrame.abstract opApp ss hsplit
 -  let G := ssFrame.frame
 -  let hmeet ← mkAppM ``le_meet
@@ -90,10 +74,34 @@ diff -ruN a/Ascent/Tactic/VCGen/RuleConstruction.lean b/Ascent/Tactic/VCGen/Rule
 -  analyzeFrameRule rule fp.opHead info.excessArgs.size
 -
  end Lean.Elab.Tactic.VCGen.Ascend
+diff -ruN a/Ascent/Tactic/VCGen/RuleCache.lean b/Ascent/Tactic/VCGen/RuleCache.lean
+--- a/Ascent/Tactic/VCGen/RuleCache.lean	2026-11-07 22:38:56.133515094 +0000
++++ b/Ascent/Tactic/VCGen/RuleCache.lean	2026-11-07 22:38:56.141603594 +0000
+@@ -83,20 +83,6 @@
+   return rule
+ 
+ /--
+-Cached version of `mkFrameBackwardRule`.
+-
+-Cache key: `(instWP, excessArgs.size)` (the operator is determined by the monad).
+--/
+-def mkFrameBackwardRuleCached (fp : FrameProc) (info : WRPApp) :
+-    VCGenM FrameBackwardRule := do
+-  let key := (ExprPtr.mk info.instWP, info.excessArgs.size)
+-  if let some rule := (← get).frameBackwardRuleCache[key]? then return rule
+-  let frule ← mkFrameBackwardRule fp info
+-  let frule := { frule with rule := ← frule.rule.shareCommon }
+-  modify fun st => { st with frameBackwardRuleCache := st.frameBackwardRuleCache.insert key frule }
+-  return frule
+-
+-/--
+ Cached construction of the backward rule of the `@[vcgen_rintro]` rule `e`. The rule abstracts
+ the `e.numPremises` premises and matches the conclusion of `e`.
+ 
 diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
---- a/Ascent/Tactic/VCGen/Solve.lean	2026-11-02 10:59:29.876190879 +0000
-+++ b/Ascent/Tactic/VCGen/Solve.lean	2026-11-02 10:59:29.885063001 +0000
-@@ -397,101 +397,6 @@
+--- a/Ascent/Tactic/VCGen/Solve.lean	2026-11-07 22:38:56.137669027 +0000
++++ b/Ascent/Tactic/VCGen/Solve.lean	2026-11-07 22:38:56.143517639 +0000
+@@ -440,101 +440,6 @@
      return true
    return false
  
@@ -127,7 +135,7 @@ diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
 -      let e ← Lean.Elab.Term.elabTermEnsuringType entry.frameStx (some resourceTy)
 -      Lean.Elab.Term.synthesizeSyntheticMVarsNoPostponing
 -      mkLetFVars fvs e
--    instantiateMVarsS frameExpr
+-    shareCommon (← instantiateMVars frameExpr)
 -
 -/-- Find an unretired `frames` alternative matching the program (earliest source order wins),
 -elaborate its frame at the resource type of `fp`'s operator, and retire it so it applies at most
@@ -157,9 +165,9 @@ diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
 -    (le W : Expr) (excessStates : Array Expr) (frame : MVarId)
 -    (splitLatticeOp? : MVarId → Grind.GrindM (Option (List MVarId))) :
 -    Grind.GrindM (Option (FrameGoal × List MVarId)) := do
--  let fp ← mkFreshExprMVar le.appFn!.appArg!
+-  let fp ← share (← mkFreshExprMVar le.appFn!.appArg!)
 -  let rhs ← mkAppNS W excessStates
--  let target ← mkFreshExprSyntheticOpaqueMVar (← mkAppNS le #[fp, rhs])
+-  let target ← share (← mkFreshExprSyntheticOpaqueMVar (← mkAppNS le #[fp, rhs]))
 -  let .goals sgs ← specRule.apply target.mvarId! | return none
 -  let some preVC ← sgs.findM? fun g => return (← g.getType).isAppOf ``Lean.Order.PartialOrder.rel
 -    | throwError "frame: spec rule left no precondition VC for{indentExpr info.prog}"
@@ -195,7 +203,7 @@ diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
  /--
  Apply the selected `@[spec]` theorem `thm` to a spec-ready program `info.prog`. `none` when no
  backward rule fits the goal's monad, or when the rule does not apply.
-@@ -503,8 +408,8 @@
+@@ -546,8 +451,8 @@
  continuation; see `FrameProc.lean`. When the spec does not apply to the footprint, the copy is
  dropped and the candidate falls through.
  -/
@@ -206,7 +214,7 @@ diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
    let some specRule ←
      try
        mkBackwardRuleFromSpecCached thm info |>.run
-@@ -515,28 +420,6 @@
+@@ -558,28 +463,6 @@
          Pred:{indentExpr info.Pred}\n\
          excessArgs: {info.excessArgs}"
      | return none
@@ -235,7 +243,7 @@ diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
    trace[Elab.Tactic.Do.vcgen] "Applying spec {thm.proof} for {info.prog}. Excess args: {info.excessArgs}"
    let .goals goals ← specRule.applyChecked goal m!"spec rule for{indentExpr info.prog}"
      | return none
-@@ -553,12 +436,8 @@
+@@ -596,12 +479,8 @@
  def applySpecs (scope : Scope) (goal : MVarId) (info : WRPApp) :
      VCGenM SolveResult := goal.withContext do
    let candidates ← SpecTheorems.findSpecs scope.specs info.prog

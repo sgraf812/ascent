@@ -2,7 +2,5 @@ D7-no-frames.patch
 D8-wrp-spec-rules.patch
 D6-hole-context.patch
 D2-one-worklist-D1-synthesis-holes.patch
-D10-shared-product-binder.patch
 D11-unfold-relation.patch
 D12-pure-refinement-dispatch.patch
-D13-head-instantiation.patch

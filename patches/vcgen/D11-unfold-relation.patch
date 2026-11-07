@@ -1,7 +1,7 @@
 diff -ruN a/Ascent/Tactic/VCGen/RuleConstruction.lean b/Ascent/Tactic/VCGen/RuleConstruction.lean
---- a/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-11-02 10:59:29.890495586 +0000
-+++ b/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-11-02 10:59:29.909442070 +0000
-@@ -334,12 +334,14 @@
+--- a/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-11-07 22:38:56.183971437 +0000
++++ b/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-11-07 22:38:56.195611936 +0000
+@@ -308,12 +308,14 @@
    -- are read-only there.
    guard <| ← withReducible <| approxDefEq <| isDefEqGuarded eqα info.Prog
    -- `post`/`eposts` are schematic metavariables (their VCs collapse downstream).

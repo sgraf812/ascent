@@ -1,6 +1,6 @@
 diff -ruN a/Ascent/Tactic/VCGen/RuleConstruction.lean b/Ascent/Tactic/VCGen/RuleConstruction.lean
---- a/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-11-07 00:52:27.086070130 +0000
-+++ b/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-11-07 00:44:12.613385462 +0000
+--- a/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-11-07 22:38:56.195611936 +0000
++++ b/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-11-07 22:38:56.207810395 +0000
 @@ -395,41 +395,65 @@
  /-! ## Split rules -/
  
@@ -120,9 +120,9 @@ diff -ruN a/Ascent/Tactic/VCGen/RuleConstruction.lean b/Ascent/Tactic/VCGen/Rule
    let res ← abstractMVars prf
    mkBackwardRuleFromExpr res.expr res.paramNames.toList
 diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
---- a/Ascent/Tactic/VCGen/Solve.lean	2026-11-07 00:52:27.085446895 +0000
-+++ b/Ascent/Tactic/VCGen/Solve.lean	2026-11-07 00:52:27.087522167 +0000
-@@ -340,6 +340,53 @@
+--- a/Ascent/Tactic/VCGen/Solve.lean	2026-11-07 22:38:56.198593357 +0000
++++ b/Ascent/Tactic/VCGen/Solve.lean	2026-11-07 22:38:56.210103983 +0000
+@@ -393,14 +393,65 @@
      | .noProgress => return none
    | _ => return none
  
@@ -176,9 +176,8 @@ diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
  /-- Strategy 11b: split an `ite`/`dite`/`cond`/match program, or iota-reduce a matcher with a
  concrete discriminant. -/
  def wpMatch? (goal : MVarId) (info : WRPApp) :
-@@ -349,8 +396,12 @@
-     if let some prog ← liftMetaM <| withReducible <| reduceRecMatcher? info.prog then
-       return some [← replaceProgDefEq goal info (← shareCommonInc prog)]
+     VCGenM (Option (List MVarId)) := do
+   let some splitInfo ← liftMetaM <| Lean.Elab.Tactic.Do.getSplitInfo? info.prog | return none
    let rule ← mkBackwardRuleForSplitCached splitInfo info
 +  let (goal, filled) ← fillAbstractHole goal info
    let .goals goals ← rule.applyChecked goal m!"split rule for{indentExpr info.prog}"
@@ -189,8 +188,8 @@ diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
    let mut simpGoals := #[]
    for g in goals do
      match ← simpGoalTelescope g with
-@@ -379,6 +430,22 @@
-   let prog ← betaRevS f' info.prog.getAppRevArgs
+@@ -419,6 +470,22 @@
+   let prog ← shareCommonInc (val.betaRev info.prog.getAppRevArgs)
    return some (← replaceProgDefEq goal info prog)
  
 +/-- Strategy 12: on the `Prop` lattice, unfold the reducible head constant of an `rhs` that no
@@ -212,7 +211,7 @@ diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
  /-- Stop or raise on a program with no applicable spec. With `errorOnMissingSpec` (default), raise a
  hard error naming the program and the candidate specs; otherwise stop and emit the goal as a VC. -/
  def stopOrErrorOnMissingSpec (prog monad : Expr) (thms : Array SpecTheorem) :
-@@ -425,48 +492,12 @@
+@@ -465,48 +532,12 @@
      | return none
    trace[Elab.Tactic.Do.vcgen] "Applying spec {thm.proof} for {info.prog}. Excess args: {info.excessArgs}"
    let saved ← (saveState : MetaM Meta.SavedState)
@@ -264,7 +263,7 @@ diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
    return some (.goals scope goals)
  
  /--
-@@ -578,6 +609,7 @@
+@@ -617,6 +648,7 @@
        return ← applySpecs scope goal info
      return ← stopOrErrorOnMissingSpec info.prog info.M #[]
  
@@ -273,8 +272,8 @@ diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
  
  
 diff -ruN a/Ascent/Tactic/VCGen/Driver.lean b/Ascent/Tactic/VCGen/Driver.lean
---- a/Ascent/Tactic/VCGen/Driver.lean	2026-11-07 00:52:27.084565735 +0000
-+++ b/Ascent/Tactic/VCGen/Driver.lean	2026-11-07 00:29:12.725297141 +0000
+--- a/Ascent/Tactic/VCGen/Driver.lean	2026-11-07 22:38:56.199474537 +0000
++++ b/Ascent/Tactic/VCGen/Driver.lean	2026-11-07 22:38:56.211139251 +0000
 @@ -9,6 +9,7 @@
  import Lean.Elab.Tactic.VCGen.Context
  import Lean.Elab.Tactic.VCGen.Solve
@@ -283,7 +282,7 @@ diff -ruN a/Ascent/Tactic/VCGen/Driver.lean b/Ascent/Tactic/VCGen/Driver.lean
  import Lean.Meta.Sym.Grind
  import Lean.Elab.Tactic.VCGen.Driver
  
-@@ -94,6 +95,7 @@
+@@ -92,6 +93,7 @@
  -/
  def emitVC (goal : Grind.Goal) (reason : SolveResult.StopReason) : VCGenM Unit := do
    let mut goal := { goal with mvarId := ← elimTopPre goal.mvarId }
@@ -291,7 +290,7 @@ diff -ruN a/Ascent/Tactic/VCGen/Driver.lean b/Ascent/Tactic/VCGen/Driver.lean
    if reason matches .noEntailment .. | .noProgress .. then
      -- An invariant from an `invariants` alternative is assigned while the target is built, as in
      -- `?inv pref suff (a, b)`. Instantiating it lets `simp` reduce the body of the invariant.
-@@ -151,6 +153,11 @@
+@@ -149,6 +151,11 @@
      | .stop reason =>
        emitVC goal reason
      | .goals scope subgoals =>

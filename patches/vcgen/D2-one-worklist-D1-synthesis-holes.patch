@@ -1,6 +1,6 @@
 diff -ruN a/Ascent/Tactic/VCGen/Driver.lean b/Ascent/Tactic/VCGen/Driver.lean
---- a/Ascent/Tactic/VCGen/Driver.lean	2026-11-05 16:28:11.538219140 +0000
-+++ b/Ascent/Tactic/VCGen/Driver.lean	2026-11-05 16:28:11.569230460 +0000
+--- a/Ascent/Tactic/VCGen/Driver.lean	2026-11-07 22:38:56.175453209 +0000
++++ b/Ascent/Tactic/VCGen/Driver.lean	2026-11-07 22:38:56.188286931 +0000
 @@ -10,6 +10,7 @@
  import Lean.Elab.Tactic.VCGen.Solve
  import Ascent.Tactic.VCGen.Solve
@@ -9,7 +9,7 @@ diff -ruN a/Ascent/Tactic/VCGen/Driver.lean b/Ascent/Tactic/VCGen/Driver.lean
  
  open Lean Meta Elab Tactic Sym Sym.Internal Lean.Order
  open Lean.Elab.Tactic.Do.SpecAttr
-@@ -113,18 +114,39 @@
+@@ -111,18 +112,39 @@
  structure WorkItem where
    goal : Grind.Goal
    scope : Scope
@@ -51,7 +51,7 @@ diff -ruN a/Ascent/Tactic/VCGen/Driver.lean b/Ascent/Tactic/VCGen/Driver.lean
      match ← solve s.scope goal.mvarId with
      | .stop reason =>
        emitVC goal reason
-@@ -134,7 +156,11 @@
+@@ -132,7 +154,11 @@
        -- Non-invariant subgoals go to the worklist as usual and will eventually go through `emitVC`.
        let subgoals ← handleInvariantSubgoals subgoals
        worklist := worklist ++ subgoals.reverse.map (fun mv =>
@@ -64,7 +64,7 @@ diff -ruN a/Ascent/Tactic/VCGen/Driver.lean b/Ascent/Tactic/VCGen/Driver.lean
  
  structure Result where
    /-- All invariant goals emitted during VC generation, in emit order. The MVarId at
-@@ -158,7 +184,7 @@
+@@ -156,7 +182,7 @@
  
  `stepLimit?`, when `some n`, seeds the fuel counter to `n`; when `none`, fuel is unlimited.
  -/
@@ -73,7 +73,7 @@ diff -ruN a/Ascent/Tactic/VCGen/Driver.lean b/Ascent/Tactic/VCGen/Driver.lean
      (stepLimit? : Option Nat := none) (frameDB : FrameDB := {}) :
      Grind.GrindM Result := do
    let initState : State :=
-@@ -166,7 +192,7 @@
+@@ -164,7 +190,7 @@
    -- VCGen temporarily violates the `SymM` folded-projections invariant: `reduceHead?`
    -- exposes kernel projections in intermediate terms and restores the invariant in its
    -- final result, so the `shareCommon` kernel-projection check is disabled.

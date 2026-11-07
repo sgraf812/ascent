@@ -102,33 +102,6 @@ def tableCell (get : Expr) : VCGenM (Option (Option LocalContext × Expr)) := do
     tbl := rest
   return none
 
-/-- Split a target `∀ x ∈ a :: l, G x` into `G a` and `∀ x ∈ l, G x`, and close
-`∀ x ∈ [], G x`. -/
-def forallMemList? (goal : MVarId) (target : Expr) : VCGenM (Option (List MVarId)) := do
-  let .forallE _ _ (.forallE _ dom _ _) _ := target | return none
-  let_expr Membership.mem _ _ _ l _ := dom | return none
-  let l ← instantiateMVarsS l
-  -- `MVarId.apply`: the premise `p a` of the lemma is a higher-order pattern under the binder.
-  let lemma ←
-    if l.isAppOfArity ``List.cons 3 then pure ``Ascent.forall_mem_cons_intro
-    else if l.isAppOfArity ``List.nil 1 then pure ``Ascent.forall_mem_nil_intro
-    else return none
-  let some gs ← (liftM (observing? (goal.apply (← mkConstWithFreshMVarLevels lemma))) : VCGenM _)
-    | return none
-  -- The element `a` sits under projections in `G a`; reduce them, so that the premise meets the
-  -- run in reduced form.
-  let methods : Sym.Simp.Methods :=
-    { pre := Sym.Simp.beta >> Sym.Simp.reduceProj >> Sym.Simp.reduceMatcher
-      post := Sym.Simp.evalGround {} }
-  let mut gs' := []
-  for g in gs do
-    let g ← preprocessMVar g
-    match ← Sym.simpGoal g methods with
-    | .goal g' => gs' := gs' ++ [g']
-    | .noProgress => gs' := gs' ++ [g]
-    | .closed => pure ()
-  return some gs'
-
 /-- The concrete program of a spec conclusion `pre ⊑ wrp γ c a Q E`. -/
 def selectProg (type : Expr) : MetaM (Option Expr) := do
   match_expr type with

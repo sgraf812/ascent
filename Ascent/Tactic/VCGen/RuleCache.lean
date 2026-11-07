@@ -85,4 +85,17 @@ def mkLatticeOpRuleCached (rhs : Expr) (op : LatticeOp) :
   modify fun st => { st with latticeBackwardRuleCache := st.latticeBackwardRuleCache.insert key rule }
   return rule
 
+/--
+Cached construction of the backward rule of the `@[vcgen_rintro]` rule `e`. The rule abstracts
+the `e.numPremises` premises and matches the conclusion of `e`.
+
+Cache key: the declaration name of `e`.
+-/
+def mkBackwardRuleForRIntroCached (e : RIntroEntry) : VCGenM BackwardRule := do
+  if let some rule := (← get).rintroBackwardRuleCache[e.declName]? then return rule
+  let rule ← (← liftMetaM <| mkBackwardRuleFromDecl e.declName (some e.numPremises)).shareCommon
+  modify fun st => { st with rintroBackwardRuleCache := st.rintroBackwardRuleCache.insert e.declName rule }
+  return rule
+
+
 end Lean.Elab.Tactic.VCGen.Ascend

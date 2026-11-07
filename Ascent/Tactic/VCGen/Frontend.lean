@@ -139,7 +139,7 @@ def elabAscend : Tactic := fun stx => withMainContext do
     else throwErrorAt w "`ascend … with` expects a `grind`-mode discharging step, not a general tactic"
   -- Hypotheses are internalized only for a `with` step that reads the E-graph, as for `vcgen`.
   let ctx : Context :=
-    { backwardRules := ← mkBackwardRules, simpMethods, internalize := step?.isSome }
+    { backwardRules := ← mkBackwardRules, rintros := ← getRIntros, simpMethods, internalize := step?.isSome }
   let mut specs ← addUnfoldSpecs (← getAscendSpecTheorems) declNames
   for term in termSpecs do
     specs := specs.insert (← mkSpecTheoremFromTerm term)

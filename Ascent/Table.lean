@@ -1,4 +1,5 @@
 import Ascent.Refinement
+import Lean.Elab.Tactic.VCGen.RIntroAttr
 
 /-!
 # Tables
@@ -17,10 +18,12 @@ abbrev Table (κ β : Type) := List (κ × β)
 def Table.get {κ β : Type} [DecidableEq κ] [Inhabited β] (tbl : Table κ β) (k : κ) : β :=
   (List.lookup k tbl).getD default
 
+@[vcgen_rintro]
 theorem forall_mem_cons_intro {α : Type u} {a : α} {l : List α} {p : α → Prop} (h₁ : p a)
     (h₂ : ∀ x ∈ l, p x) : ∀ x ∈ a :: l, p x :=
   List.forall_mem_cons.mpr ⟨h₁, h₂⟩
 
+@[vcgen_rintro]
 theorem forall_mem_nil_intro {α : Type u} {p : α → Prop} : ∀ x ∈ ([] : List α), p x :=
   List.forall_mem_nil p
 

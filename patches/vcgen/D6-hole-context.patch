@@ -1,17 +1,7 @@
 diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
---- a/Ascent/Tactic/VCGen/Solve.lean	2026-11-05 12:46:19.678436588 +0000
-+++ b/Ascent/Tactic/VCGen/Solve.lean	2026-11-05 12:46:19.682840424 +0000
-@@ -88,6 +88,9 @@
-     | .goal goal => pure goal
-     | .noProgress => pure oldGoal
-   let mut target ← goal.getType
-+  -- A premise `∀ x ∈ a :: l, G x` is split into `G a` and `∀ x ∈ l, G x` before its binders are
-+  -- introduced, so that each `G aᵢ` meets the run at a closed `aᵢ`.
-+  if let some gs ← forallMemList? goal target then return some gs
-   while target.isForall do
-     let n := numBindersToIntro target
-     let goal' ← if n == 0 then splitProdBinder goal target else introsHygienicN goal n
-@@ -421,8 +424,49 @@
+--- a/Ascent/Tactic/VCGen/Solve.lean	2026-11-07 22:38:56.159747128 +0000
++++ b/Ascent/Tactic/VCGen/Solve.lean	2026-11-07 22:38:56.174648262 +0000
+@@ -464,8 +464,49 @@
          excessArgs: {info.excessArgs}"
      | return none
    trace[Elab.Tactic.Do.vcgen] "Applying spec {thm.proof} for {info.prog}. Excess args: {info.excessArgs}"
