@@ -7,7 +7,7 @@ The fork consists of three parts:
 
 1. modules of `vcgen` that `ascend` imports and calls unchanged,
 2. modules that a fixed translation table derives from `vcgen` (`T1` to `T4` below),
-3. a numbered list of deviations (`D1` to `D6` below), one patch each.
+3. a list of deviations, one patch each, in the order of `patches/vcgen/series`.
 
 Every change to `vcgen` code that is not in the translation table is a deviation, and this
 document lists it with its intent, the place it changes, and its acceptance test.
@@ -19,7 +19,7 @@ The concrete program is `setSize "n" m >>= fun _ => getSize "n"` and the concret
 
 ```
 P s ⊑ wrp γ (setSize "n" m >>= fun _ => getSize "n") ?a Q E s       -- ascend goal
-  stutter spec (D3):
+  stutter spec:
 P s ⊑ wp (setSize "n" m) (fun _ s' => ⌜s'.heap = s.heap⌝ ⊓ wrp γ (getSize "n") ?a Q E s') ⊥ s
                                                                       -- vcgen goal
   setSize_spec, state simp:   s₁ := { s with locals := … }, ⌜s₁.heap = s.heap⌝ ↝ True
@@ -101,69 +101,81 @@ construction of `RuleConstruction` (`mkSpecBackwardProof`, `tryMkBackwardRuleFro
 
 ## Deviations
 
-### D1. Synthesis holes
+The series applies `D7`, `D8`, `D6`, `D2`, `D11` and `D12`, in this order, to the sources of the
+toolchain in `lean-toolchain`.
 
-**Intent.** The run assigns the abstract hole of the goal and the data-typed parameters of the
-rules it applies. It assigns no other metavariable.
+### D7. No frame rules
 
-**Change.** The frontend runs the worklist at the metavariable depth of the abstract hole. In
-`work` and `emitVC`, a subgoal whose type is not a proposition stays a natural metavariable. The
-driver neither emits it as a VC nor seals it.
+**Intent.** An `ascend` goal has no frame operator, so the forked modules carry no frame
+machinery.
 
-**Acceptance.** The example above synthesizes `?a := pure m` with no VC.
+**Change.** `RuleConstruction`, `RuleCache` and `Solve` lose `mkFrameBackwardRule`, its cache, the
+`frames` alternatives and the frame callbacks. `applySpec` applies the spec rule directly.
 
-### D2. One worklist for `wrp` and `wp` goals
+**Acceptance.** Every `ascend` test in `test/AscentTests` runs without a frame rule.
+
+### D8. Rule construction for `wrp` specs
+
+**Intent.** A spec rule takes the concrete side of the goal verbatim, as core does, and is
+schematic in the abstract side, so one compiled rule serves every abstract program.
+
+**Change.** `tryMkBackwardRuleFromSpec` unifies the abstract types and `γ` of the spec with the
+goal's prefix, then the concrete `WP` instance, then synthesizes the instance binders whose types
+are closed. The abstract value type, `WP` instance and program become rule parameters. The rule
+caches key on the hash-consed `wrp` prefix.
+
+**Acceptance.** `ZipWithAdd` and `WordAbsEngine` apply generic rules such as `wrp_bind` at block
+stacks with several abstract monads.
+
+### D6. Synthesis holes in their context
+
+**Intent.** The run fills a hole of the abstract program only with terms in the hole's context.
+
+**Change.** `applySpec` fills an unassigned hole through a fresh metavariable of the goal's
+context: a bare hole directly, a hole applied to distinct free variables by delayed assignment, a
+hole applied to closed terms by a constant function, and a `Table.get ?tbl k` slot at a closed key
+by the cell of `k`.
+
+**Acceptance.** `AscendDef` and the demo's `zipWithAddA` synthesize a block table.
+
+### D2. One worklist for `wrp` and `wp` goals, and holes as data
 
 **Intent.** A concrete step without an abstract counterpart is decomposed by `vcgen`'s own rules
-and `@[spec]` database.
+and `@[spec]` database, and a hole is never emitted as a verification condition.
 
-**Change.** The forked `solve` returns `← VCGen.solve scope goal` when the right-hand side of the
-goal is a `wp` application. The `ascend` scope extends `vcgen`'s `Scope`, which carries the
-`@[spec]` database, with the `@[ascend]` database.
+**Change.** `work` sends a goal `pre ⊑ wp …` to `vcgen`'s `solve` with the core scope. A subgoal
+whose type is not a proposition stays a natural metavariable.
 
-**Acceptance.** The example above uses `setSize_spec` and `getSize_spec` unchanged.
+**Acceptance.** `Pipeline` mixes `@[spec]` steps with `@[ascend]` rules.
 
-### D3. Choice of the bind rule
+### D11. Schematic abstract program in a refinement spec
 
-**Intent.** On `c₁ >>= c₂`, the run applies the lockstep bind rule if `c₁` has an `@[ascend]`
-spec, and the stutter rule otherwise.
+**Intent.** A spec stated as a `Refinement` applies to a goal whose abstract program is a hole.
 
-**Change.** `applySpecs` on a bind looks up the `@[ascend]` specs of `c₁` before it selects the
-bind rule.
+**Change.** The rule built from such a spec keeps its abstract program schematic, so the rule
+does not capture the goal's hole.
 
-**Acceptance.** A program that mixes a word operation with a `setSize` gives an abstract program
-that contains only the word operation.
+**Acceptance.** `AscendUnfold`.
 
-### D4. Two-sided split
+### D12. Pure refinements and the two-sided split
 
-**Intent.** A concrete `match x with alts` splits the abstract hole into
-`match x' with alts'`, with one fresh hole for each alternative.
+**Intent.** A value of the concrete program is refined to an abstract value by the
+`PureRefinement` solver, and a concrete `if` splits both programs on the same condition.
 
-**Change.** `mkBackwardRuleForSplit` takes a goal builder `fun c => wrp γ c a Q E s⃗` in place of
-the fixed argument positions. It builds the abstract matcher from the concrete `SplitInfo`.
+**Change.** The driver dispatches `PureRefinement` goals to the solver of
+`Ascent/Tactic/VCGen/PureRefinement.lean`. `mkBackwardRuleForSplit` splits an `ite`, `dite` or
+`cond` on both sides with one fresh abstract branch per alternative, after `fillAbstractHole`
+fills the abstract hole. A matcher still splits on the concrete side only.
 
-**Acceptance.** `if` and `match` on a value that both programs share synthesize the abstract
-`if` and `match`.
+**Acceptance.** `PureRefinement`, `WordAbsEngine`, and the register and array layers of the demo.
 
-### D5. Exception relations in rule construction
+### Covered by core
 
-**Intent.** A spec with a non-schematic exception relation yields one pointwise VC for each
-layer of `ERels`.
-
-**Change.** `decomposeProdRel` decomposes `ERels`, whose aligned layers are relations
-`εc → εa → CPred`.
-
-**Acceptance.** `ThrowCatch` and `TypeStrengthen` pass through the engine.
-
-### D6. Rule cache key
-
-**Intent.** A compiled rule is reused for every goal with the same spec, phase and number of
-state arguments.
-
-**Change.** The key is `(spec, ExprPtr γ, ExprPtr instWPc, excessArgs.size)` in place of
-`(spec, ExprPtr instWP, excessArgs.size)`.
-
-**Acceptance.** The `WordAbs` bench compiles each spec once for each phase.
+Core vcgen covers these earlier deviations, which the series no longer contains: the product
+binder split and the list membership split, through `@[vcgen_rintro]` rules (`Prod.forall_intro`,
+and `forall_mem_cons_intro`/`forall_mem_nil_intro` in `Ascent/Table.lean`), and the head
+reduction of the entailment, through `instantiateGoal?`, which reduces assigned head
+metavariables and `match` on constructors.
 
 ## Maintenance
 
