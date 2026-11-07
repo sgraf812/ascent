@@ -168,40 +168,43 @@ info: @zipWithAddArr.refines : ∀ [inst : Host] [inst_1 : FunDecls] [inst_2 : E
 /-! ## 6. The pure program
 
 `vcgen` proves that the array program exits with `Array.zipWith (· + ·)` of its inputs, from a loop
-invariant and a measure. So the array program refines the pure program. -/
+invariant and a measure. `ascend_def` takes this result as the premise of `wrp_purify_throw` and
+synthesizes the pure program: -/
 
 /--
 info: @zipWithAddArr_spec : ∀ [inst : Host] [inst_1 : FunDecls] [inst_2 : Embeds zipWithAdd] (s : MachineData) (ra : Int64)
-  (A B O rsp : BitVec 64) {n : Nat} {a b o : Array (BitVec 64)},
+  (A B O rsp : BitVec 64) {n : Nat} {a b : Array (BitVec 64)},
   a.size = n →
     b.size = n →
-      o.size = n →
-        ⦃ fun x => x = o ⦄ zipWithAddArr s ra A B O rsp n a b ⦃ fun x x_1 => False;
-          estack⟨fun l o' => l = CfgLabel.exit ∧ o' = Array.zipWith (fun x1 x2 => x1 + x2) a b⟩ ⦄
+      ⦃ fun x => x.size = n ⦄ zipWithAddArr s ra A B O rsp n a b ⦃ fun x x_1 => False;
+        estack⟨fun l o' => l = CfgLabel.exit ∧ o' = Array.zipWith (fun x1 x2 => x1 + x2) a b⟩ ⦄
 -/
 #guard_msgs in
 #check @zipWithAddArr_spec
 /--
-info: def Ascent.Kraken.zipWithAddP : Array (BitVec 64) → Array (BitVec 64) → Id (Array (BitVec 64)) :=
-fun a b => pure (Array.zipWith (fun x1 x2 => x1 + x2) a b)
+info: def Ascent.Kraken.zipWithAddP : [inst : Host] →
+  [FunDecls] →
+    [Embeds zipWithAdd] →
+      MachineData →
+        Int64 →
+          BitVec 64 →
+            BitVec 64 →
+              BitVec 64 →
+                BitVec 64 → (n : Nat) → (a b : Array (BitVec 64)) → a.size = n → b.size = n → Id (Array (BitVec 64)) :=
+fun [Host] [FunDecls] [Embeds zipWithAdd] s ra A B O rsp n a b ha hb => pure (Array.zipWith HAdd.hAdd a b)
 -/
 #guard_msgs in
 #print zipWithAddP
-/--
-info: @zipWithAddArr_refines_P : ∀ [inst : Host] [inst_1 : FunDecls] [inst_2 : Embeds zipWithAdd] (s : MachineData)
-  (ra : Int64) {A B O rsp : BitVec 64} {n : Nat} {a b o : Array (BitVec 64)},
-  a.size = n →
-    b.size = n →
-      o.size = n →
-        Refinement (zipWithAddArr s ra A B O rsp n a b) (zipWithAddP a b) (purify (Array (BitVec 64))) (fun x => x = o)
-          (fun x x_1 x_2 => False) estack⟨fun l o' => l = CfgLabel.exit ∧ o' = (zipWithAddP a b).run⟩
--/
-#guard_msgs in
-#check @zipWithAddArr_refines_P
 
 /-! ## 7. Back to the machine code
 
-The refinements carry the result of the pure program back to the x64 text. -/
+`Refinement.comp_le` composes the refinements of the layers into one refinement from the x64 text to
+the pure program: -/
+
+#check @zipWithAdd_refines_P
+
+/-! One `Refinement.transport` of this refinement, and the reading of the output array as memory
+words, give the result on the machine code: -/
 
 /--
 info: @zipWithAdd_correct : ∀ [inst : Host] [inst_1 : FunDecls] [Embeds zipWithAdd] (s : MachineData) (ra : Int64)
