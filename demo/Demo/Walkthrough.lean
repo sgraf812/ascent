@@ -46,9 +46,9 @@ the equation `zipWithAddT.eq`, so the first refinement carries over to `zipWithA
 
 /-! ## 4. Registers as values, synthesized by `ascend_def`
 
-The state is the data memory alone. The lifting relation, the one hint of the run, names the
-registers that become values: `rdi`, `rsi`, `rdx`, `rcx` and `rsp` are parameters, and `rax` is
-the value of the loop. The loaded values of `r8` become variables. `ascend_def` synthesized
+The state is the data memory alone. The lifting relation, the one hint of the run, is
+`RegsRel [(.rdi, rdi), …, (.rax, rax)]`: it names the registers that become values. `rdi`, `rsi`,
+`rdx`, `rcx` and `rsp` are parameters, and `rax` is the value of the loop. The loaded values of `r8` become variables. `ascend_def` synthesized
 `zipWithAddL` and proved: -/
 
 #print zipWithAddL
@@ -58,7 +58,8 @@ the value of the loop. The loaded values of `r8` become variables. `ascend_def` 
 
 The state is the output array. The input arrays are parameters, named by their base addresses, and
 the loads and the store become array reads and an array update. The relation of the loop, the hint
-of the run, states the layout of the memory. `ascend_def` synthesized `zipWithAddArr` and proved: -/
+of the run, states the layout `ArrayLayout [(A, a), (B, b)] O n [rsp]` of the memory: the input
+arrays, the written array, and the return slot. `ascend_def` synthesized `zipWithAddArr` and proved: -/
 
 #print zipWithAddArr
 #check @zipWithAddArr.refines

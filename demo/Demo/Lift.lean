@@ -69,6 +69,13 @@ scoped notation:50 c:51 " ≐ " x:51 => PureRefinement c x True Eq
 
 /-! ## Values -/
 
+/-- `RegsRel rs t`: each register `r` of `rs` holds its abstract value `v` in the state `t`. -/
+abbrev RegsRel : List (Reg64 × BitVec 64) → MachineData → Prop
+  | [], _ => True
+  | (r, v) :: rs, t => t.regs.get64 r ≐ v ∧ RegsRel rs t
+
+attribute [vcgen_simp] RegsRel
+
 section
 variable {w : Nat} {a b x y : BitVec w} {P₁ P₂ : Prop}
 

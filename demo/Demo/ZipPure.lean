@@ -144,8 +144,8 @@ theorem zipWithAdd_correct (s : MachineData) (ra : Int64) {A B O : BitVec 64} {n
     (Pa := (· = abs t₀)) ⟨fun t ht => by
       subst ht
       refine hL.le_wp (abs t₀) ?_
-      simp only [meet_apply, meet_prop_eq_and, Concretization.ofStateRepr_pred, abs_regs, abs_dmem]
-      exact ⟨⟨.of_rel hrdi, .of_rel hrsi, .of_rel hrdx, .of_rel hrcx, .of_rel rfl⟩, trivial⟩⟩
+      simp only [meet_apply, meet_prop_eq_and, Concretization.ofStateRepr_pred, abs_regs, abs_dmem, RegsRel]
+      exact ⟨⟨.of_rel hrdi, .of_rel hrsi, .of_rel hrdx, .of_rel hrcx, .of_rel rfl, trivial⟩, trivial⟩⟩
   refine ⟨fun t ht => ?_⟩
   refine WP.wp_monotone (x := zipWithAdd) ?_ ?_ t (hT.le_wp t ?_)
   · intro _ _ _
