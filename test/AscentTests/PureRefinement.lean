@@ -39,7 +39,7 @@ example : ⦃(⊤ : Prop)⦄ prog ⪯[Concretization.id Prop] progN ⦃(⌜FunRe
 -- The precondition and the value of each step are simplified. A power of literals with an exponent
 -- above `ascend.maxExponent` stays a power.
 /--
-info: def progN : UB Nat :=
+info: def PureRefinementTest.progN : UB Nat :=
 do
   let x ← UB.guardRet True 7
   let x ← UB.guardRet (x + 7 < 2 ^ 64) (x + 7)
