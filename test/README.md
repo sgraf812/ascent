@@ -39,6 +39,7 @@ tests fail.
 | D6, closed arguments | a hole applied to closed terms is filled by a constant function | `Regress/Commands`, `Regress/HoleScope`, `Regress/Lockstep` | yes, by disabling the closed case |
 | D6, table slots | a slot `Table.get ?tbl k` is filled by the cell of `k` | `Regress/HoleScope` | yes, by disabling the table case |
 | D6, hole scope | holes left by a rule take the context of the filled hole | `Regress/HoleScope` | yes, by disabling `restoreHoleScope` |
+| D6, mixed arguments | a hole applied to free variables, closed subsingletons and structure instances of free variables is rewritten to a hole applied to the variables | `Regress/MixedHole` | yes: the tests fail without `patternHole?` |
 | D2 | `wp` goals of the worklist go to core `solve` | `ForkTracer`, `Corpus/ZipL1L2` | yes, by disabling the dispatch |
 | D11 | a `Refinement` spec keeps its abstract program schematic | `AscendUnfold`, `PureRefinement`, `Regress/HoleScope` | yes, by removing the patch |
 | D12, pure refinements | `PureRefinement` goals go to their solver | `PureRefinement`, `WordAbsEngine`, `Regress/Lockstep`, `Regress/HoleScope` | yes, by disabling the dispatch |
@@ -55,6 +56,8 @@ tests fail.
 | `Regress/Commands` | `a14ae3e`, `62af746`: "declaration has metavariables" from a binder of type `Array Nat`; `0581e81` names in the current namespace; `423b076` used binders; `99e069f` refinement notation |
 | every `wrp_bind` test on `BlockM` | `0ee3ec1`: a generic rule failed on an `ExceptT` stack because the matcher met `?AM ?AV` |
 | `FixLoopDelab` | `68f7877` and the `repeat'` delaborator round trip |
+| `Regress/TopLevelRule` | the unfold equations of the concrete head, added by `ascend_def`, ranked above a rule for the head, so a top-level `setC 3` was unfolded and then found no spec |
+| `Regress/MixedHole` | a hole `?fa () a` or `?fa () (a₁, a₂)` was not filled, so loop rules had to take `fa : βa → …` or a curried body |
 
 Past problems that a test here does not pin:
 - The kernel unfolds `Bind.bind` chains when a rule premise applies a pattern variable under `>>=`
@@ -63,11 +66,10 @@ Past problems that a test here does not pin:
 - `instantiateNewMVarTypes` of Sym is quadratic on left-nested chains (lean4#16241). A performance
   cliff in core; no test or bench case pins it here.
 - Open: vcgen gives no option to raise the step limit of its `Sym.simp` step (100,000 per call).
-- Open: a top-level concrete step whose goal spells the abstract type as the abbreviation
-  `BlockM σ` finds no rule; under a bind it does.
-- Open: a hole applied to a closed term and a variable together, such as `?fa () a`, is not filled;
-  `Regress/Lockstep` states its loop rule with `fa : βa → …` for this reason.
 - Open: the generic `wrp_pure` applies before `wrp_yield` when both are registered, and then the
-  loop value stays a hole.
+  loop value stays a hole. The abstract loop value is determined by the state through the loop
+  relation `R c t a`, not by the concrete value, so a `PureRefinement` value rule keyed on the
+  concrete value cannot choose it. `wrp_yield`, `wrp_done` and `wrp_yield_pair` fix the abstract
+  constructor in their pattern instead.
 - `List.mem_cons` in `vcgen_simp` rewrites the binder domain of `∀ x ∈ a :: l` and stops the
   `forall_mem_cons_intro` split. A configuration pitfall, not an engine bug.

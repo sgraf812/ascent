@@ -21,3 +21,5 @@ import AscentTests.Regress.BinderHole
 import AscentTests.Regress.IteSplit
 import AscentTests.Regress.Lockstep
 import AscentTests.Regress.Commands
+import AscentTests.Regress.TopLevelRule
+import AscentTests.Regress.MixedHole
