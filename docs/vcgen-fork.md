@@ -134,9 +134,11 @@ stacks with several abstract monads.
 **Change.** `applySpec` fills an unassigned hole through a fresh metavariable of the goal's
 context: a bare hole directly, a hole applied to distinct free variables by delayed assignment, a
 hole applied to closed terms by a constant function, and a `Table.get ?tbl k` slot at a closed key
-by the cell of `k`.
+by the cell of `k`. The holes that the rule leaves in the filled program take the context of the
+filled hole, and the cache of `Sym.getMaxFVar?` starts afresh, since a table shares the program
+with the goals of the other cells (`restoreHoleScope`).
 
-**Acceptance.** `AscendDef` and the demo's `zipWithAddA` synthesize a block table.
+**Acceptance.** `AscendDef` and the demo's `zipWithAddA` and `memmoveA` synthesize a block table.
 
 ### D2. One worklist for `wrp` and `wp` goals, and holes as data
 

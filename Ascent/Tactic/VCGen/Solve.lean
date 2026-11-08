@@ -400,15 +400,15 @@ such as the continuation `?k ()` of a bind whose first action returns `()`, is a
 constant function `fun _ => ?b`. A table slot `Table.get ?tbl k` at a closed key gets the cell of
 `k` (`tableCell`). In every case the goal's abstract program becomes the cell. The frontend
 resolves the delayed assignments after the run. Returns the new goal and, for a filled hole, the
-hole's context, the hole's arguments and `?b`. -/
+hole's declaration, the hole's arguments and `?b`. -/
 def fillAbstractHole (goal : MVarId) (info : WRPApp) :
-    VCGenM (MVarId × Option (LocalContext × Array Expr × Expr)) := do
+    VCGenM (MVarId × Option (MetavarDecl × Array Expr × Expr)) := do
   let mut goal := goal
-  let mut filled : Option (LocalContext × Array Expr × Expr) := none
+  let mut filled : Option (MetavarDecl × Array Expr × Expr) := none
   let abs ← instantiateMVarsIfMVarAppS info.abs
   if abs.isAppOfArity ``Ascent.Table.get 6 then
-    if let some (lctx?, b) ← tableCell abs then
-      if let some lctx := lctx? then filled := some (lctx, #[], b)
+    if let some (decl?, b) ← tableCell abs then
+      if let some decl := decl? then filled := some (decl, #[], b)
       goal ← setAbs goal info b
   else if let .mvar hole := abs.getAppFn then
     let xs := abs.getAppArgs
@@ -416,7 +416,7 @@ def fillAbstractHole (goal : MVarId) (info : WRPApp) :
     let closed := xs.all fun x => !x.hasFVar && !x.hasMVar
     if (← hole.getKind) matches .natural && !(← hole.isDelayedAssigned) && (distinct || closed) then
       let b ← shareCommon (← mkFreshExprMVar (← Sym.inferType abs))
-      filled := some ((← hole.getDecl).lctx, if closed then #[] else xs, b)
+      filled := some (← hole.getDecl, if closed then #[] else xs, b)
       if xs.isEmpty then
         hole.assign b
       else if closed then
@@ -435,10 +435,33 @@ def fillAbstractHole (goal : MVarId) (info : WRPApp) :
 
 /-- `true` iff the abstract program of the filled hole `filled` uses only the hole's context and the
 hole's arguments. -/
-def filledInScope (filled : Option (LocalContext × Array Expr × Expr)) : VCGenM Bool := do
-  let some (lctx, xs, b) := filled | return true
+def filledInScope (filled : Option (MetavarDecl × Array Expr × Expr)) : VCGenM Bool := do
+  let some (decl, xs, b) := filled | return true
   let v ← instantiateMVarsS b
-  return !v.hasAnyFVar fun fv => !lctx.contains fv && !xs.contains (.fvar fv)
+  return !v.hasAnyFVar fun fv => !decl.lctx.contains fv && !xs.contains (.fvar fv)
+
+/-- Give the holes that a rule left in the abstract program of the filled hole `filled` the hole's
+context. A rule creates its holes in the goal's context, which also holds the variables that the run
+introduced, such as the concrete state. The abstract program uses none of them (`filledInScope`),
+and a table shares the program with the goals of the other cells. A hole of a delayed assignment
+`?h xs := ?b` keeps its context, since `?b` occurs only behind `?h`. The maximal free variable of a
+term with a hole depends on the hole's context, so the cache of `Sym.getMaxFVar?` starts afresh
+after a change. -/
+def restoreHoleScope (filled : Option (MetavarDecl × Array Expr × Expr)) : VCGenM Unit := do
+  let some (decl, xs, b) := filled | return
+  unless xs.isEmpty do return
+  let outOfScope (e : Expr) := e.hasAnyFVar fun fv => !decl.lctx.contains fv
+  let mut changed := false
+  for mv in ← getMVars (← instantiateMVarsS b) do
+    let d ← mv.getDecl
+    unless d.kind matches .natural do continue
+    unless d.lctx.any (fun l => !decl.lctx.contains l.fvarId) do continue
+    if outOfScope (← instantiateMVars d.type) then continue
+    modifyMCtx (·.modifyExprMVarDecl mv fun d =>
+      { d with lctx := decl.lctx, localInstances := decl.localInstances })
+    changed := true
+  if changed then
+    (modify fun s => { s with maxFVar := {} } : Sym.SymM Unit)
 
 /-- Strategy 11b: split an `ite`/`dite`/`cond`/match program, or iota-reduce a matcher with a
 concrete discriminant. -/
@@ -452,6 +475,7 @@ def wpMatch? (goal : MVarId) (info : WRPApp) :
   unless ← filledInScope filled do
     throwError "ascend: the abstract split of{indentExpr info.prog}\nmentions a variable outside \
       the context of the abstract program"
+  restoreHoleScope filled
   let mut simpGoals := #[]
   for g in goals do
     match ← simpGoalTelescope g with
@@ -522,6 +546,7 @@ def applySpec (scope : Scope) (goal : MVarId) (info : WRPApp) (thm : SpecTheorem
   -- The rule's abstract program may use only the hole's context and the hole's arguments.
   unless ← filledInScope filled do
     (saved.restore : MetaM Unit); return none
+  restoreHoleScope filled
   return some (.goals scope goals)
 
 /--

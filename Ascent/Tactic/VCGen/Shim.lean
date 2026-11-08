@@ -76,10 +76,10 @@ def setAbs (goal : MVarId) (info : WRPApp) (b : Expr) : VCGenM MVarId := do
 /-- The cell of a table slot `Table.get tbl k` at a closed key `k`. A table under construction is
 a chain `(k₁, b₁) :: … :: ?rest` that ends in a natural metavariable: the cell of a key with an
 entry, else a fresh cell `?b` of the current context, appended as `?rest := (k, ?b) :: ?rest'`.
-The local context of the table comes with a fresh cell, so that the caller can check that the
+The declaration of the table comes with a fresh cell, so that the caller can check that the
 synthesized cell uses only that context. `none` when the key is open, the slot is not a table
 under construction, or the key has no entry and the chain ends in no metavariable. -/
-def tableCell (get : Expr) : VCGenM (Option (Option LocalContext × Expr)) := do
+def tableCell (get : Expr) : VCGenM (Option (Option MetavarDecl × Expr)) := do
   let args := get.getAppArgs
   let κ := args[0]!
   let β := args[1]!
@@ -95,7 +95,7 @@ def tableCell (get : Expr) : VCGenM (Option (Option LocalContext × Expr)) := do
       let prodTy ← mkAppNS (← mkConstS ``Prod [0, 0]) #[κ, β]
       let entry ← mkAppNS (← mkConstS ``Prod.mk [0, 0]) #[κ, β, k, b]
       m.assign (← mkAppNS (← mkConstS ``List.cons [0]) #[prodTy, entry, rest])
-      return some (decl.lctx, b)
+      return some (decl, b)
     let_expr List.cons _ entry rest := tbl | return none
     let_expr Prod.mk _ _ k' b := entry | return none
     if k' == k then return some (none, b)
