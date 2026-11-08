@@ -21,7 +21,8 @@ def zipWithAddBinary : ByteArray :=
   ⟨#[0x48, 0x85, 0xc9, 0x7e, 0x16, 0x31, 0xc0, 0x4c, 0x8b, 0x04, 0xc6, 0x4c, 0x03, 0x04, 0xc7,
     0x4c, 0x89, 0x04, 0xc2, 0x48, 0xff, 0xc0, 0x48, 0x39, 0xc1, 0x75, 0xec, 0xc3]⟩
 
-theorem zipWithAddBinary_check : Binary.check zipWithAdd zipWithAddSizes zipWithAddBinary = true := rfl
+theorem zipWithAddBinary_check : Binary.check zipWithAdd zipWithAddSizes zipWithAddBinary = true := by
+  decide +kernel
 
 @[instance_reducible] def zipWithAddHost : Host :=
   Host.ofCheck zipWithAdd zipWithAddSizes zipWithAddBinary zipWithAddBinary_check
