@@ -1,6 +1,7 @@
 import Ascent.FixLoop
 import Ascent.Refinement
 import Ascent.UB.StateT
+import Ascent.Tactic.VCGen.Command
 
 /-!
 # Lockstep loops over `ExceptT ε (StateT σ UB)`
@@ -72,6 +73,20 @@ theorem wrp_forIn_lockstep {βc βa : Type} (R : βc → σc → βa → Prop) (
     rw [Concretization.post_pi]
     exact ⟨_, hrel, hq⟩
   · exact ih _ _ t' hrel hq
+
+variable {βc βa : Type} {Q : ForInStep βc → ForInStep βa → σc → Prop}
+
+@[ascend] theorem wrp_yield (c : βc) (a : βa) :
+    (fun t => Q (.yield c) (.yield a) t) ⊑ wrp (ofStateRepr view)
+      (pure (.yield c) : ExceptT εc (StateT σc UB) (ForInStep βc))
+      (pure (.yield a) : ExceptT εa (StateT σa UB) (ForInStep βa)) Q E :=
+  wrp_pure (Q := Q) (ForInStep.yield c) (ForInStep.yield a)
+
+@[ascend] theorem wrp_done (c : βc) (a : βa) :
+    (fun t => Q (.done c) (.done a) t) ⊑ wrp (ofStateRepr view)
+      (pure (.done c) : ExceptT εc (StateT σc UB) (ForInStep βc))
+      (pure (.done a) : ExceptT εa (StateT σa UB) (ForInStep βa)) Q E :=
+  wrp_pure (Q := Q) (ForInStep.done c) (ForInStep.done a)
 
 end
 

@@ -337,20 +337,5 @@ theorem wrp_forIn_lockstep_unit {βa : Type} (R : MachineData → βa → Prop) 
 
 end
 
-section
-variable {σc σa βc βa : Type} {view : σc → σa} {E : (CfgLabel → CfgLabel → σc → Prop) × EStack⟨⟩}
-  {Q : ForInStep βc → ForInStep βa → σc → Prop}
-
-@[ascend] theorem wrp_yield (c : βc) (a : βa) :
-    (fun t => Q (.yield c) (.yield a) t) ⊑ wrp (ofStateRepr view)
-      (pure (.yield c) : BlockM σc (ForInStep βc)) (pure (.yield a) : BlockM σa (ForInStep βa)) Q E :=
-  wrp_pure (Q := Q) (ForInStep.yield c) (ForInStep.yield a)
-
-@[ascend] theorem wrp_done (c : βc) (a : βa) :
-    (fun t => Q (.done c) (.done a) t) ⊑ wrp (ofStateRepr view)
-      (pure (.done c) : BlockM σc (ForInStep βc)) (pure (.done a) : BlockM σa (ForInStep βa)) Q E :=
-  wrp_pure (Q := Q) (ForInStep.done c) (ForInStep.done a)
-
-end
 
 end Ascent.Kraken
