@@ -82,6 +82,13 @@ variable {βc βa : Type} {Q : ForInStep βc → ForInStep βa → σc → Prop}
       (pure (.yield a) : ExceptT εa (StateT σa UB) (ForInStep βa)) Q E :=
   wrp_pure (Q := Q) (ForInStep.yield c) (ForInStep.yield a)
 
+@[ascend high] theorem wrp_yield_pair {α₁ α₂ : Type} {Q₂ : ForInStep βc → ForInStep (α₁ × α₂) → σc → Prop}
+    (c : βc) (a₁ : α₁) (a₂ : α₂) :
+    (fun t => Q₂ (.yield c) (.yield (a₁, a₂)) t) ⊑ wrp (ofStateRepr view)
+      (pure (.yield c) : ExceptT εc (StateT σc UB) (ForInStep βc))
+      (pure (.yield (a₁, a₂)) : ExceptT εa (StateT σa UB) (ForInStep (α₁ × α₂))) Q₂ E :=
+  wrp_pure (Q := Q₂) (ForInStep.yield c) (ForInStep.yield (a₁, a₂))
+
 @[ascend] theorem wrp_done (c : βc) (a : βa) :
     (fun t => Q (.done c) (.done a) t) ⊑ wrp (ofStateRepr view)
       (pure (.done c) : ExceptT εc (StateT σc UB) (ForInStep βc))

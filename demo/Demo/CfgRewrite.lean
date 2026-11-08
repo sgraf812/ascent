@@ -223,6 +223,9 @@ theorem tryCatch_modifyIf_bind (g : σ → Prop) (f : σ → σ) (k : Unit → B
   apply BlockM.ext_wp <;> intro Q E s <;>
     simp only [wp_tryCatch_block, WPMonadExact.wp_bind_eq, AInstr.wp_modifyIf] <;> exact id
 
+theorem tryCatch_peek_bind {γ : Type} (c : σ → γ) (k : γ → BlockM σ β) (h : CfgLabel → BlockM σ β) :
+    tryCatch (AInstr.peek c >>= k) h = AInstr.peek c >>= fun z => tryCatch (k z) h := rfl
+
 theorem tryCatch_exitIf_bind (g : σ → Prop) (f : σ → σ) (l : CfgLabel) (k : Unit → BlockM σ β)
     (h : CfgLabel → BlockM σ β) (hh : h l = throw l) :
     tryCatch (AInstr.exitIf g f l >>= k) h = AInstr.exitIf g f l >>= k := by
@@ -242,6 +245,10 @@ theorem wp_condState (c : σ → Bool) (x y : BlockM σ β) (Q : β → σ → P
 theorem condState_const (b : Bool) (x y : BlockM σ β) :
     condState (fun _ => b) x y = if b = true then x else y := by
   cases b <;> apply BlockM.ext_wp <;> intro Q E s <;> simp [wp_condState]
+
+theorem condState_true (x y : BlockM σ β) : condState (fun _ => true) x y = x := rfl
+
+theorem condState_false (x y : BlockM σ β) : condState (fun _ => false) x y = y := rfl
 
 theorem tryCatch_branch_bind (c : σ → Bool) (l : CfgLabel) (k : Unit → BlockM σ β)
     (h : CfgLabel → BlockM σ β) :

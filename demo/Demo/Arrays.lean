@@ -186,18 +186,18 @@ variable {σa : Type} {view : DataMem → σa}
     (p i : BitVec 64) (arr : Array (BitVec 64)) (j : Nat) (P : Prop) :
     (fun m => p ≐ₐ arr ∧ PureRefinement i j P WordNat ∧ P ∧ words m p arr.size = arr.toList ∧
       Mem.Mapped [(p, 8 * arr.size)] m ∧ j < arr.size ∧ arr.size < 2 ^ 61 ∧
-      ∀ y, BitVec.ofInt 64 (Mem.loadInt m (p + i * 8#64) 8).get! ≐ y →
-        Q (BitVec.ofInt 64 (Mem.loadInt m (p + i * 8#64) 8).get!) y m)
-      ⊑ wrp (ofStateRepr view) (load8 (p + i * 8#64))
+      ∀ y, BitVec.ofInt 64 ((Mem.loadInt m (p + i * 8#64) 8).get! % 2 ^ (8 * 8)) ≐ y →
+        Q (BitVec.ofInt 64 ((Mem.loadInt m (p + i * 8#64) 8).get! % 2 ^ (8 * 8))) y m)
+      ⊑ wrp (ofStateRepr view) (load 8 (p + i * 8#64))
           (pure arr[j]! : BlockM σa (BitVec 64)) Q E := by
   refine wrp_intro fun Qa Ea => ?_
   intro m hm
   simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, WPMonadExact.wp_pure_eq] at hm
   obtain ⟨⟨-, hij, hP, hw, hmap, hj, hn, hk⟩, hq⟩ := hm
   have hcell : p + i * 8#64 = cell p j := by rw [hij hP]; rfl
-  have hval : BitVec.ofInt 64 (Mem.loadInt m (p + i * 8#64) 8).get! = arr[j]! := by
-    rw [hcell, ← word, word_eq_getElem hw hj]
-  rw [wp_load8, Concretization.post_pi]
+  have hval : BitVec.ofInt 64 ((Mem.loadInt m (p + i * 8#64) 8).get! % 2 ^ (8 * 8)) = arr[j]! := by
+    rw [ofInt_emod_two_pow 64, hcell, ← word, word_eq_getElem hw hj]
+  rw [wp_load, Concretization.post_pi]
   refine ⟨?_, arr[j]!, hk _ (PureRefinement.of_rel hval), ?_⟩
   · rw [hcell]
     exact Mem.Mapped.loadInt_isSome hmap (cell_inside hj hn)
@@ -209,7 +209,7 @@ variable {σa : Type} {view : DataMem → σa}
     (fun m => v ≐ v' ∧ PureRefinement i j P WordNat ∧ P ∧ j < n ∧ n < 2 ^ 61 ∧
       Mem.Mapped [(p, 8 * n)] m ∧ Mem.Blocks.Disjoint [(sp, 8)] [(p, 8 * n)] ∧
       Q () () (Mem.storeInt m (cell p j) 8 v.toInt))
-      ⊑ wrp (ofStateRepr (outView p n)) (store8 sp (p + i * 8#64) v)
+      ⊑ wrp (ofStateRepr (outView p n)) (store 8 sp (p + i * 8#64) v)
           (modify fun o => o.set! j v' : BlockM (Array (BitVec 64)) Unit) Q E := by
   refine wrp_intro fun Qa Ea => ?_
   intro m hm
@@ -217,7 +217,7 @@ variable {σa : Type} {view : DataMem → σa}
   obtain ⟨⟨hv, hij, hP, hj, hn, hmap, hd, hk⟩, hq⟩ := hm
   have hv : v = v' := hv trivial
   have hcell : p + i * 8#64 = cell p j := by rw [hij hP]; rfl
-  rw [wp_store8, Concretization.post_pi, hcell]
+  rw [wp_store, Concretization.post_pi, hcell]
   refine ⟨⟨Mem.Mapped.loadInt_isSome hmap (cell_inside hj hn),
     Mem.Blocks.Disjoint.of_inside_right_pair hd (cell_inside hj hn)⟩, (), hk, ?_⟩
   simp only [ofStateRepr_pred]

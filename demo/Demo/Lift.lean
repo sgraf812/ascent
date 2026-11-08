@@ -11,8 +11,8 @@ value computed from registers to the same computation on the abstract values. A 
 register binds the abstract value of the written value to a variable of the abstract program.
 
 The step rules know no instruction. They match the three writes of `Demo.L1`: a load into a
-register `loadReg 8` becomes `load8` and binds the loaded word, a store `storeWord 8` becomes
-`store8`, a register write `setReg64` leaves the memory unchanged and adds no abstract step, and an
+register `loadReg n` becomes `load n` and binds the loaded word, a store `storeWord n` becomes
+`store n`, a register write `setReg64` leaves the memory unchanged and adds no abstract step, and an
 exit `exitIf g f l` whose guard `g` reads a mapped word becomes `assume g'; throw l` with the guard
 `g'` restated over the data memory.
 -/
@@ -24,26 +24,32 @@ namespace Ascent.Kraken
 
 /-! ## Memory steps -/
 
-/-- The eight-byte word at `a`, undefined behaviour when the cell is not mapped. -/
-noncomputable def load8 (a : BitVec 64) : BlockM DataMem (BitVec 64) := fun m =>
-  UB.assume ((Mem.loadInt m a 8).isSome = true) >>= fun _ =>
-    pure (.ok (BitVec.ofInt 64 (Mem.loadInt m a 8).get!), m)
+/-- The `n`-byte word at `a`, zero-extended to 64 bits, undefined behaviour when the cell is not
+mapped. -/
+noncomputable def load (n : Nat) (a : BitVec 64) : BlockM DataMem (BitVec 64) := fun m =>
+  UB.assume ((Mem.loadInt m a n).isSome = true) >>= fun _ =>
+    pure (.ok (BitVec.ofInt 64 ((Mem.loadInt m a n).get! % 2 ^ (8 * n))), m)
 
-/-- Store the word `v` at `a`, undefined behaviour unless the cell is mapped and apart from the
-return slot at `rsp`. -/
-noncomputable def store8 (rsp a v : BitVec 64) : BlockM DataMem Unit :=
-  modifyIf (fun m => (Mem.loadInt m a 8).isSome = true ∧ Mem.Blocks.Disjoint [(rsp, 8)] [(a, 8)])
-    fun m => Mem.storeInt m a 8 v.toInt
+/-- Store the low `n` bytes of `v` at `a`, undefined behaviour unless the cell is mapped and apart
+from the return slot at `rsp`. -/
+noncomputable def store (n : Nat) (rsp a v : BitVec 64) : BlockM DataMem Unit :=
+  modifyIf (fun m => (Mem.loadInt m a n).isSome = true ∧ Mem.Blocks.Disjoint [(rsp, 8)] [(a, n)])
+    fun m => Mem.storeInt m a n v.toInt
+
+theorem ofInt_emod_two_pow (n : Nat) (x : Int) : BitVec.ofInt n (x % 2 ^ n) = BitVec.ofInt n x := by
+  apply BitVec.eq_of_toNat_eq
+  simp only [BitVec.toNat_ofInt, Int.natCast_pow, Int.cast_ofNat_Int, Int.emod_emod_of_dvd _ (Int.dvd_refl _)]
 
 section
 variable (Q : BitVec 64 → DataMem → Prop) (Qu : Unit → DataMem → Prop)
   (E : (CfgLabel → DataMem → Prop) × EStack⟨⟩) (m : DataMem)
 
-theorem wp_load8 (a : BitVec 64) :
-    wp (load8 a) Q E m
-      = ((Mem.loadInt m a 8).isSome = true ∧ Q (BitVec.ofInt 64 (Mem.loadInt m a 8).get!) m) := by
-  rw [wp_BlockM_eq, show (load8 a).run.run m = load8 a m from rfl, load8]
-  by_cases h : (Mem.loadInt m a 8).isSome = true
+theorem wp_load (n : Nat) (a : BitVec 64) :
+    wp (load n a) Q E m
+      = ((Mem.loadInt m a n).isSome = true
+          ∧ Q (BitVec.ofInt 64 ((Mem.loadInt m a n).get! % 2 ^ (8 * n))) m) := by
+  rw [wp_BlockM_eq, show (load n a).run.run m = load n a m from rfl, load]
+  by_cases h : (Mem.loadInt m a n).isSome = true
   · rw [UB.assume_bind_of_pos h]
     simp only [h, true_and]
     rfl
@@ -51,10 +57,10 @@ theorem wp_load8 (a : BitVec 64) :
     simp only [Bool.not_eq_true] at h
     simp [h]
 
-theorem wp_store8 (rsp a v : BitVec 64) :
-    wp (store8 rsp a v) Qu E m
-      = (((Mem.loadInt m a 8).isSome = true ∧ Mem.Blocks.Disjoint [(rsp, 8)] [(a, 8)])
-          ∧ Qu () (Mem.storeInt m a 8 v.toInt)) := wp_modifyIf _ _ _ _ _
+theorem wp_store (n : Nat) (rsp a v : BitVec 64) :
+    wp (store n rsp a v) Qu E m
+      = (((Mem.loadInt m a n).isSome = true ∧ Mem.Blocks.Disjoint [(rsp, 8)] [(a, n)])
+          ∧ Qu () (Mem.storeInt m a n v.toInt)) := wp_modifyIf _ _ _ _ _
 
 theorem wp_assume_throw {α : Type} {Qα : α → DataMem → Prop} (g : DataMem → Prop) (l : CfgLabel) :
     wp (do StateT.assume g; throw l : BlockM DataMem α) Qα E m = (g m ∧ E.1 l m) := by
@@ -81,6 +87,14 @@ variable {w : Nat} {a b x y : BitVec w} {P₁ P₂ : Prop}
     PureRefinement (a + b) (x + y) (P₁ ∧ P₂) Eq := fun ⟨hp₁, hp₂⟩ => by
   rw [h₁ hp₁, h₂ hp₂]
 
+@[ascend_pure] theorem abs_sub (h₁ : PureRefinement a x P₁ Eq) (h₂ : PureRefinement b y P₂ Eq) :
+    PureRefinement (a - b) (x - y) (P₁ ∧ P₂) Eq := fun ⟨hp₁, hp₂⟩ => by
+  rw [h₁ hp₁, h₂ hp₂]
+
+@[ascend_pure] theorem abs_beq (h₁ : PureRefinement a x P₁ Eq) (h₂ : PureRefinement b y P₂ Eq) :
+    PureRefinement (a == b) (x == y) (P₁ ∧ P₂) Eq := fun ⟨hp₁, hp₂⟩ => by
+  rw [h₁ hp₁, h₂ hp₂]
+
 @[ascend_pure] theorem abs_mul (h₁ : PureRefinement a x P₁ Eq) (h₂ : PureRefinement b y P₂ Eq) :
     PureRefinement (a * b) (x * y) (P₁ ∧ P₂) Eq := fun ⟨hp₁, hp₂⟩ => by
   rw [h₁ hp₁, h₂ hp₂]
@@ -98,6 +112,10 @@ variable {w : Nat} {a b x y : BitVec w} {P₁ P₂ : Prop}
     (hb : PureRefinement (t.regs.get64 b) x P₁ Eq) (hi : PureRefinement (t.regs.get64 i) y P₂ Eq) :
     PureRefinement (sib k b i d t) (x + y * BitVec.ofNat 64 k + BitVec.ofInt 64 d.toInt) (P₁ ∧ P₂) Eq :=
   fun ⟨hp₁, hp₂⟩ => by rw [sib, hb hp₁, hi hp₂]
+
+@[ascend_pure] theorem abs_not {c d : Bool} (h : PureRefinement c d P₁ Eq) :
+    PureRefinement (!c) (!d) P₁ Eq := fun hp => by
+  rw [h hp]
 
 @[ascend_pure low] theorem abs_refl {α : Type} {c : α} : PureRefinement c c True Eq :=
   PureRefinement.of_rel rfl
@@ -169,39 +187,49 @@ variable {Q : Unit → BitVec 64 → MachineData → Prop} {Qu : Unit → Unit �
       (pure () : BlockM DataMem Unit) Qu E :=
   wrp_pure () ()
 
-@[ascend] theorem wrp_loadReg8_load8 (r : Reg64) (a : MachineData → BitVec 64)
+@[ascend] theorem wrp_loadReg_load (n : Nat) (r : Reg64) (a : MachineData → BitVec 64)
     (e : BitVec 64 → MachineData → BitVec 64) (pa : BitVec 64) :
     (fun t => a t ≐ pa ∧
-      (loadOk 8 a t → ∀ w, word 8 (a t) t ≐ w → Q () w (loadReg 8 r a e t)))
-      ⊑ wrp (ofStateRepr MachineData.dmem) (modifyIf (loadOk 8 a) (loadReg 8 r a e))
-          (load8 pa) Q E := by
+      (loadOk n a t → ∀ w, word n (a t) t ≐ w → Q () w (loadReg n r a e t)))
+      ⊑ wrp (ofStateRepr MachineData.dmem) (modifyIf (loadOk n a) (loadReg n r a e))
+          (load n pa) Q E := by
   refine wrp_intro fun Qa Ea => ?_
   intro t ht
-  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_load8] at ht
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_load] at ht
   obtain ⟨⟨ha, hk⟩, hl, hq⟩ := ht
   have ha : a t = pa := ha trivial
-  have hg : loadOk 8 a t := by rw [loadOk, ha]; exact hl
+  have hg : loadOk n a t := by rw [loadOk, ha]; exact hl
   rw [wp_modifyIf, Concretization.post_pi]
   refine ⟨hg, _, hk hg _ (PureRefinement.of_rel ?_), hq⟩
-  rw [word_eight, ha]
+  rw [word, ha]
 
-@[ascend] theorem wrp_storeWord8_store8 (a v : MachineData → BitVec 64) (sp pa pv : BitVec 64) :
+@[ascend] theorem wrp_storeWord_store (n : Nat) (a v : MachineData → BitVec 64) (sp pa pv : BitVec 64) :
     (fun t => t.regs.get64 .rsp ≐ sp ∧ a t ≐ pa ∧ v t ≐ pv ∧
-      (storeOk 8 a t → Qu () () (storeWord 8 a v t)))
-      ⊑ wrp (ofStateRepr MachineData.dmem) (modifyIf (storeOk 8 a) (storeWord 8 a v))
-          (store8 sp pa pv) Qu E := by
+      (storeOk n a t → Qu () () (storeWord n a v t)))
+      ⊑ wrp (ofStateRepr MachineData.dmem) (modifyIf (storeOk n a) (storeWord n a v))
+          (store n sp pa pv) Qu E := by
   refine wrp_intro fun Qa Ea => ?_
   intro t ht
-  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_store8] at ht
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_store] at ht
   obtain ⟨⟨hsp, ha, hv, hk⟩, ⟨hl, hd⟩, hq⟩ := ht
   have hsp : t.regs.get64 .rsp = sp := hsp trivial
   have ha : a t = pa := ha trivial
   have hv : v t = pv := hv trivial
-  have hg : storeOk 8 a t := by rw [storeOk, loadOk, ha, hsp]; exact ⟨hl, hd⟩
+  have hg : storeOk n a t := by rw [storeOk, loadOk, ha, hsp]; exact ⟨hl, hd⟩
   rw [wp_modifyIf, Concretization.post_pi]
   refine ⟨hg, (), hk hg, ?_⟩
   simp only [ofStateRepr_pred, storeWord, ha, hv]
   exact hq
+
+@[ascend] theorem wrp_peek_pure {γ : Type} {Qγ : γ → γ → MachineData → Prop} (c : MachineData → γ) (b : γ) :
+    (fun t => c t ≐ b ∧ ∀ z, c t ≐ z → Qγ (c t) z t)
+      ⊑ wrp (ofStateRepr MachineData.dmem) (peek c) (pure b : BlockM DataMem γ) Qγ E := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro t ht
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, WPMonadExact.wp_pure_eq] at ht
+  obtain ⟨⟨hb, hq⟩, hqa⟩ := ht
+  rw [wp_peek, Concretization.post_pi]
+  exact ⟨b, hq b hb, hqa⟩
 
 end
 
@@ -275,6 +303,23 @@ theorem wrp_forIn_lockstep_unit {βa : Type} (R : MachineData → βa → Prop) 
   rw [Concretization.post_pi] at h' ⊢
   obtain ⟨_, hq, hqa⟩ := h'
   exact ⟨(), hq, hqa⟩
+
+theorem wrp_forIn_lockstep_unit_pair {α₁ α₂ : Type} (R : MachineData → α₁ × α₂ → Prop) (ab : α₁ × α₂)
+    {fc : Unit → PUnit → BlockM MachineData (ForInStep PUnit)}
+    {fa : α₁ → α₂ → BlockM DataMem (ForInStep (α₁ × α₂))}
+    {Q : PUnit → Unit → MachineData → Prop}
+    (hbody : ∀ a b, (fun t => R t (a, b)) ⊑ wrp (ofStateRepr MachineData.dmem) (fc () PUnit.unit) (fa a b)
+      (fun rc ra t => match rc, ra with
+        | .yield _, .yield a' => R t a'
+        | .done u, .done _ => Q u () t
+        | _, _ => False) E) :
+    (fun t => R t ab) ⊑ wrp (ofStateRepr MachineData.dmem) (FixLoop.mk.forIn PUnit.unit fc)
+      (FixLoop.mk.forIn ab (fun _ v => fa v.1 v.2) >>= fun _ => pure ()) Q E :=
+  wrp_forIn_lockstep_unit R ab (fa := fun v => fa v.1 v.2) fun v => by
+    cases v with
+    | mk a b =>
+      exact PartialOrder.rel_trans (hbody a b)
+        (wrp_mono_post fun rc ra t h => by cases rc <;> cases ra <;> exact h)
 
 @[ascend] theorem wrp_condState {σc σa CV AV : Type} {view : σc → σa}
     {E : (CfgLabel → CfgLabel → σc → Prop) × EStack⟨⟩} {Q : CV → AV → σc → Prop} {c : σc → Bool}

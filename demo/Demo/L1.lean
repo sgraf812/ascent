@@ -53,6 +53,15 @@ theorem CondCode.cmp_nz_eq_true (a b : BitVec 64) : (CondCode.nz.cmp a b = true)
 theorem CondCode.cmp_le_eq_true (a b : BitVec 64) : (CondCode.le.cmp a b = true) = (a.toInt ≤ b.toInt) := by
   simp [CondCode.cmp, BitVec.sle_iff_toInt_le]
 
+theorem CondCode.cmp_z_eq_true (a b : BitVec 64) : (CondCode.z.cmp a b = true) = (a = b) := by
+  simp [CondCode.cmp]
+
+theorem CondCode.cmp_nc_eq_true (a b : BitVec 64) : (CondCode.nc.cmp a b = true) = (b ≤ a) := by
+  simp [CondCode.cmp, BitVec.ule_eq_decide, BitVec.le_def]
+
+theorem add_ofInt_neg_one (x : BitVec 64) : x + BitVec.ofInt 64 (-1 : Int64).toInt = x - 1#64 :=
+  (BitVec.sub_eq_add_neg x 1#64).symm
+
 theorem StatusFlags.zf_ofSub_eq (a b : BitVec 64) : (StatusFlags.ofSub a b).zf = (a == b) := by
   rw [StatusFlags.zf_ofSub, Bool.eq_iff_iff, beq_iff_eq, beq_iff_eq, BitVec.zero_eq]
   constructor
