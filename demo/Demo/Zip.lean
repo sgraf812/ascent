@@ -56,12 +56,12 @@ example [Host] [FunDecls] [Embeds zipWithAdd] (s : MachineData) (ra : Int64) :
           ((st.regs.get64 .rax).take 32 ^^^ (st.regs.get64 .rax).take 32).zeroExtend 64)
         pure ()),
       (.label "LBB0_2", do
-        modifyIf (loadOk8 (sib8 .rsi .rax 0)) (loadReg8 .r8 (sib8 .rsi .rax 0) fun w _ => w)
-        modifyIf (loadOk8 (sib8 .rdi .rax 0))
-          (loadReg8 .r8 (sib8 .rdi .rax 0) fun w st => w + st.regs.get64 .r8)
-        modifyIf (storeOk8 (sib8 .rdx .rax 0)) (storeWord8 (sib8 .rdx .rax 0) fun st => st.regs.get64 .r8)
+        modifyIf (loadOk 8 (sib 8 .rsi .rax 0)) (loadReg 8 .r8 (sib 8 .rsi .rax 0) fun w _ => w)
+        modifyIf (loadOk 8 (sib 8 .rdi .rax 0))
+          (loadReg 8 .r8 (sib 8 .rdi .rax 0) fun w st => w + st.regs.get64 .r8)
+        modifyIf (storeOk 8 (sib 8 .rdx .rax 0)) (storeWord 8 (sib 8 .rdx .rax 0) fun st => st.regs.get64 .r8)
         modifyIf (fun _ => True) (setReg64 .rax fun st => st.regs.get64 .rax + 1)
         branch (fun st => CondCode.nz.cmp (st.regs.get64 .rcx) (st.regs.get64 .rax)) (.label "LBB0_2")
         pure ()),
-      (.label "LBB0_3", exitIf (loadOk8 fun st => st.regs.get64 .rsp)
+      (.label "LBB0_3", exitIf (loadOk 8 fun st => st.regs.get64 .rsp)
         (setReg64 .rsp fun st => st.regs.get64 .rsp + 8) .exit)]) (Program.next zipWithAdd) .entry := rfl

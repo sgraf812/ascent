@@ -11,7 +11,7 @@ value computed from registers to the same computation on the abstract values. A 
 register binds the abstract value of the written value to a variable of the abstract program.
 
 The step rules know no instruction. They match the three writes of `Demo.L1`: a load into a
-register `loadReg8` becomes `load8` and binds the loaded word, a store `storeWord8` becomes
+register `loadReg 8` becomes `load8` and binds the loaded word, a store `storeWord 8` becomes
 `store8`, a register write `setReg64` leaves the memory unchanged and adds no abstract step, and an
 exit `exitIf g f l` whose guard `g` reads a mapped word becomes `assume g'; throw l` with the guard
 `g'` restated over the data memory.
@@ -94,10 +94,10 @@ variable {w : Nat} {a b x y : BitVec w} {P₁ P₂ : Prop}
     PureRefinement (cc.cmp a b) (cc.cmp x y) (P₁ ∧ P₂) Eq := fun ⟨hp₁, hp₂⟩ => by
   rw [h₁ hp₁, h₂ hp₂]
 
-@[ascend_pure] theorem abs_sib8 {t : MachineData} {b i : Reg64} {d : Int64} {x y : BitVec 64}
+@[ascend_pure] theorem abs_sib {t : MachineData} {k : Nat} {b i : Reg64} {d : Int64} {x y : BitVec 64}
     (hb : PureRefinement (t.regs.get64 b) x P₁ Eq) (hi : PureRefinement (t.regs.get64 i) y P₂ Eq) :
-    PureRefinement (sib8 b i d t) (x + y * 8 + BitVec.ofInt 64 d.toInt) (P₁ ∧ P₂) Eq :=
-  fun ⟨hp₁, hp₂⟩ => by rw [sib8, hb hp₁, hi hp₂]
+    PureRefinement (sib k b i d t) (x + y * BitVec.ofNat 64 k + BitVec.ofInt 64 d.toInt) (P₁ ∧ P₂) Eq :=
+  fun ⟨hp₁, hp₂⟩ => by rw [sib, hb hp₁, hi hp₂]
 
 @[ascend_pure low] theorem abs_refl {α : Type} {c : α} : PureRefinement c c True Eq :=
   PureRefinement.of_rel rfl
@@ -172,23 +172,23 @@ variable {Q : Unit → BitVec 64 → MachineData → Prop} {Qu : Unit → Unit �
 @[ascend] theorem wrp_loadReg8_load8 (r : Reg64) (a : MachineData → BitVec 64)
     (e : BitVec 64 → MachineData → BitVec 64) (pa : BitVec 64) :
     (fun t => a t ≐ pa ∧
-      (loadOk8 a t → ∀ w, word8 (a t) t ≐ w → Q () w (loadReg8 r a e t)))
-      ⊑ wrp (ofStateRepr MachineData.dmem) (modifyIf (loadOk8 a) (loadReg8 r a e))
+      (loadOk 8 a t → ∀ w, word 8 (a t) t ≐ w → Q () w (loadReg 8 r a e t)))
+      ⊑ wrp (ofStateRepr MachineData.dmem) (modifyIf (loadOk 8 a) (loadReg 8 r a e))
           (load8 pa) Q E := by
   refine wrp_intro fun Qa Ea => ?_
   intro t ht
   simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_load8] at ht
   obtain ⟨⟨ha, hk⟩, hl, hq⟩ := ht
   have ha : a t = pa := ha trivial
-  have hg : loadOk8 a t := by rw [loadOk8, ha]; exact hl
+  have hg : loadOk 8 a t := by rw [loadOk, ha]; exact hl
   rw [wp_modifyIf, Concretization.post_pi]
   refine ⟨hg, _, hk hg _ (PureRefinement.of_rel ?_), hq⟩
-  rw [word8, ha]
+  rw [word_eight, ha]
 
 @[ascend] theorem wrp_storeWord8_store8 (a v : MachineData → BitVec 64) (sp pa pv : BitVec 64) :
     (fun t => t.regs.get64 .rsp ≐ sp ∧ a t ≐ pa ∧ v t ≐ pv ∧
-      (storeOk8 a t → Qu () () (storeWord8 a v t)))
-      ⊑ wrp (ofStateRepr MachineData.dmem) (modifyIf (storeOk8 a) (storeWord8 a v))
+      (storeOk 8 a t → Qu () () (storeWord 8 a v t)))
+      ⊑ wrp (ofStateRepr MachineData.dmem) (modifyIf (storeOk 8 a) (storeWord 8 a v))
           (store8 sp pa pv) Qu E := by
   refine wrp_intro fun Qa Ea => ?_
   intro t ht
@@ -197,10 +197,10 @@ variable {Q : Unit → BitVec 64 → MachineData → Prop} {Qu : Unit → Unit �
   have hsp : t.regs.get64 .rsp = sp := hsp trivial
   have ha : a t = pa := ha trivial
   have hv : v t = pv := hv trivial
-  have hg : storeOk8 a t := by rw [storeOk8, loadOk8, ha, hsp]; exact ⟨hl, hd⟩
+  have hg : storeOk 8 a t := by rw [storeOk, loadOk, ha, hsp]; exact ⟨hl, hd⟩
   rw [wp_modifyIf, Concretization.post_pi]
   refine ⟨hg, (), hk hg, ?_⟩
-  simp only [ofStateRepr_pred, storeWord8, ha, hv]
+  simp only [ofStateRepr_pred, storeWord, ha, hv]
   exact hq
 
 end
@@ -360,8 +360,8 @@ theorem wrp_forIn_lockstep_unit {βa : Type} (R : MachineData → βa → Prop) 
 @[ascend] theorem wrp_exitIf_assume {CV AV : Type} {Q : CV → AV → MachineData → Prop}
     (a : MachineData → BitVec 64) (f : MachineData → MachineData) (l : CfgLabel) (pa : BitVec 64)
     (hf : ∀ t, (f t).dmem = t.dmem) :
-    (fun t => a t ≐ pa ∧ (loadOk8 a t → E.1 l l (f t)))
-      ⊑ wrp (ofStateRepr MachineData.dmem) (exitIf (loadOk8 a) f l : BlockM MachineData CV)
+    (fun t => a t ≐ pa ∧ (loadOk 8 a t → E.1 l l (f t)))
+      ⊑ wrp (ofStateRepr MachineData.dmem) (exitIf (loadOk 8 a) f l : BlockM MachineData CV)
           (do StateT.assume (fun m => (Mem.loadInt m pa 8).isSome = true); throw l : BlockM DataMem AV)
           Q E := by
   refine wrp_intro fun Qa Ea => ?_
@@ -369,7 +369,7 @@ theorem wrp_forIn_lockstep_unit {βa : Type} (R : MachineData → βa → Prop) 
   simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_assume_throw] at ht
   obtain ⟨⟨ha, hk⟩, hl, he⟩ := ht
   have ha : a t = pa := ha trivial
-  have hg : loadOk8 a t := by rw [loadOk8, ha]; exact hl
+  have hg : loadOk 8 a t := by rw [loadOk, ha]; exact hl
   rw [wp_exitIf]
   refine ⟨hg, ?_⟩
   simp only [EPostsConcretization.ePosts_cons]

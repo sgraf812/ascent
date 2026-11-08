@@ -67,20 +67,20 @@ the equation `zipWithAddT.eq`, so the first refinement carries over to `zipWithA
 /--
 info: def Ascent.Kraken.zipWithAddT : BlockM MachineData Unit :=
 condState (fun st => CondCode.le.cmp (st.regs.rcx.toBitVec &&& st.regs.rcx.toBitVec) 0#64)
-  (exitIf (loadOk8 fun st => st.regs.rsp.toBitVec) (setReg64 Reg64.rsp fun st => st.regs.rsp.toBitVec + 8#64)
+  (exitIf (loadOk 8 fun st => st.regs.rsp.toBitVec) (setReg64 Reg64.rsp fun st => st.regs.rsp.toBitVec + 8#64)
     CfgLabel.exit)
   do
   modifyIf (fun x => True) (setReg64 Reg64.rax fun st => 0#64)
   { }.forIn PUnit.unit fun x x_1 => do
-      modifyIf (loadOk8 (sib8 Reg64.rsi Reg64.rax 0)) (loadReg8 Reg64.r8 (sib8 Reg64.rsi Reg64.rax 0) fun w x => w)
-      modifyIf (loadOk8 (sib8 Reg64.rdi Reg64.rax 0))
-          (loadReg8 Reg64.r8 (sib8 Reg64.rdi Reg64.rax 0) fun w st => w + st.regs.r8.toBitVec)
-      modifyIf (storeOk8 (sib8 Reg64.rdx Reg64.rax 0))
-          (storeWord8 (sib8 Reg64.rdx Reg64.rax 0) fun st => st.regs.r8.toBitVec)
+      modifyIf (loadOk 8 (sib 8 Reg64.rsi Reg64.rax 0)) (loadReg 8 Reg64.r8 (sib 8 Reg64.rsi Reg64.rax 0) fun w x => w)
+      modifyIf (loadOk 8 (sib 8 Reg64.rdi Reg64.rax 0))
+          (loadReg 8 Reg64.r8 (sib 8 Reg64.rdi Reg64.rax 0) fun w st => w + st.regs.r8.toBitVec)
+      modifyIf (storeOk 8 (sib 8 Reg64.rdx Reg64.rax 0))
+          (storeWord 8 (sib 8 Reg64.rdx Reg64.rax 0) fun st => st.regs.r8.toBitVec)
       modifyIf (fun x => True) (setReg64 Reg64.rax fun st => st.regs.rax.toBitVec + 1#64)
       condState (fun st => CondCode.nz.cmp st.regs.rcx.toBitVec st.regs.rax.toBitVec)
           (pure (ForInStep.yield PUnit.unit))
-          (exitIf (loadOk8 fun st => st.regs.rsp.toBitVec) (setReg64 Reg64.rsp fun st => st.regs.rsp.toBitVec + 8#64)
+          (exitIf (loadOk 8 fun st => st.regs.rsp.toBitVec) (setReg64 Reg64.rsp fun st => st.regs.rsp.toBitVec + 8#64)
             CfgLabel.exit)
 -/
 #guard_msgs in
