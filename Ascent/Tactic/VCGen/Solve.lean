@@ -393,14 +393,85 @@ def wpSimpStateArgs? (goal : MVarId) (info : WRPApp) :
     | .noProgress => return none
   | _ => return none
 
+/-- The argument `x` of a hole as seen by `fillAbstractHole`: a free variable stays an argument, a
+closed term of a subsingleton type (`Unit`, `PUnit`, a proof) is dropped, and a structure
+instance whose fields are free variables contributes its fields. -/
+inductive HoleArg where
+  | keep (x : Expr)
+  | drop
+  /-- The projection functions of the structure, applied to its parameters, and the fields. -/
+  | fields (projs : Array Expr) (xs : Array Expr)
+
+def classifyHoleArg (x : Expr) : SymM (Option HoleArg) := do
+  if x.isFVar then return some (.keep x)
+  if !x.hasFVar && !x.hasMVar then
+    let ty ← Sym.inferType x
+    if ty.isConstOf ``Unit || ty.isAppOf ``PUnit || (← Sym.inferType ty).isProp then
+      return some .drop
+    return none
+  let .const ctor us := x.getAppFn | return none
+  let env ← getEnv
+  let some (.ctorInfo cv) := env.find? ctor | return none
+  let some info := getStructureInfo? env cv.induct | return none
+  let ps := x.getAppArgs.extract 0 cv.numParams
+  let fs := x.getAppArgs.extract cv.numParams x.getAppNumArgs
+  unless fs.size == cv.numFields && fs.all (·.isFVar) && ps.all (!·.hasFVar) do return none
+  let mut projs := #[]
+  for f in info.fieldNames do
+    let some p := getProjFnForField? env cv.induct f | return none
+    projs := projs.push (mkAppN (.const p us) ps)
+  return some (.fields projs fs)
+
+/-- Rewrite the hole `?h xs` whose arguments `classifyHoleArg` accepts into `?h' ys`, applied to
+the distinct free variables `ys` of `xs`: `?h := fun x₁ … xₙ => ?h' ys'`, where `ys'` reads each
+variable off its argument (the argument itself, or a projection of a structure argument). The type
+of `?h` must not depend on its arguments. Returns `?h'` and `ys`. -/
+def patternHole? (hole : MVarId) (xs : Array Expr) : VCGenM (Option (Expr × Array Expr)) := do
+  let mut cls := #[]
+  for x in xs do
+    let some c ← classifyHoleArg x | return none
+    cls := cls.push c
+  let ys := cls.foldl (init := #[]) fun acc c => match c with
+    | .keep x => acc.push x
+    | .drop => acc
+    | .fields _ fs => acc ++ fs
+  unless (ys.toList.map (·.fvarId!)).eraseDups.length == ys.size do return none
+  let decl ← hole.getDecl
+  let mut ty ← instantiateMVars decl.type
+  let mut doms := #[]
+  for _ in [0:xs.size] do
+    let .forallE nm d body _ := ty | return none
+    doms := doms.push (nm, d)
+    ty := body
+  if ty.hasLooseBVars || doms.any (·.2.hasLooseBVars) then return none
+  let mut yTys := #[]
+  for y in ys do
+    let yTy ← instantiateMVars (← Sym.inferType y)
+    if yTy.hasFVar || yTy.hasMVar then return none
+    yTys := yTys.push yTy
+  let ty' := (ys.zip yTys).foldr (fun (y, yTy) acc => .forallE `y yTy acc .default) ty
+  let h' ← mkFreshExprMVarAt decl.lctx decl.localInstances ty'
+  let n := xs.size
+  let mut body := #[]
+  for i in [0:n], c in cls do
+    match c with
+    | .keep _ => body := body.push (.bvar (n - 1 - i))
+    | .drop => pure ()
+    | .fields projs _ => for p in projs do body := body.push (.app p (.bvar (n - 1 - i)))
+  hole.assign <| doms.foldr (fun (nm, d) acc => .lam nm d acc .default) (mkAppN h' body)
+  return some (h', ys)
+
 /-- Fill an unassigned hole in the abstract program of `goal` with a fresh metavariable `?b` of the
 goal's context, which a rule then assigns. A bare hole is assigned `?b`. A hole `?h xs` applied to
 distinct free variables gets the delayed assignment `?h xs := ?b`. A hole applied to closed terms,
 such as the continuation `?k ()` of a bind whose first action returns `()`, is assigned the
-constant function `fun _ => ?b`. A table slot `Table.get ?tbl k` at a closed key gets the cell of
-`k` (`tableCell`). In every case the goal's abstract program becomes the cell. The frontend
-resolves the delayed assignments after the run. Returns the new goal and, for a filled hole, the
-hole's declaration, the hole's arguments and `?b`. -/
+constant function `fun _ => ?b`. A hole whose arguments mix free variables, closed terms of a
+subsingleton type and structure instances of free variables, such as `?f () a` or `?f (a, b)`,
+becomes a hole `?h'` applied to the free variables (`patternHole?`), which gets the delayed
+assignment. A table slot `Table.get ?tbl k` at a closed key gets the cell of `k` (`tableCell`). In
+every case the goal's abstract program becomes the cell. The frontend resolves the delayed
+assignments after the run. Returns the new goal and, for a filled hole, the hole's declaration,
+the hole's arguments and `?b`. -/
 def fillAbstractHole (goal : MVarId) (info : WRPApp) :
     VCGenM (MVarId × Option (MetavarDecl × Array Expr × Expr)) := do
   let mut goal := goal
@@ -430,6 +501,12 @@ def fillAbstractHole (goal : MVarId) (info : WRPApp) :
         hole.assign <| doms.foldr (fun (nm, d) acc => .lam nm d acc .default) b
       else
         assignDelayedMVar hole xs b.mvarId!
+        goal ← setAbs goal info b
+    else if (← hole.getKind) matches .natural && !(← hole.isDelayedAssigned) then
+      if let some (h', ys) ← patternHole? hole xs then
+        let b ← shareCommon (← mkFreshExprMVar (← Sym.inferType abs))
+        filled := some (← h'.mvarId!.getDecl, ys, b)
+        assignDelayedMVar h'.mvarId! ys b.mvarId!
         goal ← setAbs goal info b
   return (goal, filled)
 

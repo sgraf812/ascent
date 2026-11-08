@@ -19,7 +19,7 @@ ascend_def memmoveL₀ (rdi rsi rdx rsp : BitVec 64) : BlockM DataMem Unit from
   ⦃RegsRel [(.rdi, rdi), (.rsi, rsi), (.rdx, rdx), (.rsp, rsp)]⦄
   memmoveT ⪯[ofStateRepr MachineData.dmem] memmoveL₀
   ⦃fun _ _ _ => True; (fun l l' t => l = l' ∧ t.regs.get64 .rax = rdi, estack⟨⟩)⦄
-  ascend [wrp_forIn_lockstep_unit_pair (ab := (_, _)) (R := fun t (v : BitVec 64 × BitVec 64) =>
+  ascend [wrp_forIn_lockstep_unit (ab := (_, _)) (R := fun t (v : BitVec 64 × BitVec 64) =>
     match v with
     | (rcx, rdx) => RegsRel [(.rsi, rsi), (.rax, rdi), (.rsp, rsp), (.rcx, rcx), (.rdx, rdx)] t)]
   with finish
@@ -38,12 +38,12 @@ fun rdi rsi rdx rsp =>
       StateT.assume fun m => (Mem.loadInt m rsp 8).isSome = true
       throw CfgLabel.exit
     else do
-      let mut v := (rdx, rdx)
+      let mut a := (rdx, rdx)
       repeat'
-        let x ← load 1 (rsi + v.snd - 1#64)
-        store 1 rsp (rdi + v.snd - 1#64) x
-        if ¬v.fst - 1#64 = 0#64 then 
-          v := (v.fst - 1#64, v.fst - 1#64)
+        let x ← load 1 (rsi + a.snd - 1#64)
+        store 1 rsp (rdi + a.snd - 1#64) x
+        if ¬a.fst - 1#64 = 0#64 then 
+          a := (a.fst - 1#64, a.fst - 1#64)
         else
           StateT.assume fun m => (Mem.loadInt m rsp 8).isSome = true
           throw CfgLabel.exit
@@ -52,12 +52,12 @@ fun rdi rsi rdx rsp =>
       StateT.assume fun m => (Mem.loadInt m rsp 8).isSome = true
       throw CfgLabel.exit
     else do
-      let mut v := (0#64, rdx)
+      let mut a := (0#64, rdx)
       repeat'
-        let x ← load 1 (rsi + v.fst)
-        store 1 rsp (rdi + v.fst) x
-        if ¬v.snd = v.fst + 1#64 then 
-          v := (v.fst + 1#64, v.snd)
+        let x ← load 1 (rsi + a.fst)
+        store 1 rsp (rdi + a.fst) x
+        if ¬a.snd = a.fst + 1#64 then 
+          a := (a.fst + 1#64, a.snd)
         else
           StateT.assume fun m => (Mem.loadInt m rsp 8).isSome = true
           throw CfgLabel.exit

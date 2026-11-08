@@ -304,23 +304,6 @@ theorem wrp_forIn_lockstep_unit {βa : Type} (R : MachineData → βa → Prop) 
   obtain ⟨_, hq, hqa⟩ := h'
   exact ⟨(), hq, hqa⟩
 
-theorem wrp_forIn_lockstep_unit_pair {α₁ α₂ : Type} (R : MachineData → α₁ × α₂ → Prop) (ab : α₁ × α₂)
-    {fc : Unit → PUnit → BlockM MachineData (ForInStep PUnit)}
-    {fa : α₁ → α₂ → BlockM DataMem (ForInStep (α₁ × α₂))}
-    {Q : PUnit → Unit → MachineData → Prop}
-    (hbody : ∀ a b, (fun t => R t (a, b)) ⊑ wrp (ofStateRepr MachineData.dmem) (fc () PUnit.unit) (fa a b)
-      (fun rc ra t => match rc, ra with
-        | .yield _, .yield a' => R t a'
-        | .done u, .done _ => Q u () t
-        | _, _ => False) E) :
-    (fun t => R t ab) ⊑ wrp (ofStateRepr MachineData.dmem) (FixLoop.mk.forIn PUnit.unit fc)
-      (FixLoop.mk.forIn ab (fun _ v => fa v.1 v.2) >>= fun _ => pure ()) Q E :=
-  wrp_forIn_lockstep_unit R ab (fa := fun v => fa v.1 v.2) fun v => by
-    cases v with
-    | mk a b =>
-      exact PartialOrder.rel_trans (hbody a b)
-        (wrp_mono_post fun rc ra t h => by cases rc <;> cases ra <;> exact h)
-
 @[ascend] theorem wrp_condState {σc σa CV AV : Type} {view : σc → σa}
     {E : (CfgLabel → CfgLabel → σc → Prop) × EStack⟨⟩} {Q : CV → AV → σc → Prop} {c : σc → Bool}
     {x y : BlockM σc CV} {ax ay : BlockM σa AV} (b : Bool) (P : Prop) :
