@@ -14,4 +14,5 @@ import Demo.ZipPure
 import Demo.Binary
 import Demo.BinaryCheck
 import Demo.ZipBinary
+import Demo.Memmove
 import Demo.Walkthrough
