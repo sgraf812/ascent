@@ -34,6 +34,11 @@ def unfoldableHead? (c : Expr) : MetaM (Option Name) := do
   if env.isProjectionFn declName || (← isInstance declName) then return none
   return some declName
 
+/-- `true` iff the `@[ascend]` database holds a rule for programs headed by `declName`. -/
+def hasAscendRuleFor (declName : Name) : CoreM Bool := do
+  return (← Lean.Elab.Tactic.VCGen.Ascend.getAscendSpecTheorems).specs.values.any fun thm =>
+    thm.pattern.pattern.getAppFn.isConstOf declName
+
 /-- The binders among `xs` that `es` mention, together with the binders that their types mention,
 in the order of `xs`. -/
 def usedBinders (xs : Array Expr) (es : Array Expr) : MetaM (Array Expr) := do
@@ -66,7 +71,9 @@ elab_rules : command
     let proof ← mkFreshExprSyntheticOpaqueMVar goalType
     let specs := (specs.map (·.getElems)).getD #[]
     let specs ← match ← unfoldableHead? goalType.getAppArgs[13]! with
-      | some declName => pure (specs.push (mkIdent declName))
+      | some declName =>
+        if ← hasAscendRuleFor declName then pure specs
+        else pure (specs.push (mkIdent declName))
       | none => pure specs
     let ascendStx ← match tac? with
       | some tac => `(tactic| ascend [$specs,*] with $tac)
