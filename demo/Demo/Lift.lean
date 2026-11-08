@@ -210,49 +210,6 @@ end
 section
 variable {σc σa : Type} {view : σc → σa} {E : (CfgLabel → CfgLabel → σc → Prop) × EStack⟨⟩}
 
-theorem wrp_forIn_lockstep {βc βa : Type} (R : βc → σc → βa → Prop) (cinit : βc) (ainit : βa)
-    {fc : Unit → βc → BlockM σc (ForInStep βc)} {fa : Unit → βa → BlockM σa (ForInStep βa)}
-    {Q : βc → βa → σc → Prop}
-    (hbody : ∀ c a, (fun t => R c t a) ⊑
-      wrp (ofStateRepr view) (fc () c) (fa () a) (fun rc ra t => match rc, ra with
-        | .yield c', .yield a' => R c' t a'
-        | .done c', .done a' => Q c' a' t
-        | _, _ => False) E) :
-    (fun t => R cinit t ainit) ⊑ wrp (ofStateRepr view) (FixLoop.mk.forIn cinit fc)
-      (FixLoop.mk.forIn ainit fa) Q E := by
-  refine wrp_intro fun Qa Ea => ?_
-  intro t ht
-  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred] at ht
-  haveI : Nonempty βa := ⟨ainit⟩
-  have key := FixLoop.forIn_induct fa
-    (fun g => ∀ c a t, R c t a → wp (g a) Qa Ea (view t) →
-      wp (FixLoop.mk.forIn c fc) ((ofStateRepr view).post Q Qa)
-        (EPostsConcretization.ePosts (ofStateRepr view) E Ea) t)
-    (admissible_pi _ fun _ => admissible_pi _ fun a => admissible_pi _ fun t =>
-      admissible_pi _ fun _ =>
-        admissible_apply (fun _ u => wp u Qa Ea (view t) → _) a
-          (admissible_wp_imp _ Ea (view t) _)) ?_
-  · exact key cinit ainit t ht.1 ht.2
-  intro g ih c a t hR hw
-  rw [FixLoop.forIn_eq, WPMonadExact.wp_bind_eq]
-  simp only [FixLoop.step, WPMonadExact.wp_bind_eq] at hw
-  have hb := wrp_transport (hbody c a)
-    (fun r m => match r with | .done a' => Qa a' m | .yield a' => wp (g a') Qa Ea m) Ea t (by
-      simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred]
-      refine ⟨hR, WP.wp_monotone_post (x := fa () a) ?_ (view t) hw⟩
-      intro r m hr
-      cases r <;> simp only [WPMonadExact.wp_pure_eq] at hr ⊢ <;> exact hr)
-  refine WP.wp_monotone_post (x := fc () c) ?_ t hb
-  intro rc t' h'
-  rw [Concretization.post_pi] at h'
-  obtain ⟨ra, hrel, hq⟩ := h'
-  simp only [ofStateRepr_pred] at hq
-  cases rc <;> cases ra <;> simp only at hrel
-  · simp only [WPMonadExact.wp_pure_eq]
-    rw [Concretization.post_pi]
-    exact ⟨_, hrel, hq⟩
-  · exact ih _ _ t' hrel hq
-
 theorem wrp_forIn_lockstep_bind_unit {βc βa : Type} (R : βc → σc → βa → Prop) (cinit : βc)
     (ainit : βa) {fc : Unit → βc → BlockM σc (ForInStep βc)}
     {fa : βa → BlockM σa (ForInStep βa)} {Q : Unit → Unit → σc → Prop}

@@ -3,6 +3,7 @@ import Ascent.Table
 import Kraken.StateCfg
 import Ascent.UB.StateT
 import Ascent.UB.WhileLoop
+import Ascent.Refinement.Lockstep
 
 /-!
 # Control-flow graphs
@@ -193,14 +194,6 @@ theorem wp_tryCatch_block (x : BlockM σ α) (h : CfgLabel → BlockM σ α) (Q 
     rw [wp_BlockM_eq]
     rfl
   · rfl
-
-theorem admissible_wp_imp (Q : α → σ → Prop) (E : (CfgLabel → σ → Prop) × EStack⟨⟩) (s : σ)
-    (R : Prop) : Lean.Order.admissible fun u : BlockM σ α => wp u Q E s → R := by
-  intro ch hch hall hw
-  have := WPCont.wp_csup (Prog := BlockM σ α) hch Q E s hw
-  simp only [iSup_apply, iSup_prop_eq_exists] at this
-  obtain ⟨⟨u, hu⟩, hwu⟩ := this
-  exact hall u hu hwu
 
 end
 

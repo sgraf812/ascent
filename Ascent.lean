@@ -14,4 +14,5 @@ import Ascent.Refinement
 import Ascent.Table
 import Ascent.Refinement.WhileLoop
 import Ascent.Refinement.StateRepr
+import Ascent.Refinement.Lockstep
 import Ascent.Tactic.VCGen.Command
