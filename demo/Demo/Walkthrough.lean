@@ -48,7 +48,7 @@ info: def zipWithAdd : Program :=
 
 `zipWithAddA` is a loop over the blocks of the text, one guarded step per instruction, with the flags
 cleared and `cmp; jcc` fused into one branch. Each step is a register write `setReg64`, a load into a
-register `loadReg8`, or a store `storeWord8`. `ascend_def` synthesized it and proved: -/
+register `loadReg 8`, or a store `storeWord 8`. `ascend_def` synthesized it and proved: -/
 
 /--
 info: @zipWithAddA.refines : ∀ [inst : Host] [inst_1 : FunDecls] [Embeds zipWithAdd] (s : MachineData) (ra : Int64),
