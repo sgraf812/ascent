@@ -29,8 +29,9 @@ the stack is at or below the stack of the call. Every other jump leaves the bina
 
 `Binary.wp` is the loop of kraken's `Program.wp` with this step, and it gives binaries their `WP`
 instance. `Binary.Assembles p b` states that the host program is `p`, laid out from `Binary.base`
-to `Binary.base + b.size`, that the bytes at every address of the host behave like the host's
-directives there, and that the targets of the direct jumps of `b` are the labels of `p`.
+to `Binary.base + b.size`, that the bytes at the address of every instruction of the host decode to
+that instruction with its label erased (`Instr.eraseLabel`) and with the address of its label as the
+jump target, and that the targets of the direct jumps of `b` are the labels of `p`.
 `Binary.refines_program` turns it into `⦃P⦄ b ⪯[ofStateRepr id] p ⦃…⦄`.
 
 `zipWithAddBinary` holds the 28 bytes that `llvm-mc` assembles from the text of `zipWithAdd`.
@@ -138,6 +139,14 @@ def directivesAt (b : ByteArray) (pc : Int64) : List (Kraken.Sized Directive) :=
 @[instance_reducible] def labelsAt (b : ByteArray) (pc : Int64) : Labels :=
   ⟨fun _ => ((decodeAt b pc).bind (·.2.2)).getD 0⟩
 
+def _root_.Instr.eraseLabel : Instr → Instr
+  | .regular asz osz (.jcc cc _) => .regular asz osz (.jcc cc "")
+  | i => i
+
+def _root_.Instr.target? : Instr → Option Label
+  | .regular _ _ (.jcc _ l) => some l
+  | _ => none
+
 def targetsFrom (b : ByteArray) : Nat → Int64 → List Int64
   | 0, _ => []
   | fuel + 1, pc =>
@@ -198,12 +207,73 @@ theorem wp_eq (b : ByteArray) (Q : Unit → MachineData → Prop) (E : Int64 →
 
 theorem label_inert (l : Label) : (Directive.label l).Inert := fun _ _ _ _ _ => Iff.rfl
 
-theorem interp_jcc (L L' : Labels) {l l' : Label} (h : L.label l = L'.label l') (asz osz : Width)
-    (cc : CondCode) (n : Nat) (s : MachineData) (pc : Int64) (ret jmp : Int64 → MachineData → Effects) :
-    @Directives.interp L [⟨.instr (.regular asz osz (.jcc cc l)), n⟩] s pc ret jmp
-      = @Directives.interp L' [⟨.instr (.regular asz osz (.jcc cc l')), n⟩] s pc ret jmp := by
-  simp only [Directives.interp, Directive.interp, Instr.interp, Operation.interp]
-  rw [h]
+theorem _root_.Instr.eraseLabel_of_target?_eq_none {i : Instr} (h : i.target? = none) :
+    i.eraseLabel = i := by
+  unfold Instr.eraseLabel
+  split
+  · simp [Instr.target?] at h
+  · rfl
+
+theorem _root_.Instr.eq_jcc_of_target? {i : Instr} {l : Label} (h : i.target? = some l) :
+    ∃ asz osz cc, i = .regular asz osz (.jcc cc l) := by
+  unfold Instr.target? at h
+  split at h
+  · cases h; exact ⟨_, _, _, rfl⟩
+  · cases h
+
+theorem decodeW_interp {r x b' : Bool} {bs : List UInt8} {j : Instr} {n : Nat}
+    (h : decodeW r x b' bs = some (j, n)) (L L' : Labels) :
+    @Directive.interp L (.instr j) = @Directive.interp L' (.instr j) := by
+  unfold decodeW at h
+  repeat' split at h
+  all_goals first | (cases h; rfl) | simp at h
+
+theorem decode_interp {pc : Int64} {bs : List UInt8} {j : Instr} {n : Nat}
+    (h : decode pc bs = some (j, n, none)) (L L' : Labels) :
+    @Directive.interp L (.instr j) = @Directive.interp L' (.instr j) := by
+  unfold decode at h
+  split at h
+  · cases h; rfl
+  · simp [decodeJcc] at h
+  · simp [decodeJcc] at h
+  · repeat' split at h
+    all_goals first | (cases h; rfl) | simp at h
+  · split at h
+    · obtain ⟨⟨j', n'⟩, hw, he⟩ := Option.map_eq_some_iff.mp h
+      cases he
+      exact decodeW_interp hw L L'
+    · simp at h
+  · simp at h
+
+theorem interp_eraseLabel {L L' : Labels} {pc : Int64} {bs : List UInt8} {i : Instr} {n : Nat}
+    (hd : decode pc bs = some (i.eraseLabel, n, i.target?.map L'.label))
+    (hL : ∀ l, i.target? = some l → L.label "" = L'.label l) :
+    @Directive.interp L (.instr i.eraseLabel) = @Directive.interp L' (.instr i) := by
+  cases ht : i.target? with
+  | none =>
+    rw [ht, Option.map_none] at hd
+    rw [Instr.eraseLabel_of_target?_eq_none ht] at hd ⊢
+    exact decode_interp hd L L'
+  | some l =>
+    obtain ⟨asz, osz, cc, rfl⟩ := Instr.eq_jcc_of_target? ht
+    have hl := hL l ht
+    funext s r nx jx
+    simp only [Instr.eraseLabel, Directive.interp, Instr.interp, Operation.interp]
+    rw [hl]
+
+theorem _root_.Kraken.Executable.exists_index_of_mem_directivesAtAddress {e : Executable} {a : Int64}
+    {c : Kraken.Sized Directive} (h : c ∈ e.directivesAtAddress a) :
+    ∃ k, e.program[k]? = some c ∧ e.addrOf k = a := by
+  unfold Kraken.Executable.directivesAtAddress at h
+  obtain ⟨x, hx, rfl⟩ := List.mem_map.mp h
+  have hxa : x.addr = a := by simpa using List.all_eq_true.mp List.all_takeWhile x hx
+  obtain ⟨k, hk⟩ := List.mem_iff_getElem?.mp
+    ((List.dropWhile_sublist _).subset ((List.takeWhile_sublist _).subset hx))
+  rw [Kraken.Executable.getElem?_withAddresses_eq] at hk
+  obtain ⟨c', hc', hx'⟩ := Option.map_eq_some_iff.mp hk
+  refine ⟨k, ?_, ?_⟩
+  · rw [hc', ← hx']
+  · rw [← hxa, ← hx']
 
 section
 variable [Host]
@@ -212,32 +282,54 @@ structure Assembles (p : Program) (b : ByteArray) : Prop where
   prog : Host.prog = p
   start : Host.addrOf 0 = base
   stop : Host.addrOf p.length = base + .ofNat b.size
-  decodes : ∀ a, Host.exe.directivesAtAddress a ≠ [] → ∀ s ret jmp,
-    @Directives.interp Host.exe.labels (Host.exe.directivesAtAddress a) s a ret jmp
-      = @Directives.interp (labelsAt b a) (directivesAt b a) s a ret jmp
+  decodes : ∀ k c, Host.exe.program[k]? = some c → 0 < c.size → ∃ i, c.directive = .instr i ∧
+    decode (Host.addrOf k) (fetch b (Host.addrOf k))
+      = some (i.eraseLabel, c.size, i.target?.map Host.exe.labels.label)
   targets : ∀ a, a ∈ targets b ↔ p.InternalTarget a
 
 @[instance_reducible] def Assembles.embeds {p : Program} {b : ByteArray} (h : Assembles p b) : Embeds p :=
   ⟨⟨0, h.prog ▸ List.prefix_refl _⟩⟩
 
-theorem stepIn_of_exe {b : ByteArray} {next jump : MachineState → Prop} {st : MachineState}
-    (hdec : ∀ s ret jmp, @Directives.interp Host.exe.labels (Host.exe.directivesAtAddress st.pc) s st.pc ret jmp
-      = @Directives.interp (labelsAt b st.pc) (directivesAt b st.pc) s st.pc ret jmp)
-    (h : Host.exe.StepIn next jump st) : StepIn b next jump st := by
+theorem stepIn_of_decodes {b : ByteArray} {k : Nat} {c : Kraken.Sized Directive} {i : Instr}
+    (hc : Host.exe.program[k]? = some c) (hz : 0 < c.size) (hi : c.directive = .instr i)
+    (hd : decode (Host.addrOf k) (fetch b (Host.addrOf k))
+      = some (i.eraseLabel, c.size, i.target?.map Host.exe.labels.label))
+    {next jump : MachineState → Prop} {s : MachineData}
+    (h : Host.exe.StepIn next jump ⟨s, Host.addrOf k⟩) : StepIn b next jump ⟨s, Host.addrOf k⟩ := by
   intro P ret jmp hr hj
-  have h' := h hr hj
-  show (@Directives.interp (labelsAt b st.pc) _ _ _ _ _).All P
-  rw [← hdec]
+  have h' := (Host.interp_addrOf hc hz s ret jmp P).mp (h hr hj)
+  have hk : Host.prog[k]? = some c.directive := by rw [Host.exe_getElem?] at hc; grind
+  have hzk : Kraken.Layout.size Directive k = c.size := by rw [Host.exe_getElem?] at hc; grind
+  have hsucc : Host.addrOf (k + 1) = Host.addrOf k + .ofNat c.size := by
+    rw [Host.addrOf_succ hk, hzk]
+  have hat : directivesAt b (Host.addrOf k) = [⟨.instr i.eraseLabel, c.size⟩] := by
+    simp only [directivesAt, decodeAt, hd]
+  have hL : ∀ l, i.target? = some l → (labelsAt b (Host.addrOf k)).label "" = Host.exe.labels.label l := by
+    intro l hl
+    show ((decodeAt b (Host.addrOf k)).bind (·.2.2)).getD 0 = _
+    rw [decodeAt, hd, hl]
+    rfl
+  show (@Directives.interp (labelsAt b (Host.addrOf k)) (directivesAt b (Host.addrOf k)) s
+    (Host.addrOf k) _ _).All P
+  rw [hat]
+  simp only [Directives.interp]
+  rw [interp_eraseLabel hd hL, ← hsucc, ← hi]
   exact h'
 
-theorem stutter_of_exe {next jump : MachineState → Prop} {st : MachineState}
-    (hnil : Host.exe.directivesAtAddress st.pc = []) (h : Host.exe.StepIn next jump st) : next st := by
+theorem next_of_size_zero {next jump : MachineState → Prop} {st : MachineState}
+    (hz : ∀ c ∈ Host.exe.directivesAtAddress st.pc, c.size = 0) (h : Host.exe.StepIn next jump st) :
+    next st := by
+  have hinert : ∀ c ∈ Host.exe.directivesAtAddress st.pc, c.size = 0 ∧ c.directive.Inert :=
+    fun c hc => ⟨hz c hc, Host.inert_of_size_zero (hz c hc ▸
+      Kraken.Executable.mem_of_mem_directivesAtAddress hc)⟩
   have hne : (⟨st.data, st.pc + 1⟩ : MachineState) ≠ st := fun he => by
     have := congrArg MachineState.pc he
     simp at this
   have h' := @h (fun u => u = st → next u) (fun u => .done u) (fun _ => .done ⟨st.data, st.pc + 1⟩)
     (fun _ hu _ => hu) (fun _ _ he => absurd he hne)
-  rw [hnil] at h'
+  rw [← List.append_nil (Host.exe.directivesAtAddress st.pc),
+    Directives.interp_inert_append hinert st.data st.pc _ _
+      (fun _ _ => .done ⟨st.data, st.pc + 1⟩)] at h'
   exact h' rfl
 
 theorem wp_of_program_wp {b : ByteArray} {p : Program} (h : Assembles p b)
@@ -263,11 +355,20 @@ theorem wp_of_program_wp {b : ByteArray} {p : Program} (h : Assembles p b)
   | done x hx => exact .done x hx
   | step x mid hx _ ih =>
     obtain ⟨hc, hstep⟩ := hx
-    by_cases hnil : Host.exe.directivesAtAddress x.pc = []
-    · exact ih x (stutter_of_exe hnil hstep)
-    · refine .step x mid ⟨hc, ?_⟩ ih
-      exact (stepIn_of_exe (h.decodes x.pc hnil) hstep).mono (fun _ h => h)
+    by_cases hpos : ∃ k c, Host.exe.program[k]? = some c ∧ 0 < c.size ∧ Host.addrOf k = x.pc
+    · obtain ⟨k, c, hk, hz, hx⟩ := hpos
+      obtain ⟨i, hi, hd⟩ := h.decodes k c hk hz
+      obtain ⟨xs, xpc⟩ := x
+      dsimp only at hx
+      subst hx
+      refine .step _ mid ⟨hc, ?_⟩ ih
+      exact (stepIn_of_decodes hk hz hi hd hstep).mono (fun _ h => h)
         fun u h => by rw [← hcont]; exact h
+    · have hz : ∀ c ∈ Host.exe.directivesAtAddress x.pc, c.size = 0 := by
+        intro c hc'
+        obtain ⟨k, hk, ha⟩ := Kraken.Executable.exists_index_of_mem_directivesAtAddress hc'
+        exact Nat.eq_zero_of_not_pos fun hp => hpos ⟨k, c, hk, hp, ha⟩
+      exact ih x (next_of_size_zero hz hstep)
 
 theorem refines_program {b : ByteArray} {p : Program} (h : Assembles p b) (P : MachineData → Prop) :
     ⦃P⦄ b ⪯[ofStateRepr id] p ⦃fun _ _ _ => True; fun a a' _ => a = a'⦄ := by
@@ -386,19 +487,14 @@ theorem zipWithAddHost_assembles : Binary.Assembles zipWithAdd zipWithAddBinary 
     rw [Host.addrOf, zipWithAddHost_exe, Kraken.Executable.addrOf, zipWithAddLayout_sizeBefore,
       zipWithAddLayout_startAddr]
     rfl
-  decodes a hne s ret jmp := by
-    obtain ⟨x, hx, rfl⟩ := Kraken.Executable.exists_addr_of_directivesAtAddress_ne_nil hne
-    rw [zipWithAddHost_exe] at hx ⊢
-    simp [Kraken.Layout.apply, zipWithAdd, Kraken.Executable.withAddresses, zipWithAddLayout_size,
-      zipWithAddLayout_start] at hx
-    rcases hx with rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl
-    all_goals
-      simp [Kraken.Layout.apply, zipWithAdd, Kraken.Executable.withAddresses,
-        Kraken.Executable.directivesAtAddress, zipWithAddLayout_size, zipWithAddLayout_start]
+  decodes k c hc hz := by
+    rw [zipWithAddHost_exe] at hc
+    rcases k with _|_|_|_|_|_|_|_|_|_|_|_|k <;>
+      simp [Kraken.Layout.apply, zipWithAdd, zipWithAddLayout_size] at hc <;> subst hc <;>
       first
-        | rfl
-        | refine (Binary.interp_jcc _ _ (l' := "") ?_ _ _ _ _ _ _ _ _).trans rfl
-          exact (zipWithAddHost_label _).trans (by simp <;> rfl)
+        | exact ⟨_, rfl, rfl⟩
+        | (simp at hz; done)
+        | (refine ⟨_, rfl, ?_⟩; simp [Instr.target?, zipWithAddHost_label]; rfl)
   targets a := by
     rw [zipWithAddBinary_targets]
     simp only [Program.InternalTarget, zipWithAddHost_label]
