@@ -15,3 +15,9 @@ import AscentTests.AscendUnfold
 import AscentTests.AscendDef
 import AscentTests.PureRefinement
 import AscentTests.FixLoopDelab
+import AscentTests.Setup.Blocks
+import AscentTests.Regress.HoleScope
+import AscentTests.Regress.BinderHole
+import AscentTests.Regress.IteSplit
+import AscentTests.Regress.Lockstep
+import AscentTests.Regress.Commands

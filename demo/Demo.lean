@@ -5,7 +5,6 @@ import Demo.Zip
 import Demo.CfgRewrite
 import Demo.ZipStruct
 import Demo.Lift
-import Demo.LiftTest
 import Demo.Words
 import Demo.ZipL
 import Demo.Arrays
@@ -15,5 +14,4 @@ import Demo.Binary
 import Demo.BinaryCheck
 import Demo.ZipBinary
 import Demo.Memmove
-import Demo.HoleScope
 import Demo.Walkthrough
