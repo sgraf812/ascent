@@ -217,16 +217,26 @@ info: @zipWithAdd_correct : ∀ [inst : Host] [inst_1 : FunDecls] [Embeds zipWit
 
 /-! ## 8. Bonus: the bytes
 
-`zipWithAddBinary` is the 28 bytes of machine code that the assembler emits for the text, mapped at
-`0x401000`. Its semantics fetches and decodes one instruction at the program counter and runs
-kraken's semantics of that instruction. The decoded bytes agree with the text at every address, so
-the binary refines the text: -/
+`zipWithAddBinary` is a plain `ByteArray`: the 28 bytes of machine code that the assembler emits for
+the text. The loader maps every binary at `Binary.base`. The semantics of a binary fetches and
+decodes one instruction at the program counter and runs kraken's semantics of that instruction.
+`Binary.Assembles zipWithAdd zipWithAddBinary` states that the host lays out the text from
+`Binary.base` and that the bytes behave like the text at every address. Under that hypothesis the
+binary refines the text: -/
 
+#check @Binary.refines_program
 #check @zipWithAddBinary_refines_zipWithAdd
 
-/-! Composed with the chain of refinements, the result holds for the bytes: -/
+/-! Composed with the chain of refinements, the result holds for the bytes of every host that
+assembles the text to them: -/
 
 #check @zipWithAddBinary_correct
-#print axioms zipWithAddBinary_correct
+
+/-! The host `zipWithAddHost` assembles the text to the bytes, checked by evaluation, and gives the
+statement without a host: -/
+
+#check @zipWithAddHost_assembles
+#check @zipWithAddHost_correct
+#print axioms zipWithAddHost_correct
 
 end Ascent.Kraken.Walkthrough

@@ -3,10 +3,11 @@ import Demo.ZipPure
 /-!
 # Binaries
 
-A `Binary` is a text segment `text` mapped at `base`, its symbol table `symbols`, the address
-`entry` where it starts and the address `stop` where it ends. A step reads the bytes at the program
-counter, decodes them to one kraken `Instr` with `Binary.decode`, and runs kraken's
-`Directives.interp` on it. The decoder covers exactly the encodings of `zipWithAdd`:
+A binary is a `ByteArray` of position-dependent machine code that the loader maps at the fixed
+address `Binary.base`, the default text address of `ld` on x86-64. Execution starts at
+`Binary.base` and is done when the program counter reaches `Binary.base + b.size`. A step reads
+the bytes at the program counter, decodes them to one kraken `Instr` with `Binary.decode`, and runs
+kraken's `Directives.interp` on it. The decoder covers exactly the encodings of `zipWithAdd`:
 
 | bytes          | instruction            |
 |----------------|------------------------|
@@ -21,17 +22,20 @@ counter, decodes them to one kraken `Instr` with `Binary.decode`, and runs krake
 | `75 ib`        | `jne rel8`             |
 | `c3`           | `ret`                  |
 
-A jump decodes to the symbol at its target, and the labels of a binary are its symbols.
+A jump decodes to its absolute target. The step interprets it under the label map that sends every
+label to that target, so a binary has no labels of its own. A jump continues the run if its target
+is the target of a direct jump in the binary (`Binary.targets`, a linear sweep over the bytes) and
+the stack is at or below the stack of the call. Every other jump leaves the binary.
 
-`Binary.wp` is the loop of kraken's `Program.wp` with this step in place of the step of the host
-program, and it gives binaries their `WP` instance. `Binary.DecodesTo b` states that at every
-address where the host program has directives, they are size-zero inert directives followed by the
-instruction that `b` decodes there. `Binary.refines_program` turns this into
-`⦃P⦄ b ⪯[ofStateRepr id] p ⦃…⦄`.
+`Binary.wp` is the loop of kraken's `Program.wp` with this step, and it gives binaries their `WP`
+instance. `Binary.Assembles p b` states that the host program is `p`, laid out from `Binary.base`
+to `Binary.base + b.size`, that the bytes at every address of the host behave like the host's
+directives there, and that the targets of the direct jumps of `b` are the labels of `p`.
+`Binary.refines_program` turns it into `⦃P⦄ b ⪯[ofStateRepr id] p ⦃…⦄`.
 
-`zipWithAddBinary` holds the 28 bytes that `llvm-mc` assembles from the text of `zipWithAdd`, mapped
-at `0x401000`. The host `zipWithAddHost` places `zipWithAdd` at the same address, and
-`zipWithAddBinary_decodesTo` checks the decoder against the layout address by address.
+`zipWithAddBinary` holds the 28 bytes that `llvm-mc` assembles from the text of `zipWithAdd`.
+`zipWithAddHost_assembles` checks them against the host `zipWithAddHost`, which lays out
+`zipWithAdd` from `Binary.base`.
 -/
 
 open Std.WP Lean.Order Ascent
@@ -40,23 +44,12 @@ open scoped Program.WP
 
 namespace Ascent.Kraken
 
-structure Binary where
-  base : Int64
-  text : List UInt8
-  symbols : List (Label × Int64)
-  entry : Int64
-  stop : Int64
-
 namespace Binary
 
-def fetch (b : Binary) (pc : Int64) : List UInt8 :=
-  b.text.drop (pc - b.base).toBitVec.toNat
+def base : Int64 := 0x401000
 
-@[instance_reducible] def labels (b : Binary) : Labels :=
-  ⟨fun l => ((b.symbols.find? (·.1 == l)).map (·.2)).getD (-1)⟩
-
-def symbolAt (b : Binary) (a : Int64) : Option Label :=
-  (b.symbols.find? (·.2 == a)).map (·.1)
+def fetch (b : ByteArray) (pc : Int64) : List UInt8 :=
+  b.data.toList.drop (pc - base).toBitVec.toNat
 
 /-! ## Decoding -/
 
@@ -114,60 +107,73 @@ def decodeW (r x b' : Bool) : List UInt8 → Option (Instr × Nat)
     else none
   | _ => none
 
-def decodeJcc (b : Binary) (pc : Int64) (cc : CondCode) (d : UInt8) : Option (Instr × Nat) :=
-  (b.symbolAt (pc + 2 + Int64.ofInt d.toBitVec.toInt)).map fun l => (.regular .W64 .W64 (.jcc cc l), 2)
+def decodeJcc (pc : Int64) (cc : CondCode) (d : UInt8) : Option (Instr × Nat × Option Int64) :=
+  some (.regular .W64 .W64 (.jcc cc ""), 2, some (pc + 2 + Int64.ofInt d.toBitVec.toInt))
 
-def decode (b : Binary) (pc : Int64) : List UInt8 → Option (Instr × Nat)
-  | 0xc3 :: _ => some (.regular .W64 .W64 .ret, 1)
-  | 0x7e :: d :: _ => b.decodeJcc pc .le d
-  | 0x75 :: d :: _ => b.decodeJcc pc .nz d
+def decode (pc : Int64) : List UInt8 → Option (Instr × Nat × Option Int64)
+  | 0xc3 :: _ => some (.regular .W64 .W64 .ret, 1, none)
+  | 0x7e :: d :: _ => decodeJcc pc .le d
+  | 0x75 :: d :: _ => decodeJcc pc .nz d
   | 0x31 :: m :: _ =>
     let (md, rg, rm) := fields m
     if md = 3 then
       some (.regular .W64 .W32
-        (.xor (.reg (.low (reg64 rm) .W32)) (.regOrMem (.reg (.low (reg64 rg) .W32)))), 2)
+        (.xor (.reg (.low (reg64 rm) .W32)) (.regOrMem (.reg (.low (reg64 rg) .W32)))), 2, none)
     else none
   | rex :: rest =>
     if rex.toNat / 16 = 4 ∧ rex.toNat / 8 % 2 = 1 then
       (decodeW (rex.toNat / 4 % 2 = 1) (rex.toNat / 2 % 2 = 1) (rex.toNat % 2 = 1) rest).map
-        fun (i, n) => (i, n + 1)
+        fun (i, n) => (i, n + 1, none)
     else none
   | [] => none
 
-def directivesAt (b : Binary) (pc : Int64) : List (Kraken.Sized Directive) :=
-  match b.decode pc (b.fetch pc) with
-  | some (i, n) => [⟨.instr i, n⟩]
+def decodeAt (b : ByteArray) (pc : Int64) : Option (Instr × Nat × Option Int64) :=
+  decode pc (fetch b pc)
+
+def directivesAt (b : ByteArray) (pc : Int64) : List (Kraken.Sized Directive) :=
+  match decodeAt b pc with
+  | some (i, n, _) => [⟨.instr i, n⟩]
   | none => []
+
+@[instance_reducible] def labelsAt (b : ByteArray) (pc : Int64) : Labels :=
+  ⟨fun _ => ((decodeAt b pc).bind (·.2.2)).getD 0⟩
+
+def targetsFrom (b : ByteArray) : Nat → Int64 → List Int64
+  | 0, _ => []
+  | fuel + 1, pc =>
+    match decodeAt b pc with
+    | some (_, n, t) => t.toList ++ targetsFrom b fuel (pc + .ofNat n)
+    | none => []
+
+def targets (b : ByteArray) : List Int64 :=
+  targetsFrom b b.size base
 
 /-! ## The loop -/
 
-def StepIn (b : Binary) (next jump : MachineState → Prop) (st : MachineState) : Prop :=
-  let := b.labels
+def StepIn (b : ByteArray) (next jump : MachineState → Prop) (st : MachineState) : Prop :=
+  let := labelsAt b st.pc
   ∀ ⦃P : MachineState → Prop⦄ ⦃ret jmp : MachineState → Effects⦄,
     (∀ st', next st' → (ret st').All P) → (∀ st', jump st' → (jmp st').All P) →
-      (Directives.interp (b.directivesAt st.pc) st.data st.pc (fun a s => ret ⟨s, a⟩)
+      (Directives.interp (directivesAt b st.pc) st.data st.pc (fun a s => ret ⟨s, a⟩)
         (fun a s => jmp ⟨s, a⟩)).All P
 
-theorem StepIn.mono {b : Binary} {next₁ next₂ jump₁ jump₂ : MachineState → Prop} {st : MachineState}
-    (h : b.StepIn next₁ jump₁ st) (hn : ∀ u, next₁ u → next₂ u) (hj : ∀ u, jump₁ u → jump₂ u) :
-    b.StepIn next₂ jump₂ st :=
+theorem StepIn.mono {b : ByteArray} {next₁ next₂ jump₁ jump₂ : MachineState → Prop} {st : MachineState}
+    (h : StepIn b next₁ jump₁ st) (hn : ∀ u, next₁ u → next₂ u) (hj : ∀ u, jump₁ u → jump₂ u) :
+    StepIn b next₂ jump₂ st :=
   fun _ _ _ hr hk => h (fun u h => hr u (hn u h)) (fun u h => hk u (hj u h))
 
-def InternalTarget (b : Binary) (a : Int64) : Prop :=
-  ∃ l ∈ b.symbols.map Prod.fst, b.labels.label l = a
-
 open Classical in
-def ContinueOnInternalExit (b : Binary) (s : MachineData) («continue» exit : MachineState → Prop)
+def ContinueOnInternalExit (b : ByteArray) (s : MachineData) («continue» exit : MachineState → Prop)
     (st : MachineState) : Prop :=
-  if b.InternalTarget st.pc ∧ st.data.StackAtOrBelow s then «continue» st else exit st
+  if st.pc ∈ targets b ∧ st.data.StackAtOrBelow s then «continue» st else exit st
 
-def wp (b : Binary) (done exit : MachineState → Prop) (s : MachineData) : Prop :=
-  While (·.pc ≠ b.stop) (fun «continue» => b.StepIn «continue» (b.ContinueOnInternalExit s «continue» exit))
-    done ⟨s, b.entry⟩
+def wp (b : ByteArray) (done exit : MachineState → Prop) (s : MachineData) : Prop :=
+  While (·.pc ≠ base + .ofNat b.size)
+    (fun «continue» => StepIn b «continue» (ContinueOnInternalExit b s «continue» exit)) done ⟨s, base⟩
 
-theorem wp_mono {b : Binary} {done₁ done₂ exit₁ exit₂ : MachineState → Prop}
+theorem wp_mono {b : ByteArray} {done₁ done₂ exit₁ exit₂ : MachineState → Prop}
     (hd : ∀ u, done₁ u → done₂ u) (he : ∀ u, exit₁ u → exit₂ u) {s : MachineData}
-    (h : b.wp done₁ exit₁ s) : b.wp done₂ exit₂ s :=
+    (h : wp b done₁ exit₁ s) : wp b done₂ exit₂ s :=
   While.imp (fun _ _ _ hb => hb.mono (fun _ h => h) fun u h => by
       unfold ContinueOnInternalExit at h ⊢
       split at h
@@ -175,37 +181,54 @@ theorem wp_mono {b : Binary} {done₁ done₂ exit₁ exit₂ : MachineState →
       · rw [ite_eq_right ‹_›]; exact he _ h)
     (fun _ _ h => hd _ h) h
 
-instance : WP Binary Unit (MachineData → Prop) (Int64 → MachineData → Prop) where
-  trans b := ⟨fun Q E s => b.wp (fun st => Q () st.data) (fun st => E st.pc st.data) s⟩
-  trans_monotone _ := fun _ _ _ _ hE hQ _ h => wp_mono (fun st => hQ () st.data) (fun st => hE st.pc st.data) h
+end Binary
 
-theorem wp_eq (b : Binary) (Q : Unit → MachineData → Prop) (E : Int64 → MachineData → Prop) (s : MachineData) :
-    Std.WP.wp b Q E s = b.wp (fun st => Q () st.data) (fun st => E st.pc st.data) s := rfl
+instance : WP ByteArray Unit (MachineData → Prop) (Int64 → MachineData → Prop) where
+  trans b := ⟨fun Q E s => Binary.wp b (fun st => Q () st.data) (fun st => E st.pc st.data) s⟩
+  trans_monotone _ := fun _ _ _ _ hE hQ _ h =>
+    Binary.wp_mono (fun st => hQ () st.data) (fun st => hE st.pc st.data) h
+
+namespace Binary
+
+theorem wp_eq (b : ByteArray) (Q : Unit → MachineData → Prop) (E : Int64 → MachineData → Prop)
+    (s : MachineData) : Std.WP.wp b Q E s = wp b (fun st => Q () st.data) (fun st => E st.pc st.data) s :=
+  rfl
 
 /-! ## Binaries refine programs -/
 
 theorem label_inert (l : Label) : (Directive.label l).Inert := fun _ _ _ _ _ => Iff.rfl
 
+theorem interp_jcc (L L' : Labels) {l l' : Label} (h : L.label l = L'.label l') (asz osz : Width)
+    (cc : CondCode) (n : Nat) (s : MachineData) (pc : Int64) (ret jmp : Int64 → MachineData → Effects) :
+    @Directives.interp L [⟨.instr (.regular asz osz (.jcc cc l)), n⟩] s pc ret jmp
+      = @Directives.interp L' [⟨.instr (.regular asz osz (.jcc cc l')), n⟩] s pc ret jmp := by
+  simp only [Directives.interp, Directive.interp, Instr.interp, Operation.interp]
+  rw [h]
+
 section
 variable [Host]
 
-def DecodesTo (b : Binary) : Prop :=
-  ∀ a, Host.exe.directivesAtAddress a ≠ [] → ∃ pre, (∀ c ∈ pre, c.size = 0 ∧ c.directive.Inert) ∧
-    Host.exe.directivesAtAddress a = pre ++ b.directivesAt a
+structure Assembles (p : Program) (b : ByteArray) : Prop where
+  prog : Host.prog = p
+  start : Host.addrOf 0 = base
+  stop : Host.addrOf p.length = base + .ofNat b.size
+  decodes : ∀ a, Host.exe.directivesAtAddress a ≠ [] → ∀ s ret jmp,
+    @Directives.interp Host.exe.labels (Host.exe.directivesAtAddress a) s a ret jmp
+      = @Directives.interp (labelsAt b a) (directivesAt b a) s a ret jmp
+  targets : ∀ a, a ∈ targets b ↔ p.InternalTarget a
 
-theorem stepIn_of_exe {b : Binary} {next jump : MachineState → Prop} {st : MachineState}
-    {pre : List (Kraken.Sized Directive)} (hpre : ∀ c ∈ pre, c.size = 0 ∧ c.directive.Inert)
-    (hlab : b.labels = Host.exe.labels)
-    (hat : Host.exe.directivesAtAddress st.pc = pre ++ b.directivesAt st.pc)
-    (h : Host.exe.StepIn next jump st) : b.StepIn next jump st := by
+@[instance_reducible] def Assembles.embeds {p : Program} {b : ByteArray} (h : Assembles p b) : Embeds p :=
+  ⟨⟨0, h.prog ▸ List.prefix_refl _⟩⟩
+
+theorem stepIn_of_exe {b : ByteArray} {next jump : MachineState → Prop} {st : MachineState}
+    (hdec : ∀ s ret jmp, @Directives.interp Host.exe.labels (Host.exe.directivesAtAddress st.pc) s st.pc ret jmp
+      = @Directives.interp (labelsAt b st.pc) (directivesAt b st.pc) s st.pc ret jmp)
+    (h : Host.exe.StepIn next jump st) : StepIn b next jump st := by
   intro P ret jmp hr hj
   have h' := h hr hj
-  rw [hat] at h'
-  have h'' := (@Directives.interp_inert_append Host.exe.labels pre (b.directivesAt st.pc) hpre
-    st.data st.pc (fun a s => ret ⟨s, a⟩) P (fun a s => jmp ⟨s, a⟩)).mp h'
-  show (@Directives.interp b.labels _ _ _ _ _).All P
-  rw [hlab]
-  exact h''
+  show (@Directives.interp (labelsAt b st.pc) _ _ _ _ _).All P
+  rw [← hdec]
+  exact h'
 
 theorem stutter_of_exe {next jump : MachineState → Prop} {st : MachineState}
     (hnil : Host.exe.directivesAtAddress st.pc = []) (h : Host.exe.StepIn next jump st) : next st := by
@@ -217,41 +240,41 @@ theorem stutter_of_exe {next jump : MachineState → Prop} {st : MachineState}
   rw [hnil] at h'
   exact h' rfl
 
-theorem wp_of_program_wp {b : Binary} {p : Program} [h : Embeds p]
-    (hdec : b.DecodesTo) (hlab : b.labels = Host.exe.labels) (hsym : b.symbols.map Prod.fst = p.labels)
-    (hentry : b.entry = h.embedding.startAddr) (hstop : b.stop = h.embedding.endAddr)
-    {done exit : MachineState → Prop} {s : MachineData} (hw : p.wp done exit s) : b.wp done exit s := by
-  have hcont : ∀ c u, p.ContinueOnInternalExit s c exit u = b.ContinueOnInternalExit s c exit u := by
+theorem wp_of_program_wp {b : ByteArray} {p : Program} (h : Assembles p b)
+    {done exit : MachineState → Prop} {s : MachineData} (hw : p.wp done exit s) : wp b done exit s := by
+  let _ : Embeds p := h.embeds
+  have hcont : ∀ c u, p.ContinueOnInternalExit s c exit u = ContinueOnInternalExit b s c exit u := by
     intro c u
-    have ht : p.InternalTarget u.pc = b.InternalTarget u.pc := by
-      unfold Program.InternalTarget InternalTarget
-      rw [hsym, hlab]
     unfold Program.ContinueOnInternalExit ContinueOnInternalExit
-    rw [ht]
+    by_cases hc : p.InternalTarget u.pc ∧ u.data.StackAtOrBelow s
+    · rw [ite_eq_left hc, ite_eq_left ⟨(h.targets _).2 hc.1, hc.2⟩]
+    · rw [ite_eq_right hc, ite_eq_right fun hb => hc ⟨(h.targets _).1 hb.1, hb.2⟩]
   rw [Program.wp_eq] at hw
-  have hw := @hw h
+  have hw := @hw h.embeds
   unfold wp
-  rw [hentry, hstop]
+  have hstart : h.embeds.embedding.startAddr = base := h.start
+  have hstop : h.embeds.embedding.endAddr = base + .ofNat b.size := by
+    show Host.addrOf (0 + p.length) = _
+    simpa using h.stop
+  rw [hstart, hstop] at hw
   unfold While at hw ⊢
-  generalize (⟨s, h.embedding.startAddr⟩ : MachineState) = x₀ at hw ⊢
+  generalize (⟨s, base⟩ : MachineState) = x₀ at hw ⊢
   induction hw with
   | done x hx => exact .done x hx
   | step x mid hx _ ih =>
     obtain ⟨hc, hstep⟩ := hx
     by_cases hnil : Host.exe.directivesAtAddress x.pc = []
     · exact ih x (stutter_of_exe hnil hstep)
-    · obtain ⟨pre, hpre, hat⟩ := hdec x.pc hnil
-      refine .step x mid ⟨hc, ?_⟩ ih
-      exact (stepIn_of_exe hpre hlab hat hstep).mono (fun _ h => h) fun u h => by rw [← hcont]; exact h
+    · refine .step x mid ⟨hc, ?_⟩ ih
+      exact (stepIn_of_exe (h.decodes x.pc hnil) hstep).mono (fun _ h => h)
+        fun u h => by rw [← hcont]; exact h
 
-theorem refines_program {b : Binary} {p : Program} [h : Embeds p]
-    (hdec : b.DecodesTo) (hlab : b.labels = Host.exe.labels) (hsym : b.symbols.map Prod.fst = p.labels)
-    (hentry : b.entry = h.embedding.startAddr) (hstop : b.stop = h.embedding.endAddr) (P : MachineData → Prop) :
+theorem refines_program {b : ByteArray} {p : Program} (h : Assembles p b) (P : MachineData → Prop) :
     ⦃P⦄ b ⪯[ofStateRepr id] p ⦃fun _ _ _ => True; fun a a' _ => a = a'⦄ := by
   refine ⟨wrp_intro fun Qa Ea => ?_⟩
   intro s hs
   simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, id] at hs
-  refine wp_mono (fun u hu => ?_) (fun u hu => ?_) (wp_of_program_wp hdec hlab hsym hentry hstop hs.2)
+  refine wp_mono (fun u hu => ?_) (fun u hu => ?_) (wp_of_program_wp h hs.2)
   · show (ofStateRepr id).post _ Qa () u.data
     rw [Concretization.post_pi]
     exact ⟨(), trivial, hu⟩
@@ -278,13 +301,9 @@ theorem zipWithAddLayout_size (i : Nat) : @Kraken.Layout.size Directive zipWithA
 
 theorem zipWithAddLayout_start : @Kraken.Layout.start Directive zipWithAddLayout = 0x401000 := rfl
 
-def zipWithAddBinary : Binary where
-  base := 0x401000
-  text := [0x48, 0x85, 0xc9, 0x7e, 0x16, 0x31, 0xc0, 0x4c, 0x8b, 0x04, 0xc6, 0x4c, 0x03, 0x04, 0xc7,
-    0x4c, 0x89, 0x04, 0xc2, 0x48, 0xff, 0xc0, 0x48, 0x39, 0xc1, 0x75, 0xec, 0xc3]
-  symbols := [("LBB0_2", 0x401007), ("LBB0_3", 0x40101b)]
-  entry := 0x401000
-  stop := 0x40101c
+def zipWithAddBinary : ByteArray :=
+  ⟨#[0x48, 0x85, 0xc9, 0x7e, 0x16, 0x31, 0xc0, 0x4c, 0x8b, 0x04, 0xc6, 0x4c, 0x03, 0x04, 0xc7,
+    0x4c, 0x89, 0x04, 0xc2, 0x48, 0xff, 0xc0, 0x48, 0x39, 0xc1, 0x75, 0xec, 0xc3]⟩
 
 theorem _root_.Kraken.Executable.exists_addr_of_directivesAtAddress_ne_nil {e : Executable} {a : Int64}
     (h : e.directivesAtAddress a ≠ []) : ∃ x ∈ e.withAddresses, x.addr = a := by
@@ -340,62 +359,64 @@ theorem zipWithAddLayout_addrOf_sub (n : Nat) :
 section
 attribute [local instance] zipWithAddHost
 
-local instance : Embeds zipWithAdd := ⟨⟨0, List.prefix_refl _⟩⟩
-
 theorem zipWithAddHost_exe : Host.exe = zipWithAddLayout.apply zipWithAdd := rfl
 
-theorem zipWithAddBinary_labels : zipWithAddBinary.labels = Host.exe.labels := by
+theorem zipWithAddHost_label (l : Label) : Host.exe.labels.label l =
+    if l = "LBB0_2" then 0x401007 else if l = "LBB0_3" then 0x40101b else -1 := by
   rw [zipWithAddHost_exe]
-  unfold Binary.labels Executable.labels
-  congr 1
-  funext l
-  by_cases h₁ : "LBB0_2" = l <;> by_cases h₂ : "LBB0_3" = l <;>
-    simp_all [zipWithAddBinary, Kraken.Layout.apply, zipWithAdd, Kraken.Executable.withAddresses,
-      zipWithAddLayout_size, zipWithAddLayout_start, beq_iff_eq]
-
-theorem zipWithAddBinary_symbols : zipWithAddBinary.symbols.map Prod.fst = zipWithAdd.labels := by
-  simp [zipWithAddBinary, zipWithAdd]
-
-theorem zipWithAddBinary_entry :
-    zipWithAddBinary.entry = (inferInstance : Embeds zipWithAdd).embedding.startAddr := rfl
-
-theorem zipWithAddBinary_stop :
-    zipWithAddBinary.stop = (inferInstance : Embeds zipWithAdd).embedding.endAddr := by
-  show (0x40101c : Int64) = Host.addrOf (0 + zipWithAdd.length)
-  rw [show zipWithAdd.length = 12 from rfl, Host.addrOf, zipWithAddHost_exe, Kraken.Executable.addrOf,
-    zipWithAddLayout_sizeBefore, zipWithAddLayout_startAddr]
-  rfl
-
-theorem zipWithAddBinary_decodesTo : zipWithAddBinary.DecodesTo := by
-  intro a hne
-  obtain ⟨x, hx, rfl⟩ := Kraken.Executable.exists_addr_of_directivesAtAddress_ne_nil hne
-  rw [zipWithAddHost_exe] at hx ⊢
+  show ((zipWithAddLayout.apply zipWithAdd).withAddresses.findSome? _).getD (-1) = _
+  by_cases h₁ : l = "LBB0_2"
+  · subst h₁
+    simp [Kraken.Layout.apply, zipWithAdd, Kraken.Executable.withAddresses, zipWithAddLayout_size,
+      zipWithAddLayout_start]
+  by_cases h₂ : l = "LBB0_3"
+  · subst h₂
+    simp [Kraken.Layout.apply, zipWithAdd, Kraken.Executable.withAddresses, zipWithAddLayout_size,
+      zipWithAddLayout_start]
   simp [Kraken.Layout.apply, zipWithAdd, Kraken.Executable.withAddresses, zipWithAddLayout_size,
-    zipWithAddLayout_start] at hx
-  rcases hx with rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl
-  all_goals first
-    | exact ⟨[], by simp, by
-        simp [Kraken.Layout.apply, zipWithAdd, Kraken.Executable.withAddresses,
-          Kraken.Executable.directivesAtAddress, zipWithAddLayout_size, zipWithAddLayout_start]
-        rfl⟩
-    | exact ⟨[⟨.label "LBB0_2", 0⟩], by simp [Binary.label_inert], by
-        simp [Kraken.Layout.apply, zipWithAdd, Kraken.Executable.withAddresses,
-          Kraken.Executable.directivesAtAddress, zipWithAddLayout_size, zipWithAddLayout_start]
-        rfl⟩
-    | exact ⟨[⟨.label "LBB0_3", 0⟩], by simp [Binary.label_inert], by
-        simp [Kraken.Layout.apply, zipWithAdd, Kraken.Executable.withAddresses,
-          Kraken.Executable.directivesAtAddress, zipWithAddLayout_size, zipWithAddLayout_start]
-        rfl⟩
+    zipWithAddLayout_start, h₁, h₂, Ne.symm h₁, Ne.symm h₂]
 
-theorem zipWithAddBinary_refines_zipWithAdd (P : MachineData → Prop) :
+theorem zipWithAddBinary_targets : Binary.targets zipWithAddBinary = [0x40101b, 0x401007] := rfl
+
+theorem zipWithAddHost_assembles : Binary.Assembles zipWithAdd zipWithAddBinary where
+  prog := rfl
+  start := rfl
+  stop := by
+    show Host.addrOf 12 = _
+    rw [Host.addrOf, zipWithAddHost_exe, Kraken.Executable.addrOf, zipWithAddLayout_sizeBefore,
+      zipWithAddLayout_startAddr]
+    rfl
+  decodes a hne s ret jmp := by
+    obtain ⟨x, hx, rfl⟩ := Kraken.Executable.exists_addr_of_directivesAtAddress_ne_nil hne
+    rw [zipWithAddHost_exe] at hx ⊢
+    simp [Kraken.Layout.apply, zipWithAdd, Kraken.Executable.withAddresses, zipWithAddLayout_size,
+      zipWithAddLayout_start] at hx
+    rcases hx with rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl
+    all_goals
+      simp [Kraken.Layout.apply, zipWithAdd, Kraken.Executable.withAddresses,
+        Kraken.Executable.directivesAtAddress, zipWithAddLayout_size, zipWithAddLayout_start]
+      first
+        | rfl
+        | refine (Binary.interp_jcc _ _ (l' := "") ?_ _ _ _ _ _ _ _ _).trans rfl
+          exact (zipWithAddHost_label _).trans (by simp <;> rfl)
+  targets a := by
+    rw [zipWithAddBinary_targets]
+    simp only [Program.InternalTarget, zipWithAddHost_label]
+    simp [zipWithAdd]
+    exact or_comm.trans (or_congr eq_comm eq_comm)
+
+end
+
+section
+variable [Host] (s : MachineData) (ra : Int64)
+
+theorem zipWithAddBinary_refines_zipWithAdd (h : Binary.Assembles zipWithAdd zipWithAddBinary)
+    (P : MachineData → Prop) :
     ⦃P⦄ zipWithAddBinary ⪯[ofStateRepr id] zipWithAdd ⦃fun _ _ _ => True; fun a a' _ => a = a'⦄ :=
-  Binary.refines_program zipWithAddBinary_decodesTo zipWithAddBinary_labels zipWithAddBinary_symbols
-    zipWithAddBinary_entry zipWithAddBinary_stop P
+  Binary.refines_program h P
 
-variable (s : MachineData) (ra : Int64)
-
-theorem zipWithAddBinary_refines_P {A B O : BitVec 64} {n : Nat}
-    (hrdi : (s.push64 ra).regs.get64 .rdi = A) (hrsi : (s.push64 ra).regs.get64 .rsi = B)
+theorem zipWithAddBinary_refines_P (h : Binary.Assembles zipWithAdd zipWithAddBinary) {A B O : BitVec 64}
+    {n : Nat} (hrdi : (s.push64 ra).regs.get64 .rdi = A) (hrsi : (s.push64 ra).regs.get64 .rsi = B)
     (hrdx : (s.push64 ra).regs.get64 .rdx = O) (hrcx : (s.push64 ra).regs.get64 .rcx = BitVec.ofNat 64 n)
     (hmem : ZipArrays (s.push64 ra).dmem A B O ((s.push64 ra).regs.get64 .rsp) n) :
     ⦃(· = s.push64 ra)⦄ zipWithAddBinary
@@ -404,18 +425,20 @@ theorem zipWithAddBinary_refines_P {A B O : BitVec 64} {n : Nat}
       ⦃fun _ _ _ => False; fun a t => a = ra ∧ t.regs.get64 .rsp = s.regs.get64 .rsp ∧
         outView O n t.dmem = Id.run (zipWithAddP (words (s.push64 ra).dmem A n).toArray
           (words (s.push64 ra).dmem B n).toArray)⦄ :=
+  let _ : Embeds zipWithAdd := h.embeds
   Refinement.comp_le (by grind) (by grind) (by grind)
-    (zipWithAdd_refines_P s ra hrdi hrsi hrdx hrcx hmem) (zipWithAddBinary_refines_zipWithAdd _)
+    (zipWithAdd_refines_P s ra hrdi hrsi hrdx hrcx hmem) (zipWithAddBinary_refines_zipWithAdd h _)
 
-theorem zipWithAddBinary_correct {A B O : BitVec 64} {n : Nat}
-    (hrdi : (s.push64 ra).regs.get64 .rdi = A) (hrsi : (s.push64 ra).regs.get64 .rsi = B)
+theorem zipWithAddBinary_correct (hasm : Binary.Assembles zipWithAdd zipWithAddBinary) {A B O : BitVec 64}
+    {n : Nat} (hrdi : (s.push64 ra).regs.get64 .rdi = A) (hrsi : (s.push64 ra).regs.get64 .rsi = B)
     (hrdx : (s.push64 ra).regs.get64 .rdx = O) (hrcx : (s.push64 ra).regs.get64 .rcx = BitVec.ofNat 64 n)
     (hmem : ZipArrays (s.push64 ra).dmem A B O ((s.push64 ra).regs.get64 .rsp) n) :
     Triple zipWithAddBinary (fun t => t = s.push64 ra) (fun _ _ => True)
       (fun a t => a = ra ∧ t.regs.get64 .rsp = s.regs.get64 .rsp
         ∧ words t.dmem O n = List.zipWith (· + ·) (words (s.push64 ra).dmem A n)
             (words (s.push64 ra).dmem B n)) := by
-  have h := (zipWithAddBinary_refines_P s ra hrdi hrsi hrdx hrcx hmem).transport
+  let _ : Embeds zipWithAdd := hasm.embeds
+  have h := (zipWithAddBinary_refines_P s ra hasm hrdi hrsi hrdx hrcx hmem).transport
     (Pa := True) (Qa := fun _ => True) (Ea := estack⟨⟩) ⟨fun _ => trivial⟩
   refine ⟨fun t ht => WP.wp_monotone (x := zipWithAddBinary) (fun _ _ _ => trivial) ?_ t
     (h.le_wp t (by simp only [meet_apply, meet_prop_eq_and, Concretization.comp_pred,
@@ -424,5 +447,15 @@ theorem zipWithAddBinary_correct {A B O : BitVec 64} {n : Nat}
   exact ⟨hra, hrsp, words_eq_zipWith_of_outView ho⟩
 
 end
+
+theorem zipWithAddHost_correct (s : MachineData) (ra : Int64) {A B O : BitVec 64} {n : Nat}
+    (hrdi : (s.push64 ra).regs.get64 .rdi = A) (hrsi : (s.push64 ra).regs.get64 .rsi = B)
+    (hrdx : (s.push64 ra).regs.get64 .rdx = O) (hrcx : (s.push64 ra).regs.get64 .rcx = BitVec.ofNat 64 n)
+    (hmem : ZipArrays (s.push64 ra).dmem A B O ((s.push64 ra).regs.get64 .rsp) n) :
+    Triple zipWithAddBinary (fun t => t = s.push64 ra) (fun _ _ => True)
+      (fun a t => a = ra ∧ t.regs.get64 .rsp = s.regs.get64 .rsp
+        ∧ words t.dmem O n = List.zipWith (· + ·) (words (s.push64 ra).dmem A n)
+            (words (s.push64 ra).dmem B n)) :=
+  @zipWithAddBinary_correct zipWithAddHost s ra zipWithAddHost_assembles A B O n hrdi hrsi hrdx hrcx hmem
 
 end Ascent.Kraken
