@@ -15,4 +15,5 @@ import Demo.Binary
 import Demo.BinaryCheck
 import Demo.ZipBinary
 import Demo.Memmove
+import Demo.HoleScope
 import Demo.Walkthrough

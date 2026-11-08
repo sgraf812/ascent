@@ -62,4 +62,103 @@ LBB0_7:
   retq
 ")
 
+attribute [local vcgen_simp] memmove
+
+ascend_def memmoveA [Host] [FunDecls] [Embeds memmove] (s : MachineData) (ra : Int64) :
+    BlockM MachineData Unit from
+  ⦃(· = s.push64 ra)⦄ memmove ⪯[ofStateRepr abs] memmoveA ⦃fun _ _ => ⊤; RetRel s ra⦄
+  ascend [refines_cfg (p := memmove)] with finish
+
+/--
+info: def Ascent.Kraken.memmoveA : BlockM MachineData Unit :=
+cfgLoop
+  (Table.get
+    [(CfgLabel.ofLabel
+          { label := none, idx := 0,
+              body :=
+                [asm|
+                    "mov rax, rdi"
+                    "cmp rdi, rsi"
+                    "jae LBB0_1"
+                    "test rdx, rdx"
+                    "je LBB0_7"
+                    "xor ecx, ecx"],
+              next := some "LBB0_6" }.label,
+        do
+        modifyIf (fun x => True) (setReg64 Reg64.rax fun st => st.regs.get64 Reg64.rdi)
+        branch (fun st => CondCode.nc.cmp (st.regs.get64 Reg64.rdi) (st.regs.get64 Reg64.rsi)) (CfgLabel.label "LBB0_1")
+        branch (fun st => CondCode.z.cmp (st.regs.get64 Reg64.rdx &&& st.regs.get64 Reg64.rdx) 0)
+            (CfgLabel.label "LBB0_7")
+        modifyIf (fun x => True)
+            (setReg64 Reg64.rcx fun st =>
+              BitVec.setWidth 64 ((st.regs.get64 Reg64.rcx).take 32 ^^^ (st.regs.get64 Reg64.rcx).take 32))
+        pure PUnit.unit),
+      (CfgLabel.ofLabel
+          { label := some "LBB0_6", idx := 1,
+              body :=
+                [asm|
+                    "movzx edi, BYTE PTR [rsi+rcx*1+0]"
+                    "mov BYTE PTR [rax+rcx*1+0], dil"
+                    "inc rcx"
+                    "cmp rdx, rcx"
+                    "jne LBB0_6"
+                    "jmp LBB0_7"],
+              next := some "LBB0_1" }.label,
+        do
+        modifyIf (loadOk 1 (sib 1 Reg64.rsi Reg64.rcx 0))
+            (loadReg 1 Reg64.rdi (sib 1 Reg64.rsi Reg64.rcx 0) fun w x => w)
+        modifyIf (storeOk 1 (sib 1 Reg64.rax Reg64.rcx 0))
+            (storeWord 1 (sib 1 Reg64.rax Reg64.rcx 0) fun st => st.regs.get64 Reg64.rdi)
+        modifyIf (fun x => True) (setReg64 Reg64.rcx fun st => st.regs.get64 Reg64.rcx + 1)
+        branch (fun st => CondCode.nz.cmp (st.regs.get64 Reg64.rdx) (st.regs.get64 Reg64.rcx)) (CfgLabel.label "LBB0_6")
+        branch (fun x => true) (CfgLabel.label "LBB0_7")),
+      (CfgLabel.ofLabel
+          { label := some "LBB0_1", idx := 2,
+              body :=
+                [asm|
+                    "test rdx, rdx"
+                    "je LBB0_7"
+                    "mov rcx, rdx"],
+              next := some "LBB0_3" }.label,
+        do
+        branch (fun st => CondCode.z.cmp (st.regs.get64 Reg64.rdx &&& st.regs.get64 Reg64.rdx) 0)
+            (CfgLabel.label "LBB0_7")
+        modifyIf (fun x => True) (setReg64 Reg64.rcx fun st => st.regs.get64 Reg64.rdx)
+        pure PUnit.unit),
+      (CfgLabel.ofLabel
+          { label := some "LBB0_3", idx := 3,
+              body :=
+                [asm|
+                    "dec rcx"
+                    "movzx edi, BYTE PTR [rsi+rdx*1+-1]"
+                    "mov BYTE PTR [rax+rdx*1+-1], dil"
+                    "mov rdx, rcx"
+                    "jne LBB0_3"],
+              next := some "LBB0_7" }.label,
+        do
+        let x ←
+          do
+            let z ← peek fun st => st.regs.get64 Reg64.rcx - 1 == BitVec.zero 64
+            modifyIf (fun x => True) (setReg64 Reg64.rcx fun st => st.regs.get64 Reg64.rcx - 1)
+            pure z
+        modifyIf (loadOk 1 (sib 1 Reg64.rsi Reg64.rdx (-1)))
+            (loadReg 1 Reg64.rdi (sib 1 Reg64.rsi Reg64.rdx (-1)) fun w x => w)
+        modifyIf (storeOk 1 (sib 1 Reg64.rax Reg64.rdx (-1)))
+            (storeWord 1 (sib 1 Reg64.rax Reg64.rdx (-1)) fun st => st.regs.get64 Reg64.rdi)
+        modifyIf (fun x => True) (setReg64 Reg64.rdx fun st => st.regs.get64 Reg64.rcx)
+        branch (fun x_1 => !x) (CfgLabel.label "LBB0_3")
+        pure PUnit.unit),
+      (CfgLabel.ofLabel
+          { label := some "LBB0_7", idx := 4,
+              body :=
+                [asm|
+                    "ret"],
+              next := none }.label,
+        exitIf (loadOk 8 fun st => st.regs.get64 Reg64.rsp) (setReg64 Reg64.rsp fun st => st.regs.get64 Reg64.rsp + 8)
+          CfgLabel.exit)])
+  memmove.next CfgLabel.entry
+-/
+#guard_msgs in
+#print memmoveA
+
 end Ascent.Kraken
