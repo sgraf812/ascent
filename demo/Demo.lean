@@ -12,4 +12,6 @@ import Demo.Arrays
 import Demo.ZipArr
 import Demo.ZipPure
 import Demo.Binary
+import Demo.BinaryCheck
+import Demo.ZipBinary
 import Demo.Walkthrough

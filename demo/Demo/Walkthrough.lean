@@ -1,4 +1,4 @@
-import Demo.Binary
+import Demo.ZipBinary
 
 /-!
 # From x64 to `Array.zipWith`
@@ -221,8 +221,8 @@ info: @zipWithAdd_correct : ∀ [inst : Host] [inst_1 : FunDecls] [Embeds zipWit
 the text. The loader maps every binary at `Binary.base`. The semantics of a binary fetches and
 decodes one instruction at the program counter and runs kraken's semantics of that instruction.
 `Binary.Assembles zipWithAdd zipWithAddBinary` states that the host lays out the text from
-`Binary.base` and that the bytes behave like the text at every address. Under that hypothesis the
-binary refines the text: -/
+`Binary.base` and that the bytes at every address decode to the instruction of the text there. Under
+that hypothesis the binary refines the text: -/
 
 #check @Binary.refines_program
 #check @zipWithAddBinary_refines_zipWithAdd
@@ -232,9 +232,12 @@ assembles the text to them: -/
 
 #check @zipWithAddBinary_correct
 
-/-! The host `zipWithAddHost` assembles the text to the bytes, checked by evaluation, and gives the
+/-! `Binary.check` walks the text, the sizes and the bytes in one pass. One evaluation of it builds
+the host `zipWithAddHost` and proves that it assembles the text to the bytes, which gives the
 statement without a host: -/
 
+#check @Binary.assembles_of_check
+#check zipWithAddBinary_check
 #check @zipWithAddHost_assembles
 #check @zipWithAddHost_correct
 #print axioms zipWithAddHost_correct
