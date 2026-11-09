@@ -356,5 +356,22 @@ theorem set!_eq_zipWith {α β γ : Type} [Inhabited α] [Inhabited β] [Inhabit
 
 grind_pattern set!_eq_zipWith => o.set! k (f a[k]! b[k]!), Array.zipWith f a b
 
+theorem eq_of_getElem! {α : Type} [Inhabited α] {o a : Array α} (ho : o.size = a.size)
+    (h : ∀ i < a.size, o[i]! = a[i]!) : o = a := by
+  apply Array.ext ho
+  intro i h₁ h₂
+  have hi := h i h₂
+  rwa [getElem!_pos o i h₁, getElem!_pos a i h₂] at hi
+
+theorem set!_eq_of_getElem! {α : Type} [Inhabited α] {o a : Array α} {k : Nat}
+    (ho : o.size = a.size) (hk : k + 1 = a.size) (h : ∀ i < k, o[i]! = a[i]!) :
+    o.set! k a[k]! = a := by
+  refine eq_of_getElem! (by simp [ho]) fun i hi => ?_
+  by_cases hik : k = i
+  · subst hik; exact Array.getElem!_set!_self _ _ _ (by omega)
+  · rw [Array.getElem!_set!_ne _ _ _ _ hik]; exact h i (by omega)
+
+grind_pattern set!_eq_of_getElem! => o.set! k a[k]!
+
 end Array
 

@@ -186,6 +186,22 @@ variable {a b : BitVec 64} {n m : Nat} {P₁ P₂ : Prop}
     rw [Bool.eq_iff_iff, CondCode.cmp_z_eq_true, BitVec.and_self, h hp, beq_iff_eq]
     exact ofNat_eq_ofNat_iff hn (by omega)
 
+theorem WordNat.sub_one_beq_zero {x : BitVec 64} {i : Nat} (h : WordNat x i) (hi : 0 < i)
+    (hb : i < 2 ^ 64) : (x - 1#64 == 0#64) = (i == 1) := by
+  rw [WordNat] at h
+  subst h
+  have key : (BitVec.ofNat 64 i - 1#64 = 0#64) ↔ i = 1 := by
+    constructor
+    · intro he
+      have := congrArg BitVec.toNat he
+      simp only [BitVec.toNat_sub, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hb] at this
+      omega
+    · rintro rfl; rfl
+  rw [Bool.eq_iff_iff, beq_iff_eq, beq_iff_eq]
+  exact key
+
+grind_pattern WordNat.sub_one_beq_zero => WordNat x i, x - 1#64 == 0#64
+
 @[ascend_pure high] theorem absN_cmp_le_self_zero (h : PureRefinement a n P₁ WordNat) :
     PureRefinement (CondCode.le.cmp (a &&& a) 0#64) (n == 0) (P₁ ∧ n < 2 ^ 63) Eq :=
   fun ⟨hp, hn⟩ => by
