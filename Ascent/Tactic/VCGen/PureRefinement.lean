@@ -21,8 +21,10 @@ environment rules for `cv` and then the `@[ascend_pure]` rules by priority, solv
 order, and backtracks to the next rule when a premise fails. A rule without premises applies only
 if its abstract value mentions no free variable of the `c` of an environment entry.
 
-The solver solves the goal at a fresh precondition `?P₀`, simplifies `?P₀` to `P` with the `simp`
-methods of the run, and assigns `?P := P`. A verification condition `Q c x` closes by the rule
+The solver solves the goal at a fresh precondition `?P₀` and simplifies `?P₀` to `P` with the
+`simp` methods of the run. A goal whose guard is a hole gets `P`; a goal with a guard `P_goal`
+gets `P` by the consequence rule `PureRefinement.weaken_pre`, with the verification condition
+`P_goal → P`. A verification condition `Q c x` closes by the rule
 `PureRefinement.rel hx`.
 -/
 
@@ -186,10 +188,11 @@ def isPureRefinementGoal (goal : MVarId) : SymM Bool := do
       && (← instantiateMVarsIfMVarAppS rhs).isAppOfArity ``Ascent.PureRefinement 6
   return type.isAppOfArity ``Ascent.PureRefinement 6
 
-/-- Close the goal `PureRefinement cv ?av ?P Q`. The precondition and the abstract value are
-simplified with the `simp` methods of the run. Throws if no rule abstracts a
-subterm of `cv`. -/
-def solvePureRefinement (goal : MVarId) : VCGenM Unit := do
+/-- Close the goal `PureRefinement cv ?av P_goal Q`. The precondition and the abstract value are
+simplified with the `simp` methods of the run. The solution's precondition `P` meets `P_goal` by
+the consequence rule `PureRefinement.weaken_pre`: when `P_goal` is not `P`, the premise
+`hpre : P_goal → P` is returned as a new goal. Throws if no rule abstracts a subterm of `cv`. -/
+def solvePureRefinement (goal : MVarId) : VCGenM (Option MVarId) := do
   let goal ← elimTopPre goal
   goal.withContext do
     let type ← instantiateMVarsS (← goal.getType)
@@ -204,7 +207,7 @@ def solvePureRefinement (goal : MVarId) : VCGenM Unit := do
     let P₀ ← instantiateMVarsS P₀
     let (av, eav?) ← simpRun av₀
     let (P, eP?) ← simpRun P₀
-    unless (← isDefEqS args[3]! av) && (← isDefEqS args[4]! P) do
+    unless ← isDefEqS args[3]! av do
       throwError "ascend: the abstract value does not fit{indentExpr type}"
     let us := head.constLevels!
     let mut prf := aux
@@ -214,7 +217,15 @@ def solvePureRefinement (goal : MVarId) : VCGenM Unit := do
     if let some eav := eav? then
       prf ← mkAppNS (← mkConstS ``Ascent.PureRefinement.of_val_eq us)
         #[args[0]!, args[1]!, args[2]!, av₀, P, args[5]!, av, prf, eav]
-    goal.assign prf
+    if ← isDefEqS args[4]! P then
+      goal.assign prf
+      return none
+    let Pgoal ← instantiateMVarsS args[4]!
+    let hpreType ← mkForallS `h .default Pgoal P
+    let hpre ← shareCommon (← mkFreshExprSyntheticOpaqueMVar hpreType (tag := `hpre))
+    goal.assign (← mkAppNS (← mkConstS ``Ascent.PureRefinement.weaken_pre us)
+      #[args[0]!, args[1]!, args[2]!, av, P, Pgoal, args[5]!, prf, hpre])
+    return some hpre.mvarId!
 
 /-- Close a verification condition `Q c x` with the rule `PureRefinement.rel hx` of an environment
 entry `hx`. -/

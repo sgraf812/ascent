@@ -44,6 +44,7 @@ tests fail.
 | D11 | a `Refinement` spec keeps its abstract program schematic | `AscendUnfold`, `PureRefinement`, `Regress/HoleScope` | yes, by removing the patch |
 | D12, pure refinements | `PureRefinement` goals go to their solver | `PureRefinement`, `WordAbsEngine`, `Regress/Lockstep`, `Regress/HoleScope` | yes, by disabling the dispatch |
 | D12, existential witness | `pre ⊑ ∃ x, p x` becomes `pre ⊑ p ?x` | `Regress/ExistsHole` | yes, by disabling the step |
+| D12, guard consequence | the solution's guard meets the goal's guard by `PureRefinement.weaken_pre`, with the VC `P_goal → P` | `Regress/GuardConsequence` | yes, against the solver before the change |
 | D12, two-sided split | an `if` splits both programs on one condition | `Regress/IteSplit` | no: without D12 the forked `Solve` does not compile |
 
 ## Regressions
@@ -59,6 +60,7 @@ tests fail.
 | `FixLoopDelab` | `68f7877` and the `repeat'` delaborator round trip |
 | `Regress/TopLevelRule` | `ascend_def` added the unfold equations of the concrete head, which ranked above a rule for the head; now it unfolds only the definitions its list names |
 | `Regress/ExistsHole` | an existential on the right side, `∃ a, ra = a ∧ …`, had no step; it is introduced with a hole as witness |
+| `Regress/GuardConsequence` | a value rule with a guard stronger than the goal's fixed guard `True` was rejected ("the abstract value does not fit"); the guard becomes a VC |
 | `Regress/Lockstep`, `Regress/MixedHole` (`pairArg`) | the loop leaves needed rules that fix the abstract constructor (`wrp_yield`, `wrp_done`, `wrp_yield_pair`); the step relation now names the abstract step through `∃`, and a tuple witness is a tuple of holes |
 | `Regress/MixedHole` | a hole `?fa () a` or `?fa () (a₁, a₂)` was not filled. The loop rules now take `fa : βa → …`, so the remaining source is a tuple loop value, which core's `Prod.forall_intro` splits after the body hole exists (`?fa (a₁, a₂)`) |
 

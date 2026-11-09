@@ -1,5 +1,5 @@
 diff -ruN a/Ascent/Tactic/VCGen/RuleConstruction.lean b/Ascent/Tactic/VCGen/RuleConstruction.lean
---- a/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-11-09 05:59:47.920906738 +0000
+--- a/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-11-09 14:35:07.880750814 +0000
 +++ b/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-11-08 18:28:32.064610893 +0000
 @@ -395,41 +395,65 @@
  /-! ## Split rules -/
@@ -120,7 +120,7 @@ diff -ruN a/Ascent/Tactic/VCGen/RuleConstruction.lean b/Ascent/Tactic/VCGen/Rule
    let res ← abstractMVars prf
    mkBackwardRuleFromExpr res.expr res.paramNames.toList
 diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
---- a/Ascent/Tactic/VCGen/Solve.lean	2026-11-09 05:59:47.919671783 +0000
+--- a/Ascent/Tactic/VCGen/Solve.lean	2026-11-09 14:35:07.879456820 +0000
 +++ b/Ascent/Tactic/VCGen/Solve.lean	2026-11-09 05:59:47.811227463 +0000
 @@ -393,14 +393,202 @@
      | .noProgress => return none
@@ -387,8 +387,8 @@ diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
  
    -- Phase 4: wp decomposition. The program-shape steps below all consume one unit of fuel
 diff -ruN a/Ascent/Tactic/VCGen/Driver.lean b/Ascent/Tactic/VCGen/Driver.lean
---- a/Ascent/Tactic/VCGen/Driver.lean	2026-11-09 05:59:47.920300267 +0000
-+++ b/Ascent/Tactic/VCGen/Driver.lean	2026-11-09 01:28:39.413032264 +0000
+--- a/Ascent/Tactic/VCGen/Driver.lean	2026-11-09 14:35:07.880148138 +0000
++++ b/Ascent/Tactic/VCGen/Driver.lean	2026-11-09 14:34:36.925612068 +0000
 @@ -9,6 +9,7 @@
  import Lean.Elab.Tactic.VCGen.Context
  import Lean.Elab.Tactic.VCGen.Solve
@@ -405,15 +405,14 @@ diff -ruN a/Ascent/Tactic/VCGen/Driver.lean b/Ascent/Tactic/VCGen/Driver.lean
    if reason matches .noEntailment .. | .noProgress .. then
      -- An invariant from an `invariants` alternative is assigned while the target is built, as in
      -- `?inv pref suff (a, b)`. Instantiating it lets `simp` reduce the body of the invariant.
-@@ -149,6 +151,11 @@
+@@ -149,6 +151,10 @@
      | .stop reason =>
        emitVC goal reason
      | .goals scope subgoals =>
 +      -- A `PureRefinement` subgoal is solved at once, so that the continuation sees the abstract
 +      -- value and the precondition.
-+      let subgoals ← subgoals.filterM fun mv => do
-+        if ← isPureRefinementGoal mv then solvePureRefinement mv; return false
-+        return true
++      let subgoals ← subgoals.filterMapM fun mv => do
++        if ← isPureRefinementGoal mv then solvePureRefinement mv else return some mv
        -- Handle invariant subgoals eagerly here, so that VC subgoals popped
        -- from the worklist later see the invariant MVar already assigned.
        -- Non-invariant subgoals go to the worklist as usual and will eventually go through `emitVC`.

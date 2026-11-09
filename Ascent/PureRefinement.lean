@@ -44,6 +44,10 @@ theorem PureRefinement.of_pre_eq (h : PureRefinement cv av P Q) (e : P = P') :
     PureRefinement cv av P' Q :=
   e ▸ h
 
+theorem PureRefinement.weaken_pre (h : PureRefinement cv av P Q) (hpre : P' → P) :
+    PureRefinement cv av P' Q :=
+  fun h' => h (hpre h')
+
 theorem PureRefinement.of_val_eq {av' : AV} (h : PureRefinement cv av P Q) (e : av = av') :
     PureRefinement cv av' P Q :=
   e ▸ h

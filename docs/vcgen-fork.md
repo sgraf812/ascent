@@ -174,14 +174,18 @@ does not capture the goal's hole.
 `if` splits both programs on the same condition.
 
 **Change.** The driver dispatches `PureRefinement` goals to the solver of
-`Ascent/Tactic/VCGen/PureRefinement.lean`. `mkBackwardRuleForSplit` splits an `ite`, `dite` or
+`Ascent/Tactic/VCGen/PureRefinement.lean`. The solver meets the goal's guard `P_goal` with the
+guard `P` of its solution by the consequence rule `PureRefinement.weaken_pre`, as a spec rule meets
+the goal's precondition: when `P_goal` is not `P`, the premise `hpre : P_goal → P` goes back to the
+worklist as a verification condition. `mkBackwardRuleForSplit` splits an `ite`, `dite` or
 `cond` on both sides with one fresh abstract branch per alternative, after `fillAbstractHole`
 fills the abstract hole. A matcher still splits on the concrete side only. `rhsExistsIntro?`
 turns `pre ⊑ ∃ x, p x` on the `Prop` lattice into `pre ⊑ p ?x`, with `?x` a fresh hole in the
 goal's context (`Ascent.le_exists_of_le`); for a tuple type the witness is the tuple of fresh holes
 (`mkWitnessHole`), so that a `match` on it reduces.
 
-**Acceptance.** `PureRefinement`, `WordAbsEngine`, `Regress/ExistsHole`, and the register and
+**Acceptance.** `PureRefinement`, `WordAbsEngine`, `Regress/ExistsHole`, `Regress/GuardConsequence`,
+and the register and
 array layers of the demo.
 
 ### Covered by core

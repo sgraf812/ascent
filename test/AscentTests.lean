@@ -24,3 +24,4 @@ import AscentTests.Regress.Commands
 import AscentTests.Regress.TopLevelRule
 import AscentTests.Regress.MixedHole
 import AscentTests.Regress.ExistsHole
+import AscentTests.Regress.GuardConsequence
