@@ -19,7 +19,7 @@ ascend_def memmoveL₀ (rdi rsi rdx rsp : BitVec 64) : BlockM DataMem Unit from
   ⦃RegsRel [(.rdi, rdi), (.rsi, rsi), (.rdx, rdx), (.rsp, rsp)]⦄
   memmoveT ⪯[ofStateRepr MachineData.dmem] memmoveL₀
   ⦃fun _ _ _ => True; (fun l l' t => l = l' ∧ t.regs.get64 .rax = rdi, estack⟨⟩)⦄
-  ascend [wrp_forIn_lockstep_unit (ab := (_, _)) (R := fun t (v : BitVec 64 × BitVec 64) =>
+  ascend [memmoveT, wrp_forIn_lockstep_unit (ab := (_, _)) (R := fun t (v : BitVec 64 × BitVec 64) =>
     match v with
     | (rcx, rdx) => RegsRel [(.rsi, rsi), (.rax, rdi), (.rsp, rsp), (.rcx, rcx), (.rdx, rdx)] t)]
   with finish

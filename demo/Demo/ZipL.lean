@@ -20,7 +20,7 @@ ascend_def zipWithAddL₀ (rdi rsi rdx rcx rsp : BitVec 64) : BlockM DataMem Uni
   ⦃RegsRel [(.rdi, rdi), (.rsi, rsi), (.rdx, rdx), (.rcx, rcx), (.rsp, rsp)]⦄
   zipWithAddT ⪯[ofStateRepr MachineData.dmem] zipWithAddL₀
   ⦃fun _ _ _ => True; (fun l l' _ => l = l', estack⟨⟩)⦄
-  ascend [wrp_forIn_lockstep_unit (R := fun t rax =>
+  ascend [zipWithAddT, wrp_forIn_lockstep_unit (R := fun t rax =>
     RegsRel [(.rdi, rdi), (.rsi, rsi), (.rdx, rdx), (.rcx, rcx), (.rsp, rsp), (.rax, rax)] t)]
 
 sym_simp_def zipWithAddL (rdi rsi rdx rcx rsp : BitVec 64) : BlockM DataMem Unit from

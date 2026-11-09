@@ -22,7 +22,7 @@ ascend_def zipWithAddArr₀ (A B O rsp : BitVec 64) (n : Nat) (a b : Array (BitV
   ⦃fun m => A ≐ₐ a ∧ B ≐ₐ b ∧ a.size = n ∧ b.size = n ∧ ArrayLayout [(A, a), (B, b)] O n [rsp] m⦄
   (zipWithAddL₀ A B O (BitVec.ofNat 64 n) rsp) ⪯[ofStateRepr (outView O n)] zipWithAddArr₀
   ⦃fun _ _ _ => True; (fun l l' _ => l = l', estack⟨⟩)⦄
-  ascend [wrp_forIn_lockstep_bind_unit
+  ascend [zipWithAddL₀, wrp_forIn_lockstep_bind_unit
     (R := fun (v : BitVec 64) m (i : Nat) =>
       v ≐ₙ i ∧ i < n ∧ a.size = n ∧ b.size = n ∧ ArrayLayout [(A, a), (B, b)] O n [rsp] m)]
     with finish

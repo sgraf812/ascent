@@ -32,6 +32,7 @@ def prog : UB UInt64 := do let a ← pure (7 : UInt64); let b ← pure (a + 7); 
 
 ascend_def progN : UB Nat from
   ⦃(⊤ : Prop)⦄ prog ⪯[Concretization.id Prop] progN ⦃(⌜FunRel UInt64.toNat · ·⌝)⦄
+  ascend [prog]
 
 example : ⦃(⊤ : Prop)⦄ prog ⪯[Concretization.id Prop] progN ⦃(⌜FunRel UInt64.toNat · ·⌝)⦄ :=
   progN.refines
@@ -64,5 +65,6 @@ error: ascend: no `@[ascend_pure]` rule abstracts
 #guard_msgs in
 ascend_def progMulN : UB Nat from
   ⦃(⊤ : Prop)⦄ progMul ⪯[Concretization.id Prop] progMulN ⦃(⌜FunRel UInt64.toNat · ·⌝)⦄
+  ascend [progMul]
 
 end PureRefinementTest

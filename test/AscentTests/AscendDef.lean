@@ -13,6 +13,7 @@ open Std.WP Lean.Order Ascent WordAbsEngine AscendUnfold
 namespace AscendDef
 
 ascend_def chainA3 : UB Int from ⦃(⊤ : Prop)⦄ (chainC 7 3) ⪯[γw] chainA3 ⦃(⌜FunRel wordVal · ·⌝)⦄
+  ascend [chainC]
 
 example : ⦃(⊤ : Prop)⦄ (chainC 7 3) ⪯[γw] chainA3 ⦃(⌜FunRel wordVal · ·⌝)⦄ := chainA3.refines
 
@@ -22,6 +23,7 @@ example : chainA3 = chainA 7 3 := rfl
 def prog : Id UInt64 := do let a ← pure (7 : UInt64); let b ← pure (a + 7); pure (b + 7)
 
 ascend_def progA : UB Int from ⦃(⊤ : Prop)⦄ prog ⪯[γw] progA ⦃(⌜FunRel wordVal · ·⌝)⦄
+  ascend [prog]
 
 example : progA = (do
     let a ← (do UB.assume True; pure (wordVal 7))
@@ -30,7 +32,7 @@ example : progA = (do
 
 sym_simp_def progS : Id UInt64 from prog using pre [] post [prog]
 
-/-- info: [15, 15, 31, 31] -/
+/-- info: [15, 15, 33, 33] -/
 #guard_msgs in
 #eval show Lean.Elab.Command.CommandElabM (List Nat) from do
   let names := [``chainA3, ``chainA3.refines, ``progS, ``progS.eq]

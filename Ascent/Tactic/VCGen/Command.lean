@@ -25,20 +25,6 @@ syntax (name := ascendDefCmd)
   "ascend_def " ident bracketedBinder* " : " term " from " term
     (&" ascend " "[" term,* "]")? (" with " vcgenDischarge)? : command
 
-/-- The head constant of the concrete program `c`, if `ascend` can unfold it: a definition that
-is neither a projection nor an instance. -/
-def unfoldableHead? (c : Expr) : MetaM (Option Name) := do
-  let some declName := c.getAppFn.constName? | return none
-  let env ← getEnv
-  let some (.defnInfo _) := env.find? declName | return none
-  if env.isProjectionFn declName || (← isInstance declName) then return none
-  return some declName
-
-/-- `true` iff the `@[ascend]` database holds a rule for programs headed by `declName`. -/
-def hasAscendRuleFor (declName : Name) : CoreM Bool := do
-  return (← Lean.Elab.Tactic.VCGen.Ascend.getAscendSpecTheorems).specs.values.any fun thm =>
-    thm.pattern.pattern.getAppFn.isConstOf declName
-
 /-- The binders among `xs` that `es` mention, together with the binders that their types mention,
 in the order of `xs`. -/
 def usedBinders (xs : Array Expr) (es : Array Expr) : MetaM (Array Expr) := do
@@ -70,11 +56,6 @@ elab_rules : command
       throwError "ascend_def: the statement is not a refinement:{indentExpr goalType}"
     let proof ← mkFreshExprSyntheticOpaqueMVar goalType
     let specs := (specs.map (·.getElems)).getD #[]
-    let specs ← match ← unfoldableHead? goalType.getAppArgs[13]! with
-      | some declName =>
-        if ← hasAscendRuleFor declName then pure specs
-        else pure (specs.push (mkIdent declName))
-      | none => pure specs
     let ascendStx ← match tac? with
       | some tac => `(tactic| ascend [$specs,*] with $tac)
       | none => `(tactic| ascend [$specs,*])
