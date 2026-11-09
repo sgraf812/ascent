@@ -1,4 +1,5 @@
 import Demo.ZipBinary
+import Demo.MemmovePure
 
 /-!
 # From x64 to `Array.zipWith`
@@ -242,5 +243,54 @@ statement without a host: -/
 #check @zipWithAddHost_assembles
 #check @zipWithAddHost_correct
 #print axioms zipWithAddHost_correct
+
+/-! ## 9. A second program: `memmove`
+
+The same chain refines clang's `memmove` of `n` bytes. The text copies backward when the destination
+lies at or above the source, and forward otherwise. The register layer keeps both loops; the array
+layer assumes that the source and the destination do not overlap, names the direction test `back`,
+and reads the source as the array `a`: -/
+
+/--
+info: def Ascent.Kraken.memmoveArr : Nat → Array (BitVec 8) → Bool → BlockM (Array (BitVec 8)) Unit :=
+fun n a back =>
+  if back = true then
+    if n = 0 then throw CfgLabel.exit
+    else do
+      let mut a_1 := (n, n)
+      repeat'
+        modify fun o => o.set! (a_1.snd - 1) a[a_1.snd - 1]!
+        if ¬a_1.fst - 1 = 0 then 
+          a_1 := (a_1.fst - 1, a_1.fst - 1)
+        else
+          throw CfgLabel.exit
+  else
+    if n = 0 then throw CfgLabel.exit
+    else do
+      let mut a_1 := (0, n)
+      repeat'
+        modify fun o => o.set! a_1.fst a[a_1.fst]!
+        if ¬a_1.snd = a_1.fst + 1 then 
+          a_1 := (a_1.fst + 1, a_1.snd)
+        else
+          throw CfgLabel.exit
+-/
+#guard_msgs in
+#print memmoveArr
+
+/-! `vcgen` proves that both loops leave the destination equal to `a`, and `ascend_def` synthesizes
+the pure program from that result: -/
+
+/--
+info: def Ascent.Kraken.memmoveP : Array (BitVec 8) → Id (Array (BitVec 8)) :=
+fun a => pure a
+-/
+#guard_msgs in
+#print memmoveP
+
+/-! The composition gives the result for the x64 text: -/
+
+#check @memmove_correct
+#print axioms memmove_correct
 
 end Ascent.Kraken.Walkthrough

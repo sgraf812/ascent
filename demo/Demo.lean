@@ -16,4 +16,6 @@ import Demo.ZipBinary
 import Demo.Memmove
 import Demo.MemmoveStruct
 import Demo.MemmoveL
+import Demo.MemmoveArr
+import Demo.MemmovePure
 import Demo.Walkthrough
