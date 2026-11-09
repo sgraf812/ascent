@@ -12,6 +12,7 @@ import Ascent.EPostsConcretization
 import Ascent.WRP
 import Ascent.Refinement
 import Ascent.Table
+import Ascent.BlockLoop
 import Ascent.Refinement.WhileLoop
 import Ascent.Refinement.StateRepr
 import Ascent.Refinement.Lockstep
