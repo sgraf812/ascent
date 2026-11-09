@@ -63,7 +63,7 @@ tests fail.
 | `Regress/GuardConsequence` | a value rule with a guard stronger than the goal's fixed guard `True` was rejected ("the abstract value does not fit"); the guard becomes a VC |
 | `Regress/Lockstep`, `Regress/MixedHole` (`pairArg`) | the loop leaves needed rules that fix the abstract constructor (`wrp_yield`, `wrp_done`, `wrp_yield_pair`); the step relation now names the abstract step through `∃`, and a tuple witness is a tuple of holes |
 | `Regress/MixedHole` | a hole `?fa () a` or `?fa () (a₁, a₂)` was not filled. The loop rules now take `fa : βa → …`, so the remaining source is a tuple loop value, which core's `Prod.forall_intro` splits after the body hole exists (`?fa (a₁, a₂)`) |
-| `Regress/BlockLoop` | the block loop over a table of blocks: `cfgLoop_elim` at a two-block loop and at a header with two back edges; `sym_simp_def` runs a label once by `cfgLoop_eq_tryCatch` when no other block returns to it, which discharges `ThrowsOnly` side conditions several levels deep (`sym_simp_def` raises `maxDischargeDepth` to 64 for this), and keeps one `repeat'` loop at a cycle |
+| `Regress/BlockLoop` | the block loop over a table of blocks: `cfgLoop_header` at a two-block loop and at a header with two back edges; `sym_simp_def` runs a label once by `cfgLoop_eq_tryCatch` when no other block returns to it, which discharges `ThrowsOnly` side conditions several levels deep (`sym_simp_def` raises `maxDischargeDepth` to 64 for this), and keeps one `repeat'` loop at a cycle |
 
 Past problems that a test here does not pin:
 - The kernel unfolds `Bind.bind` chains when a rule premise applies a pattern variable under `>>=`

@@ -21,7 +21,7 @@ sym_simp_def memmoveT : BlockM MachineData Unit from memmoveA
     tryCatch_condState_bind, tryCatch_condState, cfgLoop_eq_tryCatch]
   post [memmoveA, memmove, Table.get_cons, Program.table, List.map_cons, List.map_nil,
     jumpTo_none, jumpTo_some, Table.get?_cons, Table.get?_nil, Table.erase_cons, Table.erase_nil,
-    Option.isSome_some, Option.isSome_none, Option.getD_some, cfgLoop_eq_tryCatch, cfgLoop_eq_forIn,
+    Option.isSome_some, Option.isSome_none, Option.getD_some, cfgLoop_eq_tryCatch, cfgLoop_header,
     cfgLoop_eq_throw, ThrowsOnly.pure, ThrowsOnly.throw, ThrowsOnly.bind, ThrowsOnly.map, ThrowsOnly.forIn,
     ThrowsOnly.modifyIf, ThrowsOnly.peek, ThrowsOnly.exitIf, ThrowsOnly.condState, ne_eq,
     not_false_eq_true, and_true, true_and, implies_true, forall_const, CfgLabel.label_eq_label,

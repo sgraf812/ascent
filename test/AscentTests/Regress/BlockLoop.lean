@@ -4,8 +4,8 @@ import Ascent.Tactic.VCGen.Command
 /-!
 # The block loop and its structuring equations
 
-`cfgLoop_elim` structures a loop at a label: `loopAB` is a two-block loop, and `twoBack` a header
-with two back edges. `cfgLoop_eq_tryCatch` runs a label once when no block of the table without it
+`cfgLoop_header` makes a label the header of a loop over the other blocks: `loopAB` is a
+two-block loop, and `twoBack` a header with two back edges. `cfgLoop_eq_tryCatch` runs a label once when no block of the table without it
 returns to it: `chain` is a table of jumps that `sym_simp_def` evaluates to its last jump, and
 `cycle` is a two-block cycle whose structuring keeps one `repeat'` loop at the header. Both runs
 discharge `ThrowsOnly` side conditions several levels deep.
@@ -19,22 +19,26 @@ abbrev M := ExceptT Nat (StateT Bool UB)
 
 def loopAB : Table Nat (M Unit) := [(0, throw 1), (1, throw 0)]
 
-example : cfgLoop loopAB 0 = FixLoop.mk.forIn PUnit.unit (cfgIter loopAB 0 (throw 1)) :=
-  cfgLoop_elim loopAB rfl
+example : cfgLoop loopAB 0 = FixLoop.mk.forIn PUnit.unit (fun _ _ =>
+    tryCatch (tryCatch (throw 1) (cfgLoop (loopAB.erase 0)) >>= fun _ => pure (ForInStep.done PUnit.unit))
+      (fun l' => if l' = 0 then pure (ForInStep.yield PUnit.unit) else throw l')) :=
+  cfgLoop_header_of_some loopAB rfl
 
 def header : M Unit := get >>= fun b => if b then throw 1 else throw 2
 
 def twoBack : Table Nat (M Unit) := [(0, header), (1, throw 0), (2, throw 0)]
 
-example : cfgLoop twoBack 0 = FixLoop.mk.forIn PUnit.unit (cfgIter twoBack 0 header) :=
-  cfgLoop_elim twoBack rfl
+example : cfgLoop twoBack 0 = FixLoop.mk.forIn PUnit.unit (fun _ _ =>
+    tryCatch (tryCatch header (cfgLoop (twoBack.erase 0)) >>= fun _ => pure (ForInStep.done PUnit.unit))
+      (fun l' => if l' = 0 then pure (ForInStep.yield PUnit.unit) else throw l')) :=
+  cfgLoop_header_of_some twoBack rfl
 
 def chain : Table Nat (M Unit) := [(0, throw 1), (1, throw 2), (2, throw 7)]
 
 sym_simp_def chainS : M Unit from cfgLoop chain 0
   using pre [BlockLoop.tryCatch_throw, cfgLoop_eq_tryCatch]
   post [chain, Table.get?_cons, Table.get?_nil, Table.erase_cons, Table.erase_nil, Option.isSome_some,
-    Option.isSome_none, Option.getD_some, cfgLoop_eq_tryCatch, cfgLoop_eq_forIn, cfgLoop_eq_throw,
+    Option.isSome_none, Option.getD_some, cfgLoop_eq_tryCatch, cfgLoop_header, cfgLoop_eq_throw,
     ThrowsOnly.pure, ThrowsOnly.throw, ThrowsOnly.bind, ThrowsOnly.forIn, ne_eq, not_false_eq_true,
     implies_true, forall_const]
 
@@ -48,7 +52,7 @@ def cycle : Table Nat (M Unit) := [(0, throw 1), (1, throw 0)]
 sym_simp_def cycleS : M Unit from cfgLoop cycle 0
   using pre [BlockLoop.tryCatch_throw, BlockLoop.throw_bind, cfgLoop_eq_tryCatch]
   post [cycle, Table.get?_cons, Table.get?_nil, Table.erase_cons, Table.erase_nil, Option.isSome_some,
-    Option.isSome_none, Option.getD_some, cfgLoop_eq_tryCatch, cfgLoop_eq_forIn, cfgLoop_eq_throw,
+    Option.isSome_none, Option.getD_some, cfgLoop_eq_tryCatch, cfgLoop_header, cfgLoop_eq_throw,
     ThrowsOnly.pure, ThrowsOnly.throw, ThrowsOnly.bind, ThrowsOnly.forIn, ne_eq, not_false_eq_true,
     implies_true, forall_const, BlockLoop.throw_bind]
 

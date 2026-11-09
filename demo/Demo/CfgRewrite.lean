@@ -7,7 +7,7 @@ import Ascent.FixLoop.Delab
 
 The block loop of a text is structured by two equations of `Ascent.BlockLoop`. At a label whose
 block, run in the table without the label, never returns to it, `cfgLoop_eq_tryCatch` runs the block
-once. At any other label, `cfgLoop_eq_forIn` makes a `repeat'` loop that continues on a return to the
+once. At any other label, `cfgLoop_header` makes a `repeat'` loop that continues on a return to the
 label. Pushing the `try` into the blocks with the `tryCatch` equations of this file and deciding the
 literal labels then structures the program. An exit discards the rest of its block, and a loop whose
 body never continues collapses to its body.

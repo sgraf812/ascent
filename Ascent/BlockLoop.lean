@@ -10,11 +10,11 @@ A block program runs in `ExceptT κ (StateT σ UB)`, and a jump to a label `l` i
 of `b` continues the loop at its target, and a normal end of `b` ends the loop. At a label without
 a block the loop leaves by throwing that label, so the targets outside `T` are the exits of the loop.
 
-`cfgLoop_elim` structures a loop at one label `h` with block `b`: running from `h` is a `repeat'`
-loop. An iteration runs `b` and then the loop over `T.erase h`; leaving that loop at `h` continues
-the iteration, leaving it at any other label leaves the `repeat'` loop. Applied at every label, the
-equation turns a table into nested `repeat'` loops. It is Bekić's elimination of one variable from a
-system of fixpoint equations.
+`cfgLoop_header` makes a label `h` with block `b` the header of a loop over the remaining blocks:
+running from `h` is a `repeat'` loop. An iteration runs `b` and then the loop over `T.erase h`;
+leaving that loop at `h` continues the iteration, leaving it at any other label leaves the `repeat'`
+loop. Applied at every label, the equation turns a table into nested `repeat'` loops. It is Bekić's
+elimination of one variable from a system of fixpoint equations.
 -/
 
 open Std.WP Lean.Order
@@ -198,16 +198,10 @@ theorem admissible_wp_imp_fn (P : κ → (Unit → σ → Prop) → ((κ → σ 
 
 /-! ## Label elimination -/
 
-/-- One iteration of the loop at `h` with block `b`: run `b`, then the loop without `h`; leaving
-that loop at `h` continues, at any other label leaves. -/
-def cfgIter (h : κ) (b : ExceptT κ (StateT σ UB) Unit) (_ : Unit) (_ : PUnit) :
-    ExceptT κ (StateT σ UB) (ForInStep PUnit) :=
-  tryCatch (tryCatch b (fun l' => cfgLoop (T.erase h) l') >>= fun _ => pure (ForInStep.done PUnit.unit))
-    (fun l' => if l' = h then pure (ForInStep.yield PUnit.unit) else throw l')
-
-theorem wp_cfgIter (h : κ) (b : ExceptT κ (StateT σ UB) Unit) (R : ForInStep PUnit → σ → Prop)
+theorem wp_header_body (h : κ) (b : ExceptT κ (StateT σ UB) Unit) (R : ForInStep PUnit → σ → Prop)
     (E : (κ → σ → Prop) × EStack⟨⟩) (s : σ) :
-    wp (cfgIter T h b () PUnit.unit) R E s
+    wp (tryCatch (tryCatch b (cfgLoop (T.erase h)) >>= fun _ => pure (ForInStep.done PUnit.unit))
+        (fun l' => if l' = h then pure (ForInStep.yield PUnit.unit) else throw l')) R E s
       = wp b (fun _ => R (.done PUnit.unit))
           (fun l' => wp (cfgLoop (T.erase h) l') (fun _ => R (.done PUnit.unit))
             (fun l'' => if l'' = h then R (.yield PUnit.unit) else E.1 l'', E.2), E.2) s := by
@@ -218,7 +212,7 @@ theorem wp_cfgIter (h : κ) (b : ExceptT κ (StateT σ UB) Unit) (R : ForInStep 
     split
     · simp only [WPMonadExact.wp_pure_eq]
     · exact wp_throw _ _ _ _
-  rw [cfgIter, wp_tryCatch, hH, WPMonadExact.wp_bind_eq]
+  rw [wp_tryCatch, hH, WPMonadExact.wp_bind_eq]
   simp only [WPMonadExact.wp_pure_eq]
   rw [wp_tryCatch]
 
@@ -229,8 +223,12 @@ variable {h : κ} {b : ExceptT κ (StateT σ UB) Unit} (hb : T.get? h = some b)
 include hb
 
 theorem wp_cfgLoop_imp_forIn (Q : Unit → σ → Prop) (E : (κ → σ → Prop) × EStack⟨⟩) (s : σ) :
-    wp (cfgLoop T h) Q E s → wp (FixLoop.mk.forIn PUnit.unit (cfgIter T h b)) Q E s := by
-  let loop := FixLoop.mk.forIn PUnit.unit (cfgIter T h b)
+    wp (cfgLoop T h) Q E s → wp (FixLoop.mk.forIn PUnit.unit (fun _ _ =>
+      tryCatch (tryCatch b (cfgLoop (T.erase h)) >>= fun _ => pure (ForInStep.done PUnit.unit))
+      (fun l' => if l' = h then pure (ForInStep.yield PUnit.unit) else throw l'))) Q E s := by
+  let loop := FixLoop.mk.forIn PUnit.unit (fun _ _ =>
+      tryCatch (tryCatch b (cfgLoop (T.erase h)) >>= fun _ => pure (ForInStep.done PUnit.unit))
+      (fun l' => if l' = h then pure (ForInStep.yield PUnit.unit) else throw l'))
   let H : κ → ExceptT κ (StateT σ UB) Unit := fun l' => if l' = h then loop else throw l'
   have hH : ∀ (Q : Unit → σ → Prop) E, (fun l'' => wp (H l'') Q E)
       = fun l'' => if l'' = h then wp loop Q E else E.1 l'' := by
@@ -245,9 +243,11 @@ theorem wp_cfgLoop_imp_forIn (Q : Unit → σ → Prop) (E : (κ → σ → Prop
       wp loop Q E s = wp b (fun _ => Q ()) (fun l' => wp (cfgLoop (T.erase h) l') (fun _ => Q ())
         (fun l'' => if l'' = h then wp loop Q E else E.1 l'', E.2), E.2) s := by
     intro Q E s
-    show wp (FixLoop.mk.forIn PUnit.unit (cfgIter T h b)) Q E s = _
+    show wp (FixLoop.mk.forIn PUnit.unit (fun _ _ =>
+      tryCatch (tryCatch b (cfgLoop (T.erase h)) >>= fun _ => pure (ForInStep.done PUnit.unit))
+      (fun l' => if l' = h then pure (ForInStep.yield PUnit.unit) else throw l'))) Q E s = _
     refine (congrFun (FixLoop.wp_forIn_eq _ _ _ Q E) s).trans ?_
-    rw [wp_cfgIter]
+    rw [wp_header_body]
   have key := cfgLoop_induct T
     (fun f => ∀ l Q E s, wp (f l) Q E s → wp (tryCatch (cfgLoop (T.erase h) l) H) Q E s)
     (admissible_wp_imp_fn _)
@@ -289,7 +289,10 @@ theorem wp_cfgLoop_imp_forIn (Q : Unit → σ → Prop) (E : (κ → σ → Prop
       exact this
 
 theorem wp_forIn_imp_cfgLoop (Q : Unit → σ → Prop) (E : (κ → σ → Prop) × EStack⟨⟩) (s : σ) :
-    wp (FixLoop.mk.forIn PUnit.unit (cfgIter T h b)) Q E s → wp (cfgLoop T h) Q E s := by
+    wp (FixLoop.mk.forIn PUnit.unit (fun _ _ =>
+      tryCatch (tryCatch b (cfgLoop (T.erase h)) >>= fun _ => pure (ForInStep.done PUnit.unit))
+      (fun l' => if l' = h then pure (ForInStep.yield PUnit.unit) else throw l'))) Q E s →
+      wp (cfgLoop T h) Q E s := by
   have inner : ∀ (g : PUnit → ExceptT κ (StateT σ UB) PUnit),
       (∀ (Q : Unit → σ → Prop) E s, wp (g PUnit.unit) Q E s → wp (cfgLoop T h) Q E s) →
       ∀ (Q : Unit → σ → Prop) (E : (κ → σ → Prop) × EStack⟨⟩) l s,
@@ -325,13 +328,15 @@ theorem wp_forIn_imp_cfgLoop (Q : Unit → σ → Prop) (E : (κ → σ → Prop
       refine Prod.mk_le _ _ _ ?_ PartialOrder.rel_refl
       intro l' t ht
       exact ih l' t ht
-  have := FixLoop.forIn_induct (m := ExceptT κ (StateT σ UB)) (β := PUnit) (cfgIter T h b)
+  have := FixLoop.forIn_induct (m := ExceptT κ (StateT σ UB)) (β := PUnit) (fun _ _ =>
+      tryCatch (tryCatch b (cfgLoop (T.erase h)) >>= fun _ => pure (ForInStep.done PUnit.unit))
+      (fun l' => if l' = h then pure (ForInStep.yield PUnit.unit) else throw l'))
     (fun g => ∀ (Q : Unit → σ → Prop) E s, wp (g PUnit.unit) Q E s → wp (cfgLoop T h) Q E s)
     (admissible_pi _ fun Q => admissible_pi _ fun E => admissible_pi _ fun s =>
       admissible_apply (fun _ u => wp u Q E s → _) PUnit.unit (admissible_wp_imp _ E s _))
   refine this ?_ Q E s
   intro g ih Q E s hw
-  rw [FixLoop.step, WPMonadExact.wp_bind_eq, wp_cfgIter] at hw
+  rw [FixLoop.step, WPMonadExact.wp_bind_eq, wp_header_body] at hw
   simp only [WPMonadExact.wp_pure_eq] at hw
   rw [wp_cfgLoop_some _ _ _ _ hb]
   rw [← unit_post Q]
@@ -342,19 +347,21 @@ theorem wp_forIn_imp_cfgLoop (Q : Unit → σ → Prop) (E : (κ → σ → Prop
   rw [unit_post] at ht
   exact inner g ih Q E l' t ht
 
-theorem cfgLoop_elim : cfgLoop T h = FixLoop.mk.forIn PUnit.unit (cfgIter T h b) :=
+theorem cfgLoop_header_of_some : cfgLoop T h = FixLoop.mk.forIn PUnit.unit (fun _ _ =>
+      tryCatch (tryCatch b (cfgLoop (T.erase h)) >>= fun _ => pure (ForInStep.done PUnit.unit))
+        (fun l' => if l' = h then pure (ForInStep.yield PUnit.unit) else throw l')) :=
   ext_wp (wp_cfgLoop_imp_forIn T hb) (wp_forIn_imp_cfgLoop T hb)
 
 end
 
-theorem cfgLoop_eq_forIn {h : κ} (hb : (T.get? h).isSome = true) :
+theorem cfgLoop_header {h : κ} (hb : (T.get? h).isSome = true) :
     cfgLoop T h = FixLoop.mk.forIn PUnit.unit (fun _ _ =>
-      tryCatch (tryCatch ((T.get? h).getD (throw h)) (fun l' => cfgLoop (T.erase h) l') >>= fun _ =>
+      tryCatch (tryCatch ((T.get? h).getD (throw h)) (cfgLoop (T.erase h)) >>= fun _ =>
           pure (ForInStep.done PUnit.unit))
         (fun l' => if l' = h then pure (ForInStep.yield PUnit.unit) else throw l')) := by
   obtain ⟨b, hb'⟩ := Option.isSome_iff_exists.mp hb
-  rw [cfgLoop_elim T hb', hb']
-  rfl
+  rw [hb']
+  exact cfgLoop_header_of_some T hb'
 
 theorem cfgLoop_eq_throw {l : κ} (hl : T.get? l = none) : cfgLoop T l = throw l := cfgLoop_none T hl
 
@@ -428,9 +435,9 @@ theorem cfgLoop_eq_tryCatch {h : κ} (hb : (T.get? h).isSome = true)
   have hloop : ∀ (Q : Unit → σ → Prop) E s,
       wp (cfgLoop T h) Q E s = wp X Q (fun l => if l = h then wp (cfgLoop T h) Q E else E.1 l, E.2) s := by
     intro Q E s
-    rw [cfgLoop_elim T hb']
+    rw [cfgLoop_header_of_some T hb']
     refine (congrFun (FixLoop.wp_forIn_eq _ _ _ Q E) s).trans ?_
-    rw [wp_cfgIter, wp_tryCatch, unit_post]
+    rw [wp_header_body, wp_tryCatch, unit_post]
   apply ext_wp
   · intro Q E s hw
     rw [hloop] at hw
