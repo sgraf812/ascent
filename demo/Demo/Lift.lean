@@ -153,6 +153,21 @@ theorem ofNat_eq_ofNat_iff {n m : Nat} (hn : n < 2 ^ w) (hm : m < 2 ^ w) :
   rw [BitVec.toNat_eq, BitVec.toNat_ofNat, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hn,
     Nat.mod_eq_of_lt hm]
 
+@[ascend_pure] theorem absN_sub (h₁ : PureRefinement x i P₁ WordNat) (h₂ : PureRefinement y j P₂ WordNat) :
+    PureRefinement (x - y) (i - j) (P₁ ∧ P₂ ∧ j ≤ i ∧ i < 2 ^ w) WordNat :=
+  fun ⟨hp₁, hp₂, hji, hi⟩ => by
+    rw [WordNat, h₁ hp₁, h₂ hp₂]
+    apply BitVec.eq_of_toNat_eq
+    rw [BitVec.toNat_sub, BitVec.toNat_ofNat, BitVec.toNat_ofNat, BitVec.toNat_ofNat,
+      Nat.mod_eq_of_lt hi, Nat.mod_eq_of_lt (by omega : j < 2 ^ w), Nat.mod_eq_of_lt (by omega : i - j < 2 ^ w),
+      show 2 ^ w - j + i = (i - j) + 2 ^ w by omega, Nat.add_mod_right, Nat.mod_eq_of_lt (by omega)]
+
+@[ascend_pure high] theorem absN_beq (h₁ : PureRefinement x i P₁ WordNat)
+    (h₂ : PureRefinement y j P₂ WordNat) :
+    PureRefinement (x == y) (i == j) (P₁ ∧ P₂ ∧ i < 2 ^ w ∧ j < 2 ^ w) Eq :=
+  fun ⟨hp₁, hp₂, hi, hj⟩ => by
+    rw [Bool.eq_iff_iff, beq_iff_eq, beq_iff_eq, h₁ hp₁, h₂ hp₂, ofNat_eq_ofNat_iff hi hj]
+
 end
 
 section
@@ -164,6 +179,12 @@ variable {a b : BitVec 64} {n m : Nat} {P₁ P₂ : Prop}
   fun ⟨hp₁, hp₂, hn, hm⟩ => by
     rw [Bool.eq_iff_iff, CondCode.cmp_nz_eq_true, h₁ hp₁, h₂ hp₂, bne_iff_ne, ne_eq, ne_eq,
       ofNat_eq_ofNat_iff hn hm]
+
+@[ascend_pure high] theorem absN_cmp_z_self_zero (h : PureRefinement a n P₁ WordNat) :
+    PureRefinement (CondCode.z.cmp (a &&& a) 0#64) (n == 0) (P₁ ∧ n < 2 ^ 64) Eq :=
+  fun ⟨hp, hn⟩ => by
+    rw [Bool.eq_iff_iff, CondCode.cmp_z_eq_true, BitVec.and_self, h hp, beq_iff_eq]
+    exact ofNat_eq_ofNat_iff hn (by omega)
 
 @[ascend_pure high] theorem absN_cmp_le_self_zero (h : PureRefinement a n P₁ WordNat) :
     PureRefinement (CondCode.le.cmp (a &&& a) 0#64) (n == 0) (P₁ ∧ n < 2 ^ 63) Eq :=
@@ -266,9 +287,15 @@ theorem wrp_forIn_lockstep_bind_unit {βc βa : Type} (R : βc → σc → βa �
   rw [Concretization.post_pi]
   exact ⟨(), hq, hqa⟩
 
-@[ascend] theorem wrp_pure_same {α : Type} {Q : α → α → σc → Prop} (x : α) :
-    Q x x ⊑ wrp (ofStateRepr view) (pure x : BlockM σc α) (pure x : BlockM σa α) Q E :=
-  wrp_pure x x
+@[ascend low] theorem wrp_pure_val {γ : Type} {Q : γ → γ → σc → Prop} (c b : γ) (P : Prop) :
+    (fun t => PureRefinement c b P Eq ∧ P ∧ ∀ z, c ≐ z → Q c z t)
+      ⊑ wrp (ofStateRepr view) (pure c : BlockM σc γ) (pure b : BlockM σa γ) Q E := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro t ht
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, WPMonadExact.wp_pure_eq] at ht ⊢
+  obtain ⟨⟨hb, hP, hq⟩, hqa⟩ := ht
+  rw [Concretization.post_pi]
+  exact ⟨b, hq b (PureRefinement.of_rel (hb hP)), hqa⟩
 
 end
 

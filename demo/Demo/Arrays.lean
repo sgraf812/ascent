@@ -238,13 +238,15 @@ variable {σa : Type} {view : DataMem → σa}
   · simp only [ofStateRepr_pred]
     exact hq
 
+@[grind =] theorem Int64.toInt_neg_one : (-1 : Int64).toInt = -((1 : Nat) : Int) := rfl
+
 theorem cell_pred {w j : Nat} (p : BitVec 64) (hj : 0 < j) :
     p + BitVec.ofNat 64 j * BitVec.ofNat 64 w + BitVec.ofInt 64 (-(w : Int)) = cell w p (j - 1) := by
   obtain ⟨i, rfl⟩ : ∃ i, j = i + 1 := ⟨j - 1, by omega⟩
   rw [cell, Nat.add_sub_cancel, BitVec.ofNat_add, BitVec.ofInt_neg, BitVec.ofInt_natCast]
   grind
 
-@[ascend] theorem wrp_load_getElem_pred {Q : BitVec 64 → BitVec 64 → DataMem → Prop}
+@[ascend default + 1] theorem wrp_load_getElem_pred {Q : BitVec 64 → BitVec 64 → DataMem → Prop}
     (w b : Nat) (p o : BitVec 64) (d : Int) (arr : Array (BitVec b)) (j : Nat) (P : Prop) :
     (fun m => p ≐ₐ arr ∧ PureRefinement o j P (Scaled w) ∧ P ∧ 0 < j ∧ d = -(w : Int) ∧ w ≤ 8 ∧
       b = 8 * w ∧ words w b m p arr.size = arr.toList ∧ Mem.Mapped [(p, w * arr.size)] m ∧
@@ -288,7 +290,7 @@ theorem cell_pred {w j : Nat} (p : BitVec 64) (hj : 0 < j) :
   rw [outView_storeInt hw hb hj hn, hv]
   exact hq
 
-@[ascend] theorem wrp_store_set_pred {Q : Unit → Unit → DataMem → Prop} (w b : Nat)
+@[ascend default + 1] theorem wrp_store_set_pred {Q : Unit → Unit → DataMem → Prop} (w b : Nat)
     (sp p o v v' : BitVec 64) (d : Int) (n j : Nat) (P : Prop) :
     (fun m => v ≐ v' ∧ PureRefinement o j P (Scaled w) ∧ P ∧ 0 < j ∧ d = -(w : Int) ∧ w ≤ 8 ∧
       b = 8 * w ∧ j - 1 < n ∧ n < 2 ^ 61 ∧ Mem.Mapped [(p, w * n)] m ∧
