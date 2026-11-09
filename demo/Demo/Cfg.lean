@@ -1,5 +1,6 @@
 import Demo.Kraken
 import Ascent.Table
+import Ascent.BlockLoop
 import Kraken.StateCfg
 import Ascent.UB.StateT
 import Ascent.UB.WhileLoop
@@ -8,14 +9,15 @@ import Ascent.Refinement.Lockstep
 /-!
 # Control-flow graphs
 
-`cfgLoop ablock next` is the abstract program of a kraken text with labels: a loop over the
-`CfgLabel`s that runs the abstract block of the label, continues at the fallthrough `next l` on a
-normal exit and at the thrown label on a jump, and stops at `.exit`. A block program lives in
-`BlockM Aσ`, and a jump is the exception that carries its target.
+`cfgLoop (Program.table p cell) .entry` is the abstract program of a kraken text `p` with labels:
+the block loop of `Ascent.BlockLoop` over the table of the text, whose block at a label runs the
+abstract cell of the label and then jumps to its successor in the text. A block program lives in
+`BlockM Aσ`, and a jump is the exception that carries its target; the return of the text is a jump
+to `.exit`, which has no block.
 
-`wrp_cfg` refines a text to `cfgLoop ablock next .entry` from one refinement per block, in the form
-of kraken's funspec: the text starts at `s.push64 ra`, and its return pairs with the abstract
-exception `.exit` through `RetRel s ra`.
+`refines_cfg` refines a text to that loop from one refinement per block, in the form of kraken's
+funspec: the text starts at `s.push64 ra`, and its return pairs with the abstract exception `.exit`
+through `RetRel s ra`.
 -/
 
 open Std.WP Lean.Order Ascent
@@ -53,35 +55,7 @@ theorem CfgLabel.ofLabel_ne_exit : ∀ b : Option Label, CfgLabel.ofLabel b ≠ 
 attribute [vcgen_simp] Program.straight_nil Program.straight_cons_instr Program.straight_cons_label
   Program.straight_cons_byteArray
 
-/-! ## The fallthrough targets of a text -/
-
-/-- The fallthrough target of the block at `l` in a list of blocks, `.exit` for a label without a
-block. -/
-def Program.nextIn : List Program.Block → CfgLabel → CfgLabel
-  | [], _ => .exit
-  | blk :: bs, l => if CfgLabel.ofLabel blk.label = l then CfgLabel.ofNext blk.next else Program.nextIn bs l
-
-@[vcgen_simp, grind =] theorem Program.nextIn_nil (l : CfgLabel) : Program.nextIn [] l = .exit := rfl
-@[vcgen_simp, grind =] theorem Program.nextIn_cons (blk : Program.Block) (bs : List Program.Block)
-    (l : CfgLabel) :
-    Program.nextIn (blk :: bs) l
-      = if CfgLabel.ofLabel blk.label = l then CfgLabel.ofNext blk.next else Program.nextIn bs l := rfl
-
-theorem Program.nextIn_eq_find? (bs : List Program.Block) (l : CfgLabel) :
-    Program.nextIn bs l
-      = ((bs.find? fun blk => CfgLabel.ofLabel blk.label = l).map (CfgLabel.ofNext ·.next)).getD .exit := by
-  induction bs with
-  | nil => rfl
-  | cons blk bs ih =>
-    by_cases h : CfgLabel.ofLabel blk.label = l
-    · simp [Program.nextIn, h]
-    · simp [Program.nextIn, h, ih]
-
-/-- The fallthrough target of the block at `l`. -/
-def Program.next (p : Program) (l : CfgLabel) : CfgLabel := Program.nextIn (Program.blocks p) l
-
-@[vcgen_simp, grind =] theorem Program.next_eq (p : Program) (l : CfgLabel) :
-    Program.next p l = Program.nextIn (Program.blocks p) l := rfl
+/-! ## The table of blocks of a text -/
 
 theorem Program.label_mem_blocksFrom {b : Option Label} :
     ∀ {j : Nat} {body : Program} {bs : List (Label × Program)} {blk : Program.Block},
@@ -122,15 +96,54 @@ theorem Program.find?_blocksFrom {b : Option Label} :
       exact Program.find?_blocksFrom hnd.2
         (fun lb hlb heq => hnd.1 ⟨lb, hlb, (Option.some.inj heq).symm⟩) h
 
-/-- With distinct labels, the fallthrough target of a block is its successor in the text. -/
-theorem Program.next_eq_of_nodup {p : Program} (hnd : (Program.labels p).Nodup) {blk : Program.Block}
+/-- The jump at the end of a block that falls through to its successor `next`: a normal end at the
+end of the text. -/
+def jumpTo {Aσ : Type} : Option Label → ExceptT CfgLabel (StateT Aσ UB) Unit
+  | none => pure ()
+  | some l => throw (.label l)
+
+@[vcgen_simp] theorem jumpTo_none {Aσ : Type} :
+    (jumpTo none : ExceptT CfgLabel (StateT Aσ UB) Unit) = pure () := rfl
+@[vcgen_simp] theorem jumpTo_some {Aσ : Type} (l : Label) :
+    (jumpTo (some l) : ExceptT CfgLabel (StateT Aσ UB) Unit) = throw (.label l) := rfl
+
+/-- The table of a text: the block of each label runs its cell and then falls through to its
+successor in the text. -/
+def Program.table {Aσ : Type} (p : Program) (cell : CfgLabel → ExceptT CfgLabel (StateT Aσ UB) Unit) :
+    Table CfgLabel (ExceptT CfgLabel (StateT Aσ UB) Unit) :=
+  (Program.blocks p).map fun blk =>
+    (CfgLabel.ofLabel blk.label, cell (CfgLabel.ofLabel blk.label) >>= fun _ => jumpTo blk.next)
+
+theorem Table.get?_map {κ α β : Type} [DecidableEq κ] (bs : List α) (key : α → κ) (val : α → β) (k : κ) :
+    Table.get? (bs.map fun a => (key a, val a)) k = (bs.find? fun a => key a = k).map val := by
+  induction bs with
+  | nil => rfl
+  | cons a bs ih =>
+    rw [List.map_cons, Table.get?_cons, ih]
+    by_cases h : k = key a
+    · simp [h]
+    · have h' : ¬ key a = k := fun e => h e.symm
+      simp [h, h']
+
+theorem Program.table_get? {Aσ : Type} {p : Program} (hnd : (Program.labels p).Nodup)
+    (cell : CfgLabel → ExceptT CfgLabel (StateT Aσ UB) Unit) {blk : Program.Block}
     (h : blk ∈ Program.blocks p) :
-    Program.next p (CfgLabel.ofLabel blk.label) = CfgLabel.ofNext blk.next := by
+    (Program.table p cell).get? (CfgLabel.ofLabel blk.label)
+      = some (cell (CfgLabel.ofLabel blk.label) >>= fun _ => jumpTo blk.next) := by
   rw [Program.labels_view] at hnd
-  rw [Program.next, Program.nextIn_eq_find?]
+  rw [Program.table, Table.get?_map]
+  have := Program.find?_blocksFrom hnd (fun _ _ => by simp) h
   unfold Program.blocks
-  rw [Program.find?_blocksFrom hnd (fun _ _ => by simp) h]
+  rw [this]
   rfl
+
+theorem Program.table_get?_exit {Aσ : Type} (p : Program)
+    (cell : CfgLabel → ExceptT CfgLabel (StateT Aσ UB) Unit) :
+    (Program.table p cell).get? .exit = none := by
+  rw [Program.table, Table.get?_map, List.find?_eq_none.mpr]
+  · rfl
+  · intro blk _ h
+    exact CfgLabel.ofLabel_ne_exit blk.label (of_decide_eq_true h)
 
 namespace Ascent.Kraken
 
@@ -198,248 +211,6 @@ theorem wp_tryCatch_block (x : BlockM σ α) (h : CfgLabel → BlockM σ α) (Q 
 end
 
 
-/-- The fixpoint, at the state-passing type that carries the `CCPO`. -/
-def cfgFix {Aσ : Type} (ablock : CfgLabel → BlockM Aσ Unit) (next : CfgLabel → CfgLabel)
-    (l : CfgLabel) (s : Aσ) : UB (Except CfgLabel Unit × Aσ) :=
-  if l = .exit then pure (.ok (), s) else
-    (ablock l).run.run s >>= fun p =>
-      match p.1 with
-      | .ok _ => cfgFix ablock next (next l) p.2
-      | .error l' => if l' = .exit then pure (.error .exit, p.2) else cfgFix ablock next l' p.2
-partial_fixpoint
-
-def cfgLoop {Aσ : Type} (ablock : CfgLabel → BlockM Aσ Unit) (next : CfgLabel → CfgLabel)
-    (l : CfgLabel) : BlockM Aσ Unit :=
-  cfgFix ablock next l
-
-section
-variable {Aσ : Type} (ablock : CfgLabel → BlockM Aσ Unit) (next : CfgLabel → CfgLabel)
-
-def cfgStep (f : CfgLabel → BlockM Aσ Unit) (l : CfgLabel) : BlockM Aσ Unit :=
-  show Aσ → UB (Except CfgLabel Unit × Aσ) from fun s =>
-    if l = .exit then pure (Except.ok (), s) else do
-      let p ← (ExceptT.run (ablock l)).run s
-      match p.fst with
-      | Except.ok _ => (f (next l)).run.run p.snd
-      | Except.error l' =>
-        if l' = .exit then pure (Except.error .exit, p.snd) else (f l').run.run p.snd
-
-theorem cfgStep_run_of_ne (f : CfgLabel → BlockM Aσ Unit) {l : CfgLabel} (hl : l ≠ .exit) (s : Aσ) :
-    (cfgStep ablock next f l).run.run s = ((ablock l).run.run s >>= fun p =>
-      match p.fst with
-      | Except.ok _ => (f (next l)).run.run p.snd
-      | Except.error l' =>
-        if l' = .exit then pure (Except.error .exit, p.snd) else (f l').run.run p.snd) := by
-  show (if l = .exit then _ else _) = _
-  rw [if_neg hl]
-
-theorem cfgStep_exit (f : CfgLabel → BlockM Aσ Unit) : cfgStep ablock next f .exit = pure () := rfl
-
-theorem cfgLoop_induct (motive : (CfgLabel → BlockM Aσ Unit) → Prop) (hadm : admissible motive)
-    (h : ∀ f, motive f → motive (cfgStep ablock next f)) : motive (cfgLoop ablock next) :=
-  cfgFix.fixpoint_induct ablock next motive hadm h
-
-theorem wp_cfgStep (f : CfgLabel → BlockM Aσ Unit) {l : CfgLabel} (hl : l ≠ .exit)
-    (Qa : Unit → Aσ → Prop) (Ea : (CfgLabel → Aσ → Prop) × EStack⟨⟩) (s : Aσ) :
-    wp (cfgStep ablock next f l) Qa Ea s
-      = wp (ablock l) (fun _ => wp (f (next l)) Qa Ea)
-          (fun l' => if l' = .exit then Ea.1 .exit else wp (f l') Qa Ea, Ea.2) s := by
-  rw [wp_BlockM_eq, wp_BlockM_eq]
-  rw [cfgStep_run_of_ne _ _ _ hl]
-  rcases (ablock l).run.run s with _ | ⟨l' | _, s'⟩
-  · rfl
-  · simp only [UB.some_bind]
-    by_cases h : l' = .exit
-    · subst h; simp only [↓reduceIte]; rfl
-    · simp only [h, ↓reduceIte]; rw [wp_BlockM_eq]
-  · simp only [UB.some_bind]; rw [wp_BlockM_eq]
-
-theorem cfgLoop_eq_cfgStep : cfgLoop ablock next = cfgStep ablock next (cfgLoop ablock next) := by
-  funext l
-  show (cfgFix ablock next l : Aσ → UB (Except CfgLabel Unit × Aσ)) = cfgStep ablock next _ l
-  funext s
-  rw [cfgFix]
-  rfl
-
-end
-
-section
-variable {Aσ : Type} (ablock : CfgLabel → BlockM Aσ Unit) (next : CfgLabel → CfgLabel)
-  (Qa : Unit → Aσ → Prop) (Ea : (CfgLabel → Aσ → Prop) × EStack⟨⟩) (s : Aσ)
-
-theorem cfgLoop_run (l : CfgLabel) : (cfgLoop ablock next l).run.run s = cfgFix ablock next l s :=
-  rfl
-
-theorem wp_cfgLoop_exit : wp (cfgLoop ablock next .exit) Qa Ea s = Qa () s := by
-  rw [ExceptT.wp_apply_eq, StateT.wp_apply_eq, cfgLoop_run, cfgFix]
-  simp only [eq_self, ↓reduceIte, UB.wp_pure_eq]
-  rfl
-
-/-- The exception post of one block: the loop continues at a thrown label, and `.exit` is final. -/
-def cfgEPosts (l' : CfgLabel) : Aσ → Prop :=
-  if l' = .exit then Ea.1 .exit else wp (cfgLoop ablock next l') Qa Ea
-
-theorem wp_cfgLoop {l : CfgLabel} (hl : l ≠ .exit) :
-    wp (cfgLoop ablock next l) Qa Ea s
-      = wp (ablock l) (fun _ => wp (cfgLoop ablock next (next l)) Qa Ea)
-          (cfgEPosts ablock next Qa Ea, Ea.2) s := by
-  rw [congrFun (cfgLoop_eq_cfgStep ablock next) l, wp_cfgStep _ _ _ hl]
-  rfl
-
-theorem wp_cfgLoop_exit_fn : wp (cfgLoop ablock next .exit) Qa Ea = Qa () :=
-  funext (wp_cfgLoop_exit ablock next Qa Ea)
-
-theorem wp_cfgLoop_fn {l : CfgLabel} (hl : l ≠ .exit) :
-    wp (cfgLoop ablock next l) Qa Ea
-      = wp (ablock l) (fun _ => wp (cfgLoop ablock next (next l)) Qa Ea)
-          (cfgEPosts ablock next Qa Ea, Ea.2) :=
-  funext fun s => wp_cfgLoop ablock next Qa Ea s hl
-
-theorem cfgEPosts_label (l : Label) :
-    cfgEPosts ablock next Qa Ea (.label l) = wp (cfgLoop ablock next (.label l)) Qa Ea := by
-  simp only [cfgEPosts, reduceCtorEq, ↓reduceIte]
-
-theorem cfgEPosts_exit : cfgEPosts ablock next Qa Ea .exit = Ea.1 .exit := by
-  simp only [cfgEPosts, ↓reduceIte]
-
-end
-
-/-! ## The number of blocks a run executes -/
-
-section
-variable {Aσ : Type} (ablock : CfgLabel → BlockM Aσ Unit) (next : CfgLabel → CfgLabel)
-
-def count : Nat → CfgLabel → Aσ → UB Nat
-  | 0, _, _ => UB.fail
-  | n + 1, l, st =>
-    if l = .exit then pure 0 else
-      (ablock l).run.run st >>= fun p =>
-        match p.1 with
-        | .ok _ => (· + 1) <$> count n (next l) p.2
-        | .error l' => if l' = .exit then pure 1 else (· + 1) <$> count n l' p.2
-
-theorem count_of_cfgFix : ∀ (l : CfgLabel) (st : Aσ) (r : Except CfgLabel Unit × Aσ),
-    cfgFix ablock next l st = some r → ∃ n k, count ablock next n l st = some k := by
-  refine cfgFix.fixpoint_induct ablock next
-    (fun f => ∀ l st r, f l st = some r → ∃ n k, count ablock next n l st = some k) ?_ ?_
-  · refine admissible_pi_apply
-      (fun l (g : Aσ → UB (Except CfgLabel Unit × Aσ)) =>
-        ∀ st r, g st = some r → ∃ n k, count ablock next n l st = some k) fun l => ?_
-    refine admissible_pi_apply
-      (fun st (u : UB (Except CfgLabel Unit × Aσ)) =>
-        ∀ r, u = some r → ∃ n k, count ablock next n l st = some k) fun st => ?_
-    exact admissible_flatOrder (b := (none : Option (Except CfgLabel Unit × Aσ)))
-      (fun u => ∀ r, (show UB (Except CfgLabel Unit × Aσ) from u) = some r →
-        ∃ n k, count ablock next n l st = some k)
-      (fun _ h => nomatch h)
-  · intro f ih l st r h
-    dsimp only at h
-    by_cases hl : l = .exit
-    · subst hl
-      refine ⟨0 + 1, 0, ?_⟩
-      rw [count]
-      simp only [eq_self, ↓reduceIte, UB.pure_eq]
-      try rfl
-    · simp only [hl, ↓reduceIte] at h
-      obtain ⟨⟨r', st'⟩, hp, hr⟩ := (UB.bind_eq_some _ _ _).mp h
-      rcases r' with l' | _
-      · simp only at hr
-        by_cases hl' : l' = .exit
-        · subst hl'
-          refine ⟨0 + 1, 1, ?_⟩
-          rw [count, hp, UB.some_bind]
-          simp only [hl, eq_self, ↓reduceIte, UB.pure_eq]
-          try rfl
-        · simp only [hl', ↓reduceIte] at hr
-          obtain ⟨n, k, hk⟩ := ih l' st' r hr
-          refine ⟨n + 1, k + 1, ?_⟩
-          rw [count, hp, UB.some_bind]
-          simp only [hl, hl', ↓reduceIte, hk, UB.map_some]
-          try rfl
-      · simp only at hr
-        obtain ⟨n, k, hk⟩ := ih (next l) st' r hr
-        refine ⟨n + 1, k + 1, ?_⟩
-        rw [count, hp, UB.some_bind]
-        simp only [hl, ↓reduceIte, hk, UB.map_some]
-        try rfl
-
-theorem count_unique : ∀ (n n' : Nat) (l : CfgLabel) (st : Aσ) (k k' : Nat),
-    count ablock next n l st = some k → count ablock next n' l st = some k' → k = k'
-  | 0, _, _, _, _, _, h, _ => by simp [count, UB.fail_eq] at h
-  | _ + 1, 0, _, _, _, _, _, h' => by simp [count, UB.fail_eq] at h'
-  | n + 1, n' + 1, l, st, k, k', h, h' => by
-    rw [count] at h h'
-    by_cases hl : l = .exit
-    · subst hl
-      simp only [eq_self, ↓reduceIte, UB.pure_eq] at h h'
-      have := Option.some.inj h
-      have := Option.some.inj h'
-      omega
-    · simp only [hl, ↓reduceIte] at h h'
-      obtain ⟨⟨r, st'⟩, hp, hr⟩ := (UB.bind_eq_some _ _ _).mp h
-      obtain ⟨⟨r', st''⟩, hp', hr'⟩ := (UB.bind_eq_some _ _ _).mp h'
-      rw [hp] at hp'
-      obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hp')
-      rcases r with l' | _
-      · simp only at hr hr'
-        by_cases hl' : l' = .exit
-        · subst hl'
-          simp only [eq_self, ↓reduceIte, UB.pure_eq] at hr hr'
-          have := Option.some.inj hr
-          have := Option.some.inj hr'
-          omega
-        · simp only [hl', ↓reduceIte] at hr hr'
-          obtain ⟨k₁, hk₁, rfl⟩ := (UB.map_eq_some _ _ _).mp hr
-          obtain ⟨k₂, hk₂, rfl⟩ := (UB.map_eq_some _ _ _).mp hr'
-          rw [count_unique n n' l' st' k₁ k₂ hk₁ hk₂]
-      · simp only at hr hr'
-        obtain ⟨k₁, hk₁, rfl⟩ := (UB.map_eq_some _ _ _).mp hr
-        obtain ⟨k₂, hk₂, rfl⟩ := (UB.map_eq_some _ _ _).mp hr'
-        rw [count_unique n n' (next l) st' k₁ k₂ hk₁ hk₂]
-
-open Classical in
-noncomputable def steps (l : CfgLabel) (st : Aσ) : Nat :=
-  if h : ∃ k n, count ablock next n l st = some k then Classical.choose h else 0
-
-theorem steps_eq {n : Nat} {l : CfgLabel} {st : Aσ} {k : Nat}
-    (h : count ablock next n l st = some k) : steps ablock next l st = k := by
-  have hex : ∃ k n, count ablock next n l st = some k := ⟨k, n, h⟩
-  simp only [steps, hex, ↓reduceDIte]
-  obtain ⟨n', hn'⟩ := Classical.choose_spec hex
-  exact count_unique ablock next n' n l st _ k hn' h
-
-theorem steps_lt_of_ok {l : CfgLabel} {st st' : Aσ} (hl : l ≠ .exit)
-    (hrun : (ablock l).run.run st = some (.ok (), st'))
-    {r : Except CfgLabel Unit × Aσ} (hfix : cfgFix ablock next l st = some r) :
-    steps ablock next (next l) st' < steps ablock next l st := by
-  obtain ⟨n, k, hk⟩ := count_of_cfgFix ablock next l st r hfix
-  cases n with
-  | zero => simp [count, UB.fail_eq] at hk
-  | succ n =>
-    have hk0 := hk
-    rw [count, hrun, UB.some_bind] at hk
-    simp only [hl, ↓reduceIte] at hk
-    obtain ⟨k', hk', rfl⟩ := (UB.map_eq_some _ _ _).mp hk
-    rw [steps_eq ablock next hk0, steps_eq ablock next hk']
-    omega
-
-theorem steps_lt_of_error {l l' : CfgLabel} {st st' : Aσ} (hl : l ≠ .exit) (hl' : l' ≠ .exit)
-    (hrun : (ablock l).run.run st = some (.error l', st'))
-    {r : Except CfgLabel Unit × Aσ} (hfix : cfgFix ablock next l st = some r) :
-    steps ablock next l' st' < steps ablock next l st := by
-  obtain ⟨n, k, hk⟩ := count_of_cfgFix ablock next l st r hfix
-  cases n with
-  | zero => simp [count, UB.fail_eq] at hk
-  | succ n =>
-    have hk0 := hk
-    rw [count, hrun, UB.some_bind] at hk
-    simp only [hl, hl', ↓reduceIte] at hk
-    obtain ⟨k', hk', rfl⟩ := (UB.map_eq_some _ _ _).mp hk
-    rw [steps_eq ablock next hk0, steps_eq ablock next hk']
-    omega
-
-end
-
 /-! ## The block relations -/
 
 def RetRel (s : MachineData) (ra : Int64) : Int64 → CfgLabel → MachineData → Prop :=
@@ -491,13 +262,23 @@ noncomputable instance {Aσ : Type} :
 
 /-! ## The control-flow rule -/
 
+theorem BlockM.run_bind {Aσ α β : Type} (x : BlockM Aσ α) (k : α → BlockM Aσ β) (st : Aσ) :
+    (x >>= k).run.run st = (x.run.run st >>= fun p =>
+      match p.1 with
+      | .ok a => (k a).run.run p.2
+      | .error e => pure (.error e, p.2)) := by
+  rw [ExceptT.run_bind, StateT.run_bind]
+  congr 1
+  funext p
+  rcases p with ⟨_ | _, _⟩ <;> rfl
+
 section
 variable {Aσ : Type} (abs : MachineData → Aσ)
 
-theorem decreases_of_steps_lt {ablock : CfgLabel → BlockM Aσ Unit} {next : CfgLabel → CfgLabel}
+theorem decreases_of_steps_lt {T : Table CfgLabel (BlockM Aσ Unit)}
     {l : Option Label} {b : Label} {i j : Nat} {t s : MachineData}
-    (h : steps ablock next (.label b) (abs s) < steps ablock next (CfgLabel.ofLabel l) (abs t)) :
-    Program.Decreases (fun l t => steps ablock next (.label l) (abs t)) l i t b j s := by
+    (h : steps T (.label b) (abs s) < steps T (CfgLabel.ofLabel l) (abs t)) :
+    Program.Decreases (fun l t => steps T (.label l) (abs t)) l i t b j s := by
   cases l with
   | none => trivial
   | some l => exact Or.inl h
@@ -507,28 +288,28 @@ end
 section
 variable [Host] [FunDecls] {Aσ : Type} (abs : MachineData → Aσ)
 
-theorem wrp_cfg_le {p : Program} (next : CfgLabel → CfgLabel)
-    (hnext : ∀ blk ∈ Program.blocks p, next (CfgLabel.ofLabel blk.label) = CfgLabel.ofNext blk.next)
-    {ablock : CfgLabel → BlockM Aσ Unit} {s : MachineData} {ra : Int64}
+theorem wrp_cfg_le {p : Program} (hnd : (Program.labels p).Nodup)
+    {cell : CfgLabel → BlockM Aσ Unit} {s : MachineData} {ra : Int64}
     (h : ∀ blk ∈ Program.blocks p, ∀ t, SameStackFrame (s.push64 ra) t →
-      ⦃(· = t)⦄ blk.body ⪯[Concretization.ofStateRepr abs] (ablock (CfgLabel.ofLabel blk.label))
+      ⦃(· = t)⦄ blk.body ⪯[Concretization.ofStateRepr abs] (cell (CfgLabel.ofLabel blk.label))
         ⦃FallRel (s.push64 ra); JumpRel p (s.push64 ra)⦄) :
     (fun t => t = s.push64 ra) ⊑ wrp (Concretization.ofStateRepr abs) p
-      (cfgLoop ablock next .entry) (fun _ _ => ⊤) (RetRel s ra) := by
+      (cfgLoop (Program.table p cell) .entry) (fun _ _ => ⊤) (RetRel s ra) := by
   refine wrp_intro fun Qa Ea => ?_
   intro t ht
   simp only [meet_apply, meet_prop_eq_and, Concretization.ofStateRepr_pred] at ht
   obtain ⟨rfl, hpre⟩ := ht
+  let T := Program.table p cell
   let I : Program.CfgInvariant := fun {_} l t =>
-    wp (cfgLoop ablock next (.label l)) Qa Ea (abs t) ∧ SameStackFrame (s.push64 ra) t
+    wp (cfgLoop T (.label l)) Qa Ea (abs t) ∧ SameStackFrame (s.push64 ra) t
   let Q : Unit → MachineData → Prop := fun _ u =>
     (Concretization.ofStateRepr abs).post (fun _ _ => ⊤) Qa () u
-  let var : Program.CfgVariant := fun l t => steps ablock next (.label l) (abs t)
+  let var : Program.CfgVariant := fun l t => steps T (.label l) (abs t)
   refine Program.WP.cfg (p := p) (Q := Q)
     (E := EPostsConcretization.ePosts (Concretization.ofStateRepr abs) (RetRel s ra) Ea)
     (s₀ := s.push64 ra) @I var ?_
   intro blk hmem t hI
-  have hIt : wp (cfgLoop ablock next (CfgLabel.ofLabel blk.label)) Qa Ea (abs t)
+  have hIt : wp (cfgLoop T (CfgLabel.ofLabel blk.label)) Qa Ea (abs t)
       ∧ SameStackFrame (s.push64 ra) t := by
     cases hl : blk.label with
     | none =>
@@ -540,32 +321,32 @@ theorem wrp_cfg_le {p : Program} (next : CfgLabel → CfgLabel)
       rw [hl] at hI
       exact hI
   obtain ⟨hIt, hst⟩ := hIt
-  have hl := CfgLabel.ofLabel_ne_exit blk.label
-  have hfix : ∃ r, cfgFix ablock next (CfgLabel.ofLabel blk.label) (abs t) = some r := by
+  have hTb : T.get? (CfgLabel.ofLabel blk.label)
+      = some (cell (CfgLabel.ofLabel blk.label) >>= fun _ => jumpTo blk.next) :=
+    Program.table_get? hnd cell hmem
+  have hfix : ∃ r, cfgFix T (CfgLabel.ofLabel blk.label) (abs t) = some r := by
     rw [wp_BlockM_eq, cfgLoop_run] at hIt
     revert hIt
-    cases cfgFix ablock next (CfgLabel.ofLabel blk.label) (abs t) <;> intro hIt
+    cases cfgFix T (CfgLabel.ofLabel blk.label) (abs t) <;> intro hIt
     · exact hIt.elim
     · exact ⟨_, rfl⟩
   obtain ⟨r, hfix⟩ := hfix
-  rw [wp_cfgLoop_fn ablock next Qa Ea hl, wp_BlockM_eq] at hIt
+  rw [wp_cfgLoop_some T Qa Ea _ hTb, WPMonadExact.wp_bind_eq, wp_BlockM_eq] at hIt
+  let c := cell (CfgLabel.ofLabel blk.label)
+  let H : (CfgLabel → Aσ → Prop) × EStack⟨⟩ := (fun l' => wp (cfgLoop T l') Qa Ea, Ea.2)
   let Qa' : Unit → Aσ → Prop := fun _ st' =>
-    wp (cfgLoop ablock next (next (CfgLabel.ofLabel blk.label))) Qa Ea st'
-      ∧ (ablock (CfgLabel.ofLabel blk.label)).run.run (abs t) = some (.ok (), st')
+    wp (jumpTo blk.next : BlockM Aσ Unit) Qa H st' ∧ c.run.run (abs t) = some (.ok (), st')
   let Ea' : (CfgLabel → Aσ → Prop) × EStack⟨⟩ :=
-    (fun l' st' => cfgEPosts ablock next Qa Ea l' st'
-      ∧ (ablock (CfgLabel.ofLabel blk.label)).run.run (abs t) = some (.error l', st'), Ea.2)
-  have hpre' : wp (ablock (CfgLabel.ofLabel blk.label)) Qa' Ea' (abs t) := by
+    (fun l' st' => wp (cfgLoop T l') Qa Ea st' ∧ c.run.run (abs t) = some (.error l', st'), Ea.2)
+  have hpre' : wp c Qa' Ea' (abs t) := by
     rw [wp_BlockM_eq]
     revert hIt
-    rcases hrun : (ablock (CfgLabel.ofLabel blk.label)).run.run (abs t) with _ | ⟨l' | _, st'⟩ <;>
-      intro hIt
+    rcases hrun : c.run.run (abs t) with _ | ⟨l' | _, st'⟩ <;> intro hIt
     · exact hIt.elim
     · exact ⟨hIt, hrun⟩
     · exact ⟨hIt, hrun⟩
   have hb := wrp_transport (h blk hmem t hst).le_wrp Qa' Ea'
-  have hmeet : ((fun t' => t' = t) ⊓ (Concretization.ofStateRepr abs).pred
-      (wp (ablock (CfgLabel.ofLabel blk.label)) Qa' Ea')) t := by
+  have hmeet : ((fun t' => t' = t) ⊓ (Concretization.ofStateRepr abs).pred (wp c Qa' Ea')) t := by
     simp only [meet_apply, meet_prop_eq_and, Concretization.ofStateRepr_pred]
     exact ⟨trivial, hpre'⟩
   have hwp := hb t hmeet
@@ -574,21 +355,22 @@ theorem wrp_cfg_le {p : Program} (next : CfgLabel → CfgLabel)
     simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
       meet_prop_eq_and, Concretization.ofStateRepr_pred, FallRel] at hu
     obtain ⟨-, hst', hQ, hrun⟩ := hu
-    rw [hnext blk hmem] at hQ
     show Program.Next @I (s.push64 ra) Q
       (Program.Decreases var blk.label blk.idx t) blk.next (blk.idx + 1) u.data
     cases hn : blk.next with
     | none =>
-      rw [hn, CfgLabel.ofNext_none, wp_cfgLoop_exit_fn] at hQ
+      rw [hn, jumpTo_none, WPMonadExact.wp_pure_eq] at hQ
       simp only [Program.Next, Q, Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
         meet_prop_eq_and, top_apply, top_prop_eq, Concretization.ofStateRepr_pred]
       exact ⟨(), trivial, hQ⟩
     | some l' =>
-      rw [hn, CfgLabel.ofNext_some] at hQ
+      rw [hn, jumpTo_some, wp_throw_block] at hQ
       refine ⟨⟨hQ, hst'⟩, decreases_of_steps_lt abs ?_⟩
-      have hlt := steps_lt_of_ok ablock next hl hrun hfix
-      rw [hnext blk hmem, hn, CfgLabel.ofNext_some] at hlt
-      exact hlt
+      have hb' : (c >>= fun _ => jumpTo blk.next).run.run (abs t)
+          = some (.error (.label l'), abs u.data) := by
+        rw [BlockM.run_bind, hrun, hn]
+        rfl
+      exact steps_lt T hTb hb' hfix
   · show Program.Intercept (Program.labels p) (s.push64 ra)
       (fun l j s' => I (s₀ := s.push64 ra) l s' ∧ Program.Decreases var blk.label blk.idx t l j s')
       (EPostsConcretization.ePosts (Concretization.ofStateRepr abs) (RetRel s ra) Ea)
@@ -598,14 +380,16 @@ theorem wrp_cfg_le {p : Program} (next : CfgLabel → CfgLabel)
     simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
       meet_prop_eq_and, Concretization.ofStateRepr_pred, JumpRel] at hu
     obtain ⟨l', hrel, hE, hrun⟩ := hu
+    have hb' : (c >>= fun _ => jumpTo blk.next).run.run (abs t) = some (.error l', abs u.data) := by
+      rw [BlockM.run_bind, hrun]
+      rfl
     rcases hrel with ⟨l, hmem', rfl, ha, hst'⟩ | ⟨rfl, ha, hrsp'⟩
-    · rw [cfgEPosts_label] at hE
-      refine Program.Intercept.intro (Or.inl ⟨?_, l, ha.symm, hmem', ⟨hE, hst'⟩, ?_⟩)
+    · refine Program.Intercept.intro (Or.inl ⟨?_, l, ha.symm, hmem', ⟨hE, hst'⟩, ?_⟩)
       · show ¬ ((s.push64 ra).regs.get64 .rsp).SerialLt (u.data.regs.get64 .rsp)
         rw [hst'.1]
         exact BitVec.not_serialLt_self _
-      · exact decreases_of_steps_lt abs (steps_lt_of_error ablock next hl (by simp) hrun hfix)
-    · rw [cfgEPosts_exit] at hE
+      · exact decreases_of_steps_lt abs (steps_lt T hTb hb' hfix)
+    · rw [wp_cfgLoop_none T Qa Ea _ (Program.table_get?_exit p cell)] at hE
       have hrsp₀ : (s.push64 ra).regs.get64 .rsp = s.regs.get64 .rsp - 8#64 := by
         simp only [MachineData.regs_push64, Reg64s.get64_set64, ↓reduceIte]
       refine Program.Intercept.intro (Or.inr ⟨?_, fun _ _ _ => ?_⟩)
@@ -618,16 +402,6 @@ theorem wrp_cfg_le {p : Program} (next : CfgLabel → CfgLabel)
       · show ((s.push64 ra).regs.get64 .rsp).SerialLt (u.data.regs.get64 .rsp)
         rw [hrsp', hrsp₀, BitVec.sub_add_cancel]
         exact BitVec.serialLt_sub _ _ (by decide)
-
-theorem wrp_cfg {p : Program} (next : CfgLabel → CfgLabel)
-    (hnext : ∀ blk ∈ Program.blocks p, next (CfgLabel.ofLabel blk.label) = CfgLabel.ofNext blk.next)
-    {ablock : CfgLabel → BlockM Aσ Unit} {s : MachineData} {ra : Int64}
-    (h : ∀ blk ∈ Program.blocks p, ∀ t, SameStackFrame (s.push64 ra) t →
-      ⦃(· = t)⦄ blk.body ⪯[Concretization.ofStateRepr abs] (ablock (CfgLabel.ofLabel blk.label))
-        ⦃FallRel (s.push64 ra); JumpRel p (s.push64 ra)⦄) :
-    wrp (Concretization.ofStateRepr abs) p (cfgLoop ablock next .entry) (fun _ _ => ⊤) (RetRel s ra)
-      (s.push64 ra) :=
-  wrp_cfg_le abs next hnext h (s.push64 ra) rfl
 
 /-! ## The grind theory of the block relations
 
@@ -670,18 +444,17 @@ attribute [vcgen_simp] Program.labels_nil Program.labels_cons_instr Program.labe
 @[vcgen_simp] theorem Label.mem_nil (a : Label) : (a ∈ ([] : List Label)) = False :=
   propext (iff_false_intro List.not_mem_nil)
 
-/-- The control-flow rule as a spec: the abstract program is `cfgLoop` over a table of blocks, one
-cell per label, which `ascend` fills block by block. The program is embedded in the host, so its
-labels are distinct and each block falls through to its successor in the text. -/
+/-- The control-flow rule as a spec: the abstract program is `cfgLoop` over the table of the text,
+whose cells `ascend` fills block by block. The program is embedded in the host, so its labels are
+distinct. -/
 theorem refines_cfg {p : Program} [Embeds p] (tbl : Table CfgLabel (BlockM Aσ Unit))
     {s : MachineData} {ra : Int64}
     (h : ∀ blk ∈ Program.blocks p, ∀ t, SameStackFrame (s.push64 ra) t →
       ⦃(· = t)⦄ blk.body ⪯[Concretization.ofStateRepr abs] (Table.get tbl (CfgLabel.ofLabel blk.label))
         ⦃FallRel (s.push64 ra); JumpRel p (s.push64 ra)⦄) :
     ⦃(· = s.push64 ra)⦄ p ⪯[Concretization.ofStateRepr abs]
-      (cfgLoop (Table.get tbl) (Program.next p) .entry) ⦃fun _ _ => ⊤; RetRel s ra⦄ :=
-  ⟨wrp_cfg_le abs (Program.next p)
-    (fun _ hmem => Program.next_eq_of_nodup Program.labels_nodup_of_embeds hmem) h⟩
+      (cfgLoop (Program.table p (Table.get tbl)) .entry) ⦃fun _ _ => ⊤; RetRel s ra⦄ :=
+  ⟨wrp_cfg_le abs Program.labels_nodup_of_embeds h⟩
 
 end
 

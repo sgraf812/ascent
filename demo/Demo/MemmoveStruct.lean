@@ -16,13 +16,18 @@ open scoped Program.WP
 namespace Ascent.Kraken
 
 sym_simp_def memmoveT : BlockM MachineData Unit from memmoveA
-  using pre [tryCatch_table_get_bind, tryCatch_bind_assoc, tryCatch_pure,
-    tryCatch_cfgLoop_bind, tryCatch_modifyIf_bind, tryCatch_branch_bind, tryCatch_peek_bind,
-    tryCatch_exitIf_bind, tryCatch_exitIf]
-  post [memmoveA, memmove, cfgLoop_exit, cfgLoop_eq_repeat,
-    CfgLabel.label_eq_label, bind_pure_unit, pure_bind, bind_assoc, AInstr.exitIf_bind, pure_done_eq,
-    bind_map, map_exitIf, condState_map, condState_exitIf_map, condState_map_exitIf, forIn_map_done,
-    forIn_exitIf, condState_true, condState_false, BitVec.xor_self, BitVec.setWidth_zero]
+  using pre [tryCatch_table_get_bind, tryCatch_bind_assoc, tryCatch_pure, BlockLoop.tryCatch_throw,
+    tryCatch_modifyIf_bind, tryCatch_branch_bind, tryCatch_peek_bind, tryCatch_exitIf_bind, tryCatch_exitIf,
+    tryCatch_condState_bind, tryCatch_condState, cfgLoop_eq_tryCatch]
+  post [memmoveA, memmove, Table.get_cons, Program.table, List.map_cons, List.map_nil,
+    jumpTo_none, jumpTo_some, Table.get?_cons, Table.get?_nil, Table.erase_cons, Table.erase_nil,
+    Option.isSome_some, Option.isSome_none, Option.getD_some, cfgLoop_eq_tryCatch, cfgLoop_eq_forIn,
+    cfgLoop_eq_throw, ThrowsOnly.pure, ThrowsOnly.throw, ThrowsOnly.bind, ThrowsOnly.map, ThrowsOnly.forIn,
+    ThrowsOnly.modifyIf, ThrowsOnly.peek, ThrowsOnly.exitIf, ThrowsOnly.condState, ne_eq,
+    not_false_eq_true, and_true, true_and, implies_true, forall_const, CfgLabel.label_eq_label,
+    bind_pure_unit, pure_bind, BlockLoop.throw_bind, AInstr.exitIf_bind, forIn_map_done, forIn_exitIf,
+    bind_assoc, condState_true, condState_false, BitVec.xor_self,
+    BitVec.setWidth_zero]
 
 /--
 info: def Ascent.Kraken.memmoveT : BlockM MachineData Unit :=
