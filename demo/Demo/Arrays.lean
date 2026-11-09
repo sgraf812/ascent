@@ -18,40 +18,65 @@ open Ascent.Concretization (ofStateRepr ofStateRepr_pred)
 
 namespace Ascent.Kraken
 
-/-- The `n` words at the base address `p` as an array. -/
-def outView (p : BitVec 64) (n : Nat) (m : DataMem) : Array (BitVec 64) := (words m p n).toArray
+/-- The `n` words of `w` bytes at the base address `p` as an array of `b`-bit vectors. -/
+def outView (w b : Nat) (p : BitVec 64) (n : Nat) (m : DataMem) : Array (BitVec b) :=
+  (words w b m p n).toArray
 
-@[simp, grind =] theorem size_outView : (outView p n m).size = n := by
+@[simp, grind =] theorem size_outView : (outView w b p n m).size = n := by
   simp [outView, words]
 
 /-- The base address `p` names the array `a` of the abstract program. -/
-def ArrayBase (_ : BitVec 64) (_ : Array (BitVec 64)) : Prop := True
+def ArrayBase {α : Type} (_ : BitVec 64) (_ : Array α) : Prop := True
 
-@[grind norm] theorem ArrayBase_eq : ArrayBase p a = True := rfl
+@[grind norm] theorem ArrayBase_eq {α : Type} {a : Array α} : ArrayBase p a = True := rfl
 
 /-- `q ≐ₐ a`: the base address `q` names the array parameter `a`. -/
 scoped notation:50 q:51 " ≐ₐ " a:51 => PureRefinement q a True ArrayBase
 
+/-- `Scaled w x j`: the byte offset `x` addresses the word at index `j` of an array of `w`-byte
+words. -/
+def Scaled (w : Nat) (x : BitVec 64) (j : Nat) : Prop := x = BitVec.ofNat 64 j * BitVec.ofNat 64 w
+
+@[ascend_pure] theorem absS_mul {x : BitVec 64} {j w : Nat} {P : Prop}
+    (h : PureRefinement x j P WordNat) : PureRefinement (x * BitVec.ofNat 64 w) j P (Scaled w) :=
+  fun hp => by rw [Scaled, h hp]
+
+theorem setWidth_ofInt {b : Nat} (hb : b ≤ 64) (x : Int) :
+    (BitVec.ofInt b x).setWidth 64 = BitVec.ofInt 64 (x % 2 ^ b) := by
+  apply BitVec.eq_of_toNat_eq
+  have hposN : 0 < 2 ^ b := Nat.two_pow_pos b
+  have hleN : 2 ^ b ≤ 2 ^ 64 := Nat.pow_le_pow_right (by omega) hb
+  have hpos : (0 : Int) < 2 ^ b := by exact_mod_cast hposN
+  have hle : (2 : Int) ^ b ≤ 2 ^ 64 := by exact_mod_cast hleN
+  have h0 : 0 ≤ x % 2 ^ b := Int.emod_nonneg _ (by omega)
+  have hlt : x % 2 ^ b < 2 ^ b := Int.emod_lt_of_pos _ hpos
+  simp only [BitVec.toNat_setWidth, BitVec.toNat_ofInt]
+  rw [Int.emod_eq_of_lt h0 (by omega)]
+  have : (x % 2 ^ b).toNat < 2 ^ 64 := by omega
+  exact Nat.mod_eq_of_lt this
+
 /-! ## Words -/
 
 section
-variable {m : DataMem} {p q : BitVec 64} {n : Nat}
+variable {m : DataMem} {p q : BitVec 64} {n w b : Nat}
 
-theorem word_eq_getElem {arr : Array (BitVec 64)} (h : words m p arr.size = arr.toList) {k : Nat}
-    (hk : k < arr.size) : word m p k = arr[k]! := by
+theorem word_eq_getElem {arr : Array (BitVec b)} (h : words w b m p arr.size = arr.toList) {k : Nat}
+    (hk : k < arr.size) : word w b m p k = arr[k]! := by
   have h' := congrArg (fun l => l[k]?) h
   simp only [words, List.getElem?_ofFn, Array.getElem?_toList] at h'
   rw [dite_eq_left hk, Array.getElem?_eq_getElem hk] at h'
   rw [getElem!_pos arr k hk]
   exact Option.some.inj h'
 
-theorem word_storeInt_self (k : Nat) (v : BitVec 64) :
-    word (Mem.storeInt m (cell p k) 8 v.toInt) p k = v := by
-  rw [word, Mem.loadInt_storeInt_64, Option.get!_some, BitVec.ofInt_ofBytes_toBytes_64,
-    BitVec.ofInt_toInt]
+theorem word_storeInt_self (hw : w ≤ 8) (hb : b = 8 * w) (k : Nat) (v : BitVec 64) :
+    word w b (Mem.storeInt m (cell w p k) w v.toInt) p k = v.setWidth b := by
+  rw [word, Mem.loadInt_storeInt _ _ _ _ (by omega), Option.get!_some,
+    BitVec.ofInt_ofBytes_toBytes b w hb, ← BitVec.signExtend,
+    BitVec.signExtend_eq_setWidth_of_le _ (by omega)]
 
-theorem words_storeInt_self {k : Nat} (hk : k < n) (hn : n < 2 ^ 61) (v : BitVec 64) :
-    words (Mem.storeInt m (cell p k) 8 v.toInt) p n = (words m p n).set k v := by
+theorem words_storeInt_self (hw : w ≤ 8) (hb : b = 8 * w) {k : Nat} (hk : k < n) (hn : n < 2 ^ 61)
+    (v : BitVec 64) :
+    words w b (Mem.storeInt m (cell w p k) w v.toInt) p n = (words w b m p n).set k (v.setWidth b) := by
   apply List.ext_getElem
   · simp [words]
   intro j h₁ h₂
@@ -59,116 +84,124 @@ theorem words_storeInt_self {k : Nat} (hk : k < n) (hn : n < 2 ^ 61) (v : BitVec
   simp only [words, List.getElem_ofFn, List.getElem_set]
   split
   · subst_vars
-    exact word_storeInt_self j v
+    exact word_storeInt_self hw rfl j v
   · rename_i hjk
-    rw [word, Mem.loadInt_storeInt_of_disjoint (cell_disjoint h₁ hk (Ne.symm hjk) hn) _]
+    rw [word, Mem.loadInt_storeInt_of_disjoint (cell_disjoint hw h₁ hk (Ne.symm hjk) hn) _]
     rfl
 
-theorem words_storeInt_of_disjoint {k nq : Nat}
-    (hd : Mem.Blocks.Disjoint [(q, 8 * nq)] [(p, 8 * n)]) (hk : k < nq) (hq : nq < 2 ^ 61)
-    (hn : n < 2 ^ 61) (v : Int) : words (Mem.storeInt m (cell q k) 8 v) p n = words m p n := by
+theorem words_storeInt_of_disjoint (hw : w ≤ 8) {k nq : Nat}
+    (hd : Mem.Blocks.Disjoint [(q, w * nq)] [(p, w * n)]) (hk : k < nq) (hq : nq < 2 ^ 61)
+    (hn : n < 2 ^ 61) (v : Int) :
+    words w b (Mem.storeInt m (cell w q k) w v) p n = words w b m p n := by
   apply List.ext_getElem
   · simp [words]
   intro j h₁ _
   simp only [words, List.length_ofFn] at h₁
   simp only [words, List.getElem_ofFn]
   rw [word, Mem.loadInt_storeInt_of_disjoint
-    (Mem.Blocks.Disjoint.of_inside' hd (cell_inside h₁ hn) (cell_inside hk hq)) _]
+    (Mem.Blocks.Disjoint.of_inside' hd (cell_inside hw h₁ hn) (cell_inside hw hk hq)) _]
   rfl
 
-theorem outView_storeInt {k : Nat} (hk : k < n) (hn : n < 2 ^ 61) (v : BitVec 64) :
-    outView p n (Mem.storeInt m (cell p k) 8 v.toInt) = (outView p n m).set! k v := by
-  rw [outView, outView, words_storeInt_self hk hn, Array.set!_eq_setIfInBounds,
+theorem outView_storeInt (hw : w ≤ 8) (hb : b = 8 * w) {k : Nat} (hk : k < n) (hn : n < 2 ^ 61)
+    (v : BitVec 64) :
+    outView w b p n (Mem.storeInt m (cell w p k) w v.toInt) = (outView w b p n m).set! k (v.setWidth b) := by
+  rw [outView, outView, words_storeInt_self hw hb hk hn, Array.set!_eq_setIfInBounds,
     List.setIfInBounds_toArray]
 
-theorem loadInt_storeInt_cell_of_disjoint {k : Nat} {x : BitVec 64}
-    (hd : Mem.Blocks.Disjoint [(x, 8)] [(q, 8 * n)]) (hk : k < n) (hn : n < 2 ^ 61) (v : Int) :
-    Mem.loadInt (Mem.storeInt m (cell q k) 8 v) x 8 = Mem.loadInt m x 8 :=
-  Mem.loadInt_storeInt_of_disjoint (Mem.Blocks.Disjoint.of_inside_right_pair hd (cell_inside hk hn)) v
+theorem loadInt_storeInt_cell_of_disjoint (hw : w ≤ 8) {k : Nat} {x : BitVec 64}
+    (hd : Mem.Blocks.Disjoint [(x, 8)] [(q, w * n)]) (hk : k < n) (hn : n < 2 ^ 61) (v : Int) :
+    Mem.loadInt (Mem.storeInt m (cell w q k) w v) x 8 = Mem.loadInt m x 8 :=
+  Mem.loadInt_storeInt_of_disjoint (Mem.Blocks.Disjoint.of_inside_right_pair hd (cell_inside hw hk hn)) v
 
 end
 
 /-! ## Layouts
 
-`ArrayLayout ins o n rsv m` states the memory `m` of a program that writes the array of `n` words
-at `o`: each input `(p, a)` of `ins` holds the array `a` at `p`, each reserved word of `rsv`, such
-as a return slot, is mapped, and the written array is mapped and apart from the inputs and from the
-reserved words. A store into the written array keeps the layout. -/
+`ArrayLayout w b ins o n rsv m` states the memory `m` of a program that writes the array of `n`
+words of `w` bytes at `o`, read as `b`-bit vectors: each input `(p, a)` of `ins` holds the array `a`
+at `p`, each reserved word of `rsv`, such as a return slot, is mapped, and the written array is
+mapped and apart from the inputs and from the reserved words. A store into the written array keeps
+the layout. -/
 
 /-- The array `a` lies at `p`, apart from the written array of `n` words at `o`. -/
-structure InputAt (m : DataMem) (o : BitVec 64) (n : Nat) (p : BitVec 64) (a : Array (BitVec 64)) :
-    Prop where
+structure InputAt (w b : Nat) (m : DataMem) (o : BitVec 64) (n : Nat) (p : BitVec 64)
+    (a : Array (BitVec b)) : Prop where
   len : a.size < 2 ^ 61
-  words : words m p a.size = a.toList
-  mapped : Mem.Mapped [(p, 8 * a.size)] m
-  disj : Mem.Blocks.Disjoint [(o, 8 * n)] [(p, 8 * a.size)]
+  words : words w b m p a.size = a.toList
+  mapped : Mem.Mapped [(p, w * a.size)] m
+  disj : Mem.Blocks.Disjoint [(o, w * n)] [(p, w * a.size)]
 
 /-- The word at `p` is mapped and apart from the written array of `n` words at `o`. -/
-structure ReservedAt (m : DataMem) (o : BitVec 64) (n : Nat) (p : BitVec 64) : Prop where
+structure ReservedAt (w : Nat) (m : DataMem) (o : BitVec 64) (n : Nat) (p : BitVec 64) : Prop where
   loadInt_isSome : (Mem.loadInt m p 8).isSome = true
-  disj : Mem.Blocks.Disjoint [(p, 8)] [(o, 8 * n)]
+  disj : Mem.Blocks.Disjoint [(p, 8)] [(o, w * n)]
 
-def Inputs (m : DataMem) (o : BitVec 64) (n : Nat) : List (BitVec 64 × Array (BitVec 64)) → Prop
+def Inputs (w b : Nat) (m : DataMem) (o : BitVec 64) (n : Nat) :
+    List (BitVec 64 × Array (BitVec b)) → Prop
   | [] => True
-  | (p, a) :: ins => InputAt m o n p a ∧ Inputs m o n ins
+  | (p, a) :: ins => InputAt w b m o n p a ∧ Inputs w b m o n ins
 
-def Reserved (m : DataMem) (o : BitVec 64) (n : Nat) : List (BitVec 64) → Prop
+def Reserved (w : Nat) (m : DataMem) (o : BitVec 64) (n : Nat) : List (BitVec 64) → Prop
   | [] => True
-  | p :: rsv => ReservedAt m o n p ∧ Reserved m o n rsv
+  | p :: rsv => ReservedAt w m o n p ∧ Reserved w m o n rsv
 
-structure ArrayLayout (ins : List (BitVec 64 × Array (BitVec 64))) (o : BitVec 64) (n : Nat)
-    (rsv : List (BitVec 64)) (m : DataMem) : Prop where
+structure ArrayLayout (w b : Nat) (ins : List (BitVec 64 × Array (BitVec b))) (o : BitVec 64)
+    (n : Nat) (rsv : List (BitVec 64)) (m : DataMem) : Prop where
+  width : w ≤ 8
+  bits : b = 8 * w
   len : n < 2 ^ 61
-  mapped : Mem.Mapped [(o, 8 * n)] m
-  inputs : Inputs m o n ins
-  reserved : Reserved m o n rsv
+  mapped : Mem.Mapped [(o, w * n)] m
+  inputs : Inputs w b m o n ins
+  reserved : Reserved w m o n rsv
 
 attribute [grind →] InputAt.len InputAt.words InputAt.mapped InputAt.disj ReservedAt.loadInt_isSome
-  ReservedAt.disj ArrayLayout.len ArrayLayout.mapped ArrayLayout.inputs ArrayLayout.reserved
+  ReservedAt.disj ArrayLayout.width ArrayLayout.bits ArrayLayout.len ArrayLayout.mapped
+  ArrayLayout.inputs ArrayLayout.reserved
 
 section
-variable {m : DataMem} {o : BitVec 64} {n : Nat}
+variable {w b : Nat} {m : DataMem} {o : BitVec 64} {n : Nat}
 
-@[grind =] theorem Inputs.nil : Inputs m o n [] = True := rfl
-@[grind =] theorem Inputs.cons (p : BitVec 64) (a : Array (BitVec 64)) ins :
-    Inputs m o n ((p, a) :: ins) = (InputAt m o n p a ∧ Inputs m o n ins) := rfl
-@[grind =] theorem Reserved.nil : Reserved m o n [] = True := rfl
+@[grind =] theorem Inputs.nil : Inputs w b m o n [] = True := rfl
+@[grind =] theorem Inputs.cons (p : BitVec 64) (a : Array (BitVec b)) ins :
+    Inputs w b m o n ((p, a) :: ins) = (InputAt w b m o n p a ∧ Inputs w b m o n ins) := rfl
+@[grind =] theorem Reserved.nil : Reserved w m o n [] = True := rfl
 @[grind =] theorem Reserved.cons (p : BitVec 64) rsv :
-    Reserved m o n (p :: rsv) = (ReservedAt m o n p ∧ Reserved m o n rsv) := rfl
+    Reserved w m o n (p :: rsv) = (ReservedAt w m o n p ∧ Reserved w m o n rsv) := rfl
 
-variable {k : Nat} (hk : k < n) (hn : n < 2 ^ 61) (x : Int)
-include hk hn
+variable {k : Nat} (hw : w ≤ 8) (hk : k < n) (hn : n < 2 ^ 61) (x : Int)
+include hw hk hn
 
-theorem InputAt.storeInt {p : BitVec 64} {a : Array (BitVec 64)} (h : InputAt m o n p a) :
-    InputAt (Mem.storeInt m (cell o k) 8 x) o n p a where
+theorem InputAt.storeInt {p : BitVec 64} {a : Array (BitVec b)} (h : InputAt w b m o n p a) :
+    InputAt w b (Mem.storeInt m (cell w o k) w x) o n p a where
   len := h.len
-  words := by rw [words_storeInt_of_disjoint h.disj hk hn h.len]; exact h.words
+  words := by rw [words_storeInt_of_disjoint hw h.disj hk hn h.len]; exact h.words
   mapped := Mem.Mapped.storeInt h.mapped _ _ _
   disj := h.disj
 
-theorem ReservedAt.storeInt {p : BitVec 64} (h : ReservedAt m o n p) :
-    ReservedAt (Mem.storeInt m (cell o k) 8 x) o n p :=
-  ⟨by rw [loadInt_storeInt_cell_of_disjoint h.disj hk hn]; exact h.loadInt_isSome, h.disj⟩
+theorem ReservedAt.storeInt {p : BitVec 64} (h : ReservedAt w m o n p) :
+    ReservedAt w (Mem.storeInt m (cell w o k) w x) o n p :=
+  ⟨by rw [loadInt_storeInt_cell_of_disjoint hw h.disj hk hn]; exact h.loadInt_isSome, h.disj⟩
 
-theorem Inputs.storeInt : ∀ {ins}, Inputs m o n ins → Inputs (Mem.storeInt m (cell o k) 8 x) o n ins
+theorem Inputs.storeInt : ∀ {ins : List (BitVec 64 × Array (BitVec b))}, Inputs w b m o n ins →
+    Inputs w b (Mem.storeInt m (cell w o k) w x) o n ins
   | [], _ => trivial
-  | (_, _) :: _, ⟨h, hs⟩ => ⟨h.storeInt hk hn x, Inputs.storeInt hs⟩
+  | (_, _) :: _, ⟨h, hs⟩ => ⟨h.storeInt hw hk hn x, Inputs.storeInt hs⟩
 
-theorem Reserved.storeInt : ∀ {rsv}, Reserved m o n rsv →
-    Reserved (Mem.storeInt m (cell o k) 8 x) o n rsv
+theorem Reserved.storeInt : ∀ {rsv}, Reserved w m o n rsv →
+    Reserved w (Mem.storeInt m (cell w o k) w x) o n rsv
   | [], _ => trivial
-  | _ :: _, ⟨h, hs⟩ => ⟨h.storeInt hk hn x, Reserved.storeInt hs⟩
+  | _ :: _, ⟨h, hs⟩ => ⟨h.storeInt hw hk hn x, Reserved.storeInt hs⟩
 
 end
 
-theorem ArrayLayout.storeInt_cell {ins : List (BitVec 64 × Array (BitVec 64))} {o : BitVec 64}
-    {n : Nat} {rsv : List (BitVec 64)} {m : DataMem} (h : ArrayLayout ins o n rsv m)
+theorem ArrayLayout.storeInt_cell {w b : Nat} {ins : List (BitVec 64 × Array (BitVec b))}
+    {o : BitVec 64} {n : Nat} {rsv : List (BitVec 64)} {m : DataMem} (h : ArrayLayout w b ins o n rsv m)
     {k : Nat} (hk : k < n) (x : Int) :
-    ArrayLayout ins o n rsv (Mem.storeInt m (cell o k) 8 x) :=
-  ⟨h.len, Mem.Mapped.storeInt h.mapped _ _ _, h.inputs.storeInt hk h.len x,
-    h.reserved.storeInt hk h.len x⟩
+    ArrayLayout w b ins o n rsv (Mem.storeInt m (cell w o k) w x) :=
+  ⟨h.width, h.bits, h.len, Mem.Mapped.storeInt h.mapped _ _ _, h.inputs.storeInt h.width hk h.len x,
+    h.reserved.storeInt h.width hk h.len x⟩
 
-grind_pattern ArrayLayout.storeInt_cell => Mem.storeInt m (cell o k) 8 x, ArrayLayout ins o n rsv m
+grind_pattern ArrayLayout.storeInt_cell => Mem.storeInt m (cell w o k) w x, ArrayLayout w b ins o n rsv m
 
 /-! ## Steps -/
 
@@ -182,46 +215,98 @@ section
 variable {σa : Type} {view : DataMem → σa}
   {E : (CfgLabel → CfgLabel → DataMem → Prop) × EStack⟨⟩}
 
-@[ascend] theorem wrp_load8_getElem {Q : BitVec 64 → BitVec 64 → DataMem → Prop}
-    (p i : BitVec 64) (arr : Array (BitVec 64)) (j : Nat) (P : Prop) :
-    (fun m => p ≐ₐ arr ∧ PureRefinement i j P WordNat ∧ P ∧ words m p arr.size = arr.toList ∧
-      Mem.Mapped [(p, 8 * arr.size)] m ∧ j < arr.size ∧ arr.size < 2 ^ 61 ∧
-      ∀ y, BitVec.ofInt 64 ((Mem.loadInt m (p + i * 8#64) 8).get! % 2 ^ (8 * 8)) ≐ y →
-        Q (BitVec.ofInt 64 ((Mem.loadInt m (p + i * 8#64) 8).get! % 2 ^ (8 * 8))) y m)
-      ⊑ wrp (ofStateRepr view) (load 8 (p + i * 8#64))
-          (pure arr[j]! : BlockM σa (BitVec 64)) Q E := by
+@[ascend] theorem wrp_load_getElem {Q : BitVec 64 → BitVec 64 → DataMem → Prop}
+    (w b : Nat) (p o : BitVec 64) (arr : Array (BitVec b)) (j : Nat) (P : Prop) :
+    (fun m => p ≐ₐ arr ∧ PureRefinement o j P (Scaled w) ∧ P ∧ w ≤ 8 ∧ b = 8 * w ∧
+      words w b m p arr.size = arr.toList ∧ Mem.Mapped [(p, w * arr.size)] m ∧ j < arr.size ∧
+      arr.size < 2 ^ 61 ∧
+      ∀ y, BitVec.ofInt 64 ((Mem.loadInt m (p + o) w).get! % 2 ^ (8 * w)) ≐ y →
+        Q (BitVec.ofInt 64 ((Mem.loadInt m (p + o) w).get! % 2 ^ (8 * w))) y m)
+      ⊑ wrp (ofStateRepr view) (load w (p + o))
+          (pure ((arr[j]!).setWidth 64) : BlockM σa (BitVec 64)) Q E := by
   refine wrp_intro fun Qa Ea => ?_
   intro m hm
   simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, WPMonadExact.wp_pure_eq] at hm
-  obtain ⟨⟨-, hij, hP, hw, hmap, hj, hn, hk⟩, hq⟩ := hm
-  have hcell : p + i * 8#64 = cell p j := by rw [hij hP]; rfl
-  have hval : BitVec.ofInt 64 ((Mem.loadInt m (p + i * 8#64) 8).get! % 2 ^ (8 * 8)) = arr[j]! := by
-    rw [ofInt_emod_two_pow 64, hcell, ← word, word_eq_getElem hw hj]
+  obtain ⟨⟨-, hij, hP, hw, hb, hwd, hmap, hj, hn, hk⟩, hq⟩ := hm
+  have hcell : p + o = cell w p j := by rw [hij hP]; rfl
+  have hval : BitVec.ofInt 64 ((Mem.loadInt m (p + o) w).get! % 2 ^ (8 * w)) = (arr[j]!).setWidth 64 := by
+    rw [hcell, ← word_eq_getElem hwd hj, word, setWidth_ofInt (by omega), hb]
   rw [wp_load, Concretization.post_pi]
-  refine ⟨?_, arr[j]!, hk _ (PureRefinement.of_rel hval), ?_⟩
+  refine ⟨?_, (arr[j]!).setWidth 64, hk _ (PureRefinement.of_rel hval), ?_⟩
   · rw [hcell]
-    exact Mem.Mapped.loadInt_isSome hmap (cell_inside hj hn)
+    exact Mem.Mapped.loadInt_isSome hmap (cell_inside hw hj hn)
   · simp only [ofStateRepr_pred]
     exact hq
 
-@[ascend] theorem wrp_store8_set {Q : Unit → Unit → DataMem → Prop} (sp p i v v' : BitVec 64)
+theorem cell_pred {w j : Nat} (p : BitVec 64) (hj : 0 < j) :
+    p + BitVec.ofNat 64 j * BitVec.ofNat 64 w + BitVec.ofInt 64 (-(w : Int)) = cell w p (j - 1) := by
+  obtain ⟨i, rfl⟩ : ∃ i, j = i + 1 := ⟨j - 1, by omega⟩
+  rw [cell, Nat.add_sub_cancel, BitVec.ofNat_add, BitVec.ofInt_neg, BitVec.ofInt_natCast]
+  grind
+
+@[ascend] theorem wrp_load_getElem_pred {Q : BitVec 64 → BitVec 64 → DataMem → Prop}
+    (w b : Nat) (p o : BitVec 64) (d : Int) (arr : Array (BitVec b)) (j : Nat) (P : Prop) :
+    (fun m => p ≐ₐ arr ∧ PureRefinement o j P (Scaled w) ∧ P ∧ 0 < j ∧ d = -(w : Int) ∧ w ≤ 8 ∧
+      b = 8 * w ∧ words w b m p arr.size = arr.toList ∧ Mem.Mapped [(p, w * arr.size)] m ∧
+      j - 1 < arr.size ∧ arr.size < 2 ^ 61 ∧
+      ∀ y, BitVec.ofInt 64 ((Mem.loadInt m (p + o + BitVec.ofInt 64 d) w).get! % 2 ^ (8 * w)) ≐ y →
+        Q (BitVec.ofInt 64 ((Mem.loadInt m (p + o + BitVec.ofInt 64 d) w).get! % 2 ^ (8 * w))) y m)
+      ⊑ wrp (ofStateRepr view) (load w (p + o + BitVec.ofInt 64 d))
+          (pure ((arr[j - 1]!).setWidth 64) : BlockM σa (BitVec 64)) Q E := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro m hm
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, WPMonadExact.wp_pure_eq] at hm
+  obtain ⟨⟨-, hij, hP, hj0, hd, hw, hb, hwd, hmap, hj, hn, hk⟩, hq⟩ := hm
+  have hcell : p + o + BitVec.ofInt 64 d = cell w p (j - 1) := by rw [hij hP, hd, cell_pred p hj0]
+  have hval : BitVec.ofInt 64 ((Mem.loadInt m (p + o + BitVec.ofInt 64 d) w).get! % 2 ^ (8 * w)) =
+      (arr[j - 1]!).setWidth 64 := by
+    rw [hcell, ← word_eq_getElem hwd hj, word, setWidth_ofInt (by omega), hb]
+  rw [wp_load, Concretization.post_pi]
+  refine ⟨?_, (arr[j - 1]!).setWidth 64, hk _ (PureRefinement.of_rel hval), ?_⟩
+  · rw [hcell]
+    exact Mem.Mapped.loadInt_isSome hmap (cell_inside hw hj hn)
+  · simp only [ofStateRepr_pred]
+    exact hq
+
+@[ascend] theorem wrp_store_set {Q : Unit → Unit → DataMem → Prop} (w b : Nat) (sp p o v v' : BitVec 64)
     (n j : Nat) (P : Prop) :
-    (fun m => v ≐ v' ∧ PureRefinement i j P WordNat ∧ P ∧ j < n ∧ n < 2 ^ 61 ∧
-      Mem.Mapped [(p, 8 * n)] m ∧ Mem.Blocks.Disjoint [(sp, 8)] [(p, 8 * n)] ∧
-      Q () () (Mem.storeInt m (cell p j) 8 v.toInt))
-      ⊑ wrp (ofStateRepr (outView p n)) (store 8 sp (p + i * 8#64) v)
-          (modify fun o => o.set! j v' : BlockM (Array (BitVec 64)) Unit) Q E := by
+    (fun m => v ≐ v' ∧ PureRefinement o j P (Scaled w) ∧ P ∧ w ≤ 8 ∧ b = 8 * w ∧ j < n ∧ n < 2 ^ 61 ∧
+      Mem.Mapped [(p, w * n)] m ∧ Mem.Blocks.Disjoint [(sp, 8)] [(p, w * n)] ∧
+      Q () () (Mem.storeInt m (cell w p j) w v.toInt))
+      ⊑ wrp (ofStateRepr (outView w b p n)) (store w sp (p + o) v)
+          (modify fun o => o.set! j (v'.setWidth b) : BlockM (Array (BitVec b)) Unit) Q E := by
   refine wrp_intro fun Qa Ea => ?_
   intro m hm
   simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_modify] at hm
-  obtain ⟨⟨hv, hij, hP, hj, hn, hmap, hd, hk⟩, hq⟩ := hm
+  obtain ⟨⟨hv, hij, hP, hw, hb, hj, hn, hmap, hd, hk⟩, hq⟩ := hm
   have hv : v = v' := hv trivial
-  have hcell : p + i * 8#64 = cell p j := by rw [hij hP]; rfl
+  have hcell : p + o = cell w p j := by rw [hij hP]; rfl
   rw [wp_store, Concretization.post_pi, hcell]
-  refine ⟨⟨Mem.Mapped.loadInt_isSome hmap (cell_inside hj hn),
-    Mem.Blocks.Disjoint.of_inside_right_pair hd (cell_inside hj hn)⟩, (), hk, ?_⟩
+  refine ⟨⟨Mem.Mapped.loadInt_isSome hmap (cell_inside hw hj hn),
+    Mem.Blocks.Disjoint.of_inside_right_pair hd (cell_inside hw hj hn)⟩, (), hk, ?_⟩
   simp only [ofStateRepr_pred]
-  rw [outView_storeInt hj hn, hv]
+  rw [outView_storeInt hw hb hj hn, hv]
+  exact hq
+
+@[ascend] theorem wrp_store_set_pred {Q : Unit → Unit → DataMem → Prop} (w b : Nat)
+    (sp p o v v' : BitVec 64) (d : Int) (n j : Nat) (P : Prop) :
+    (fun m => v ≐ v' ∧ PureRefinement o j P (Scaled w) ∧ P ∧ 0 < j ∧ d = -(w : Int) ∧ w ≤ 8 ∧
+      b = 8 * w ∧ j - 1 < n ∧ n < 2 ^ 61 ∧ Mem.Mapped [(p, w * n)] m ∧
+      Mem.Blocks.Disjoint [(sp, 8)] [(p, w * n)] ∧
+      Q () () (Mem.storeInt m (cell w p (j - 1)) w v.toInt))
+      ⊑ wrp (ofStateRepr (outView w b p n)) (store w sp (p + o + BitVec.ofInt 64 d) v)
+          (modify fun o => o.set! (j - 1) (v'.setWidth b) : BlockM (Array (BitVec b)) Unit) Q E := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro m hm
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_modify] at hm
+  obtain ⟨⟨hv, hij, hP, hj0, hd, hw, hb, hj, hn, hmap, hdj, hk⟩, hq⟩ := hm
+  have hv : v = v' := hv trivial
+  have hcell : p + o + BitVec.ofInt 64 d = cell w p (j - 1) := by rw [hij hP, hd, cell_pred p hj0]
+  rw [wp_store, Concretization.post_pi, hcell]
+  refine ⟨⟨Mem.Mapped.loadInt_isSome hmap (cell_inside hw hj hn),
+    Mem.Blocks.Disjoint.of_inside_right_pair hdj (cell_inside hw hj hn)⟩, (), hk, ?_⟩
+  simp only [ofStateRepr_pred]
+  rw [outView_storeInt hw hb hj hn, hv]
   exact hq
 
 @[ascend default + 1] theorem wrp_assume_throw {CV AV : Type} {Q : CV → AV → DataMem → Prop}

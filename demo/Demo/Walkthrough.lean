@@ -137,7 +137,7 @@ the loads and the store become array reads and an array update. The words that c
 numbers: the loop counter `v` of `zipWithAddL` holds the number `i` (`v ≐ₙ i`), the length `rcx`
 holds `n`, and the comparisons of the words become comparisons of the numbers. The relation of the
 loop, the hint of the run, states `v ≐ₙ i`, the bound `i < n`, and the layout
-`ArrayLayout [(A, a), (B, b)] O n [rsp]` of the memory: the input arrays, the written array, and the
+`ArrayLayout 8 64 [(A, a), (B, b)] O n [rsp]` of the memory: the input arrays, the written array, and the
 return slot. `ascend_def` synthesized `zipWithAddArr₀`, and `sym_simp_def` puts the array reads in
 place and states the conditions as propositions in `zipWithAddArr`: -/
 
@@ -158,9 +158,9 @@ fun n a b =>
 #print zipWithAddArr
 /--
 info: zipWithAddArr.refines : ∀ (A B O rsp : BitVec 64) (n : Nat) (a b : Array (BitVec 64)),
-  ⦃ fun m => A ≐ₐ a ∧ B ≐ₐ b ∧ a.size = n ∧ b.size = n ∧ ArrayLayout [(A, a), (B, b)] O n [rsp] m ⦄
-    (zipWithAddL A B O (BitVec.ofNat 64 n) rsp) ⪯[ofStateRepr (outView O n)] (zipWithAddArr n a b) ⦃ fun x x_1 x_2 =>
-    True; estack⟨fun l l' x => l = l'⟩ ⦄
+  ⦃ fun m => A ≐ₐ a ∧ B ≐ₐ b ∧ a.size = n ∧ b.size = n ∧ ArrayLayout 8 64 [(A, a), (B, b)] O n [rsp] m ⦄
+    (zipWithAddL A B O (BitVec.ofNat 64 n) rsp) ⪯[ofStateRepr (outView 8 64 O n)] (zipWithAddArr n a b) ⦃
+    fun x x_1 x_2 => True; estack⟨fun l l' x => l = l'⟩ ⦄
 -/
 #guard_msgs in
 #check @zipWithAddArr.refines
@@ -208,8 +208,9 @@ info: @zipWithAdd_correct : ∀ [inst : Host] [inst_1 : FunDecls] [Embeds zipWit
             ⦃ fun t => t = s.push64 ra ⦄ zipWithAdd ⦃ fun x x_1 => True; fun a t =>
               a = ra ∧
                 t.regs.get64 Reg64.rsp = s.regs.get64 Reg64.rsp ∧
-                  words t.dmem O n =
-                    List.zipWith (fun x1 x2 => x1 + x2) (words (s.push64 ra).dmem A n) (words (s.push64 ra).dmem B n) ⦄
+                  words 8 64 t.dmem O n =
+                    List.zipWith (fun x1 x2 => x1 + x2) (words 8 64 (s.push64 ra).dmem A n)
+                      (words 8 64 (s.push64 ra).dmem B n) ⦄
 -/
 #guard_msgs in
 #check @zipWithAdd_correct

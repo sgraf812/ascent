@@ -44,10 +44,10 @@ theorem zipWithAddBinary_refines_P (h : Binary.Assembles zipWithAdd zipWithAddBi
     (hmem : ZipArrays (s.push64 ra).dmem A B O ((s.push64 ra).regs.get64 .rsp) n) :
     ⦃(· = s.push64 ra)⦄ zipWithAddBinary
       ⪯[(ofStateRepr id).comp (machineToArray O n)]
-      (zipWithAddP (words (s.push64 ra).dmem A n).toArray (words (s.push64 ra).dmem B n).toArray)
+      (zipWithAddP (words 8 64 (s.push64 ra).dmem A n).toArray (words 8 64 (s.push64 ra).dmem B n).toArray)
       ⦃fun _ _ _ => False; fun a t => a = ra ∧ t.regs.get64 .rsp = s.regs.get64 .rsp ∧
-        outView O n t.dmem = Id.run (zipWithAddP (words (s.push64 ra).dmem A n).toArray
-          (words (s.push64 ra).dmem B n).toArray)⦄ :=
+        outView 8 64 O n t.dmem = Id.run (zipWithAddP (words 8 64 (s.push64 ra).dmem A n).toArray
+          (words 8 64 (s.push64 ra).dmem B n).toArray)⦄ :=
   let _ : Embeds zipWithAdd := h.embeds
   Refinement.comp_le (by grind) (by grind) (by grind)
     (zipWithAdd_refines_P s ra hrdi hrsi hrdx hrcx hmem) (zipWithAddBinary_refines_zipWithAdd h _)
@@ -58,8 +58,8 @@ theorem zipWithAddBinary_correct (hasm : Binary.Assembles zipWithAdd zipWithAddB
     (hmem : ZipArrays (s.push64 ra).dmem A B O ((s.push64 ra).regs.get64 .rsp) n) :
     Triple zipWithAddBinary (fun t => t = s.push64 ra) (fun _ _ => True)
       (fun a t => a = ra ∧ t.regs.get64 .rsp = s.regs.get64 .rsp
-        ∧ words t.dmem O n = List.zipWith (· + ·) (words (s.push64 ra).dmem A n)
-            (words (s.push64 ra).dmem B n)) := by
+        ∧ words 8 64 t.dmem O n = List.zipWith (· + ·) (words 8 64 (s.push64 ra).dmem A n)
+            (words 8 64 (s.push64 ra).dmem B n)) := by
   let _ : Embeds zipWithAdd := hasm.embeds
   have h := (zipWithAddBinary_refines_P s ra hasm hrdi hrsi hrdx hrcx hmem).transport
     (Pa := True) (Qa := fun _ => True) (Ea := estack⟨⟩) ⟨fun _ => trivial⟩
@@ -77,8 +77,8 @@ theorem zipWithAddHost_correct (s : MachineData) (ra : Int64) {A B O : BitVec 64
     (hmem : ZipArrays (s.push64 ra).dmem A B O ((s.push64 ra).regs.get64 .rsp) n) :
     Triple zipWithAddBinary (fun t => t = s.push64 ra) (fun _ _ => True)
       (fun a t => a = ra ∧ t.regs.get64 .rsp = s.regs.get64 .rsp
-        ∧ words t.dmem O n = List.zipWith (· + ·) (words (s.push64 ra).dmem A n)
-            (words (s.push64 ra).dmem B n)) :=
+        ∧ words 8 64 t.dmem O n = List.zipWith (· + ·) (words 8 64 (s.push64 ra).dmem A n)
+            (words 8 64 (s.push64 ra).dmem B n)) :=
   @zipWithAddBinary_correct zipWithAddHost s ra zipWithAddHost_assembles A B O n hrdi hrsi hrdx hrcx hmem
 
 end Ascent.Kraken

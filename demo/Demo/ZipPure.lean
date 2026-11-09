@@ -37,12 +37,12 @@ structure ZipArrays (m : DataMem) (A B O rsp : BitVec 64) (n : Nat) : Prop where
   disjR : Mem.Blocks.Disjoint [(rsp, 8)] [(O, 8 * n)]
   ret : (Mem.loadInt m rsp 8).isSome = true
 
-@[grind =] theorem size_words_toArray (m : DataMem) (p : BitVec 64) (n : Nat) : (words m p n).toArray.size = n := by
+@[grind =] theorem size_words_toArray (m : DataMem) (p : BitVec 64) (n : Nat) : (words 8 64 m p n).toArray.size = n := by
   simp [words]
 
 theorem ZipArrays.inputAt {m : DataMem} {O p : BitVec 64} {n : Nat} (hn : n < 2 ^ 61)
     (hmap : Mem.Mapped [(p, 8 * n)] m) (hd : Mem.Blocks.Disjoint [(O, 8 * n)] [(p, 8 * n)]) :
-    InputAt m O n p (words m p n).toArray := by
+    InputAt 8 64 m O n p (words 8 64 m p n).toArray := by
   refine ⟨?_, ?_, ?_, ?_⟩ <;> rw [size_words_toArray]
   · exact hn
   · exact hmap
@@ -50,7 +50,9 @@ theorem ZipArrays.inputAt {m : DataMem} {O p : BitVec 64} {n : Nat} (hn : n < 2 
 
 @[grind →] theorem ZipArrays.layout {m : DataMem} {A B O rsp : BitVec 64} {n : Nat}
     (h : ZipArrays m A B O rsp n) :
-    ArrayLayout [(A, (words m A n).toArray), (B, (words m B n).toArray)] O n [rsp] m where
+    ArrayLayout 8 64 [(A, (words 8 64 m A n).toArray), (B, (words 8 64 m B n).toArray)] O n [rsp] m where
+  width := by omega
+  bits := rfl
   len := h.len
   mapped := h.mapO
   inputs := ⟨ZipArrays.inputAt h.len h.mapA h.disjA, ZipArrays.inputAt h.len h.mapB h.disjB, trivial⟩
@@ -79,7 +81,7 @@ ascend_def zipWithAddP (n : Nat) (a b : Array (BitVec 64)) (ha : a.size = n) (hb
 /-! ## The chain of refinements -/
 
 noncomputable abbrev memToArray (O : BitVec 64) (n : Nat) :=
-  ((ofStateRepr MachineData.dmem).comp (ofStateRepr (outView O n))).comp (purify (Array (BitVec 64)))
+  ((ofStateRepr MachineData.dmem).comp (ofStateRepr (outView 8 64 O n))).comp (purify (Array (BitVec 64)))
 
 noncomputable abbrev machineToArray (O : BitVec 64) (n : Nat) := (ofStateRepr abs).comp (memToArray O n)
 
@@ -88,8 +90,8 @@ variable [Host] [FunDecls] [Embeds zipWithAdd] (s : MachineData) (ra : Int64)
 
 theorem zipWithAddT_refines_Arr {A B O rsp : BitVec 64} {n : Nat} {a b : Array (BitVec 64)} :
     ⦃fun t => RegsRel [(.rdi, A), (.rsi, B), (.rdx, O), (.rcx, BitVec.ofNat 64 n), (.rsp, rsp)] t ∧
-      (A ≐ₐ a ∧ B ≐ₐ b ∧ a.size = n ∧ b.size = n ∧ ArrayLayout [(A, a), (B, b)] O n [rsp] t.dmem)⦄
-      zipWithAddT ⪯[(ofStateRepr MachineData.dmem).comp (ofStateRepr (outView O n))]
+      (A ≐ₐ a ∧ B ≐ₐ b ∧ a.size = n ∧ b.size = n ∧ ArrayLayout 8 64 [(A, a), (B, b)] O n [rsp] t.dmem)⦄
+      zipWithAddT ⪯[(ofStateRepr MachineData.dmem).comp (ofStateRepr (outView 8 64 O n))]
       (zipWithAddArr n a b) ⦃fun _ _ _ => True; (fun l l' _ => l = l', estack⟨⟩)⦄ := by
   exact Refinement.comp_le (by grind) (by grind) (by grind) (zipWithAddArr.refines A B O rsp n a b)
     ((zipWithAddL.refines A B O (BitVec.ofNat 64 n) rsp).weaken fun t h => h.1)
@@ -98,12 +100,12 @@ theorem zipWithAddT_refines_Arr {A B O rsp : BitVec 64} {n : Nat} {a b : Array (
 theorem zipWithAddT_refines_P {A B O rsp : BitVec 64} {n : Nat} {a b : Array (BitVec 64)}
     (ha : a.size = n) (hb : b.size = n) :
     ⦃fun t => RegsRel [(.rdi, A), (.rsi, B), (.rdx, O), (.rcx, BitVec.ofNat 64 n), (.rsp, rsp)] t ∧
-      (A ≐ₐ a ∧ B ≐ₐ b ∧ a.size = n ∧ b.size = n ∧ ArrayLayout [(A, a), (B, b)] O n [rsp] t.dmem)⦄
+      (A ≐ₐ a ∧ B ≐ₐ b ∧ a.size = n ∧ b.size = n ∧ ArrayLayout 8 64 [(A, a), (B, b)] O n [rsp] t.dmem)⦄
       zipWithAddT
       ⪯[memToArray O n]
       (zipWithAddP a b)
       ⦃fun _ _ _ => False; (fun l t => l = .exit ∧
-        outView O n t.dmem = Id.run (zipWithAddP a b), estack⟨⟩)⦄ := by
+        outView 8 64 O n t.dmem = Id.run (zipWithAddP a b), estack⟨⟩)⦄ := by
   exact Refinement.comp_le (by grind) (by grind) (by grind) (zipWithAddP.refines n a b ha hb)
     zipWithAddT_refines_Arr
 
@@ -114,10 +116,10 @@ theorem zipWithAdd_refines_P {A B O : BitVec 64} {n : Nat}
     (hmem : ZipArrays (s.push64 ra).dmem A B O ((s.push64 ra).regs.get64 .rsp) n) :
     ⦃(· = s.push64 ra)⦄ zipWithAdd
       ⪯[machineToArray O n]
-      (zipWithAddP (words (s.push64 ra).dmem A n).toArray (words (s.push64 ra).dmem B n).toArray)
+      (zipWithAddP (words 8 64 (s.push64 ra).dmem A n).toArray (words 8 64 (s.push64 ra).dmem B n).toArray)
       ⦃fun _ _ _ => False; fun a t => a = ra ∧ t.regs.get64 .rsp = s.regs.get64 .rsp ∧
-        outView O n t.dmem = Id.run (zipWithAddP (words (s.push64 ra).dmem A n).toArray
-          (words (s.push64 ra).dmem B n).toArray)⦄ := by
+        outView 8 64 O n t.dmem = Id.run (zipWithAddP (words 8 64 (s.push64 ra).dmem A n).toArray
+          (words 8 64 (s.push64 ra).dmem B n).toArray)⦄ := by
   exact Refinement.comp_le (by grind) (by grind) (by grind)
     (zipWithAddT_refines_P (A := A) (B := B) (rsp := (s.push64 ra).regs.get64 .rsp) (size_words_toArray _ _ _)
       (size_words_toArray _ _ _))
@@ -126,8 +128,8 @@ theorem zipWithAdd_refines_P {A B O : BitVec 64} {n : Nat}
 /-! ## The machine code -/
 
 theorem words_eq_zipWith_of_outView {m m' : DataMem} {A B O : BitVec 64} {n : Nat}
-    (h : outView O n m' = Array.zipWith (· + ·) (words m A n).toArray (words m B n).toArray) :
-    words m' O n = List.zipWith (· + ·) (words m A n) (words m B n) := by
+    (h : outView 8 64 O n m' = Array.zipWith (· + ·) (words 8 64 m A n).toArray (words 8 64 m B n).toArray) :
+    words 8 64 m' O n = List.zipWith (· + ·) (words 8 64 m A n) (words 8 64 m B n) := by
   have := congrArg Array.toList h
   simpa only [outView, List.toList_toArray, Array.toList_zipWith] using this
 
@@ -140,8 +142,8 @@ theorem zipWithAdd_correct {A B O : BitVec 64} {n : Nat}
     (hmem : ZipArrays (s.push64 ra).dmem A B O ((s.push64 ra).regs.get64 .rsp) n) :
     Triple zipWithAdd (fun t => t = s.push64 ra) (fun _ _ => True)
       (fun a t => a = ra ∧ t.regs.get64 .rsp = s.regs.get64 .rsp
-        ∧ words t.dmem O n = List.zipWith (· + ·) (words (s.push64 ra).dmem A n)
-            (words (s.push64 ra).dmem B n)) := by
+        ∧ words 8 64 t.dmem O n = List.zipWith (· + ·) (words 8 64 (s.push64 ra).dmem A n)
+            (words 8 64 (s.push64 ra).dmem B n)) := by
   have h := (zipWithAdd_refines_P s ra hrdi hrsi hrdx hrcx hmem).transport
     (Pa := True) (Qa := fun _ => True) (Ea := estack⟨⟩) ⟨fun _ => trivial⟩
   refine ⟨fun t ht => WP.wp_monotone (x := zipWithAdd) (fun _ _ _ => trivial) ?_ t
