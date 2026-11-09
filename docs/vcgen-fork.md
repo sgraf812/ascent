@@ -134,9 +134,12 @@ stacks with several abstract monads.
 **Change.** `applySpec` fills an unassigned hole through a fresh metavariable of the goal's
 context: a bare hole directly, a hole applied to distinct free variables by delayed assignment, a
 hole applied to closed terms by a constant function, and a `Table.get ?tbl k` slot at a closed key
-by the cell of `k`. A hole whose arguments mix free variables, closed terms of a subsingleton type
-and structure instances of free variables, such as `?f () a` or `?f (a, b)`, is first rewritten to
-a hole applied to its free variables (`patternHole?`), which takes the delayed assignment. The holes
+by the cell of `k`. A hole whose spine mixes free variables, closed terms of a subsingleton type
+and structure instances of free variables, such as `?f () a` or `?f (a, b)`, is solved through the
+partial inverse of its spine (`patternHole?`), a fragment of nested pattern unification (Kovács and
+Bocquet, WITS 2023): a pair `(a, b)` of free variables inverts to the projections `p.1`, `p.2` of
+the bound argument, and a closed argument of a subsingleton type inverts to nothing by its η rule.
+The result is a hole applied to the free variables, which takes the delayed assignment. The holes
 that the rule leaves in the filled program take the context of the filled hole, and the cache of
 `Sym.getMaxFVar?` starts afresh, since a table shares the program with the goals of the other
 cells (`restoreHoleScope`). The code of this deviation lives in the hunks of `D12`, which edit

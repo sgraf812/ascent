@@ -465,10 +465,12 @@ def patternHole? (hole : MVarId) (xs : Array Expr) : VCGenM (Option (Expr × Arr
 goal's context, which a rule then assigns. A bare hole is assigned `?b`. A hole `?h xs` applied to
 distinct free variables gets the delayed assignment `?h xs := ?b`. A hole applied to closed terms,
 such as the continuation `?k ()` of a bind whose first action returns `()`, is assigned the
-constant function `fun _ => ?b`. A hole whose arguments mix free variables, closed terms of a
-subsingleton type and structure instances of free variables, such as `?f () a` or `?f (a, b)`,
-becomes a hole `?h'` applied to the free variables (`patternHole?`), which gets the delayed
-assignment. A table slot `Table.get ?tbl k` at a closed key gets the cell of `k` (`tableCell`). In
+constant function `fun _ => ?b`. A hole whose spine mixes free variables, closed terms of a
+subsingleton type and structure instances of free variables, such as `?f () a` or `?f (a, b)`, is
+solved through the partial inverse of its spine, as in nested pattern unification (Kovács and
+Bocquet, WITS 2023): `(a, b)` inverts to the projections of the bound argument, and a closed
+subsingleton argument inverts to nothing. The result is a hole `?h'` applied to the free variables
+(`patternHole?`), which gets the delayed assignment. A table slot `Table.get ?tbl k` at a closed key gets the cell of `k` (`tableCell`). In
 every case the goal's abstract program becomes the cell. The frontend resolves the delayed
 assignments after the run. Returns the new goal and, for a filled hole, the hole's declaration,
 the hole's arguments and `?b`. -/
