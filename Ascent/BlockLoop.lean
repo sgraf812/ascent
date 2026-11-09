@@ -15,6 +15,11 @@ running from `h` is a `repeat'` loop. An iteration runs `b` and then the loop ov
 leaving that loop at `h` continues the iteration, leaving it at any other label leaves the `repeat'`
 loop. Applied at every label, the equation turns a table into nested `repeat'` loops. It is Bekić's
 elimination of one variable from a system of fixpoint equations.
+
+`ThrowsOnly P x` is the exception effect of `x`: every label that `x` throws satisfies `P`. It has one
+rule for each program form, and the rule for a loop asks the effect of the loop body. A header
+handler `fun l' => if l' = h then y else throw l'` crosses a loop whose effect excludes `h`
+(`tryCatch_forIn_bind`).
 -/
 
 open Std.WP Lean.Order
@@ -365,7 +370,7 @@ theorem cfgLoop_header {h : κ} (hb : (T.get? h).isSome = true) :
 
 theorem cfgLoop_eq_throw {l : κ} (hl : T.get? l = none) : cfgLoop T l = throw l := cfgLoop_none T hl
 
-/-! ## Labels a program does not throw -/
+/-! ## The exception effect of a program -/
 
 /-- `x` throws only labels that satisfy `P`. -/
 def ThrowsOnly {α : Type} (P : κ → Prop) (x : ExceptT κ (StateT σ UB) α) : Prop :=
@@ -451,6 +456,52 @@ theorem cfgLoop_eq_tryCatch {h : κ} (hb : (T.get? h).isSome = true)
     refine Prod.mk_le _ _ _ ?_ PartialOrder.rel_refl
     intro l t ⟨hl, ht⟩
     simpa only [hl, ↓reduceIte] using ht
+
+/-- A handler that catches only `h` crosses a loop that never throws `h`. -/
+theorem tryCatch_forIn_bind {β γ : Type} {h : κ} {i : β} {f : Unit → β → ExceptT κ (StateT σ UB) (ForInStep β)}
+    {k : β → ExceptT κ (StateT σ UB) γ} {y : ExceptT κ (StateT σ UB) γ}
+    (hf : ThrowsOnly (· ≠ h) (FixLoop.mk.forIn i f)) :
+    tryCatch (FixLoop.mk.forIn i f >>= k) (fun l' => if l' = h then y else throw l')
+      = FixLoop.mk.forIn i f >>= fun r => tryCatch (k r) (fun l' => if l' = h then y else throw l') := by
+  have hE : ∀ (Q : γ → σ → Prop) (E : (κ → σ → Prop) × EStack⟨⟩) l t, l ≠ h →
+      (wp (if l = h then y else throw l) Q E t ↔ E.1 l t) := by
+    intro Q E l t hl
+    simp only [hl, ↓reduceIte, wp_throw]
+  apply ext_wp
+  · intro Q E s hw
+    rw [wp_tryCatch, WPMonadExact.wp_bind_eq] at hw
+    rw [WPMonadExact.wp_bind_eq]
+    refine WP.wp_monotone (x := FixLoop.mk.forIn i f) (fun r t ht => ?_) ?_ s (hf _ _ s hw)
+    · rw [wp_tryCatch]; exact ht
+    · refine Prod.mk_le _ _ _ ?_ PartialOrder.rel_refl
+      intro l t ⟨hl, ht⟩
+      exact (hE Q E l t hl).mp ht
+  · intro Q E s hw
+    rw [WPMonadExact.wp_bind_eq] at hw
+    rw [wp_tryCatch, WPMonadExact.wp_bind_eq]
+    refine WP.wp_monotone (x := FixLoop.mk.forIn i f) (fun r t ht => ?_) ?_ s (hf _ _ s hw)
+    · rw [wp_tryCatch] at ht; exact ht
+    · refine Prod.mk_le _ _ _ ?_ PartialOrder.rel_refl
+      intro l t ⟨hl, ht⟩
+      exact (hE Q E l t hl).mpr ht
+
+theorem tryCatch_map_forIn {β γ : Type} {h : κ} {i : β}
+    {f : Unit → β → ExceptT κ (StateT σ UB) (ForInStep β)} {g : β → γ} {y : ExceptT κ (StateT σ UB) γ}
+    (hf : ThrowsOnly (· ≠ h) (FixLoop.mk.forIn i f)) :
+    tryCatch (g <$> FixLoop.mk.forIn i f) (fun l' => if l' = h then y else throw l')
+      = g <$> FixLoop.mk.forIn i f := by
+  have hp : ∀ r : β, tryCatch (pure (g r) : ExceptT κ (StateT σ UB) γ)
+      (fun l' => if l' = h then y else throw l') = pure (g r) := fun r => by
+    apply ext_wp <;> intro Q E s <;> rw [wp_tryCatch] <;>
+      simp only [WPMonadExact.wp_pure_eq] <;> exact id
+  have := tryCatch_forIn_bind (k := fun r => pure (g r)) (y := y) hf
+  simp only [hp] at this
+  simpa only [map_eq_pure_bind] using this
+
+theorem tryCatch_forIn {β : Type} {h : κ} {i : β} {f : Unit → β → ExceptT κ (StateT σ UB) (ForInStep β)}
+    {y : ExceptT κ (StateT σ UB) β} (hf : ThrowsOnly (· ≠ h) (FixLoop.mk.forIn i f)) :
+    tryCatch (FixLoop.mk.forIn i f) (fun l' => if l' = h then y else throw l') = FixLoop.mk.forIn i f := by
+  simpa only [id_map] using tryCatch_map_forIn (g := id) (y := y) hf
 
 /-! ## The number of blocks a run executes -/
 
