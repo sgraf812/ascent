@@ -164,17 +164,21 @@ does not capture the goal's hole.
 
 **Acceptance.** `AscendUnfold`.
 
-### D12. Pure refinements and the two-sided split
+### D12. Pure refinements, existential witnesses and the two-sided split
 
 **Intent.** A value of the concrete program is refined to an abstract value by the
-`PureRefinement` solver, and a concrete `if` splits both programs on the same condition.
+`PureRefinement` solver, an existential on the right side is solved by synthesis, and a concrete
+`if` splits both programs on the same condition.
 
 **Change.** The driver dispatches `PureRefinement` goals to the solver of
 `Ascent/Tactic/VCGen/PureRefinement.lean`. `mkBackwardRuleForSplit` splits an `ite`, `dite` or
 `cond` on both sides with one fresh abstract branch per alternative, after `fillAbstractHole`
-fills the abstract hole. A matcher still splits on the concrete side only.
+fills the abstract hole. A matcher still splits on the concrete side only. `rhsExistsIntro?`
+turns `pre ⊑ ∃ x, p x` on the `Prop` lattice into `pre ⊑ p ?x`, with `?x` a fresh hole in the
+goal's context (`Ascent.le_exists_of_le`).
 
-**Acceptance.** `PureRefinement`, `WordAbsEngine`, and the register and array layers of the demo.
+**Acceptance.** `PureRefinement`, `WordAbsEngine`, `Regress/ExistsHole`, and the register and
+array layers of the demo.
 
 ### Covered by core
 

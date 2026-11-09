@@ -540,6 +540,18 @@ def restoreHoleScope (filled : Option (MetavarDecl × Array Expr × Expr)) : VCG
   if changed then
     (modify fun s => { s with maxFVar := {} } : Sym.SymM Unit)
 
+/-- Strategy 9b: introduce an existential on the `Prop` lattice. The witness of `pre ⊑ ∃ x, p x` is a
+fresh hole `?x` in the goal's context, and the goal continues as `pre ⊑ p ?x`. -/
+def rhsExistsIntro? (goal : MVarId) (α pre rhs : Expr) : VCGenM (Option MVarId) := do
+  unless α.isProp do return none
+  let_expr Exists β p := rhs | return none
+  let x ← shareCommon (← mkFreshExprMVar β)
+  let px ← betaS p #[x]
+  let target ← goal.getType
+  let g ← mkFreshExprSyntheticOpaqueMVar (← mkAppNS target.getAppFn (target.getAppArgs.set! 3 px))
+  goal.assign (mkApp5 (mkConst ``Ascent.le_exists_of_le [← Sym.getLevel β]) β pre p x g)
+  return some g.mvarId!
+
 /-- Strategy 11b: split an `ite`/`dite`/`cond`/match program, or iota-reduce a matcher with a
 concrete discriminant. -/
 def wpMatch? (goal : MVarId) (info : WRPApp) :
@@ -700,6 +712,7 @@ def solve (scope : Scope) (goal : MVarId) : VCGenM SolveResult := goal.withConte
   if let some g ← rhsLet? goal rhs then return .goals scope [g]
   if let some gs ← splitLatticeOp? goal rhs then return .goals scope gs
   if let some gs ← splitForallLe? goal rhs then return .goals scope gs
+  if let some g ← rhsExistsIntro? goal α pre rhs then return .goals scope [g]
   if let some gs ← liftedHyp? scope goal α pre rhs then return .goals scope gs
 
   -- Phase 4: wp decomposition. The program-shape steps below all consume one unit of fuel

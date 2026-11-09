@@ -1,5 +1,5 @@
 diff -ruN a/Ascent/Tactic/VCGen/RuleConstruction.lean b/Ascent/Tactic/VCGen/RuleConstruction.lean
---- a/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-11-08 18:34:35.447934221 +0000
+--- a/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-11-09 01:23:05.262768804 +0000
 +++ b/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-11-08 18:28:32.064610893 +0000
 @@ -395,41 +395,65 @@
  /-! ## Split rules -/
@@ -120,9 +120,9 @@ diff -ruN a/Ascent/Tactic/VCGen/RuleConstruction.lean b/Ascent/Tactic/VCGen/Rule
    let res ← abstractMVars prf
    mkBackwardRuleFromExpr res.expr res.paramNames.toList
 diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
---- a/Ascent/Tactic/VCGen/Solve.lean	2026-11-08 18:34:35.446942168 +0000
-+++ b/Ascent/Tactic/VCGen/Solve.lean	2026-11-08 18:34:24.701160364 +0000
-@@ -393,14 +393,166 @@
+--- a/Ascent/Tactic/VCGen/Solve.lean	2026-11-09 01:23:05.261787966 +0000
++++ b/Ascent/Tactic/VCGen/Solve.lean	2026-11-09 01:22:47.364774998 +0000
+@@ -393,14 +393,178 @@
      | .noProgress => return none
    | _ => return none
  
@@ -273,6 +273,18 @@ diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
 +  if changed then
 +    (modify fun s => { s with maxFVar := {} } : Sym.SymM Unit)
 +
++/-- Strategy 9b: introduce an existential on the `Prop` lattice. The witness of `pre ⊑ ∃ x, p x` is a
++fresh hole `?x` in the goal's context, and the goal continues as `pre ⊑ p ?x`. -/
++def rhsExistsIntro? (goal : MVarId) (α pre rhs : Expr) : VCGenM (Option MVarId) := do
++  unless α.isProp do return none
++  let_expr Exists β p := rhs | return none
++  let x ← shareCommon (← mkFreshExprMVar β)
++  let px ← betaS p #[x]
++  let target ← goal.getType
++  let g ← mkFreshExprSyntheticOpaqueMVar (← mkAppNS target.getAppFn (target.getAppArgs.set! 3 px))
++  goal.assign (mkApp5 (mkConst ``Ascent.le_exists_of_le [← Sym.getLevel β]) β pre p x g)
++  return some g.mvarId!
++
  /-- Strategy 11b: split an `ite`/`dite`/`cond`/match program, or iota-reduce a matcher with a
  concrete discriminant. -/
  def wpMatch? (goal : MVarId) (info : WRPApp) :
@@ -289,7 +301,7 @@ diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
    let mut simpGoals := #[]
    for g in goals do
      match ← simpGoalTelescope g with
-@@ -465,48 +617,13 @@
+@@ -465,48 +629,13 @@
      | return none
    trace[Elab.Tactic.Do.vcgen] "Applying spec {thm.proof} for {info.prog}. Excess args: {info.excessArgs}"
    let saved ← (saveState : MetaM Meta.SavedState)
@@ -342,8 +354,16 @@ diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
    return some (.goals scope goals)
  
  /--
+@@ -583,6 +712,7 @@
+   if let some g ← rhsLet? goal rhs then return .goals scope [g]
+   if let some gs ← splitLatticeOp? goal rhs then return .goals scope gs
+   if let some gs ← splitForallLe? goal rhs then return .goals scope gs
++  if let some g ← rhsExistsIntro? goal α pre rhs then return .goals scope [g]
+   if let some gs ← liftedHyp? scope goal α pre rhs then return .goals scope gs
+ 
+   -- Phase 4: wp decomposition. The program-shape steps below all consume one unit of fuel
 diff -ruN a/Ascent/Tactic/VCGen/Driver.lean b/Ascent/Tactic/VCGen/Driver.lean
---- a/Ascent/Tactic/VCGen/Driver.lean	2026-11-08 18:34:35.447444414 +0000
+--- a/Ascent/Tactic/VCGen/Driver.lean	2026-11-09 01:23:05.262289812 +0000
 +++ b/Ascent/Tactic/VCGen/Driver.lean	2026-11-08 18:02:46.734331465 +0000
 @@ -9,6 +9,7 @@
  import Lean.Elab.Tactic.VCGen.Context

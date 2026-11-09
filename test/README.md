@@ -43,6 +43,7 @@ tests fail.
 | D2 | `wp` goals of the worklist go to core `solve` | `ForkTracer`, `Corpus/ZipL1L2` | yes, by disabling the dispatch |
 | D11 | a `Refinement` spec keeps its abstract program schematic | `AscendUnfold`, `PureRefinement`, `Regress/HoleScope` | yes, by removing the patch |
 | D12, pure refinements | `PureRefinement` goals go to their solver | `PureRefinement`, `WordAbsEngine`, `Regress/Lockstep`, `Regress/HoleScope` | yes, by disabling the dispatch |
+| D12, existential witness | `pre ⊑ ∃ x, p x` becomes `pre ⊑ p ?x` | `Regress/ExistsHole` | yes, by disabling the step |
 | D12, two-sided split | an `if` splits both programs on one condition | `Regress/IteSplit` | no: without D12 the forked `Solve` does not compile |
 
 ## Regressions
@@ -56,7 +57,8 @@ tests fail.
 | `Regress/Commands` | `a14ae3e`, `62af746`: "declaration has metavariables" from a binder of type `Array Nat`; `0581e81` names in the current namespace; `423b076` used binders; `99e069f` refinement notation |
 | every `wrp_bind` test on `BlockM` | `0ee3ec1`: a generic rule failed on an `ExceptT` stack because the matcher met `?AM ?AV` |
 | `FixLoopDelab` | `68f7877` and the `repeat'` delaborator round trip |
-| `Regress/TopLevelRule` | the unfold equations of the concrete head, added by `ascend_def`, ranked above a rule for the head, so a top-level `setC 3` was unfolded and then found no spec |
+| `Regress/TopLevelRule` | `ascend_def` added the unfold equations of the concrete head, which ranked above a rule for the head; now it unfolds only the definitions its list names |
+| `Regress/ExistsHole` | an existential on the right side, `∃ a, ra = a ∧ …`, had no step; it is introduced with a hole as witness |
 | `Regress/MixedHole` | a hole `?fa () a` or `?fa () (a₁, a₂)` was not filled, so loop rules had to take `fa : βa → …` or a curried body |
 
 Past problems that a test here does not pin:

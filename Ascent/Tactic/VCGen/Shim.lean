@@ -50,6 +50,10 @@ theorem wrp_le_wrp_of_eq {x y : CProg} (h : x = y) (post : CVal → AVal → CPr
 
 end
 
+theorem le_exists_of_le {α : Sort u} {pre : Prop} {p : α → Prop} (x : α) (h : pre ⊑ p x) :
+    pre ⊑ Exists p :=
+  fun hp => ⟨x, h hp⟩
+
 end Ascent
 
 namespace Lean.Elab.Tactic.VCGen.Ascend
