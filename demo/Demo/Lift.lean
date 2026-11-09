@@ -252,7 +252,7 @@ theorem wrp_forIn_lockstep_bind_unit {βc βa : Type} (R : βc → σc → βa �
   intro t ht
   simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, WPMonadExact.wp_bind_eq,
     WPMonadExact.wp_pure_eq] at ht
-  have h := wrp_transport (wrp_forIn_lockstep R cinit ainit (fa := fun _ v => fa v)
+  have h := wrp_transport (wrp_forIn_lockstep R cinit ainit (fa := fa)
     (Q := fun _ _ t => Q () () t) fun c i => PartialOrder.rel_trans (hbody c i)
       (wrp_mono_post fun rc ra t h => by cases rc <;> exact h))
     (fun _ => Qa ()) Ea t
@@ -291,7 +291,7 @@ theorem wrp_forIn_lockstep_unit {βa : Type} (R : MachineData → βa → Prop) 
   simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, WPMonadExact.wp_bind_eq,
     WPMonadExact.wp_pure_eq] at ht
   have h := wrp_transport
-    (wrp_forIn_lockstep (fun _ t a => R t a) PUnit.unit ab (fa := fun _ v => fa v)
+    (wrp_forIn_lockstep (fun _ t a => R t a) PUnit.unit ab (fa := fa)
       (Q := fun u _ t => Q u () t) fun _ v => PartialOrder.rel_trans (hbody v)
         (wrp_mono_post fun rc ra t h => by cases rc <;> exact h))
       (fun _ => Qa ()) Ea t

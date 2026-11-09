@@ -60,7 +60,7 @@ tests fail.
 | `Regress/TopLevelRule` | `ascend_def` added the unfold equations of the concrete head, which ranked above a rule for the head; now it unfolds only the definitions its list names |
 | `Regress/ExistsHole` | an existential on the right side, `∃ a, ra = a ∧ …`, had no step; it is introduced with a hole as witness |
 | `Regress/Lockstep`, `Regress/MixedHole` (`pairArg`) | the loop leaves needed rules that fix the abstract constructor (`wrp_yield`, `wrp_done`, `wrp_yield_pair`); the step relation now names the abstract step through `∃`, and a tuple witness is a tuple of holes |
-| `Regress/MixedHole` | a hole `?fa () a` or `?fa () (a₁, a₂)` was not filled, so loop rules had to take `fa : βa → …` or a curried body |
+| `Regress/MixedHole` | a hole `?fa () a` or `?fa () (a₁, a₂)` was not filled. The loop rules now take `fa : βa → …`, so the remaining source is a tuple loop value, which core's `Prod.forall_intro` splits after the body hole exists (`?fa (a₁, a₂)`) |
 
 Past problems that a test here does not pin:
 - The kernel unfolds `Bind.bind` chains when a rule premise applies a pattern variable under `>>=`

@@ -49,19 +49,19 @@ variable {εc εa σc σa : Type} {view : σc → σa} {E : (εc → εa → σc
 
 theorem wrp_forIn_lockstep {βc βa : Type} (R : βc → σc → βa → Prop) (cinit : βc) (ainit : βa)
     {fc : Unit → βc → ExceptT εc (StateT σc UB) (ForInStep βc)}
-    {fa : Unit → βa → ExceptT εa (StateT σa UB) (ForInStep βa)}
+    {fa : βa → ExceptT εa (StateT σa UB) (ForInStep βa)}
     {Q : βc → βa → σc → Prop}
     (hbody : ∀ c a, (fun t => R c t a) ⊑
-      wrp (ofStateRepr view) (fc () c) (fa () a) (fun rc ra t => match rc with
+      wrp (ofStateRepr view) (fc () c) (fa a) (fun rc ra t => match rc with
         | .yield c' => ∃ a', R c' t a' ∧ ra = .yield a'
         | .done c' => ∃ a', Q c' a' t ∧ ra = .done a') E) :
     (fun t => R cinit t ainit) ⊑ wrp (ofStateRepr view) (FixLoop.mk.forIn cinit fc)
-      (FixLoop.mk.forIn ainit fa) Q E := by
+      (FixLoop.mk.forIn ainit fun _ a => fa a) Q E := by
   refine wrp_intro fun Qa Ea => ?_
   intro t ht
   simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred] at ht
   haveI : Nonempty βa := ⟨ainit⟩
-  have key := FixLoop.forIn_induct fa
+  have key := FixLoop.forIn_induct (fun _ a => fa a)
     (fun g => ∀ c a t, R c t a → wp (g a) Qa Ea (view t) →
       wp (FixLoop.mk.forIn c fc) ((ofStateRepr view).post Q Qa)
         (EPostsConcretization.ePosts (ofStateRepr view) E Ea) t)
@@ -76,7 +76,7 @@ theorem wrp_forIn_lockstep {βc βa : Type} (R : βc → σc → βa → Prop) (
   have hb := wrp_transport (hbody c a)
     (fun r m => match r with | .done a' => Qa a' m | .yield a' => wp (g a') Qa Ea m) Ea t (by
       simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred]
-      refine ⟨hR, WP.wp_monotone_post (x := fa () a) ?_ (view t) hw⟩
+      refine ⟨hR, WP.wp_monotone_post (x := fa a) ?_ (view t) hw⟩
       intro r m hr
       cases r <;> simp only [WPMonadExact.wp_pure_eq] at hr ⊢ <;> exact hr)
   refine WP.wp_monotone_post (x := fc () c) ?_ t hb
