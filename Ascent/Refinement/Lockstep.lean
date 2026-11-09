@@ -9,9 +9,15 @@ import Ascent.Tactic.VCGen.Command
 `wrp_forIn_lockstep` refines a `FixLoop` loop to a `FixLoop` loop of the abstract program under a
 state representation `view`: the relation `R c t a` between the concrete loop value `c`, the
 concrete state `t` and the abstract loop value `a` holds at the start, and one iteration of the two
-bodies keeps it, both continue or both stop. The post of a body is a `match` on the two steps, so
-an applied post reduces to `R` or to `Q` on constructors. The proof is fixpoint induction over the
-abstract loop.
+bodies keeps it, both continue or both stop. The post of a body matches on the concrete step only
+and names the abstract step through `∃`: a concrete `.yield c` is related to an abstract
+`.yield a` with `R c t a`, a concrete `.done c` to an abstract `.done a` with `Q c a t`. The relation comes before the equation of the steps, so `a` is solved before the abstract step is assigned. An applied
+post reduces on the concrete constructor, and the abstract step is a witness, which `ascend`
+synthesizes. `stepRel_iff` states the post as a `match` on both steps. The proof is fixpoint
+induction over the abstract loop.
+
+Abstract values come from witnesses and value rules: the loop leaves `pure (.yield c)` and
+`pure (.done c)` refine `pure ra` for any abstract step `ra` (`wrp_pure_step`).
 -/
 
 open Std.WP Lean.Order Ascent
@@ -27,6 +33,17 @@ theorem admissible_wp_imp {ε σ α : Type} (Q : α → σ → Prop) (E : (ε �
   obtain ⟨⟨u, hu⟩, hwu⟩ := this
   exact hall u hu hwu
 
+theorem stepRel_iff {βc βa σ : Type} (R : βc → σ → βa → Prop) (Q : βc → βa → σ → Prop)
+    (rc : ForInStep βc) (ra : ForInStep βa) (t : σ) :
+    (match rc with
+      | .yield c => ∃ a, R c t a ∧ ra = .yield a
+      | .done c => ∃ a, Q c a t ∧ ra = .done a) ↔
+    (match rc, ra with
+      | .yield c, .yield a => R c t a
+      | .done c, .done a => Q c a t
+      | _, _ => False) := by
+  cases rc <;> cases ra <;> simp
+
 section
 variable {εc εa σc σa : Type} {view : σc → σa} {E : (εc → εa → σc → Prop) × EStack⟨⟩}
 
@@ -35,10 +52,9 @@ theorem wrp_forIn_lockstep {βc βa : Type} (R : βc → σc → βa → Prop) (
     {fa : Unit → βa → ExceptT εa (StateT σa UB) (ForInStep βa)}
     {Q : βc → βa → σc → Prop}
     (hbody : ∀ c a, (fun t => R c t a) ⊑
-      wrp (ofStateRepr view) (fc () c) (fa () a) (fun rc ra t => match rc, ra with
-        | .yield c', .yield a' => R c' t a'
-        | .done c', .done a' => Q c' a' t
-        | _, _ => False) E) :
+      wrp (ofStateRepr view) (fc () c) (fa () a) (fun rc ra t => match rc with
+        | .yield c' => ∃ a', R c' t a' ∧ ra = .yield a'
+        | .done c' => ∃ a', Q c' a' t ∧ ra = .done a') E) :
     (fun t => R cinit t ainit) ⊑ wrp (ofStateRepr view) (FixLoop.mk.forIn cinit fc)
       (FixLoop.mk.forIn ainit fa) Q E := by
   refine wrp_intro fun Qa Ea => ?_
@@ -68,32 +84,23 @@ theorem wrp_forIn_lockstep {βc βa : Type} (R : βc → σc → βa → Prop) (
   rw [Concretization.post_pi] at h'
   obtain ⟨ra, hrel, hq⟩ := h'
   simp only [ofStateRepr_pred] at hq
-  cases rc <;> cases ra <;> simp only at hrel
-  · simp only [WPMonadExact.wp_pure_eq]
+  cases rc with
+  | done c' =>
+    obtain ⟨a', hrel, rfl⟩ := hrel
+    simp only [WPMonadExact.wp_pure_eq]
     rw [Concretization.post_pi]
     exact ⟨_, hrel, hq⟩
-  · exact ih _ _ t' hrel hq
+  | yield c' =>
+    obtain ⟨a', hrel, rfl⟩ := hrel
+    exact ih _ _ t' hrel hq
 
 variable {βc βa : Type} {Q : ForInStep βc → ForInStep βa → σc → Prop}
 
-@[ascend] theorem wrp_yield (c : βc) (a : βa) :
-    (fun t => Q (.yield c) (.yield a) t) ⊑ wrp (ofStateRepr view)
-      (pure (.yield c) : ExceptT εc (StateT σc UB) (ForInStep βc))
-      (pure (.yield a) : ExceptT εa (StateT σa UB) (ForInStep βa)) Q E :=
-  wrp_pure (Q := Q) (ForInStep.yield c) (ForInStep.yield a)
-
-@[ascend high] theorem wrp_yield_pair {α₁ α₂ : Type} {Q₂ : ForInStep βc → ForInStep (α₁ × α₂) → σc → Prop}
-    (c : βc) (a₁ : α₁) (a₂ : α₂) :
-    (fun t => Q₂ (.yield c) (.yield (a₁, a₂)) t) ⊑ wrp (ofStateRepr view)
-      (pure (.yield c) : ExceptT εc (StateT σc UB) (ForInStep βc))
-      (pure (.yield (a₁, a₂)) : ExceptT εa (StateT σa UB) (ForInStep (α₁ × α₂))) Q₂ E :=
-  wrp_pure (Q := Q₂) (ForInStep.yield c) (ForInStep.yield (a₁, a₂))
-
-@[ascend] theorem wrp_done (c : βc) (a : βa) :
-    (fun t => Q (.done c) (.done a) t) ⊑ wrp (ofStateRepr view)
-      (pure (.done c) : ExceptT εc (StateT σc UB) (ForInStep βc))
-      (pure (.done a) : ExceptT εa (StateT σa UB) (ForInStep βa)) Q E :=
-  wrp_pure (Q := Q) (ForInStep.done c) (ForInStep.done a)
+@[ascend] theorem wrp_pure_step (c : ForInStep βc) (a : ForInStep βa) :
+    (fun t => Q c a t) ⊑ wrp (ofStateRepr view)
+      (pure c : ExceptT εc (StateT σc UB) (ForInStep βc))
+      (pure a : ExceptT εa (StateT σa UB) (ForInStep βa)) Q E :=
+  wrp_pure (Q := Q) c a
 
 end
 

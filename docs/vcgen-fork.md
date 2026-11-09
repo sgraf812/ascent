@@ -175,7 +175,8 @@ does not capture the goal's hole.
 `cond` on both sides with one fresh abstract branch per alternative, after `fillAbstractHole`
 fills the abstract hole. A matcher still splits on the concrete side only. `rhsExistsIntro?`
 turns `pre ⊑ ∃ x, p x` on the `Prop` lattice into `pre ⊑ p ?x`, with `?x` a fresh hole in the
-goal's context (`Ascent.le_exists_of_le`).
+goal's context (`Ascent.le_exists_of_le`); for a tuple type the witness is the tuple of fresh holes
+(`mkWitnessHole`), so that a `match` on it reduces.
 
 **Acceptance.** `PureRefinement`, `WordAbsEngine`, `Regress/ExistsHole`, and the register and
 array layers of the demo.

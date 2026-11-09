@@ -1,5 +1,5 @@
 diff -ruN a/Ascent/Tactic/VCGen/RuleConstruction.lean b/Ascent/Tactic/VCGen/RuleConstruction.lean
---- a/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-11-09 01:23:05.262768804 +0000
+--- a/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-11-09 01:30:19.362924150 +0000
 +++ b/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-11-08 18:28:32.064610893 +0000
 @@ -395,41 +395,65 @@
  /-! ## Split rules -/
@@ -120,9 +120,9 @@ diff -ruN a/Ascent/Tactic/VCGen/RuleConstruction.lean b/Ascent/Tactic/VCGen/Rule
    let res ← abstractMVars prf
    mkBackwardRuleFromExpr res.expr res.paramNames.toList
 diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
---- a/Ascent/Tactic/VCGen/Solve.lean	2026-11-09 01:23:05.261787966 +0000
-+++ b/Ascent/Tactic/VCGen/Solve.lean	2026-11-09 01:22:47.364774998 +0000
-@@ -393,14 +393,178 @@
+--- a/Ascent/Tactic/VCGen/Solve.lean	2026-11-09 01:30:19.361684737 +0000
++++ b/Ascent/Tactic/VCGen/Solve.lean	2026-11-09 01:29:49.327789802 +0000
+@@ -393,14 +393,200 @@
      | .noProgress => return none
    | _ => return none
  
@@ -273,12 +273,34 @@ diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
 +  if changed then
 +    (modify fun s => { s with maxFVar := {} } : Sym.SymM Unit)
 +
++/-- A fresh hole of type `β` in the current context. For a tuple type (`Prod`, `MProd`, `PProd`), the
++hole is the pair of fresh holes for the components, so that a `match` on the witness reduces. -/
++partial def mkWitnessHole (β : Expr) : VCGenM Expr := do
++  let env ← getEnv
++  let .const S us := β.getAppFn | return ← shareCommon (← mkFreshExprMVar β)
++  unless S == ``Prod || S == ``MProd || S == ``PProd do return ← shareCommon (← mkFreshExprMVar β)
++  let some info := getStructureInfo? env S | return ← shareCommon (← mkFreshExprMVar β)
++  let ctor := getStructureCtor env S
++  let params := β.getAppArgs
++  unless params.size == ctor.numParams do return ← shareCommon (← mkFreshExprMVar β)
++  let mut ty := ctor.type.instantiateLevelParams ctor.levelParams us
++  for p in params do
++    let .forallE _ _ body _ := ty | return ← shareCommon (← mkFreshExprMVar β)
++    ty := body.instantiate1 p
++  let mut fields := #[]
++  for _ in [0:info.fieldNames.size] do
++    let .forallE _ d body _ := ty | return ← shareCommon (← mkFreshExprMVar β)
++    let f ← mkWitnessHole (← shareCommon d)
++    fields := fields.push f
++    ty := body.instantiate1 f
++  mkAppNS (← mkConstS ctor.name us) (params ++ fields)
++
 +/-- Strategy 9b: introduce an existential on the `Prop` lattice. The witness of `pre ⊑ ∃ x, p x` is a
-+fresh hole `?x` in the goal's context, and the goal continues as `pre ⊑ p ?x`. -/
++fresh hole `?x` in the goal's context (`mkWitnessHole`), and the goal continues as `pre ⊑ p ?x`. -/
 +def rhsExistsIntro? (goal : MVarId) (α pre rhs : Expr) : VCGenM (Option MVarId) := do
 +  unless α.isProp do return none
 +  let_expr Exists β p := rhs | return none
-+  let x ← shareCommon (← mkFreshExprMVar β)
++  let x ← mkWitnessHole β
 +  let px ← betaS p #[x]
 +  let target ← goal.getType
 +  let g ← mkFreshExprSyntheticOpaqueMVar (← mkAppNS target.getAppFn (target.getAppArgs.set! 3 px))
@@ -301,7 +323,7 @@ diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
    let mut simpGoals := #[]
    for g in goals do
      match ← simpGoalTelescope g with
-@@ -465,48 +629,13 @@
+@@ -465,48 +651,13 @@
      | return none
    trace[Elab.Tactic.Do.vcgen] "Applying spec {thm.proof} for {info.prog}. Excess args: {info.excessArgs}"
    let saved ← (saveState : MetaM Meta.SavedState)
@@ -354,7 +376,7 @@ diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
    return some (.goals scope goals)
  
  /--
-@@ -583,6 +712,7 @@
+@@ -583,6 +734,7 @@
    if let some g ← rhsLet? goal rhs then return .goals scope [g]
    if let some gs ← splitLatticeOp? goal rhs then return .goals scope gs
    if let some gs ← splitForallLe? goal rhs then return .goals scope gs
@@ -363,8 +385,8 @@ diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
  
    -- Phase 4: wp decomposition. The program-shape steps below all consume one unit of fuel
 diff -ruN a/Ascent/Tactic/VCGen/Driver.lean b/Ascent/Tactic/VCGen/Driver.lean
---- a/Ascent/Tactic/VCGen/Driver.lean	2026-11-09 01:23:05.262289812 +0000
-+++ b/Ascent/Tactic/VCGen/Driver.lean	2026-11-08 18:02:46.734331465 +0000
+--- a/Ascent/Tactic/VCGen/Driver.lean	2026-11-09 01:30:19.362306442 +0000
++++ b/Ascent/Tactic/VCGen/Driver.lean	2026-11-09 01:28:39.413032264 +0000
 @@ -9,6 +9,7 @@
  import Lean.Elab.Tactic.VCGen.Context
  import Lean.Elab.Tactic.VCGen.Solve

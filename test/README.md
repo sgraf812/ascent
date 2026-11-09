@@ -59,6 +59,7 @@ tests fail.
 | `FixLoopDelab` | `68f7877` and the `repeat'` delaborator round trip |
 | `Regress/TopLevelRule` | `ascend_def` added the unfold equations of the concrete head, which ranked above a rule for the head; now it unfolds only the definitions its list names |
 | `Regress/ExistsHole` | an existential on the right side, `∃ a, ra = a ∧ …`, had no step; it is introduced with a hole as witness |
+| `Regress/Lockstep`, `Regress/MixedHole` (`pairArg`) | the loop leaves needed rules that fix the abstract constructor (`wrp_yield`, `wrp_done`, `wrp_yield_pair`); the step relation now names the abstract step through `∃`, and a tuple witness is a tuple of holes |
 | `Regress/MixedHole` | a hole `?fa () a` or `?fa () (a₁, a₂)` was not filled, so loop rules had to take `fa : βa → …` or a curried body |
 
 Past problems that a test here does not pin:
@@ -68,10 +69,5 @@ Past problems that a test here does not pin:
 - `instantiateNewMVarTypes` of Sym is quadratic on left-nested chains (lean4#16241). A performance
   cliff in core; no test or bench case pins it here.
 - Open: vcgen gives no option to raise the step limit of its `Sym.simp` step (100,000 per call).
-- Open: the generic `wrp_pure` applies before `wrp_yield` when both are registered, and then the
-  loop value stays a hole. The abstract loop value is determined by the state through the loop
-  relation `R c t a`, not by the concrete value, so a `PureRefinement` value rule keyed on the
-  concrete value cannot choose it. `wrp_yield`, `wrp_done` and `wrp_yield_pair` fix the abstract
-  constructor in their pattern instead.
 - `List.mem_cons` in `vcgen_simp` rewrites the binder domain of `∀ x ∈ a :: l` and stops the
   `forall_mem_cons_intro` split. A configuration pitfall, not an engine bug.

@@ -540,12 +540,34 @@ def restoreHoleScope (filled : Option (MetavarDecl × Array Expr × Expr)) : VCG
   if changed then
     (modify fun s => { s with maxFVar := {} } : Sym.SymM Unit)
 
+/-- A fresh hole of type `β` in the current context. For a tuple type (`Prod`, `MProd`, `PProd`), the
+hole is the pair of fresh holes for the components, so that a `match` on the witness reduces. -/
+partial def mkWitnessHole (β : Expr) : VCGenM Expr := do
+  let env ← getEnv
+  let .const S us := β.getAppFn | return ← shareCommon (← mkFreshExprMVar β)
+  unless S == ``Prod || S == ``MProd || S == ``PProd do return ← shareCommon (← mkFreshExprMVar β)
+  let some info := getStructureInfo? env S | return ← shareCommon (← mkFreshExprMVar β)
+  let ctor := getStructureCtor env S
+  let params := β.getAppArgs
+  unless params.size == ctor.numParams do return ← shareCommon (← mkFreshExprMVar β)
+  let mut ty := ctor.type.instantiateLevelParams ctor.levelParams us
+  for p in params do
+    let .forallE _ _ body _ := ty | return ← shareCommon (← mkFreshExprMVar β)
+    ty := body.instantiate1 p
+  let mut fields := #[]
+  for _ in [0:info.fieldNames.size] do
+    let .forallE _ d body _ := ty | return ← shareCommon (← mkFreshExprMVar β)
+    let f ← mkWitnessHole (← shareCommon d)
+    fields := fields.push f
+    ty := body.instantiate1 f
+  mkAppNS (← mkConstS ctor.name us) (params ++ fields)
+
 /-- Strategy 9b: introduce an existential on the `Prop` lattice. The witness of `pre ⊑ ∃ x, p x` is a
-fresh hole `?x` in the goal's context, and the goal continues as `pre ⊑ p ?x`. -/
+fresh hole `?x` in the goal's context (`mkWitnessHole`), and the goal continues as `pre ⊑ p ?x`. -/
 def rhsExistsIntro? (goal : MVarId) (α pre rhs : Expr) : VCGenM (Option MVarId) := do
   unless α.isProp do return none
   let_expr Exists β p := rhs | return none
-  let x ← shareCommon (← mkFreshExprMVar β)
+  let x ← mkWitnessHole β
   let px ← betaS p #[x]
   let target ← goal.getType
   let g ← mkFreshExprSyntheticOpaqueMVar (← mkAppNS target.getAppFn (target.getAppArgs.set! 3 px))
