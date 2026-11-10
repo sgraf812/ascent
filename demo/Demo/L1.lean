@@ -1099,5 +1099,49 @@ open scoped Program.WP
   intro s h hg
   exact h hg.1 hg.2
 
+@[ascend] theorem wrp_pushReg (rs : Reg64) :
+    (fun s =>
+      let a := s.regs.get64 .rsp - 8#64
+      (Mem.loadInt s.dmem a 8).isSome = true → Mem.Blocks.Disjoint [(s.regs.get64 .rsp, 8)] [(a, 8)] →
+        Q () () { s with regs := s.regs.set64 .rsp a, dmem := Mem.storeInt s.dmem a 8 (s.regs.get64 rs).toInt })
+      ⊑ wrp (ofStateRepr abs)
+          (Directive.instr (.regular .W64 .W64 (.push (.regOrMem (.reg (.low rs .W64))))))
+          (do
+            modifyIf (storeOk 8 fun st => st.regs.get64 .rsp - 8#64)
+              (storeWord 8 (fun st => st.regs.get64 .rsp - 8#64) fun st => st.regs.get64 rs)
+            modifyIf (fun _ => True) (setReg64 .rsp fun st => st.regs.get64 .rsp - 8#64)) Q E := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro s hs
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, WPMonadExact.wp_bind_eq, wp_modifyIf] at hs
+  obtain ⟨hk, ⟨hm, hd⟩, -, hw⟩ := hs
+  refine (Program.WP.Spec.push_reg rs).le_wp s ⟨hm, ?_⟩
+  show (ofStateRepr abs).post Q Qa () _
+  rw [Concretization.post_pi]
+  exact ⟨(), hk hm hd, hw⟩
+
+@[ascend] theorem wrp_popReg (rd : Reg64) :
+    (fun s =>
+      let v := BitVec.ofInt 64 (Mem.loadInt s.dmem (s.regs.get64 .rsp) 8).get!
+      (Mem.loadInt s.dmem (s.regs.get64 .rsp) 8).isSome = true →
+        Q () () { s with regs := (s.regs.set64 .rsp (s.regs.get64 .rsp + 8#64)).set64 rd v })
+      ⊑ wrp (ofStateRepr abs) (Directive.instr (.regular .W64 .W64 (.pop (.reg (.low rd .W64)))))
+          (do
+            modifyIf (fun _ => True) (setReg64 .rsp fun st => st.regs.get64 .rsp + 8#64)
+            modifyIf (loadOk 8 fun st => st.regs.get64 .rsp - 8#64)
+              (loadReg 8 rd (fun st => st.regs.get64 .rsp - 8#64) fun w _ => w)) Q E := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro s hs
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, WPMonadExact.wp_bind_eq, wp_modifyIf,
+    loadOk, setReg64_regs, setReg64_dmem, abs_regs, abs_dmem, Reg64s.get64_set64, ↓reduceIte,
+    BitVec.add_sub_cancel] at hs
+  obtain ⟨hk, -, hm, hw⟩ := hs
+  refine (Program.WP.Spec.pop_reg rd).le_wp s ⟨hm, ?_⟩
+  show (ofStateRepr abs).post Q Qa () _
+  rw [Concretization.post_pi]
+  refine ⟨(), hk hm, ?_⟩
+  simp only [ofStateRepr_pred, loadReg, setReg64, word_eight, Reg64s.get64_set64, ↓reduceIte,
+    BitVec.add_sub_cancel, abs_regs, abs_dmem] at hw ⊢
+  exact hw
+
 end
 end Ascent.Kraken.AInstr
