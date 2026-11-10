@@ -6,10 +6,16 @@ import Demo.ZipPure
 
 `bsearchF a key lo hi` searches `a[lo, hi)` for `key` the way the machine code does: it looks at the
 middle `lo + (hi - lo) / 2`, continues right of it while the element is below `key`, returns the
-index when the element is `key`, and continues left of it otherwise. `bsearchArr_spec` states that
-the array program returns `bsearchF a key 0 n`; `vcgen` proves it with
-the invariant that the remaining search on the bounds gives the same result. `ascend_def` then
-synthesizes the pure program `bsearchP`.
+index when the element is `key`, and continues left of it otherwise. Its `grind` equations are the
+four cases: `bsearchF_of_le` and `bsearchF_found` give the result, and `bsearchF_right` and
+`bsearchF_left` take the search on the bounds after one step, `bsearchF a key (mid + 1) hi` or
+`bsearchF a key lo mid`, back to `bsearchF a key lo hi`. `bsearchF_some` and `bsearchF_none` state
+the result in terms of membership: `some j` is an index of `key` in `a[lo, hi)`, and `none` means
+that a sorted `a` holds no `key` in `a[lo, hi)`.
+
+`bsearchArr_spec` states that the array program returns `bsearchF a key 0 n`. `vcgen` proves it
+with the invariant `bsearchF a key lo hi = bsearchF a key 0 n` on the bounds `lo` and `hi`, and
+`ascend_def` then synthesizes the pure program `bsearchP`.
 -/
 
 open Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
@@ -30,35 +36,31 @@ termination_by hi - lo
 section
 variable {a : Array (BitVec 64)} {key : BitVec 64} {lo hi : Nat}
 
-theorem bsearchF_of_le (h : hi ≤ lo) : bsearchF a key lo hi = none := by
+@[grind =] theorem bsearchF_of_le (h : hi ≤ lo) : bsearchF a key lo hi = none := by
   rw [bsearchF]; simp [h]
 
-theorem bsearchF_right (h : lo < hi) (hl : a[lo + (hi - lo) / 2]!.toInt < key.toInt) :
-    bsearchF a key lo hi = bsearchF a key (lo + (hi - lo) / 2 + 1) hi := by
-  rw [bsearchF]; simp [Nat.not_le.mpr h, hl]
-
-theorem bsearchF_found (h : lo < hi) (hl : ¬a[lo + (hi - lo) / 2]!.toInt < key.toInt)
+@[grind =] theorem bsearchF_found (h : lo < hi) (hl : ¬a[lo + (hi - lo) / 2]!.toInt < key.toInt)
     (hle : a[lo + (hi - lo) / 2]!.toInt ≤ key.toInt) :
     bsearchF a key lo hi = some (lo + (hi - lo) / 2) := by
   rw [bsearchF]; simp [Nat.not_le.mpr h, hl, hle]
 
-theorem bsearchF_left (h : lo < hi) (hl : ¬a[lo + (hi - lo) / 2]!.toInt < key.toInt)
+@[grind =] theorem bsearchF_right (h : lo < hi) (hl : a[lo + (hi - lo) / 2]!.toInt < key.toInt) :
+    bsearchF a key (lo + (hi - lo) / 2 + 1) hi = bsearchF a key lo hi := by
+  conv => rhs; rw [bsearchF]
+  simp [Nat.not_le.mpr h, hl]
+
+@[grind =] theorem bsearchF_left (h : lo < hi) (hl : ¬a[lo + (hi - lo) / 2]!.toInt < key.toInt)
     (hle : ¬a[lo + (hi - lo) / 2]!.toInt ≤ key.toInt) :
-    bsearchF a key lo hi = bsearchF a key lo (lo + (hi - lo) / 2) := by
-  rw [bsearchF]; simp [Nat.not_le.mpr h, hl, hle]
-
-
-grind_pattern bsearchF_of_le => bsearchF a key lo hi, hi ≤ lo
-grind_pattern bsearchF_right => bsearchF a key lo hi, a[lo + (hi - lo) / 2]!.toInt < key.toInt
-grind_pattern bsearchF_found => bsearchF a key lo hi, a[lo + (hi - lo) / 2]!.toInt ≤ key.toInt
-grind_pattern bsearchF_left => bsearchF a key lo hi, a[lo + (hi - lo) / 2]!
+    bsearchF a key lo (lo + (hi - lo) / 2) = bsearchF a key lo hi := by
+  conv => rhs; rw [bsearchF]
+  simp [Nat.not_le.mpr h, hl, hle]
 
 theorem bsearchF_some : ∀ {lo hi j : Nat}, bsearchF a key lo hi = some j → lo ≤ j ∧ j < hi ∧ a[j]! = key := by
   intro lo hi j h
   induction lo, hi using bsearchF.induct (a := a) (key := key) with
   | case1 lo hi hle => rw [bsearchF_of_le hle] at h; cases h
   | case2 lo hi hlt hl ih =>
-    rw [bsearchF_right (Nat.lt_of_not_le hlt) hl] at h
+    rw [← bsearchF_right (Nat.lt_of_not_le hlt) hl] at h
     obtain ⟨h1, h2, h3⟩ := ih h
     exact ⟨by omega, h2, h3⟩
   | case3 lo hi hlt hl hle =>
@@ -67,7 +69,7 @@ theorem bsearchF_some : ∀ {lo hi j : Nat}, bsearchF a key lo hi = some j → l
     refine ⟨by omega, by omega, ?_⟩
     exact BitVec.eq_of_toInt_eq (by omega)
   | case4 lo hi hlt hl hle ih =>
-    rw [bsearchF_left (Nat.lt_of_not_le hlt) hl hle] at h
+    rw [← bsearchF_left (Nat.lt_of_not_le hlt) hl hle] at h
     obtain ⟨h1, h2, h3⟩ := ih h
     exact ⟨h1, by omega, h3⟩
 
@@ -77,7 +79,7 @@ theorem bsearchF_none (hs : ∀ i j, i ≤ j → j < a.size → a[i]!.toInt ≤ 
   induction lo, hi using bsearchF.induct (a := a) (key := key) with
   | case1 lo hi hle => intro j h1 h2; omega
   | case2 lo hi hlt hl ih =>
-    rw [bsearchF_right (Nat.lt_of_not_le hlt) hl] at h
+    rw [← bsearchF_right (Nat.lt_of_not_le hlt) hl] at h
     intro j h1 h2 hj
     by_cases hm : lo + (hi - lo) / 2 + 1 ≤ j
     · exact ih hhi h j hm h2 hj
@@ -86,7 +88,7 @@ theorem bsearchF_none (hs : ∀ i j, i ≤ j → j < a.size → a[i]!.toInt ≤ 
   | case3 lo hi hlt hl hle =>
     rw [bsearchF_found (Nat.lt_of_not_le hlt) hl hle] at h; cases h
   | case4 lo hi hlt hl hle ih =>
-    rw [bsearchF_left (Nat.lt_of_not_le hlt) hl hle] at h
+    rw [← bsearchF_left (Nat.lt_of_not_le hlt) hl hle] at h
     intro j h1 h2 hj
     by_cases hm : j < lo + (hi - lo) / 2
     · exact ih (by omega) h j h1 hm hj
@@ -95,7 +97,7 @@ theorem bsearchF_none (hs : ∀ i j, i ≤ j → j < a.size → a[i]!.toInt ≤ 
 
 end
 
-theorem decodeIdx_ofNat {j : Nat} (h : j < 2 ^ 61) : decodeIdx (BitVec.ofNat 64 j) = some j := by
+@[grind =] theorem decodeIdx_ofNat {j : Nat} (h : j < 2 ^ 61) : decodeIdx (BitVec.ofNat 64 j) = some j := by
   have hj : (BitVec.ofNat 64 j).toNat = j := by rw [BitVec.toNat_ofNat]; omega
   unfold decodeIdx
   split
@@ -103,8 +105,6 @@ theorem decodeIdx_ofNat {j : Nat} (h : j < 2 ^ 61) : decodeIdx (BitVec.ofNat 64 
   · rw [hj]
 
 @[grind =] theorem decodeIdx_neg_one : decodeIdx 18446744073709551615#64 = none := rfl
-
-grind_pattern decodeIdx_ofNat => decodeIdx (BitVec.ofNat 64 j)
 
 theorem bsearchArr_spec (key rax : BitVec 64) (n : Nat) (a : Array (BitVec 64)) (hn : n < 2 ^ 61) :
     ⦃fun _ => True⦄ bsearchArr key rax n a
