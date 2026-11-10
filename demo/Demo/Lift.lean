@@ -206,6 +206,29 @@ theorem WordNat.sub_one_beq_zero {x : BitVec 64} {i : Nat} (h : WordNat x i) (hi
 
 grind_pattern WordNat.sub_one_beq_zero => WordNat x i, x - 1#64 == 0#64
 
+@[ascend_pure high] theorem absN_cmp_be (h₁ : PureRefinement a n P₁ WordNat)
+    (h₂ : PureRefinement b m P₂ WordNat) :
+    PureRefinement (CondCode.be.cmp a b) (Nat.ble n m) (P₁ ∧ P₂ ∧ n < 2 ^ 64 ∧ m < 2 ^ 64) Eq :=
+  fun ⟨hp₁, hp₂, hn, hm⟩ => by
+    rw [Bool.eq_iff_iff, CondCode.cmp_be_eq_true, h₁ hp₁, h₂ hp₂, Nat.ble_eq, BitVec.le_def,
+      BitVec.toNat_ofNat, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hn, Nat.mod_eq_of_lt hm]
+
+theorem WordNat.cmp_be_eq {x y : BitVec 64} {i j : Nat} (hx : WordNat x i) (hy : WordNat y j)
+    (hi : i < 2 ^ 64) (hj : j < 2 ^ 64) : (CondCode.be.cmp x y = true) = (i ≤ j) := by
+  rw [absN_cmp_be (PureRefinement.of_rel hx) (PureRefinement.of_rel hy) ⟨trivial, trivial, hi, hj⟩,
+    Nat.ble_eq]
+
+grind_pattern WordNat.cmp_be_eq => WordNat x i, WordNat y j, CondCode.be.cmp x y
+
+@[ascend_pure] theorem absN_ushiftRight (k : Nat) (h : PureRefinement a n P₁ WordNat) :
+    PureRefinement (a.ushiftRight k) (n / 2 ^ k) (P₁ ∧ n < 2 ^ 64) WordNat :=
+  fun ⟨hp, hn⟩ => by
+    rw [WordNat, h hp]
+    apply BitVec.eq_of_toNat_eq
+    show (BitVec.ofNat 64 n >>> k).toNat = _
+    rw [BitVec.toNat_ushiftRight, BitVec.toNat_ofNat, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hn,
+      Nat.shiftRight_eq_div_pow, Nat.mod_eq_of_lt (Nat.lt_of_le_of_lt (Nat.div_le_self _ _) hn)]
+
 @[ascend_pure high] theorem absN_cmp_le_self_zero (h : PureRefinement a n P₁ WordNat) :
     PureRefinement (CondCode.le.cmp (a &&& a) 0#64) (n == 0) (P₁ ∧ n < 2 ^ 63) Eq :=
   fun ⟨hp, hn⟩ => by
