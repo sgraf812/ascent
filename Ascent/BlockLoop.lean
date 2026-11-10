@@ -99,6 +99,14 @@ theorem throw_bind {β : Type} (l : κ) (k : α → ExceptT κ (StateT σ UB) β
     ((throw l : ExceptT κ (StateT σ UB) α) >>= k) = throw l := by
   apply ext_wp <;> intro Q E s <;> rw [WPMonadExact.wp_bind_eq, wp_throw, wp_throw] <;> exact id
 
+theorem tryCatch_pure (a : α) (h : κ → ExceptT κ (StateT σ UB) α) : tryCatch (pure a) h = pure a := by
+  apply ext_wp <;> intro Q E s <;> rw [wp_tryCatch] <;> simp only [WPMonadExact.wp_pure_eq] <;> exact id
+
+theorem tryCatch_tryCatch (x : ExceptT κ (StateT σ UB) α) (h₁ h₂ : κ → ExceptT κ (StateT σ UB) α) :
+    tryCatch (tryCatch x h₁) h₂ = tryCatch x (fun l => tryCatch (h₁ l) h₂) := by
+  apply ext_wp <;> intro Q E s <;>
+    simp only [wp_tryCatch, fun l => funext (wp_tryCatch (h₁ l) h₂ Q E)] <;> exact id
+
 end
 
 end BlockLoop
@@ -406,6 +414,20 @@ theorem ThrowsOnly.map {x : ExceptT κ (StateT σ UB) α} (f : α → β) (hx : 
   rw [map_eq_pure_bind]
   exact of_eq_true (ThrowsOnly.bind hx fun _ => of_eq_true (ThrowsOnly.pure _))
 
+theorem ThrowsOnly.tryCatch {x : ExceptT κ (StateT σ UB) α} {h : κ} {y : ExceptT κ (StateT σ UB) α}
+    (hx : ThrowsOnly (fun l => l = h ∨ P l) x) (hy : ThrowsOnly P y) :
+    ThrowsOnly P (tryCatch x (fun l' => if l' = h then y else MonadExcept.throw l')) = True := eq_true <| by
+  intro Q E s hw
+  rw [wp_tryCatch] at hw ⊢
+  refine WP.wp_monotone (x := x) (fun _ _ ht => ht) ?_ s (hx _ _ s hw)
+  refine Prod.mk_le _ _ _ ?_ PartialOrder.rel_refl
+  intro l t ⟨hl, ht⟩
+  by_cases hlh : l = h
+  · simp only [hlh, ↓reduceIte] at ht ⊢
+    exact hy Q E t ht
+  · simp only [hlh, ↓reduceIte, wp_throw] at ht ⊢
+    exact ⟨hl.resolve_left hlh, ht⟩
+
 omit [DecidableEq κ] in
 theorem ThrowsOnly.forIn {b : α} {f : Unit → α → ExceptT κ (StateT σ UB) (ForInStep α)}
     (hf : ∀ u v, ThrowsOnly P (f u v)) : ThrowsOnly P (FixLoop.mk.forIn b f) = True := eq_true <| by
@@ -426,36 +448,6 @@ theorem ThrowsOnly.forIn {b : α} {f : Unit → α → ExceptT κ (StateT σ UB)
   | yield v' => exact ih v' Q E t ht
 
 end
-
-/-- A label whose iteration never returns to it runs its block once: the loop at `h` is the
-block followed by the loop over the other labels. -/
-theorem cfgLoop_eq_tryCatch {h : κ} (hb : (T.get? h).isSome = true)
-    (hn : ThrowsOnly (· ≠ h)
-      (tryCatch ((T.get? h).getD (throw h)) (fun l' => cfgLoop (T.erase h) l'))) :
-    cfgLoop T h = tryCatch ((T.get? h).getD (throw h)) (fun l' => cfgLoop (T.erase h) l') := by
-  obtain ⟨b, hb'⟩ := Option.isSome_iff_exists.mp hb
-  rw [hb'] at hn ⊢
-  simp only [Option.getD_some] at hn ⊢
-  let X := tryCatch b (fun l' => cfgLoop (T.erase h) l')
-  have hloop : ∀ (Q : Unit → σ → Prop) E s,
-      wp (cfgLoop T h) Q E s = wp X Q (fun l => if l = h then wp (cfgLoop T h) Q E else E.1 l, E.2) s := by
-    intro Q E s
-    rw [cfgLoop_header_of_some T hb']
-    refine (congrFun (FixLoop.wp_forIn_eq _ _ _ Q E) s).trans ?_
-    rw [wp_header_body, wp_tryCatch, unit_post]
-  apply ext_wp
-  · intro Q E s hw
-    rw [hloop] at hw
-    refine WP.wp_monotone (x := X) (fun _ _ ht => ht) ?_ s (hn _ _ s hw)
-    refine Prod.mk_le _ _ _ ?_ PartialOrder.rel_refl
-    intro l t ⟨hl, ht⟩
-    simpa only [hl, ↓reduceIte] using ht
-  · intro Q E s hw
-    rw [hloop]
-    refine WP.wp_monotone (x := X) (fun _ _ ht => ht) ?_ s (hn _ _ s hw)
-    refine Prod.mk_le _ _ _ ?_ PartialOrder.rel_refl
-    intro l t ⟨hl, ht⟩
-    simpa only [hl, ↓reduceIte] using ht
 
 /-- A handler that catches only `h` crosses a loop that never throws `h`. -/
 theorem tryCatch_forIn_bind {β γ : Type} {h : κ} {i : β} {f : Unit → β → ExceptT κ (StateT σ UB) (ForInStep β)}
@@ -502,6 +494,15 @@ theorem tryCatch_forIn {β : Type} {h : κ} {i : β} {f : Unit → β → Except
     {y : ExceptT κ (StateT σ UB) β} (hf : ThrowsOnly (· ≠ h) (FixLoop.mk.forIn i f)) :
     tryCatch (FixLoop.mk.forIn i f) (fun l' => if l' = h then y else throw l') = FixLoop.mk.forIn i f := by
   simpa only [id_map] using tryCatch_map_forIn (g := id) (y := y) hf
+
+theorem forIn_bind_done {β : Type} (b : PUnit) (x : ExceptT κ (StateT σ UB) β) :
+    FixLoop.mk.forIn b (fun _ _ => x >>= fun _ => pure (ForInStep.done PUnit.unit)) = x >>= fun _ => pure PUnit.unit := by
+  rw [FixLoop.forIn_eq, bind_assoc]
+  simp only [pure_bind]
+
+theorem forIn_throw {β : Type} (b : β) (l : κ) :
+    FixLoop.mk.forIn b (fun _ _ => (throw l : ExceptT κ (StateT σ UB) (ForInStep β))) = throw l := by
+  rw [FixLoop.forIn_eq, throw_bind]
 
 /-! ## The number of blocks a run executes -/
 

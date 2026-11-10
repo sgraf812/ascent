@@ -116,7 +116,7 @@ elab_rules : command
             Sym.Simp.reduceControl >> preThms.rewrite Sym.Simp.dischargeSimpSelf
           post := Sym.Simp.evalGround >> Grind.NormSym.reduceCtorEq >> vcThms.rewrite >>
             postThms.rewrite Sym.Simp.dischargeSimpSelf }
-      let (r, _) ← Sym.Simp.SimpM.run (Sym.Simp.simp c) methods { maxDischargeDepth := 64 }
+      let (r, _) ← Sym.Simp.SimpM.run (Sym.Simp.simp c) methods { maxDischargeDepth := 16 }
       match r with
       | .rfl .. => return (c, ← mkEqRefl c)
       | .step e h .. => return (e, h)

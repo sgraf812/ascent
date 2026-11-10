@@ -5,12 +5,15 @@ import Ascent.FixLoop.Delab
 /-!
 # Structuring a block loop by rewriting
 
-The block loop of a text is structured by two equations of `Ascent.BlockLoop`. At a label whose
-block, run in the table without the label, never returns to it, `cfgLoop_eq_tryCatch` runs the block
-once. At any other label, `cfgLoop_header` makes a `repeat'` loop that continues on a return to the
-label. Pushing the `try` into the blocks with the `tryCatch` equations of this file and deciding the
-literal labels then structures the program. An exit discards the rest of its block, and a loop whose
-body never continues collapses to its body.
+The block loop of a text is structured by `cfgLoop_header` of `Ascent.BlockLoop`, applied at every
+label: each label becomes the header of a `repeat'` loop over the other blocks that continues on a
+return to the label. The equations of this file push the loop's `try` into the blocks, through a
+mapped computation as well, until it meets the literal labels of the throws; a throw of the header
+continues, any other label is thrown on. A handler crosses an inner loop that never throws its label
+(`tryCatch_forIn_bind`, with the exception effect `ThrowsOnly` as premise). The marks `done <$>` then
+collect at the root of a body (`pure_done_eq`, `bind_map`, `condState_map`, `throw_label_step`),
+an exit absorbs a mark (`map_exitIf`, `map_bind_exitIf`), and a loop whose body never continues
+collapses to its body (`forIn_map_done`, `forIn_bind_exitIf`, `forIn_exitIf`).
 -/
 
 open Std.WP Lean.Order Ascent
@@ -112,6 +115,40 @@ theorem map_exitIf {γ δ : Type} (f : γ → δ) (g : σ → Prop) (h : σ → 
     f <$> (AInstr.exitIf g h l : BlockM σ γ) = AInstr.exitIf g h l := by
   rw [map_eq_pure_bind, AInstr.exitIf_bind]
 
+theorem tryCatch_map_bind {α γ δ : Type} (f : γ → δ) (x : BlockM σ α) (k : α → BlockM σ γ)
+    (h : CfgLabel → BlockM σ δ) :
+    tryCatch (f <$> (x >>= k)) h = tryCatch (x >>= fun a => f <$> k a) h := by
+  rw [map_bind]
+
+theorem tryCatch_map_condState {γ δ : Type} (f : γ → δ) (c : σ → Bool) (x y : BlockM σ γ)
+    (h : CfgLabel → BlockM σ δ) :
+    tryCatch (f <$> condState c x y) h = condState c (tryCatch (f <$> x) h) (tryCatch (f <$> y) h) := by
+  rw [← condState_map, tryCatch_condState]
+
+theorem tryCatch_map_throw {γ δ : Type} (f : γ → δ) (l : CfgLabel) (h : CfgLabel → BlockM σ δ) :
+    tryCatch (f <$> (throw l : BlockM σ γ)) h = h l := by
+  rw [map_eq_pure_bind, BlockLoop.throw_bind, BlockLoop.tryCatch_throw]
+
+theorem tryCatch_map_exitIf {γ δ : Type} (f : γ → δ) (g : σ → Prop) (u : σ → σ) (l : CfgLabel)
+    (h : CfgLabel → BlockM σ δ) (hh : h l = throw l) :
+    tryCatch (f <$> (AInstr.exitIf g u l : BlockM σ γ)) h = f <$> (AInstr.exitIf g u l : BlockM σ γ) := by
+  rw [map_exitIf, tryCatch_exitIf _ _ _ _ hh]
+
+theorem tryCatch_map_pure {γ δ : Type} (f : γ → δ) (a : γ) (h : CfgLabel → BlockM σ δ) :
+    tryCatch (f <$> (pure a : BlockM σ γ)) h = f <$> (pure a : BlockM σ γ) := by
+  rw [map_pure, tryCatch_pure]
+
+theorem tryCatch_map_modifyIf {δ : Type} (f : Unit → δ) (g : σ → Prop) (u : σ → σ)
+    (h : CfgLabel → BlockM σ δ) :
+    tryCatch (f <$> AInstr.modifyIf g u) h = f <$> AInstr.modifyIf g u := by
+  rw [map_eq_pure_bind, ← bind_pure (AInstr.modifyIf g u >>= _), bind_assoc, tryCatch_modifyIf_bind]
+  simp only [pure_bind, tryCatch_pure, bind_pure_comp]
+
+theorem throw_label_step (s : Label) :
+    (throw (CfgLabel.label s) : BlockM σ (ForInStep PUnit))
+      = ForInStep.done <$> (throw (CfgLabel.label s) : BlockM σ PUnit) := by
+  rw [map_eq_pure_bind, BlockLoop.throw_bind]
+
 theorem condState_exitIf_map {γ δ : Type} (c : σ → Bool) (g : σ → Prop) (h : σ → σ) (l : CfgLabel)
     (f : γ → δ) (y : BlockM σ γ) :
     condState c (AInstr.exitIf g h l) (f <$> y) = f <$> condState c (AInstr.exitIf g h l) y := by
@@ -127,6 +164,31 @@ theorem forIn_map_done (x : BlockM σ PUnit) :
   rw [FixLoop.forIn_eq, map_eq_pure_bind, bind_assoc]
   simp only [pure_bind]
   exact bind_pure_unit
+
+theorem map_bind_exitIf {α γ δ : Type} (f : γ → δ) (x : BlockM σ α) (g : σ → Prop) (h : σ → σ)
+    (l : CfgLabel) :
+    f <$> (x >>= fun _ => (AInstr.exitIf g h l : BlockM σ γ)) = x >>= fun _ => AInstr.exitIf g h l := by
+  rw [map_bind]
+  simp only [map_exitIf]
+
+theorem condState_bind_exitIf_map {α γ δ : Type} (c : σ → Bool) (x : BlockM σ α) (g : σ → Prop)
+    (h : σ → σ) (l : CfgLabel) (f : γ → δ) (y : BlockM σ γ) :
+    condState c (x >>= fun _ => AInstr.exitIf g h l) (f <$> y)
+      = f <$> condState c (x >>= fun _ => AInstr.exitIf g h l) y := by
+  rw [← condState_map, map_bind_exitIf]
+
+theorem condState_map_bind_exitIf {α γ δ : Type} (c : σ → Bool) (x : BlockM σ α) (g : σ → Prop)
+    (h : σ → σ) (l : CfgLabel) (f : γ → δ) (y : BlockM σ γ) :
+    condState c (f <$> y) (x >>= fun _ => AInstr.exitIf g h l)
+      = f <$> condState c y (x >>= fun _ => AInstr.exitIf g h l) := by
+  rw [← condState_map, map_bind_exitIf]
+
+theorem forIn_bind_exitIf {α β : Type} (b : β) (x : BlockM σ α) (g : σ → Prop) (h : σ → σ)
+    (l : CfgLabel) :
+    FixLoop.mk.forIn b (fun _ _ => x >>= fun _ => (AInstr.exitIf g h l : BlockM σ (ForInStep β)))
+      = x >>= fun _ => AInstr.exitIf g h l := by
+  rw [FixLoop.forIn_eq, bind_assoc]
+  simp only [AInstr.exitIf_bind]
 
 theorem forIn_exitIf {β : Type} (b : β) (g : σ → Prop) (h : σ → σ) (l : CfgLabel) :
     FixLoop.mk.forIn b (fun _ _ => (AInstr.exitIf g h l : BlockM σ (ForInStep β))) = AInstr.exitIf g h l := by
@@ -153,6 +215,16 @@ theorem ThrowsOnly.exitIf (g : σ → Prop) (f : σ → σ) {l : CfgLabel} (hl :
   intro Q E s hw
   simp only [AInstr.wp_exitIf] at hw ⊢
   exact ⟨hw.1, hl, hw.2⟩
+
+theorem ThrowsOnly.branch (c : σ → Bool) {l : CfgLabel} (hl : P l) :
+    ThrowsOnly P (AInstr.branch c l) = True := eq_true <| by
+  intro Q E s hw
+  rw [AInstr.wp_branch] at hw ⊢
+  by_cases hc : c s = true
+  · simp only [hc, ↓reduceIte] at hw ⊢
+    exact ⟨hl, hw⟩
+  · simp only [hc, ↓reduceIte, Bool.false_eq_true] at hw ⊢
+    exact hw
 
 theorem ThrowsOnly.condState (c : σ → Bool) {x y : BlockM σ β} (hx : ThrowsOnly P x)
     (hy : ThrowsOnly P y) : ThrowsOnly P (condState c x y) = True := eq_true <| by
