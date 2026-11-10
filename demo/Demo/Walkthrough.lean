@@ -329,27 +329,27 @@ fun rdi rsi rdx rax rsp => do
 #guard_msgs in
 #print bsearchL
 
-/-! Over the array of words, the bounds are numbers `lo ≤ hi ≤ n`, and `decodeIdx` reads the result
-word as an index, with `-1` for `none`: -/
+/-! Over the array of words, the bounds are numbers `lo ≤ hi ≤ n`, and the result is an optional
+index, `none` until the loop leaves: -/
 
 /--
-info: def Ascent.Kraken.bsearchArr : BitVec 64 → BitVec 64 → Nat → Array (BitVec 64) → BlockM Unit (Option Nat) :=
-fun key rax n a => do
-  let mut a_1 := (0, n, rax)
+info: def Ascent.Kraken.bsearchArr : BitVec 64 → Nat → Array (BitVec 64) → BlockM Unit (Option Nat) :=
+fun key n a => do
+  let mut a_1 := (0, n, none)
   repeat'
     if a_1.snd.fst ≤ a_1.fst then 
-      a_1 := (a_1.fst, a_1.snd.fst, 18446744073709551615#64)
+      a_1 := (a_1.fst, a_1.snd.fst, none)
       break
     else
       if a[a_1.fst + (a_1.snd.fst - a_1.fst) / 2]!.toInt < key.toInt then 
         a_1 := (a_1.fst + (a_1.snd.fst - a_1.fst) / 2 + 1, a_1.snd.fst, a_1.snd.snd)
       else
         if a[a_1.fst + (a_1.snd.fst - a_1.fst) / 2]!.toInt ≤ key.toInt then 
-          a_1 := (a_1.fst, a_1.snd.fst, BitVec.ofNat 64 (a_1.fst + (a_1.snd.fst - a_1.fst) / 2))
+          a_1 := (a_1.fst, a_1.snd.fst, some (a_1.fst + (a_1.snd.fst - a_1.fst) / 2))
           break
         else
           a_1 := (a_1.fst, a_1.fst + (a_1.snd.fst - a_1.fst) / 2, a_1.snd.snd)
-  pure (decodeIdx a_1.snd.snd)
+  pure a_1.snd.snd
 -/
 #guard_msgs in
 #print bsearchArr

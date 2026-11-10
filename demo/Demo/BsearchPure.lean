@@ -6,12 +6,12 @@ import Demo.ZipPure
 
 `bsearchF a key lo hi` searches `a[lo, hi)` for `key` the way the machine code does: it looks at the
 middle `lo + (hi - lo) / 2`, continues right of it while the element is below `key`, returns the
-index when the element is `key`, and continues left of it otherwise. Its `grind` equations are the
-four cases: `bsearchF_of_le` and `bsearchF_found` give the result, and `bsearchF_right` and
-`bsearchF_left` take the search on the bounds after one step, `bsearchF a key (mid + 1) hi` or
-`bsearchF a key lo mid`, back to `bsearchF a key lo hi`. `bsearchF_some` and `bsearchF_none` state
-the result in terms of membership: `some j` is an index of `key` in `a[lo, hi)`, and `none` means
-that a sorted `a` holds no `key` in `a[lo, hi)`.
+index when the element is `key`, and continues left of it otherwise. Four equations state the cases:
+`bsearchF_of_le` and `bsearchF_found` give the result, and `bsearchF_right` and `bsearchF_left` take
+the search on the bounds after one step, `bsearchF a key (mid + 1) hi` or `bsearchF a key lo mid`,
+back to `bsearchF a key lo hi`. They are the `grind` theory of the loop proof. `bsearchF_some` and
+`bsearchF_none` state the result in terms of membership, and `encodeIdx_bsearchF` states it for the
+word of the result: the word of an index of `key`, or `-1` when a sorted `a` holds no `key`.
 
 `bsearchArr_spec` states that the array program returns `bsearchF a key 0 n`. `vcgen` proves it
 with the invariant `bsearchF a key lo hi = bsearchF a key 0 n` on the bounds `lo` and `hi`, and
@@ -36,20 +36,20 @@ termination_by hi - lo
 section
 variable {a : Array (BitVec 64)} {key : BitVec 64} {lo hi : Nat}
 
-@[grind =] theorem bsearchF_of_le (h : hi ≤ lo) : bsearchF a key lo hi = none := by
+theorem bsearchF_of_le (h : hi ≤ lo) : bsearchF a key lo hi = none := by
   rw [bsearchF]; simp [h]
 
-@[grind =] theorem bsearchF_found (h : lo < hi) (hl : ¬a[lo + (hi - lo) / 2]!.toInt < key.toInt)
+theorem bsearchF_found (h : lo < hi) (hl : ¬a[lo + (hi - lo) / 2]!.toInt < key.toInt)
     (hle : a[lo + (hi - lo) / 2]!.toInt ≤ key.toInt) :
     bsearchF a key lo hi = some (lo + (hi - lo) / 2) := by
   rw [bsearchF]; simp [Nat.not_le.mpr h, hl, hle]
 
-@[grind =] theorem bsearchF_right (h : lo < hi) (hl : a[lo + (hi - lo) / 2]!.toInt < key.toInt) :
+theorem bsearchF_right (h : lo < hi) (hl : a[lo + (hi - lo) / 2]!.toInt < key.toInt) :
     bsearchF a key (lo + (hi - lo) / 2 + 1) hi = bsearchF a key lo hi := by
   conv => rhs; rw [bsearchF]
   simp [Nat.not_le.mpr h, hl]
 
-@[grind =] theorem bsearchF_left (h : lo < hi) (hl : ¬a[lo + (hi - lo) / 2]!.toInt < key.toInt)
+theorem bsearchF_left (h : lo < hi) (hl : ¬a[lo + (hi - lo) / 2]!.toInt < key.toInt)
     (hle : ¬a[lo + (hi - lo) / 2]!.toInt ≤ key.toInt) :
     bsearchF a key lo (lo + (hi - lo) / 2) = bsearchF a key lo hi := by
   conv => rhs; rw [bsearchF]
@@ -97,34 +97,39 @@ theorem bsearchF_none (hs : ∀ i j, i ≤ j → j < a.size → a[i]!.toInt ≤ 
 
 end
 
-@[grind =] theorem decodeIdx_ofNat {j : Nat} (h : j < 2 ^ 61) : decodeIdx (BitVec.ofNat 64 j) = some j := by
-  have hj : (BitVec.ofNat 64 j).toNat = j := by rw [BitVec.toNat_ofNat]; omega
-  unfold decodeIdx
-  split
-  · next he => have := congrArg BitVec.toNat he; rw [hj] at this; simp at this; omega
-  · rw [hj]
+theorem encodeIdx_bsearchF {a : Array (BitVec 64)} {key : BitVec 64} {hi : Nat}
+    (hs : ∀ i j, i ≤ j → j < hi → a[i]!.toInt ≤ a[j]!.toInt) (hhi : a.size = hi) :
+    (∃ j < hi, encodeIdx (bsearchF a key 0 hi) = BitVec.ofNat 64 j ∧ a[j]! = key) ∨
+      (encodeIdx (bsearchF a key 0 hi) = -1 ∧ ∀ j < hi, a[j]! ≠ key) := by
+  subst hhi
+  cases h : bsearchF a key 0 a.size with
+  | none => exact Or.inr ⟨rfl, fun j hj => bsearchF_none hs (Nat.le_refl _) h j (Nat.zero_le j) hj⟩
+  | some j =>
+    obtain ⟨-, h2, h3⟩ := bsearchF_some h
+    exact Or.inl ⟨j, h2, rfl, h3⟩
 
-@[grind =] theorem decodeIdx_neg_one : decodeIdx 18446744073709551615#64 = none := rfl
+grind_pattern encodeIdx_bsearchF => encodeIdx (bsearchF a key 0 hi)
 
-theorem bsearchArr_spec (key rax : BitVec 64) (n : Nat) (a : Array (BitVec 64)) (hn : n < 2 ^ 61) :
-    ⦃fun _ => True⦄ bsearchArr key rax n a
+attribute [local grind =] bsearchF_of_le bsearchF_found bsearchF_right bsearchF_left in
+theorem bsearchArr_spec (key : BitVec 64) (n : Nat) (a : Array (BitVec 64)) :
+    ⦃fun _ => True⦄ bsearchArr key n a
       ⦃fun o _ => o = bsearchF a key 0 n; (fun (_ : CfgLabel) (_ : Unit) => False, estack⟨⟩)⦄ := by
   vcgen [bsearchArr]
     invariants
-    · WhileInvariant.mk fun (done : Bool) (ikr : Nat × Nat × BitVec 64) (_ : Unit) =>
-        (done = false → ikr.1 ≤ ikr.2.1 ∧ ikr.2.1 ≤ n ∧ bsearchF a key ikr.1 ikr.2.1 = bsearchF a key 0 n) ∧
-        (done = true → decodeIdx ikr.2.2 = bsearchF a key 0 n)
-    · Variant.ofMeasure fun (ikr : Nat × Nat × BitVec 64) => ikr.2.1 - ikr.1
+    · WhileInvariant.mk fun (done : Bool) (iko : Nat × Nat × Option Nat) (_ : Unit) =>
+        (done = false → iko.1 ≤ iko.2.1 ∧ iko.2.1 ≤ n ∧ bsearchF a key iko.1 iko.2.1 = bsearchF a key 0 n) ∧
+        (done = true → iko.2.2 = bsearchF a key 0 n)
+    · Variant.ofMeasure fun (iko : Nat × Nat × Option Nat) => iko.2.1 - iko.1
     simp [Variant.evalsBelow_ofMeasure_nat]
     with finish
 
 /-! ## The pure program -/
 
-ascend_def bsearchP (key rax : BitVec 64) (n : Nat) (a : Array (BitVec 64)) (hn : n < 2 ^ 61) :
+ascend_def bsearchP (key : BitVec 64) (n : Nat) (a : Array (BitVec 64)) :
     Id (Option Nat) from
-  ⦃fun _ => True⦄ (bsearchArr key rax n a) ⪯[purify Unit] bsearchP
+  ⦃fun _ => True⦄ (bsearchArr key n a) ⪯[purify Unit] bsearchP
     ⦃fun v o _ => v = o; (fun _ _ => False, estack⟨⟩)⦄
-  ascend [wrp_purify_ret (bsearchArr_spec key rax n a hn)] with finish
+  ascend [wrp_purify_ret (bsearchArr_spec key n a)] with finish
 
 /--
 info: def Ascent.Kraken.bsearchP : BitVec 64 → Nat → Array (BitVec 64) → Id (Option Nat) :=
@@ -163,11 +168,11 @@ theorem bsearchR_refines_P {A key rax rsp : BitVec 64} {n : Nat} {a : Array (Bit
       (A ≐ₐ a ∧ a.size = n ∧ n < 2 ^ 61 ∧ words 8 64 t.dmem A a.size = a.toList ∧
         Mem.Mapped [(A, 8 * a.size)] t.dmem ∧ (Mem.loadInt t.dmem rsp 8).isSome = true)⦄
       bsearchR ⪯[(ofStateRepr MachineData.dmem).comp (ofStateRepr (fun _ : DataMem => ()))]
-      (bsearchArr key rax n a)
+      (bsearchArr key n a)
       ⦃fun _ o t => t.regs.get64 .rax = encodeIdx o; (fun l l' _ => l = l', estack⟨⟩)⦄ :=
     Refinement.comp_le (by grind) (by grind) (by grind) (bsearchArr.refines A key rax rsp n a)
       ((bsearchL.refines A (BitVec.ofNat 64 n) key rax rsp).weaken fun t h => h.1)
-  exact Refinement.comp_le (by grind) (by grind) (by grind) (bsearchP.refines key rax n a hn) hArr
+  exact Refinement.comp_le (by grind) (by grind) (by grind) (bsearchP.refines key n a) hArr
 
 section
 variable [Host] [FunDecls] [Embeds bsearch] (s : MachineData) (ra : Int64)
@@ -200,20 +205,22 @@ theorem bsearch_correct {A key : BitVec 64} {n : Nat}
     refine ⟨fun t ht => ?_⟩
     subst ht
     have h := hR.le_wp (abs t₀) (by
+      clear hR
       simp only [meet_apply, meet_prop_eq_and, Concretization.comp_pred, ofStateRepr_pred, purify_pred]
       refine ⟨⟨?_, ?_⟩, trivial⟩ <;> grind)
+    clear hR
     rw [← bsearchR.eq, BlockLoop.wp_tryCatch] at h
     refine WP.wp_monotone (x := bsearchT) ?_ ?_ (abs t₀) h
     · intro _ t hq
       simp only [Concretization.post_pi, Concretization.comp_pred, ofStateRepr_pred, purify_pred] at hq
-      grind
+      grind only
     · refine Prod.mk_le _ _ _ ?_ PartialOrder.rel_refl
       intro l t hl
       by_cases he : l = .exit
       · subst he
         simp only [↓reduceIte, WPMonadExact.wp_pure_eq, Concretization.post_pi, Concretization.comp_pred,
           ofStateRepr_pred, purify_pred] at hl
-        exact ⟨rfl, by grind⟩
+        exact ⟨rfl, by grind only⟩
       · simp only [he, ↓reduceIte, BlockLoop.wp_throw] at hl
         grind
   have h := (bsearchT.refines s ra).transport hT
@@ -224,15 +231,8 @@ theorem bsearch_correct {A key : BitVec 64} {n : Nat}
   obtain ⟨_, ⟨hra, -, hrsp⟩, -, hrax⟩ := hE
   refine ⟨hra, hrsp, ?_⟩
   have hsz := size_words_toArray (s.push64 ra).dmem A n
-  cases hb : bsearchF (words 8 64 (s.push64 ra).dmem A n).toArray key 0 n with
-  | none =>
-    rw [show res = none from hb, encodeIdx_none] at hrax
-    refine Or.inr ⟨hrax.trans rfl, fun j hj => bsearchF_none (by rw [hsz]; exact hsorted) (by omega) hb j
-      (Nat.zero_le j) hj⟩
-  | some j =>
-    rw [show res = some j from hb, encodeIdx_some] at hrax
-    obtain ⟨-, h2, h3⟩ := bsearchF_some hb
-    exact Or.inl ⟨j, h2, hrax, h3⟩
+  simp only [res, arr, t₀] at hrax
+  grind only [encodeIdx_bsearchF]
 
 end
 

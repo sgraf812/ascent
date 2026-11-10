@@ -227,23 +227,21 @@ def encodeIdx : Option Nat → BitVec 64
   | none => 18446744073709551615#64
   | some j => BitVec.ofNat 64 j
 
-def decodeIdx (r : BitVec 64) : Option Nat :=
-  if r = 18446744073709551615#64 then none else some r.toNat
-
 def IdxWord (v : BitVec 64) (o : Option Nat) : Prop := v = encodeIdx o
 
 @[grind =] theorem encodeIdx_none : encodeIdx none = 18446744073709551615#64 := rfl
 @[grind =] theorem encodeIdx_some (j : Nat) : encodeIdx (some j) = BitVec.ofNat 64 j := rfl
 
-theorem encodeIdx_decodeIdx (r : BitVec 64) : encodeIdx (decodeIdx r) = r := by
-  unfold decodeIdx
-  split
-  · next h => rw [h]; rfl
-  · exact (BitVec.ofNat_toNat 64 r).trans (BitVec.setWidth_eq r)
+def Unrelated (_ : α) (_ : β) : Prop := True
 
-@[ascend_pure] theorem absIdx (h : PureRefinement x r P₁ Eq) :
-    PureRefinement x (decodeIdx r) P₁ IdxWord := fun hp => by
-  rw [IdxWord, encodeIdx_decodeIdx, h hp]
+@[ascend_pure low] theorem abs_unrelated (c : α) (a : β) : PureRefinement c a True Unrelated :=
+  fun _ => trivial
+
+@[ascend_pure high] theorem absIdx_none : PureRefinement (18446744073709551615#64) none True IdxWord :=
+  fun _ => rfl
+
+@[ascend_pure] theorem absIdx_some (h : PureRefinement x j P₁ WordNat) :
+    PureRefinement x (some j) P₁ IdxWord := h
 
 @[ascend_pure] theorem absN_ushiftRight (k : Nat) (h : PureRefinement a n P₁ WordNat) :
     PureRefinement (a.ushiftRight k) (n / 2 ^ k) (P₁ ∧ n < 2 ^ 64) WordNat :=
