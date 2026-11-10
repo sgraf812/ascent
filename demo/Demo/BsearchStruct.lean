@@ -1,5 +1,6 @@
 import Demo.CfgRewrite
 import Demo.Bsearch
+import Ascent.Refinement.Catch
 
 /-!
 # The structured program of the binary search
@@ -76,9 +77,8 @@ do
 #guard_msgs in
 #print bsearchT
 
-sym_simp_def bsearchR : BlockM MachineData Unit from
-    tryCatch bsearchT (fun l => if l = CfgLabel.exit then pure () else throw l)
-  using pre [tryCatch_modifyIf_bind, tryCatch_peek_bind, tryCatch_condState, tryCatch_condState_bind,
+sym_simp_def bsearchR : BlockM MachineData Unit from catchExit CfgLabel.exit bsearchT
+  using pre [catchExit, tryCatch_modifyIf_bind, tryCatch_peek_bind, tryCatch_condState, tryCatch_condState_bind,
     tryCatch_bind_assoc, tryCatch_pure, tryCatch_exitIf_handle, tryCatch_forIn_return]
   post [bsearchT, eq_self, ite_true, ite_false, bind_assoc, pure_bind]
 

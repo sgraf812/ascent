@@ -1,13 +1,16 @@
 import Ascent.BlockLoop
 
 /-!
-# Catching an exit between two refinements
+# Catching an exit
 
-A block program `b` leaves through the exception `e`, and the next layer refines the program
-`tryCatch b (fun l => if l = e then pure () else throw l)`, which returns where `b` leaves through
-`e`. `Refinement.transport_catch` transports a triple about the abstract program over both
-refinements: the abstract postcondition at the return of the caught program becomes the concrete
-exception postcondition at `e`, and every other exception keeps its exception postcondition.
+A block program `b` leaves a function through the exception `e`. `catchExit e b` is the function:
+it returns where `b` throws `e`, and throws every other label again. The layers of a refinement
+chain relate such caught programs, and their structuring passes remove the catch by equations.
+
+`Refinement.transport_catchExit` connects the chain to the concrete program at the top: a triple
+about `catchExit e b` and a refinement of the concrete program to `b` give a triple about the
+concrete program, whose exception postcondition at `e` is the return postcondition of the caught
+program.
 -/
 
 open Std.WP Lean.Order
@@ -15,38 +18,38 @@ open Std.WP Lean.Order
 namespace Ascent
 
 section
-variable {κ σ : Type} [DecidableEq κ] {CProg AProg CVal AVal : Type _}
-  {CPred APred CEPosts AEPosts : Type} {ERels₁ ERels₂ : Type _}
-  [Assertion CPred] [Assertion APred] [Assertion CEPosts] [Assertion AEPosts]
-  [WP CProg CVal CPred CEPosts] [WP AProg AVal APred AEPosts]
-  [EPostsConcretization CPred (σ → Prop) CEPosts ((κ → σ → Prop) × EStack⟨⟩) ERels₁]
-  [EPostsConcretization (σ → Prop) APred ((κ → σ → Prop) × EStack⟨⟩) AEPosts ERels₂]
+variable {κ σ : Type} [DecidableEq κ]
+
+def catchExit (e : κ) (b : ExceptT κ (StateT σ UB) Unit) : ExceptT κ (StateT σ UB) Unit :=
+  tryCatch b (fun l => if l = e then pure () else throw l)
+
+theorem wp_catchExit (e : κ) (b : ExceptT κ (StateT σ UB) Unit) (Q : Unit → σ → Prop)
+    (E : (κ → σ → Prop) × EStack⟨⟩) (s : σ) :
+    wp (catchExit e b) Q E s = wp b Q (fun l t => if l = e then Q () t else E.1 l t, E.2) s := by
+  have h : (fun l => wp (if l = e then pure () else throw l : ExceptT κ (StateT σ UB) Unit) Q E)
+      = fun l t => if l = e then Q () t else E.1 l t := by
+    funext l t
+    by_cases hl : l = e
+    · simp [hl, WPMonadExact.wp_pure_eq]
+    · simp [hl, BlockLoop.wp_throw]
+  rw [catchExit, BlockLoop.wp_tryCatch, h]
+
+end
+
+section
+variable {κ σ : Type} [DecidableEq κ] {CProg CVal CPred CEPosts : Type _} {ERels : Type _}
+  [Assertion CPred] [Assertion CEPosts] [WP CProg CVal CPred CEPosts]
+  [EPostsConcretization CPred (σ → Prop) CEPosts ((κ → σ → Prop) × EStack⟨⟩) ERels]
   [Heyting CPred]
 
-theorem Refinement.transport_catch {e : κ}
-    {γ₁ : Concretization CPred (σ → Prop)} {γ₂ : Concretization (σ → Prop) APred}
-    {P : CPred} {P_B : σ → Prop} {Q₁ : CVal → Unit → CPred} {Q₂ : Unit → AVal → σ → Prop}
-    {E₁ : ERels₁} {E₂ : ERels₂} {c : CProg} {b : ExceptT κ (StateT σ UB) Unit} {a : AProg}
-    {Pa : APred} {Qa : AVal → APred} {Ea : AEPosts}
-    (h₁ : ⦃P⦄ c ⪯[γ₁] b ⦃Q₁; E₁⦄)
-    (h₂ : ⦃P_B⦄ (MonadExcept.tryCatch b (fun l => if l = e then Pure.pure () else MonadExcept.throw l)) ⪯[γ₂] a ⦃Q₂; E₂⦄)
-    (ha : Triple a Pa Qa Ea) :
-    Triple c (P ⊓ γ₁.pred (P_B ⊓ γ₂.pred Pa)) (γ₁.post Q₁ (γ₂.post Q₂ Qa))
-      (EPostsConcretization.ePosts γ₁ E₁
-        ((fun l s => if l = e then γ₂.post Q₂ Qa () s
-          else (EPostsConcretization.ePosts γ₂ E₂ Ea : (κ → σ → Prop) × EStack⟨⟩).1 l s,
-         (EPostsConcretization.ePosts γ₂ E₂ Ea : (κ → σ → Prop) × EStack⟨⟩).2) :
-          (κ → σ → Prop) × EStack⟨⟩)) := by
-  have hb := h₂.transport ha
-  refine h₁.transport ⟨fun s hs => ?_⟩
-  have h := hb.le_wp s hs
-  rw [BlockLoop.wp_tryCatch] at h
-  refine WP.wp_monotone_epost (x := b) ?_ s h
-  refine Prod.mk_le _ _ _ (fun l t ht => ?_) PartialOrder.rel_refl
-  by_cases hl : l = e
-  · subst hl
-    simpa [WPMonadExact.wp_pure_eq] using ht
-  · simpa [hl, BlockLoop.wp_throw] using ht
+theorem Refinement.transport_catchExit {e : κ} {γ : Concretization CPred (σ → Prop)}
+    {P : CPred} {Q : CVal → Unit → CPred} {E : ERels} {c : CProg} {b : ExceptT κ (StateT σ UB) Unit}
+    {Pb : σ → Prop} {Qb : Unit → σ → Prop} {Eb : (κ → σ → Prop) × EStack⟨⟩}
+    (h : ⦃P⦄ c ⪯[γ] b ⦃Q; E⦄) (hb : Triple (catchExit e b) Pb Qb Eb) :
+    Triple c (P ⊓ γ.pred Pb) (γ.post Q Qb)
+      (EPostsConcretization.ePosts γ E
+        ((fun l t => if l = e then Qb () t else Eb.1 l t, Eb.2) : (κ → σ → Prop) × EStack⟨⟩)) :=
+  h.transport ⟨fun s hs => (wp_catchExit e b Qb Eb s).mp (hb.le_wp s hs)⟩
 
 end
 

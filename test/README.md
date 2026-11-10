@@ -65,6 +65,7 @@ tests fail.
 | `Regress/MixedHole` (`nestedArg`) | a hole applied to a nested pair `(a₁, (a₂, a₃))` was not inverted: only the outer fields were variables. `structPaths` now gives each variable its chain of projections |
 | `Regress/MixedHole` | a hole `?fa () a` or `?fa () (a₁, a₂)` was not filled. The loop rules now take `fa : βa → …`, so the remaining source is a tuple loop value, which core's `Prod.forall_intro` splits after the body hole exists (`?fa (a₁, a₂)`) |
 | `Regress/BlockLoop` | the block loop over a table of blocks: `cfgLoop_header` at a two-block loop and at a header with two back edges; `sym_simp_def` applies `cfgLoop_header` at every label and pushes each header's handler to the literal throws: a chain of jumps evaluates to its last jump, a cycle keeps one `repeat'` loop, and an outer header's handler crosses an inner loop by `tryCatch_forIn_bind`, whose `ThrowsOnly` premise needs `maxDischargeDepth` 16 in `sym_simp_def` |
+| `Regress/CatchExit` | the exit catch at the top of a chain: `ascend_def` refines a concrete block program to an abstract one, a triple about `catchExit` of the abstract program follows from `wp_catchExit`, and `Refinement.transport_catchExit` turns it into a triple about the concrete program whose exception postcondition at the exit is the caught program's return postcondition |
 
 Past problems that a test here does not pin:
 - The kernel unfolds `Bind.bind` chains when a rule premise applies a pattern variable under `>>=`

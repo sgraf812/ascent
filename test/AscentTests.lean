@@ -26,3 +26,4 @@ import AscentTests.Regress.MixedHole
 import AscentTests.Regress.ExistsHole
 import AscentTests.Regress.GuardConsequence
 import AscentTests.Regress.BlockLoop
+import AscentTests.Regress.CatchExit

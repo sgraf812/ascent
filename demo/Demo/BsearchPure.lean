@@ -169,10 +169,10 @@ theorem bsearch_correct {A key : BitVec 64} {n : Nat}
           (t.regs.get64 .rax = -1 ∧ ∀ j < n, (words 8 64 (s.push64 ra).dmem A n).toArray[j]! ≠ key))) := by
   have hs : IntSorted (words 8 64 (s.push64 ra).dmem A n).toArray n := hsorted
   clear hsorted
-  have h := Refinement.transport_catch (e := CfgLabel.exit) (bsearchT.refines s ra)
-    (bsearchR.eq.symm ▸ bsearchR_refines_Arr (A := A) (key := key) (rax := (s.push64 ra).regs.get64 .rax)
-      (rsp := (s.push64 ra).regs.get64 .rsp) (a := (words 8 64 (s.push64 ra).dmem A n).toArray))
-    (bsearchArr_mem_spec key n _ hs (size_words_toArray _ _ _))
+  have h := Refinement.transport_catchExit (bsearchT.refines s ra)
+    (bsearchR.eq.symm ▸ (bsearchR_refines_Arr (A := A) (key := key) (rax := (s.push64 ra).regs.get64 .rax)
+      (rsp := (s.push64 ra).regs.get64 .rsp) (a := (words 8 64 (s.push64 ra).dmem A n).toArray)).transport
+      (bsearchArr_mem_spec key n _ hs (size_words_toArray _ _ _)))
   refine ⟨fun t ht => WP.wp_monotone (x := bsearch) (fun _ _ _ => trivial) ?_ t (h.le_wp t (by grind))⟩
   intro a t hE
   grind
