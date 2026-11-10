@@ -73,6 +73,13 @@ theorem condState_true (x y : BlockM σ β) : condState (fun _ => true) x y = x 
 
 theorem condState_false (x y : BlockM σ β) : condState (fun _ => false) x y = y := rfl
 
+theorem modifyIf_true_bind_condState (f : σ → σ) (c : σ → Bool) (x y : BlockM σ β) :
+    (AInstr.modifyIf (fun _ => True) f >>= fun _ => condState c x y)
+      = condState (fun st => c (f st)) (AInstr.modifyIf (fun _ => True) f >>= fun _ => x)
+          (AInstr.modifyIf (fun _ => True) f >>= fun _ => y) := by
+  apply BlockM.ext_wp <;> intro Q E s <;>
+    simp only [WPMonadExact.wp_bind_eq, AInstr.wp_modifyIf, wp_condState] <;> split <;> simp_all
+
 theorem tryCatch_condState (c : σ → Bool) (x y : BlockM σ β) (h : CfgLabel → BlockM σ β) :
     tryCatch (condState c x y) h = condState c (tryCatch x h) (tryCatch y h) := by
   apply BlockM.ext_wp <;> intro Q E s <;>
@@ -189,6 +196,13 @@ theorem forIn_bind_exitIf {α β : Type} (b : β) (x : BlockM σ α) (g : σ →
       = x >>= fun _ => AInstr.exitIf g h l := by
   rw [FixLoop.forIn_eq, bind_assoc]
   simp only [AInstr.exitIf_bind]
+
+theorem forIn_bind_bind_exitIf {α γ β : Type} (b : β) (x : BlockM σ α) (y : BlockM σ γ) (g : σ → Prop)
+    (h : σ → σ) (l : CfgLabel) :
+    FixLoop.mk.forIn b (fun _ _ => x >>= fun _ => y >>= fun _ => (AInstr.exitIf g h l : BlockM σ (ForInStep β)))
+      = x >>= fun _ => y >>= fun _ => AInstr.exitIf g h l := by
+  rw [FixLoop.forIn_eq, bind_assoc]
+  simp only [bind_assoc, AInstr.exitIf_bind]
 
 theorem forIn_exitIf {β : Type} (b : β) (g : σ → Prop) (h : σ → σ) (l : CfgLabel) :
     FixLoop.mk.forIn b (fun _ _ => (AInstr.exitIf g h l : BlockM σ (ForInStep β))) = AInstr.exitIf g h l := by

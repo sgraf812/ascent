@@ -26,13 +26,15 @@ open scoped Program.WP
 /-! ## Labels of the abstract control flow
 
 A kraken block carries an optional label (`none` for the entry block) and an optional successor
-(`none` for the end of the text). `CfgLabel` names the three places of the abstract control flow:
-the entry, a labelled block, and the exit. -/
+(`none` for the end of the text). `CfgLabel` names the places of the abstract control flow: the
+entry, a labelled block, the exit, and the exit with a return value `ret v`, which a layer above the
+machine uses to carry the value of the return register out of the function. -/
 
 inductive CfgLabel where
   | entry
   | label (l : Label)
   | exit
+  | ret (v : BitVec 64)
   deriving DecidableEq, Repr
 
 def CfgLabel.ofLabel : Option Label → CfgLabel

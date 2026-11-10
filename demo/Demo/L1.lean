@@ -59,6 +59,12 @@ theorem CondCode.cmp_z_eq_true (a b : BitVec 64) : (CondCode.z.cmp a b = true) =
 theorem CondCode.cmp_nc_eq_true (a b : BitVec 64) : (CondCode.nc.cmp a b = true) = (b ≤ a) := by
   simp [CondCode.cmp, BitVec.ule_eq_decide, BitVec.le_def]
 
+theorem CondCode.cmp_be_eq_true (a b : BitVec 64) : (CondCode.be.cmp a b = true) = (a ≤ b) := by
+  simp [CondCode.cmp, BitVec.ule_eq_decide, BitVec.le_def]
+
+theorem CondCode.cmp_l_eq_true (a b : BitVec 64) : (CondCode.l.cmp a b = true) = (a.toInt < b.toInt) := by
+  simp [CondCode.cmp, BitVec.slt_iff_toInt_lt]
+
 theorem add_ofInt_neg_one (x : BitVec 64) : x + BitVec.ofInt 64 (-1 : Int64).toInt = x - 1#64 :=
   (BitVec.sub_eq_add_neg x 1#64).symm
 
@@ -836,6 +842,23 @@ variable [Host] [FunDecls] {Q : Unit → Unit → MachineData → Prop}
 open scoped Program.WP
 
 omit [Host] [FunDecls] in
+theorem CondCode.z_interp_from_result {w : Nat} (v : BitVec w) (f : StatusFlags.from_result.Remaining) :
+    CondCode.z.interp (StatusFlags.from_result v f) = (v == 0#w) := rfl
+
+omit [Host] [FunDecls] in
+theorem _root_.Reg64s.get64_set64_eq (s : Reg64s) (r : Reg64) (v : BitVec 64) :
+    (s.set64 r v).get64 r = v := by
+  simp
+
+omit [Host] [FunDecls] in
+theorem _root_.BitVec.take_eq_setWidth {w : Nat} (x : BitVec w) (n : Nat) : x.take n = x.setWidth n := by
+  apply BitVec.eq_of_getLsbD_eq; intro i hi
+  simp [BitVec.take, hi]
+
+omit [Host] [FunDecls] in
+theorem _root_.BitVec.setWidth_replaceLow_8 (x : BitVec 64) (v : BitVec 8) : (x.replaceLow v).setWidth 8 = v := by
+  rw [← BitVec.take_eq_setWidth]; exact BitVec.take_replaceLow_8 x v
+
 theorem CondCode.interp_from_result_af {w : Nat} (cc : CondCode) (v : BitVec w) (cf af of : Bool) :
     cc.interp (StatusFlags.from_result v { cf, af, of })
       = cc.interp (StatusFlags.from_result v { cf, af := false, of }) := by

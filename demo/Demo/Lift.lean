@@ -103,6 +103,10 @@ variable {w : Nat} {a b x y : BitVec w} {P₁ P₂ : Prop}
     PureRefinement (a &&& b) (x &&& y) (P₁ ∧ P₂) Eq := fun ⟨hp₁, hp₂⟩ => by
   rw [h₁ hp₁, h₂ hp₂]
 
+@[ascend_pure] theorem abs_ushiftRight (k : Nat) (h₁ : PureRefinement a x P₁ Eq) :
+    PureRefinement (a.ushiftRight k) (x.ushiftRight k) P₁ Eq := fun hp₁ => by
+  rw [h₁ hp₁]
+
 @[ascend_pure] theorem abs_cmp {cc : CondCode} {a b x y : BitVec 64}
     (h₁ : PureRefinement a x P₁ Eq) (h₂ : PureRefinement b y P₂ Eq) :
     PureRefinement (cc.cmp a b) (cc.cmp x y) (P₁ ∧ P₂) Eq := fun ⟨hp₁, hp₂⟩ => by
@@ -384,11 +388,11 @@ theorem wrp_forIn_lockstep_unit {βa : Type} (R : MachineData → βa → Prop) 
   exact ⟨hk, hw⟩
 
 @[ascend] theorem wrp_exitIf_assume {CV AV : Type} {Q : CV → AV → MachineData → Prop}
-    (a : MachineData → BitVec 64) (f : MachineData → MachineData) (l : CfgLabel) (pa : BitVec 64)
+    (a : MachineData → BitVec 64) (f : MachineData → MachineData) (l l' : CfgLabel) (pa : BitVec 64)
     (hf : ∀ t, (f t).dmem = t.dmem) :
-    (fun t => a t ≐ pa ∧ (loadOk 8 a t → E.1 l l (f t)))
+    (fun t => a t ≐ pa ∧ (loadOk 8 a t → E.1 l l' (f t)))
       ⊑ wrp (ofStateRepr MachineData.dmem) (exitIf (loadOk 8 a) f l : BlockM MachineData CV)
-          (do StateT.assume (fun m => (Mem.loadInt m pa 8).isSome = true); throw l : BlockM DataMem AV)
+          (do StateT.assume (fun m => (Mem.loadInt m pa 8).isSome = true); throw l' : BlockM DataMem AV)
           Q E := by
   refine wrp_intro fun Qa Ea => ?_
   intro t ht
@@ -400,7 +404,7 @@ theorem wrp_forIn_lockstep_unit {βa : Type} (R : MachineData → βa → Prop) 
   refine ⟨hg, ?_⟩
   simp only [EPostsConcretization.ePosts_cons]
   rw [Concretization.post_pi]
-  refine ⟨l, hk hg, ?_⟩
+  refine ⟨l', hk hg, ?_⟩
   simp only [ofStateRepr_pred, hf]
   exact he
 

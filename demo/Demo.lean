@@ -16,6 +16,7 @@ import Demo.ZipBinary
 import Demo.Memmove
 import Demo.Bsearch
 import Demo.BsearchStruct
+import Demo.BsearchL
 import Demo.MemmoveStruct
 import Demo.MemmoveL
 import Demo.MemmoveArr

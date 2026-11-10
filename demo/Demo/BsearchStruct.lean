@@ -32,8 +32,10 @@ sym_simp_def bsearchT : BlockM MachineData Unit from bsearchA
     bind_pure_unit, pure_bind, BlockLoop.throw_bind, AInstr.exitIf_bind, pure_done_eq, bind_map,
     condState_map, throw_label_step, map_exitIf, condState_exitIf_map, condState_map_exitIf,
     map_bind_exitIf, condState_bind_exitIf_map, condState_map_bind_exitIf, forIn_map_done,
-    forIn_exitIf, forIn_bind_exitIf, forIn_throw, bind_assoc, condState_true, condState_false,
-    BitVec.xor_self, BitVec.setWidth_zero]
+    forIn_exitIf, forIn_bind_exitIf, forIn_bind_bind_exitIf, forIn_throw, bind_assoc, condState_true, condState_false,
+    BitVec.xor_self, BitVec.setWidth_zero, modifyIf_true_bind_condState, setReg64_regs,
+    Reg64s.get64_set64_eq, Reg64s.get64_set64, CondCode.z_interp_from_result, BitVec.and_self,
+    BitVec.take_eq_setWidth, BitVec.setWidth_replaceLow_8]
 
 /--
 info: def Ascent.Kraken.bsearchT : BlockM MachineData Unit :=
@@ -42,13 +44,14 @@ do
   { }.forIn PUnit.unit fun x x_1 => do
       modifyIf (fun x => True) (setReg64 Reg64.r8 fun st => st.regs.rsi.toBitVec)
       let z ← peek fun st => CondCode.be.cmp st.regs.r8.toBitVec st.regs.rcx.toBitVec
-      modifyIf (fun x => True) (setReg64 Reg64.r8 fun st => st.regs.r8.toBitVec - st.regs.rcx.toBitVec)
       condState (fun x => z)
           (do
+            modifyIf (fun x => True) (setReg64 Reg64.r8 fun st => st.regs.r8.toBitVec - st.regs.rcx.toBitVec)
             modifyIf (fun x => True) (setReg64 Reg64.rax fun x => 18446744073709551615#64)
             exitIf (loadOk 8 fun st => st.regs.rsp.toBitVec) (setReg64 Reg64.rsp fun st => st.regs.rsp.toBitVec + 8#64)
                 CfgLabel.exit)
           do
+          modifyIf (fun x => True) (setReg64 Reg64.r8 fun st => st.regs.r8.toBitVec - st.regs.rcx.toBitVec)
           modifyIf (fun x => True) (setReg64 Reg64.r8 fun st => st.regs.r8.toBitVec.ushiftRight 1)
           modifyIf (fun x => True) (setReg64 Reg64.r8 fun st => st.regs.rcx.toBitVec + st.regs.r8.toBitVec)
           modifyIf (loadOk 8 (sib 8 Reg64.rdi Reg64.r8 0))
@@ -58,37 +61,17 @@ do
                 modifyIf (fun x => True) (setReg64 Reg64.r8 fun st => st.regs.r8.toBitVec + 1#64)
                 modifyIf (fun x => True) (setReg64 Reg64.r9 fun st => st.regs.r9.toBitVec.replaceLow 1#8)
                 modifyIf (fun x => True) (setReg64 Reg64.rcx fun st => st.regs.r8.toBitVec)
-                condState
-                    (fun st =>
-                      CondCode.z.interp
-                        (StatusFlags.from_result (st.regs.r9.toBitVec.take 8 &&& st.regs.r9.toBitVec.take 8)
-                          { cf := false, af := false, of := false }))
-                    (exitIf (loadOk 8 fun st => st.regs.rsp.toBitVec)
-                      (setReg64 Reg64.rsp fun st => st.regs.rsp.toBitVec + 8#64) CfgLabel.exit)
-                    (pure (ForInStep.yield PUnit.unit)))
+                pure (ForInStep.yield PUnit.unit))
               (condState (fun st => CondCode.le.cmp st.regs.r9.toBitVec st.regs.rdx.toBitVec)
                 (do
                   modifyIf (fun x => True) (setReg64 Reg64.r9 fun st => 0#64)
                   modifyIf (fun x => True) (setReg64 Reg64.rax fun st => st.regs.r8.toBitVec)
-                  condState
-                      (fun st =>
-                        CondCode.z.interp
-                          (StatusFlags.from_result (st.regs.r9.toBitVec.take 8 &&& st.regs.r9.toBitVec.take 8)
-                            { cf := false, af := false, of := false }))
-                      (exitIf (loadOk 8 fun st => st.regs.rsp.toBitVec)
-                        (setReg64 Reg64.rsp fun st => st.regs.rsp.toBitVec + 8#64) CfgLabel.exit)
-                      (pure (ForInStep.yield PUnit.unit)))
+                  exitIf (loadOk 8 fun st => st.regs.rsp.toBitVec)
+                      (setReg64 Reg64.rsp fun st => st.regs.rsp.toBitVec + 8#64) CfgLabel.exit)
                 do
                 modifyIf (fun x => True) (setReg64 Reg64.r9 fun st => st.regs.r9.toBitVec.replaceLow 1#8)
                 modifyIf (fun x => True) (setReg64 Reg64.rsi fun st => st.regs.r8.toBitVec)
-                condState
-                    (fun st =>
-                      CondCode.z.interp
-                        (StatusFlags.from_result (st.regs.r9.toBitVec.take 8 &&& st.regs.r9.toBitVec.take 8)
-                          { cf := false, af := false, of := false }))
-                    (exitIf (loadOk 8 fun st => st.regs.rsp.toBitVec)
-                      (setReg64 Reg64.rsp fun st => st.regs.rsp.toBitVec + 8#64) CfgLabel.exit)
-                    (pure (ForInStep.yield PUnit.unit)))
+                pure (ForInStep.yield PUnit.unit))
 -/
 #guard_msgs in
 #print bsearchT
