@@ -13,6 +13,7 @@ import Ascent.WRP
 import Ascent.Refinement
 import Ascent.Table
 import Ascent.BlockLoop
+import Ascent.Refinement.Catch
 import Ascent.Refinement.WhileLoop
 import Ascent.Refinement.StateRepr
 import Ascent.Refinement.Lockstep
