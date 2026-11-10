@@ -24,3 +24,7 @@ import Demo.MemmoveL
 import Demo.MemmoveArr
 import Demo.MemmovePure
 import Demo.Walkthrough
+import Demo.Swap
+import Demo.SwapStruct
+import Demo.SwapL
+import Demo.SwapSpec
