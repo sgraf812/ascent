@@ -62,6 +62,22 @@ theorem wp_store (n : Nat) (rsp a v : BitVec 64) :
       = (((Mem.loadInt m a n).isSome = true ∧ Mem.Blocks.Disjoint [(rsp, 8)] [(a, n)])
           ∧ Qu () (Mem.storeInt m a n v.toInt)) := wp_modifyIf _ _ _ _ _
 
+theorem _root_.Mem.Mapped.loadInt_isSome_single {m : DataMem} {a : BitVec 64} {n : Nat}
+    (h : Mem.Mapped [(a, n)] m) : (Mem.loadInt m a n).isSome = true :=
+  Mem.Mapped.loadInt_isSome h (Mem.Blocks.Inside.base (Nat.le_refl _))
+
+grind_pattern Mem.Mapped.loadInt_isSome_single => Mem.Mapped [(a, n)] m, Mem.loadInt m a n
+
+@[spec] theorem Spec.load (n : Nat) (a : BitVec 64) :
+    ⦃fun m => (Mem.loadInt m a n).isSome = true
+      ∧ Q (BitVec.ofInt 64 ((Mem.loadInt m a n).get! % 2 ^ (8 * n))) m⦄ load n a ⦃Q; E⦄ :=
+  ⟨fun m h => by rw [wp_load]; exact h⟩
+
+@[spec] theorem Spec.store (n : Nat) (rsp a v : BitVec 64) :
+    ⦃fun m => ((Mem.loadInt m a n).isSome = true ∧ Mem.Blocks.Disjoint [(rsp, 8)] [(a, n)])
+      ∧ Qu () (Mem.storeInt m a n v.toInt)⦄ store n rsp a v ⦃Qu; E⦄ :=
+  ⟨fun m h => by rw [wp_store]; exact h⟩
+
 theorem wp_assume_throw {α : Type} {Qα : α → DataMem → Prop} (g : DataMem → Prop) (l : CfgLabel) :
     wp (do StateT.assume g; throw l : BlockM DataMem α) Qα E m = (g m ∧ E.1 l m) := by
   rw [WPMonadExact.wp_bind_eq, ExceptT.wp_monadLift_StateT_UB, StateT.wp_assume_eq, wp_throw_block]

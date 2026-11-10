@@ -1030,3 +1030,74 @@ first jump when it is not taken. -/
 
 end
 end Ascent.Kraken.AInstr
+
+/-! ## Loads and stores through a base register
+
+`mov r64, [b + d]` and `mov [b + d], r64` address memory through one base register and a
+displacement, with no index. -/
+
+namespace Ascent.Kraken.AInstr
+
+section
+variable [Host] [FunDecls] {Q : Unit → MachineData → Prop} {E : Int64 → MachineData → Prop}
+open scoped Program.WP
+
+theorem Spec.mov_reg_mem (r b : Reg64) (d : Int64) :
+    ⦃ fun s => (Mem.loadInt s.dmem (s.regs.get64 b + BitVec.ofInt 64 d.toInt) 8).isSome = true
+        ∧ Q () { s with regs := s.regs.set64 r (BitVec.ofInt 64 (Mem.loadInt s.dmem (s.regs.get64 b + BitVec.ofInt 64 d.toInt) 8).get!) } ⦄
+      (Directive.instr (.regular .W64 .W64
+          (.mov (.reg (.low r .W64)) (.regOrMem (.mem ⟨some (.reg b), none, .int64 d⟩)))))
+    ⦃ Q; E ⦄ := by
+  refine Triple.intro fun s hpre => ?_
+  obtain ⟨hmapped, hpre⟩ := hpre
+  obtain ⟨i, hload⟩ := Option.isSome_iff_exists.mp hmapped
+  refine Program.wp_single fun _ _ _ _ hn _ => ?_
+  simp only [Directive.interp, Instr.interp, Operation.interp, Operand.interp,
+    RegOrMem.interp, MachineData.load, MachineData.set, MachineData.setReg, Reg64s.set_low_W64,
+    AddrExpr.zeroExtend_interp_base_disp, Width.bytes, hload, Effects.All, ite_true]
+  exact hn _ (by rwa [hload, Option.get!_some] at hpre)
+
+end
+
+section
+variable [Host] [FunDecls] {Q : Unit → Unit → MachineData → Prop}
+  {E : Int64 → CfgLabel → MachineData → Prop}
+open scoped Program.WP
+
+@[ascend] theorem wrp_movRegMem (r b : Reg64) (d : Int64) :
+    (fun s =>
+      let a := s.regs.get64 b + BitVec.ofInt 64 d.toInt
+      (Mem.loadInt s.dmem a 8).isSome = true →
+        Q () () { s with regs := s.regs.set64 r (BitVec.ofInt 64 (Mem.loadInt s.dmem a 8).get!) })
+      ⊑ wrp (ofStateRepr abs)
+          (Directive.instr (.regular .W64 .W64
+            (.mov (.reg (.low r .W64)) (.regOrMem (.mem ⟨some (.reg b), none, .int64 d⟩)))))
+          (modifyIf (loadOk 8 fun st => st.regs.get64 b + BitVec.ofInt 64 d.toInt)
+            (loadReg 8 r (fun st => st.regs.get64 b + BitVec.ofInt 64 d.toInt) fun w _ => w)) Q E :=
+  by
+  refine wrp_modifyIf (g := loadOk 8 fun st => st.regs.get64 b + BitVec.ofInt 64 d.toInt)
+    (fun Q E s hp hq => (Spec.mov_reg_mem (Q := Q) (E := E) r b d).le_wp s ⟨hp, hq⟩) ?_
+  intro s hg
+  exact ⟨hg, by rw [loadReg, word_eight]; rfl⟩
+
+@[ascend] theorem wrp_movMemReg (b : Reg64) (d : Int64) (rs : Reg64) :
+    (fun s =>
+      let a := s.regs.get64 b + BitVec.ofInt 64 d.toInt
+      (Mem.loadInt s.dmem a 8).isSome = true → Mem.Blocks.Disjoint [(s.regs.get64 .rsp, 8)] [(a, 8)] →
+        Q () () { s with dmem := Mem.storeInt s.dmem a 8 (s.regs.get64 rs).toInt })
+      ⊑ wrp (ofStateRepr abs)
+          (Directive.instr (.regular .W64 .W64
+            (.mov (.mem ⟨some (.reg b), none, .int64 d⟩) (.regOrMem (.reg (.low rs .W64))))))
+          (modifyIf (storeOk 8 fun st => st.regs.get64 b + BitVec.ofInt 64 d.toInt)
+            (storeWord 8 (fun st => st.regs.get64 b + BitVec.ofInt 64 d.toInt) fun st => st.regs.get64 rs))
+          Q E :=
+  by
+  refine PartialOrder.rel_trans ?_ (wrp_modifyIf
+    (g := storeOk 8 fun st => st.regs.get64 b + BitVec.ofInt 64 d.toInt)
+    (fun Q E s hp hq => (Program.WP.Spec.mov_mem_reg (Q := Q) (E := E) b d rs).le_wp s ⟨hp, hq⟩)
+    fun s hg => ⟨hg.1, rfl⟩)
+  intro s h hg
+  exact h hg.1 hg.2
+
+end
+end Ascent.Kraken.AInstr

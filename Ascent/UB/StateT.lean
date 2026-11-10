@@ -29,6 +29,10 @@ theorem StateT.wp_assume_eq {σ : Type} (g : σ → Prop) (Q : PUnit → σ → 
   simp only [StateT.assume, StateT.wp_apply_eq, StateT.run_bind, StateT.run_get, liftM, monadLift,
     MonadLift.monadLift, StateT.run_lift, UB.wp_bind_eq, UB.wp_pure_eq, UB.wp_assume_eq]
 
+@[spec] theorem StateT.Spec.assume {σ : Type} (g : σ → Prop) (Q : PUnit → σ → Prop) (E : EStack⟨⟩) :
+    ⦃fun s => g s ∧ Q () s⦄ StateT.assume g ⦃Q; E⦄ :=
+  ⟨fun s h => by rw [StateT.wp_assume_eq]; exact h⟩
+
 theorem ExceptT.wp_monadLift_StateT_UB {ε σ α : Type} (x : StateT σ UB α) (Q : α → σ → Prop)
     (E : (ε → σ → Prop) × EStack⟨⟩) (s : σ) :
     wp (monadLift x : ExceptT ε (StateT σ UB) α) Q E s = wp x Q E.2 s := by

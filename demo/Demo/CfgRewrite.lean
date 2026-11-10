@@ -173,6 +173,11 @@ theorem condState_map_exitIf {γ δ : Type} (c : σ → Bool) (g : σ → Prop) 
     condState c (f <$> x) (AInstr.exitIf g h l) = f <$> condState c x (AInstr.exitIf g h l) := by
   rw [← condState_map, map_exitIf]
 
+theorem exitIf_step (g : σ → Prop) (h : σ → σ) (l : CfgLabel) :
+    (AInstr.exitIf g h l : BlockM σ (ForInStep PUnit))
+      = ForInStep.done <$> (AInstr.exitIf g h l : BlockM σ PUnit) := by
+  rw [map_exitIf]
+
 theorem forIn_map_done (x : BlockM σ PUnit) :
     FixLoop.mk.forIn PUnit.unit (fun _ _ => ForInStep.done <$> x) = x := by
   rw [FixLoop.forIn_eq, map_eq_pure_bind, bind_assoc]
