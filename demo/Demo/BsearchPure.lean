@@ -97,8 +97,11 @@ theorem bsearchF_none (hs : ∀ i j, i ≤ j → j < a.size → a[i]!.toInt ≤ 
 
 end
 
+def IntSorted (a : Array (BitVec 64)) (hi : Nat) : Prop :=
+  ∀ i j, i ≤ j → j < hi → a[i]!.toInt ≤ a[j]!.toInt
+
 theorem encodeIdx_bsearchF {a : Array (BitVec 64)} {key : BitVec 64} {hi : Nat}
-    (hs : ∀ i j, i ≤ j → j < hi → a[i]!.toInt ≤ a[j]!.toInt) (hhi : a.size = hi) :
+    (hs : IntSorted a hi) (hhi : a.size = hi) :
     (∃ j < hi, encodeIdx (bsearchF a key 0 hi) = BitVec.ofNat 64 j ∧ a[j]! = key) ∨
       (encodeIdx (bsearchF a key 0 hi) = -1 ∧ ∀ j < hi, a[j]! ≠ key) := by
   subst hhi
@@ -195,6 +198,8 @@ theorem bsearch_correct {A key : BitVec 64} {n : Nat}
   let arr := (words 8 64 t₀.dmem A n).toArray
   let res := bsearchF arr key 0 n
   have hn := hmem.len
+  have hs : IntSorted arr n := hsorted
+  clear hsorted
   -- The pure layer, transported to the caught program.
   have hR := (bsearchR_refines_P (A := A) (key := key) (rax := t₀.regs.get64 .rax)
       (rsp := t₀.regs.get64 .rsp) (a := arr) hn).transport
@@ -213,14 +218,14 @@ theorem bsearch_correct {A key : BitVec 64} {n : Nat}
     refine WP.wp_monotone (x := bsearchT) ?_ ?_ (abs t₀) h
     · intro _ t hq
       simp only [Concretization.post_pi, Concretization.comp_pred, ofStateRepr_pred, purify_pred] at hq
-      grind only
+      grind
     · refine Prod.mk_le _ _ _ ?_ PartialOrder.rel_refl
       intro l t hl
       by_cases he : l = .exit
       · subst he
         simp only [↓reduceIte, WPMonadExact.wp_pure_eq, Concretization.post_pi, Concretization.comp_pred,
           ofStateRepr_pred, purify_pred] at hl
-        exact ⟨rfl, by grind only⟩
+        exact ⟨rfl, by grind⟩
       · simp only [he, ↓reduceIte, BlockLoop.wp_throw] at hl
         grind
   have h := (bsearchT.refines s ra).transport hT
@@ -232,7 +237,7 @@ theorem bsearch_correct {A key : BitVec 64} {n : Nat}
   refine ⟨hra, hrsp, ?_⟩
   have hsz := size_words_toArray (s.push64 ra).dmem A n
   simp only [res, arr, t₀] at hrax
-  grind only [encodeIdx_bsearchF]
+  grind
 
 end
 
