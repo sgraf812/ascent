@@ -78,6 +78,8 @@ noncomputable abbrev memToBytes (O : BitVec 64) (n : Nat) :=
 
 noncomputable abbrev machineToBytes (O : BitVec 64) (n : Nat) := (ofStateRepr abs).comp (memToBytes O n)
 
+attribute [grind =] memmoveP
+
 theorem memmoveT_refines_Arr {O S rsp : BitVec 64} {n : Nat} {a : Array (BitVec 8)} {back : Bool} :
     ⦃fun t => RegsRel [(.rdi, O), (.rsi, S), (.rdx, BitVec.ofNat 64 n), (.rsp, rsp)] t ∧
       (CondCode.nc.cmp O S ≐ back ∧ S ≐ₐ a ∧ a.size = n ∧ ArrayLayout 1 8 [(S, a)] O n [rsp] t.dmem)⦄
@@ -127,13 +129,9 @@ theorem memmove_correct {O S : BitVec 64} {n : Nat}
         ∧ words 1 8 t.dmem O n = words 1 8 (s.push64 ra).dmem S n) := by
   have h := (memmove_refines_P s ra hrdi hrsi hrdx hmem).transport
     (Pa := True) (Qa := fun _ => True) (Ea := estack⟨⟩) ⟨fun _ => trivial⟩
-  refine ⟨fun t ht => WP.wp_monotone (x := memmove) (fun _ _ _ => trivial) ?_ t
-    (h.le_wp t (by simp only [meet_apply, meet_prop_eq_and, Concretization.comp_pred,
-      ofStateRepr_pred, purify_pred]; exact ⟨ht, trivial⟩))⟩
-  rintro a t ⟨hra, hrsp, hrax, ho⟩
-  refine ⟨hra, hrsp, hrax, ?_⟩
-  have := congrArg Array.toList ho
-  simpa only [outView, List.toList_toArray, memmoveP, Id.run_pure] using this
+  refine ⟨fun t ht => WP.wp_monotone (x := memmove) (fun _ _ _ => trivial) ?_ t (h.le_wp t (by grind))⟩
+  intro a t hE
+  grind
 
 end
 

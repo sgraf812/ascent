@@ -22,6 +22,10 @@ namespace Ascent.Kraken
 def outView (w b : Nat) (p : BitVec 64) (n : Nat) (m : DataMem) : Array (BitVec b) :=
   (words w b m p n).toArray
 
+@[grind →] theorem words_eq_of_outView {w b : Nat} {p : BitVec 64} {n : Nat} {m : DataMem}
+    {l : List (BitVec b)} (h : outView w b p n m = l.toArray) : words w b m p n = l := by
+  simpa only [outView, List.toList_toArray] using congrArg Array.toList h
+
 @[simp, grind =] theorem size_outView : (outView w b p n m).size = n := by
   simp [outView, words]
 

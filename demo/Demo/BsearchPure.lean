@@ -1,3 +1,4 @@
+import Ascent.Refinement.Catch
 import Demo.BsearchArr
 import Demo.ZipPure
 
@@ -55,63 +56,34 @@ theorem bsearchF_left (h : lo < hi) (hl : ¬a[lo + (hi - lo) / 2]!.toInt < key.t
   conv => rhs; rw [bsearchF]
   simp [Nat.not_le.mpr h, hl, hle]
 
-theorem bsearchF_some : ∀ {lo hi j : Nat}, bsearchF a key lo hi = some j → lo ≤ j ∧ j < hi ∧ a[j]! = key := by
-  intro lo hi j h
-  induction lo, hi using bsearchF.induct (a := a) (key := key) with
-  | case1 lo hi hle => rw [bsearchF_of_le hle] at h; cases h
-  | case2 lo hi hlt hl ih =>
-    rw [← bsearchF_right (Nat.lt_of_not_le hlt) hl] at h
-    obtain ⟨h1, h2, h3⟩ := ih h
-    exact ⟨by omega, h2, h3⟩
-  | case3 lo hi hlt hl hle =>
-    rw [bsearchF_found (Nat.lt_of_not_le hlt) hl hle] at h
-    cases h
-    refine ⟨by omega, by omega, ?_⟩
-    exact BitVec.eq_of_toInt_eq (by omega)
-  | case4 lo hi hlt hl hle ih =>
-    rw [← bsearchF_left (Nat.lt_of_not_le hlt) hl hle] at h
-    obtain ⟨h1, h2, h3⟩ := ih h
-    exact ⟨h1, by omega, h3⟩
-
-theorem bsearchF_none (hs : ∀ i j, i ≤ j → j < a.size → a[i]!.toInt ≤ a[j]!.toInt) :
-    ∀ {lo hi : Nat}, hi ≤ a.size → bsearchF a key lo hi = none → ∀ j, lo ≤ j → j < hi → a[j]! ≠ key := by
-  intro lo hi hhi h
-  induction lo, hi using bsearchF.induct (a := a) (key := key) with
-  | case1 lo hi hle => intro j h1 h2; omega
-  | case2 lo hi hlt hl ih =>
-    rw [← bsearchF_right (Nat.lt_of_not_le hlt) hl] at h
-    intro j h1 h2 hj
-    by_cases hm : lo + (hi - lo) / 2 + 1 ≤ j
-    · exact ih hhi h j hm h2 hj
-    · have := hs j (lo + (hi - lo) / 2) (by omega) (by omega)
-      rw [hj] at this; omega
-  | case3 lo hi hlt hl hle =>
-    rw [bsearchF_found (Nat.lt_of_not_le hlt) hl hle] at h; cases h
-  | case4 lo hi hlt hl hle ih =>
-    rw [← bsearchF_left (Nat.lt_of_not_le hlt) hl hle] at h
-    intro j h1 h2 hj
-    by_cases hm : j < lo + (hi - lo) / 2
-    · exact ih (by omega) h j h1 hm hj
-    · have := hs (lo + (hi - lo) / 2) j (by omega) (by omega)
-      rw [hj] at this; omega
-
 end
 
 def IntSorted (a : Array (BitVec 64)) (hi : Nat) : Prop :=
   ∀ i j, i ≤ j → j < hi → a[i]!.toInt ≤ a[j]!.toInt
 
-theorem encodeIdx_bsearchF {a : Array (BitVec 64)} {key : BitVec 64} {hi : Nat}
-    (hs : IntSorted a hi) (hhi : a.size = hi) :
-    (∃ j < hi, encodeIdx (bsearchF a key 0 hi) = BitVec.ofNat 64 j ∧ a[j]! = key) ∨
-      (encodeIdx (bsearchF a key 0 hi) = -1 ∧ ∀ j < hi, a[j]! ≠ key) := by
-  subst hhi
-  cases h : bsearchF a key 0 a.size with
-  | none => exact Or.inr ⟨rfl, fun j hj => bsearchF_none hs (Nat.le_refl _) h j (Nat.zero_le j) hj⟩
-  | some j =>
-    obtain ⟨-, h2, h3⟩ := bsearchF_some h
-    exact Or.inl ⟨j, h2, rfl, h3⟩
+theorem IntSorted.le_of_le {a : Array (BitVec 64)} {hi i j : Nat} (hs : IntSorted a hi) (hij : i ≤ j)
+    (hj : j < hi) : a[i]!.toInt ≤ a[j]!.toInt :=
+  hs i j hij hj
 
-grind_pattern encodeIdx_bsearchF => encodeIdx (bsearchF a key 0 hi)
+grind_pattern IntSorted.le_of_le => IntSorted a hi, a[i]!, a[j]!
+
+theorem bsearchArr_mem_spec (key : BitVec 64) (n : Nat) (a : Array (BitVec 64)) (hs : IntSorted a n)
+    (ha : a.size = n) :
+    ⦃fun _ => True⦄ bsearchArr key n a
+      ⦃fun o _ => (∃ j < n, encodeIdx o = BitVec.ofNat 64 j ∧ a[j]! = key) ∨
+          (encodeIdx o = -1 ∧ ∀ j < n, a[j]! ≠ key);
+        (fun (_ : CfgLabel) (_ : Unit) => False, estack⟨⟩)⦄ := by
+  vcgen [bsearchArr]
+    invariants
+    · WhileInvariant.mk fun (done : Bool) (iko : Nat × Nat × Option Nat) (_ : Unit) =>
+        (done = false → iko.1 ≤ iko.2.1 ∧ iko.2.1 ≤ n ∧ (∀ j < iko.1, a[j]!.toInt < key.toInt) ∧
+          (∀ j, iko.2.1 ≤ j → j < n → key.toInt < a[j]!.toInt)) ∧
+        (done = true → (∃ j < n, encodeIdx iko.2.2 = BitVec.ofNat 64 j ∧ a[j]! = key) ∨
+          (encodeIdx iko.2.2 = -1 ∧ ∀ j < n, a[j]! ≠ key))
+    · Variant.ofMeasure fun (iko : Nat × Nat × Option Nat) => iko.2.1 - iko.1
+    simp [Variant.evalsBelow_ofMeasure_nat]
+    with finish
+
 
 attribute [local grind =] bsearchF_of_le bsearchF_found bsearchF_right bsearchF_left in
 theorem bsearchArr_spec (key : BitVec 64) (n : Nat) (a : Array (BitVec 64)) :
@@ -159,23 +131,24 @@ attribute [grind →] SearchWords.len SearchWords.map SearchWords.ret
 @[grind =] theorem toList_words_toArray (m : DataMem) (p : BitVec 64) (n : Nat) :
     (words 8 64 m p n).toArray.toList = words 8 64 m p n := rfl
 
-theorem bsearchR_refines_P {A key rax rsp : BitVec 64} {n : Nat} {a : Array (BitVec 64)}
-    (hn : n < 2 ^ 61) :
+theorem bsearchR_refines_Arr {A key rax rsp : BitVec 64} {n : Nat} {a : Array (BitVec 64)} :
     ⦃fun t => RegsRel [(.rdi, A), (.rsi, BitVec.ofNat 64 n), (.rdx, key), (.rax, rax), (.rsp, rsp)] t ∧
-      (A ≐ₐ a ∧ a.size = n ∧ n < 2 ^ 61 ∧ words 8 64 t.dmem A a.size = a.toList ∧
-        Mem.Mapped [(A, 8 * a.size)] t.dmem ∧ (Mem.loadInt t.dmem rsp 8).isSome = true)⦄
-      bsearchR ⪯[((ofStateRepr MachineData.dmem).comp (ofStateRepr (fun _ : DataMem => ()))).comp (purify Unit)]
-      (bsearchP key n a)
-      ⦃fun _ o t => t.regs.get64 .rax = encodeIdx o; (fun _ _ => False, estack⟨⟩)⦄ := by
-  have hArr : ⦃fun t => RegsRel [(.rdi, A), (.rsi, BitVec.ofNat 64 n), (.rdx, key), (.rax, rax), (.rsp, rsp)] t ∧
       (A ≐ₐ a ∧ a.size = n ∧ n < 2 ^ 61 ∧ words 8 64 t.dmem A a.size = a.toList ∧
         Mem.Mapped [(A, 8 * a.size)] t.dmem ∧ (Mem.loadInt t.dmem rsp 8).isSome = true)⦄
       bsearchR ⪯[(ofStateRepr MachineData.dmem).comp (ofStateRepr (fun _ : DataMem => ()))]
       (bsearchArr key n a)
       ⦃fun _ o t => t.regs.get64 .rax = encodeIdx o; (fun l l' _ => l = l', estack⟨⟩)⦄ :=
-    Refinement.comp_le (by grind) (by grind) (by grind) (bsearchArr.refines A key rax rsp n a)
-      ((bsearchL.refines A (BitVec.ofNat 64 n) key rax rsp).weaken fun t h => h.1)
-  exact Refinement.comp_le (by grind) (by grind) (by grind) (bsearchP.refines key n a) hArr
+  Refinement.comp_le (by grind) (by grind) (by grind) (bsearchArr.refines A key rax rsp n a)
+    ((bsearchL.refines A (BitVec.ofNat 64 n) key rax rsp).weaken fun t h => h.1)
+
+theorem bsearchR_refines_P {A key rax rsp : BitVec 64} {n : Nat} {a : Array (BitVec 64)} :
+    ⦃fun t => RegsRel [(.rdi, A), (.rsi, BitVec.ofNat 64 n), (.rdx, key), (.rax, rax), (.rsp, rsp)] t ∧
+      (A ≐ₐ a ∧ a.size = n ∧ n < 2 ^ 61 ∧ words 8 64 t.dmem A a.size = a.toList ∧
+        Mem.Mapped [(A, 8 * a.size)] t.dmem ∧ (Mem.loadInt t.dmem rsp 8).isSome = true)⦄
+      bsearchR ⪯[((ofStateRepr MachineData.dmem).comp (ofStateRepr (fun _ : DataMem => ()))).comp (purify Unit)]
+      (bsearchP key n a)
+      ⦃fun _ o t => t.regs.get64 .rax = encodeIdx o; (fun _ _ => False, estack⟨⟩)⦄ :=
+  Refinement.comp_le (by grind) (by grind) (by grind) (bsearchP.refines key n a) bsearchR_refines_Arr
 
 section
 variable [Host] [FunDecls] [Embeds bsearch] (s : MachineData) (ra : Int64)
@@ -194,49 +167,14 @@ theorem bsearch_correct {A key : BitVec 64} {n : Nat}
       (fun a t => a = ra ∧ t.regs.get64 .rsp = s.regs.get64 .rsp ∧
         ((∃ j < n, t.regs.get64 .rax = BitVec.ofNat 64 j ∧ (words 8 64 (s.push64 ra).dmem A n).toArray[j]! = key) ∨
           (t.regs.get64 .rax = -1 ∧ ∀ j < n, (words 8 64 (s.push64 ra).dmem A n).toArray[j]! ≠ key))) := by
-  let t₀ := s.push64 ra
-  let arr := (words 8 64 t₀.dmem A n).toArray
-  let res := bsearchF arr key 0 n
-  have hn := hmem.len
-  have hs : IntSorted arr n := hsorted
+  have hs : IntSorted (words 8 64 (s.push64 ra).dmem A n).toArray n := hsorted
   clear hsorted
-  -- The pure layer, transported to the caught program.
-  have hR := (bsearchR_refines_P (A := A) (key := key) (rax := t₀.regs.get64 .rax)
-      (rsp := t₀.regs.get64 .rsp) (a := arr) hn).transport
-    (Pa := True) (Qa := fun o => o = res) (Ea := estack⟨⟩) ⟨fun _ => by rw [bsearchP, WPMonadExact.wp_pure_eq]⟩
-  -- The caught program returns where the structured program throws `exit`.
-  have hT : Triple bsearchT (fun t => t = abs t₀) (fun _ t => t.regs.get64 .rax = encodeIdx res)
-      (fun l t => l = .exit ∧ t.regs.get64 .rax = encodeIdx res, estack⟨⟩) := by
-    refine ⟨fun t ht => ?_⟩
-    subst ht
-    have h := hR.le_wp (abs t₀) (by
-      clear hR
-      simp only [meet_apply, meet_prop_eq_and, Concretization.comp_pred, ofStateRepr_pred, purify_pred]
-      refine ⟨⟨?_, ?_⟩, trivial⟩ <;> grind)
-    clear hR
-    rw [← bsearchR.eq, BlockLoop.wp_tryCatch] at h
-    refine WP.wp_monotone (x := bsearchT) ?_ ?_ (abs t₀) h
-    · intro _ t hq
-      simp only [Concretization.post_pi, Concretization.comp_pred, ofStateRepr_pred, purify_pred] at hq
-      grind
-    · refine Prod.mk_le _ _ _ ?_ PartialOrder.rel_refl
-      intro l t hl
-      by_cases he : l = .exit
-      · subst he
-        simp only [↓reduceIte, WPMonadExact.wp_pure_eq, Concretization.post_pi, Concretization.comp_pred,
-          ofStateRepr_pred, purify_pred] at hl
-        exact ⟨rfl, by grind⟩
-      · simp only [he, ↓reduceIte, BlockLoop.wp_throw] at hl
-        grind
-  have h := (bsearchT.refines s ra).transport hT
-  refine ⟨fun t ht => WP.wp_monotone (x := bsearch) (fun _ _ _ => trivial) ?_ t
-    (h.le_wp t (by simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred]; exact ⟨ht, ht ▸ rfl⟩))⟩
+  have h := Refinement.transport_catch (e := CfgLabel.exit) (bsearchT.refines s ra)
+    (bsearchR.eq.symm ▸ bsearchR_refines_Arr (A := A) (key := key) (rax := (s.push64 ra).regs.get64 .rax)
+      (rsp := (s.push64 ra).regs.get64 .rsp) (a := (words 8 64 (s.push64 ra).dmem A n).toArray))
+    (bsearchArr_mem_spec key n _ hs (size_words_toArray _ _ _))
+  refine ⟨fun t ht => WP.wp_monotone (x := bsearch) (fun _ _ _ => trivial) ?_ t (h.le_wp t (by grind))⟩
   intro a t hE
-  simp only [ePosts_ret, Concretization.post_pi, ofStateRepr_pred, RetRel_eq, abs_regs] at hE
-  obtain ⟨_, ⟨hra, -, hrsp⟩, -, hrax⟩ := hE
-  refine ⟨hra, hrsp, ?_⟩
-  have hsz := size_words_toArray (s.push64 ra).dmem A n
-  simp only [res, arr, t₀] at hrax
   grind
 
 end

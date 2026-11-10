@@ -63,11 +63,9 @@ theorem zipWithAddBinary_correct (hasm : Binary.Assembles zipWithAdd zipWithAddB
   let _ : Embeds zipWithAdd := hasm.embeds
   have h := (zipWithAddBinary_refines_P s ra hasm hrdi hrsi hrdx hrcx hmem).transport
     (Pa := True) (Qa := fun _ => True) (Ea := estack⟨⟩) ⟨fun _ => trivial⟩
-  refine ⟨fun t ht => WP.wp_monotone (x := zipWithAddBinary) (fun _ _ _ => trivial) ?_ t
-    (h.le_wp t (by simp only [meet_apply, meet_prop_eq_and, Concretization.comp_pred,
-      ofStateRepr_pred, purify_pred]; exact ⟨ht, trivial⟩))⟩
-  rintro a t ⟨hra, hrsp, ho⟩
-  exact ⟨hra, hrsp, words_eq_zipWith_of_outView ho⟩
+  refine ⟨fun t ht => WP.wp_monotone (x := zipWithAddBinary) (fun _ _ _ => trivial) ?_ t (h.le_wp t (by grind))⟩
+  intro a t hE
+  grind
 
 end
 

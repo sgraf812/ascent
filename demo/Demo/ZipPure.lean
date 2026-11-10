@@ -80,6 +80,8 @@ ascend_def zipWithAddP (n : Nat) (a b : Array (BitVec 64)) (ha : a.size = n) (hb
 
 /-! ## The chain of refinements -/
 
+attribute [grind =] zipWithAddP
+
 noncomputable abbrev memToArray (O : BitVec 64) (n : Nat) :=
   ((ofStateRepr MachineData.dmem).comp (ofStateRepr (outView 8 64 O n))).comp (purify (Array (BitVec 64)))
 
@@ -127,7 +129,8 @@ theorem zipWithAdd_refines_P {A B O : BitVec 64} {n : Nat}
 
 /-! ## The machine code -/
 
-theorem words_eq_zipWith_of_outView {m m' : DataMem} {A B O : BitVec 64} {n : Nat}
+omit [Host] [FunDecls] [Embeds zipWithAdd] in
+@[grind →] theorem words_eq_zipWith_of_outView {m m' : DataMem} {A B O : BitVec 64} {n : Nat}
     (h : outView 8 64 O n m' = Array.zipWith (· + ·) (words 8 64 m A n).toArray (words 8 64 m B n).toArray) :
     words 8 64 m' O n = List.zipWith (· + ·) (words 8 64 m A n) (words 8 64 m B n) := by
   have := congrArg Array.toList h
@@ -146,12 +149,9 @@ theorem zipWithAdd_correct {A B O : BitVec 64} {n : Nat}
             (words 8 64 (s.push64 ra).dmem B n)) := by
   have h := (zipWithAdd_refines_P s ra hrdi hrsi hrdx hrcx hmem).transport
     (Pa := True) (Qa := fun _ => True) (Ea := estack⟨⟩) ⟨fun _ => trivial⟩
-  refine ⟨fun t ht => WP.wp_monotone (x := zipWithAdd) (fun _ _ _ => trivial) ?_ t
-    (h.le_wp t (by simp only [meet_apply, meet_prop_eq_and, Concretization.comp_pred,
-      ofStateRepr_pred, purify_pred]; exact ⟨ht, trivial⟩))⟩
-  rintro a t ⟨hra, hrsp, ho⟩
-  exact ⟨hra, hrsp, words_eq_zipWith_of_outView ho⟩
-
+  refine ⟨fun t ht => WP.wp_monotone (x := zipWithAdd) (fun _ _ _ => trivial) ?_ t (h.le_wp t (by grind))⟩
+  intro a t hE
+  grind
 end
 
 end Ascent.Kraken
