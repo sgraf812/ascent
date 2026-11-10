@@ -1,5 +1,5 @@
 diff -ruN a/Ascent/Tactic/VCGen/RuleConstruction.lean b/Ascent/Tactic/VCGen/RuleConstruction.lean
---- a/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-11-10 01:33:17.190224461 +0000
+--- a/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-11-10 01:45:18.398271073 +0000
 +++ b/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-11-08 18:28:32.064610893 +0000
 @@ -395,41 +395,65 @@
  /-! ## Split rules -/
@@ -120,9 +120,9 @@ diff -ruN a/Ascent/Tactic/VCGen/RuleConstruction.lean b/Ascent/Tactic/VCGen/Rule
    let res ← abstractMVars prf
    mkBackwardRuleFromExpr res.expr res.paramNames.toList
 diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
---- a/Ascent/Tactic/VCGen/Solve.lean	2026-11-10 01:33:17.188946473 +0000
-+++ b/Ascent/Tactic/VCGen/Solve.lean	2026-11-10 01:33:08.290159926 +0000
-@@ -393,14 +393,202 @@
+--- a/Ascent/Tactic/VCGen/Solve.lean	2026-11-10 01:45:18.397275604 +0000
++++ b/Ascent/Tactic/VCGen/Solve.lean	2026-11-10 01:45:18.320061995 +0000
+@@ -393,14 +393,210 @@
      | .noProgress => return none
    | _ => return none
  
@@ -132,8 +132,26 @@ diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
 +inductive HoleArg where
 +  | keep (x : Expr)
 +  | drop
-+  /-- The projection functions of the structure, applied to its parameters, and the fields. -/
-+  | fields (projs : Array Expr) (xs : Array Expr)
++  /-- The free variables of a structure instance, each with the projection functions, applied to
++  the structure parameters, that read it off the instance, outermost first. -/
++  | fields (paths : Array (Array Expr × Expr))
++
++partial def structPaths (x : Expr) : SymM (Option (Array (Array Expr × Expr))) := do
++  if x.isFVar then return some #[(#[], x)]
++  let .const ctor us := x.getAppFn | return none
++  let env ← getEnv
++  let some (.ctorInfo cv) := env.find? ctor | return none
++  let some info := getStructureInfo? env cv.induct | return none
++  let ps := x.getAppArgs.extract 0 cv.numParams
++  let fs := x.getAppArgs.extract cv.numParams x.getAppNumArgs
++  unless fs.size == cv.numFields && ps.all (!·.hasFVar) do return none
++  let mut paths := #[]
++  for f in info.fieldNames, a in fs do
++    let some p := getProjFnForField? env cv.induct f | return none
++    let some sub ← structPaths a | return none
++    for (ch, y) in sub do
++      paths := paths.push (#[mkAppN (.const p us) ps] ++ ch, y)
++  return some paths
 +
 +def classifyHoleArg (x : Expr) : SymM (Option HoleArg) := do
 +  if x.isFVar then return some (.keep x)
@@ -142,18 +160,7 @@ diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
 +    if ty.isConstOf ``Unit || ty.isAppOf ``PUnit || (← Sym.inferType ty).isProp then
 +      return some .drop
 +    return none
-+  let .const ctor us := x.getAppFn | return none
-+  let env ← getEnv
-+  let some (.ctorInfo cv) := env.find? ctor | return none
-+  let some info := getStructureInfo? env cv.induct | return none
-+  let ps := x.getAppArgs.extract 0 cv.numParams
-+  let fs := x.getAppArgs.extract cv.numParams x.getAppNumArgs
-+  unless fs.size == cv.numFields && fs.all (·.isFVar) && ps.all (!·.hasFVar) do return none
-+  let mut projs := #[]
-+  for f in info.fieldNames do
-+    let some p := getProjFnForField? env cv.induct f | return none
-+    projs := projs.push (mkAppN (.const p us) ps)
-+  return some (.fields projs fs)
++  return (← structPaths x).map .fields
 +
 +/-- Rewrite the hole `?h xs` whose arguments `classifyHoleArg` accepts into `?h' ys`, applied to
 +the distinct free variables `ys` of `xs`: `?h := fun x₁ … xₙ => ?h' ys'`, where `ys'` reads each
@@ -167,7 +174,7 @@ diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
 +  let ys := cls.foldl (init := #[]) fun acc c => match c with
 +    | .keep x => acc.push x
 +    | .drop => acc
-+    | .fields _ fs => acc ++ fs
++    | .fields ps => acc ++ ps.map (·.2)
 +  unless (ys.toList.map (·.fvarId!)).eraseDups.length == ys.size do return none
 +  let decl ← hole.getDecl
 +  let mut ty ← instantiateMVars decl.type
@@ -190,7 +197,8 @@ diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
 +    match c with
 +    | .keep _ => body := body.push (.bvar (n - 1 - i))
 +    | .drop => pure ()
-+    | .fields projs _ => for p in projs do body := body.push (.app p (.bvar (n - 1 - i)))
++    | .fields ps => for (ch, _) in ps do
++        body := body.push (ch.foldl (fun acc p => .app p acc) (.bvar (n - 1 - i)))
 +  hole.assign <| doms.foldr (fun (nm, d) acc => .lam nm d acc .default) (mkAppN h' body)
 +  return some (h', ys)
 +
@@ -325,7 +333,7 @@ diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
    let mut simpGoals := #[]
    for g in goals do
      match ← simpGoalTelescope g with
-@@ -465,48 +653,13 @@
+@@ -465,48 +661,13 @@
      | return none
    trace[Elab.Tactic.Do.vcgen] "Applying spec {thm.proof} for {info.prog}. Excess args: {info.excessArgs}"
    let saved ← (saveState : MetaM Meta.SavedState)
@@ -378,7 +386,7 @@ diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
    return some (.goals scope goals)
  
  /--
-@@ -583,6 +736,7 @@
+@@ -583,6 +744,7 @@
    if let some g ← rhsLet? goal rhs then return .goals scope [g]
    if let some gs ← splitLatticeOp? goal rhs then return .goals scope gs
    if let some gs ← splitForallLe? goal rhs then return .goals scope gs
@@ -387,7 +395,7 @@ diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
  
    -- Phase 4: wp decomposition. The program-shape steps below all consume one unit of fuel
 diff -ruN a/Ascent/Tactic/VCGen/Driver.lean b/Ascent/Tactic/VCGen/Driver.lean
---- a/Ascent/Tactic/VCGen/Driver.lean	2026-11-10 01:33:17.189565041 +0000
+--- a/Ascent/Tactic/VCGen/Driver.lean	2026-11-10 01:45:18.397781646 +0000
 +++ b/Ascent/Tactic/VCGen/Driver.lean	2026-11-09 14:36:34.738166648 +0000
 @@ -9,6 +9,7 @@
  import Lean.Elab.Tactic.VCGen.Context

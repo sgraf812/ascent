@@ -39,7 +39,7 @@ tests fail.
 | D6, closed arguments | a hole applied to closed terms is filled by a constant function | `Regress/Commands`, `Regress/HoleScope`, `Regress/Lockstep` | yes, by disabling the closed case |
 | D6, table slots | a slot `Table.get ?tbl k` is filled by the cell of `k` | `Regress/HoleScope` | yes, by disabling the table case |
 | D6, hole scope | holes left by a rule take the context of the filled hole | `Regress/HoleScope` | yes, by disabling `restoreHoleScope` |
-| D6, mixed arguments | a hole applied to free variables, closed subsingletons and structure instances of free variables is rewritten to a hole applied to the variables | `Regress/MixedHole` | yes: the tests fail without `patternHole?` |
+| D6, mixed arguments | a hole applied to free variables, closed subsingletons and nested structure instances of free variables is rewritten to a hole applied to the variables | `Regress/MixedHole` | yes: the tests fail without `patternHole?` |
 | D2 | `wp` goals of the worklist go to core `solve` | `ForkTracer`, `Corpus/ZipL1L2` | yes, by disabling the dispatch |
 | D11 | a `Refinement` spec keeps its abstract program schematic | `AscendUnfold`, `PureRefinement`, `Regress/HoleScope` | yes, by removing the patch |
 | D12, pure refinements | `PureRefinement` goals go to their solver | `PureRefinement`, `WordAbsEngine`, `Regress/Lockstep`, `Regress/HoleScope` | yes, by disabling the dispatch |
@@ -62,6 +62,7 @@ tests fail.
 | `Regress/ExistsHole` | an existential on the right side, `∃ a, ra = a ∧ …`, had no step; it is introduced with a hole as witness |
 | `Regress/GuardConsequence` | a value rule with a guard stronger than the goal's fixed guard `True` was rejected ("the abstract value does not fit"); the guard becomes a VC |
 | `Regress/Lockstep`, `Regress/MixedHole` (`pairArg`) | the loop leaves needed rules that fix the abstract constructor (`wrp_yield`, `wrp_done`, `wrp_yield_pair`); the step relation now names the abstract step through `∃`, and a tuple witness is a tuple of holes |
+| `Regress/MixedHole` (`nestedArg`) | a hole applied to a nested pair `(a₁, (a₂, a₃))` was not inverted: only the outer fields were variables. `structPaths` now gives each variable its chain of projections |
 | `Regress/MixedHole` | a hole `?fa () a` or `?fa () (a₁, a₂)` was not filled. The loop rules now take `fa : βa → …`, so the remaining source is a tuple loop value, which core's `Prod.forall_intro` splits after the body hole exists (`?fa (a₁, a₂)`) |
 | `Regress/BlockLoop` | the block loop over a table of blocks: `cfgLoop_header` at a two-block loop and at a header with two back edges; `sym_simp_def` applies `cfgLoop_header` at every label and pushes each header's handler to the literal throws: a chain of jumps evaluates to its last jump, a cycle keeps one `repeat'` loop, and an outer header's handler crosses an inner loop by `tryCatch_forIn_bind`, whose `ThrowsOnly` premise needs `maxDischargeDepth` 16 in `sym_simp_def` |
 

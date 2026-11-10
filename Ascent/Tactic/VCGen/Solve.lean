@@ -399,8 +399,26 @@ instance whose fields are free variables contributes its fields. -/
 inductive HoleArg where
   | keep (x : Expr)
   | drop
-  /-- The projection functions of the structure, applied to its parameters, and the fields. -/
-  | fields (projs : Array Expr) (xs : Array Expr)
+  /-- The free variables of a structure instance, each with the projection functions, applied to
+  the structure parameters, that read it off the instance, outermost first. -/
+  | fields (paths : Array (Array Expr × Expr))
+
+partial def structPaths (x : Expr) : SymM (Option (Array (Array Expr × Expr))) := do
+  if x.isFVar then return some #[(#[], x)]
+  let .const ctor us := x.getAppFn | return none
+  let env ← getEnv
+  let some (.ctorInfo cv) := env.find? ctor | return none
+  let some info := getStructureInfo? env cv.induct | return none
+  let ps := x.getAppArgs.extract 0 cv.numParams
+  let fs := x.getAppArgs.extract cv.numParams x.getAppNumArgs
+  unless fs.size == cv.numFields && ps.all (!·.hasFVar) do return none
+  let mut paths := #[]
+  for f in info.fieldNames, a in fs do
+    let some p := getProjFnForField? env cv.induct f | return none
+    let some sub ← structPaths a | return none
+    for (ch, y) in sub do
+      paths := paths.push (#[mkAppN (.const p us) ps] ++ ch, y)
+  return some paths
 
 def classifyHoleArg (x : Expr) : SymM (Option HoleArg) := do
   if x.isFVar then return some (.keep x)
@@ -409,18 +427,7 @@ def classifyHoleArg (x : Expr) : SymM (Option HoleArg) := do
     if ty.isConstOf ``Unit || ty.isAppOf ``PUnit || (← Sym.inferType ty).isProp then
       return some .drop
     return none
-  let .const ctor us := x.getAppFn | return none
-  let env ← getEnv
-  let some (.ctorInfo cv) := env.find? ctor | return none
-  let some info := getStructureInfo? env cv.induct | return none
-  let ps := x.getAppArgs.extract 0 cv.numParams
-  let fs := x.getAppArgs.extract cv.numParams x.getAppNumArgs
-  unless fs.size == cv.numFields && fs.all (·.isFVar) && ps.all (!·.hasFVar) do return none
-  let mut projs := #[]
-  for f in info.fieldNames do
-    let some p := getProjFnForField? env cv.induct f | return none
-    projs := projs.push (mkAppN (.const p us) ps)
-  return some (.fields projs fs)
+  return (← structPaths x).map .fields
 
 /-- Rewrite the hole `?h xs` whose arguments `classifyHoleArg` accepts into `?h' ys`, applied to
 the distinct free variables `ys` of `xs`: `?h := fun x₁ … xₙ => ?h' ys'`, where `ys'` reads each
@@ -434,7 +441,7 @@ def patternHole? (hole : MVarId) (xs : Array Expr) : VCGenM (Option (Expr × Arr
   let ys := cls.foldl (init := #[]) fun acc c => match c with
     | .keep x => acc.push x
     | .drop => acc
-    | .fields _ fs => acc ++ fs
+    | .fields ps => acc ++ ps.map (·.2)
   unless (ys.toList.map (·.fvarId!)).eraseDups.length == ys.size do return none
   let decl ← hole.getDecl
   let mut ty ← instantiateMVars decl.type
@@ -457,7 +464,8 @@ def patternHole? (hole : MVarId) (xs : Array Expr) : VCGenM (Option (Expr × Arr
     match c with
     | .keep _ => body := body.push (.bvar (n - 1 - i))
     | .drop => pure ()
-    | .fields projs _ => for p in projs do body := body.push (.app p (.bvar (n - 1 - i)))
+    | .fields ps => for (ch, _) in ps do
+        body := body.push (ch.foldl (fun acc p => .app p acc) (.bvar (n - 1 - i)))
   hole.assign <| doms.foldr (fun (nm, d) acc => .lam nm d acc .default) (mkAppN h' body)
   return some (h', ys)
 
