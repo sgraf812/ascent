@@ -1,7 +1,11 @@
 import Driver
 import Cases.WordAbsVal
 
-/-! # Guarded word abstraction through `@[ascend_pure]` rules, engine measurements -/
+/-! # Guarded word abstraction through `@[ascend_pure]` rules, engine measurements
+
+In the right-nested family the first step adds the two literals `7 + 7`; the value solver works on
+the simp normal form `14` of that sum, so the expected program starts with the unguarded value
+`wordVal 14`. -/
 
 open Lean Meta Elab Std.WP Lean.Order Ascent AscendBenchVal
 
@@ -22,8 +26,9 @@ def runEngine (sizes : List Nat) (showSynth := false) : MetaM Unit := do
 def mkStmtR (n : Nat) : MetaM Term :=
   `(⦃(⊤ : Prop)⦄ (chainCR 7 7 $(quote n)) ⪯[γw] (?_ : UB Int) ⦃(⌜FunRel wordVal · ·⌝)⦄)
 
-def mkExpectedR (n : Nat) : MetaM Term :=
-  `(chainAR 7 (wordVal 7) $(quote n))
+def mkExpectedR : Nat → MetaM Term
+  | 0 => `(chainAR 7 (wordVal 7) 0)
+  | n + 1 => `(do let r ← (do UB.assume True; pure (wordVal 14)); chainAR 7 r $(quote n))
 
 def runEngineR (sizes : List Nat) (showSynth := false) : MetaM Unit := do
   IO.println "=== WordAbsVal right-nested ==="
