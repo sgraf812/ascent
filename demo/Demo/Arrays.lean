@@ -312,10 +312,10 @@ theorem cell_pred {w j : Nat} (p : BitVec 64) (hj : 0 < j) :
   exact hq
 
 @[ascend default + 1] theorem wrp_assume_throw {CV AV : Type} {Q : CV → AV → DataMem → Prop}
-    (g : DataMem → Prop) (l l' : CfgLabel) :
-    (fun m => g m ∧ E.1 l l' m)
+    (g : DataMem → Prop) (l : CfgLabel) :
+    (fun m => g m ∧ E.1 l l m)
       ⊑ wrp (ofStateRepr view) (do StateT.assume g; throw l : BlockM DataMem CV)
-          (throw l' : BlockM σa AV) Q E := by
+          (throw l : BlockM σa AV) Q E := by
   refine wrp_intro fun Qa Ea => ?_
   intro m hm
   simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_throw_block] at hm
@@ -324,7 +324,20 @@ theorem cell_pred {w j : Nat} (p : BitVec 64) (hj : 0 < j) :
   refine ⟨hg, ?_⟩
   simp only [EPostsConcretization.ePosts_cons]
   rw [Concretization.post_pi]
-  exact ⟨l', he, hw⟩
+  exact ⟨l, he, hw⟩
+
+@[ascend] theorem wrp_assume_skip {Q : PUnit → PUnit → DataMem → Prop} (g : DataMem → Prop) :
+    (fun m => g m ∧ Q () () m)
+      ⊑ wrp (ofStateRepr view) (do StateT.assume g : BlockM DataMem PUnit)
+          (pure () : BlockM σa PUnit) Q E := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro m hm
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, WPMonadExact.wp_pure_eq] at hm
+  obtain ⟨⟨hg, hq⟩, hw⟩ := hm
+  simp only [ExceptT.wp_monadLift_StateT_UB, StateT.wp_assume_eq]
+  refine ⟨hg, ?_⟩
+  rw [Concretization.post_pi]
+  exact ⟨(), hq, hw⟩
 
 end
 

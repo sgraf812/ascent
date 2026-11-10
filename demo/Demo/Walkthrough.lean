@@ -300,48 +300,56 @@ fun a => pure a
 through several blocks, and `cfgLoop_header` makes the loop header `LBB0_3` a `repeat'`. A byte register
 `r9b` tells the copies of the block `LBB0_2` whether to continue; moving each test before the register
 writes that precede it gives the test the literal value of `r9b`, and the test folds away. The
-registers become a loop over the pair of bounds, and the result leaves through `ret v` with `v` the
-value of `rax`: -/
+registers become a loop over the bounds and the result register `rax`. An early return of the
+machine code becomes a `break` that leaves the loop with `rax` set, and the function returns `rax`
+after the loop: -/
 
 /--
-info: def Ascent.Kraken.bsearchL : BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → BlockM DataMem Unit :=
-fun rdi rsi rdx rsp => do
-  let mut a := (0#64, rsi)
+info: def Ascent.Kraken.bsearchL : BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → BlockM DataMem (BitVec 64) :=
+fun rdi rsi rdx rax rsp => do
+  let mut a := (0#64, rsi, rax)
   repeat'
-    if a.snd ≤ a.fst then 
+    if a.snd.fst ≤ a.fst then 
       assume fun m => (Mem.loadInt m rsp 8).isSome = true
-      throw (CfgLabel.ret 18446744073709551615#64)
+      a := (a.fst, a.snd.fst, 18446744073709551615#64)
+      break
     else
-      let x ← load 8 (rdi + (a.fst + (a.snd - a.fst).ushiftRight 1) * 8#64)
+      let x ← load 8 (rdi + (a.fst + (a.snd.fst - a.fst).ushiftRight 1) * 8#64)
       if x.toInt < rdx.toInt then 
-        a := (a.fst + (a.snd - a.fst).ushiftRight 1 + 1#64, a.snd)
+        a := (a.fst + (a.snd.fst - a.fst).ushiftRight 1 + 1#64, a.snd.fst, a.snd.snd)
       else
         if x.toInt ≤ rdx.toInt then 
           assume fun m => (Mem.loadInt m rsp 8).isSome = true
-          throw (CfgLabel.ret (a.fst + (a.snd - a.fst).ushiftRight 1))
+          a := (a.fst, a.snd.fst, a.fst + (a.snd.fst - a.fst).ushiftRight 1)
+          break
         else
-          a := (a.fst, a.fst + (a.snd - a.fst).ushiftRight 1)
+          a := (a.fst, a.fst + (a.snd.fst - a.fst).ushiftRight 1, a.snd.snd)
+  pure a.snd.snd
 -/
 #guard_msgs in
 #print bsearchL
 
-/-! Over the array of words, the bounds are numbers `lo ≤ hi ≤ n`: -/
+/-! Over the array of words, the bounds are numbers `lo ≤ hi ≤ n`, and `decodeIdx` reads the result
+word as an index, with `-1` for `none`: -/
 
 /--
-info: def Ascent.Kraken.bsearchArr : BitVec 64 → Nat → Array (BitVec 64) → BlockM Unit Unit :=
-fun key n a => do
-  let mut a_1 := (0, n)
+info: def Ascent.Kraken.bsearchArr : BitVec 64 → BitVec 64 → Nat → Array (BitVec 64) → BlockM Unit (Option Nat) :=
+fun key rax n a => do
+  let mut a_1 := (0, n, rax)
   repeat'
-    if a_1.snd ≤ a_1.fst then 
-      throw (CfgLabel.ret 18446744073709551615#64)
+    if a_1.snd.fst ≤ a_1.fst then 
+      a_1 := (a_1.fst, a_1.snd.fst, 18446744073709551615#64)
+      break
     else
-      if a[a_1.fst + (a_1.snd - a_1.fst) / 2]!.toInt < key.toInt then 
-        a_1 := (a_1.fst + (a_1.snd - a_1.fst) / 2 + 1, a_1.snd)
+      if a[a_1.fst + (a_1.snd.fst - a_1.fst) / 2]!.toInt < key.toInt then 
+        a_1 := (a_1.fst + (a_1.snd.fst - a_1.fst) / 2 + 1, a_1.snd.fst, a_1.snd.snd)
       else
-        if a[a_1.fst + (a_1.snd - a_1.fst) / 2]!.toInt ≤ key.toInt then 
-          throw (CfgLabel.ret (BitVec.ofNat 64 (a_1.fst + (a_1.snd - a_1.fst) / 2)))
+        if a[a_1.fst + (a_1.snd.fst - a_1.fst) / 2]!.toInt ≤ key.toInt then 
+          a_1 := (a_1.fst, a_1.snd.fst, BitVec.ofNat 64 (a_1.fst + (a_1.snd.fst - a_1.fst) / 2))
+          break
         else
-          a_1 := (a_1.fst, a_1.fst + (a_1.snd - a_1.fst) / 2)
+          a_1 := (a_1.fst, a_1.fst + (a_1.snd.fst - a_1.fst) / 2, a_1.snd.snd)
+  pure (decodeIdx a_1.snd.snd)
 -/
 #guard_msgs in
 #print bsearchArr

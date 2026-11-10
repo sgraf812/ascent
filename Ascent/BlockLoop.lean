@@ -495,6 +495,58 @@ theorem tryCatch_forIn {β : Type} {h : κ} {i : β} {f : Unit → β → Except
     tryCatch (FixLoop.mk.forIn i f) (fun l' => if l' = h then y else throw l') = FixLoop.mk.forIn i f := by
   simpa only [id_map] using tryCatch_map_forIn (g := id) (y := y) hf
 
+theorem tryCatch_forIn_return {β : Type} {e : κ} {i r : β}
+    {f : Unit → β → ExceptT κ (StateT σ UB) (ForInStep β)} :
+    tryCatch (FixLoop.mk.forIn i f) (fun l => if l = e then pure r else throw l)
+      = FixLoop.mk.forIn i (fun u v =>
+          tryCatch (f u v) (fun l => if l = e then pure (ForInStep.done r) else throw l)) := by
+  haveI : Nonempty β := ⟨i⟩
+  let f' : Unit → β → ExceptT κ (StateT σ UB) (ForInStep β) := fun u v =>
+    tryCatch (f u v) (fun l => if l = e then pure (ForInStep.done r) else throw l)
+  apply ext_wp
+  · intro Q E s hw
+    rw [wp_tryCatch] at hw
+    have := FixLoop.forIn_induct (m := ExceptT κ (StateT σ UB)) f
+      (fun g => ∀ v t, wp (g v) Q (fun l => wp (if l = e then pure r else throw l : ExceptT κ (StateT σ UB) β) Q E, E.2) t →
+        wp (FixLoop.mk.forIn v f') Q E t)
+      (admissible_pi _ fun v => admissible_pi _ fun t =>
+        admissible_apply (fun _ u => wp u Q _ t → _) v (admissible_wp_imp _ _ t _))
+    refine this ?_ i s hw
+    intro g ih v t hv
+    rw [FixLoop.step, WPMonadExact.wp_bind_eq] at hv
+    rw [FixLoop.wp_forIn_eq, wp_tryCatch]
+    refine WP.wp_monotone (x := f () v) (fun x t' hx => ?_) ?_ t hv
+    · cases x with
+      | done v' => simpa only [WPMonadExact.wp_pure_eq] using hx
+      | yield v' => exact ih v' t' hx
+    · refine Prod.mk_le _ _ _ (fun l t' hl => ?_) PartialOrder.rel_refl
+      by_cases he : l = e
+      · simp only [he, ↓reduceIte, WPMonadExact.wp_pure_eq] at hl ⊢
+        exact hl
+      · simp only [he, ↓reduceIte, wp_throw] at hl ⊢
+        exact hl
+  · intro Q E s hw
+    rw [wp_tryCatch]
+    have := FixLoop.forIn_induct (m := ExceptT κ (StateT σ UB)) f'
+      (fun g => ∀ v t, wp (g v) Q E t →
+        wp (FixLoop.mk.forIn v f) Q (fun l => wp (if l = e then pure r else throw l : ExceptT κ (StateT σ UB) β) Q E, E.2) t)
+      (admissible_pi _ fun v => admissible_pi _ fun t =>
+        admissible_apply (fun _ u => wp u Q _ t → _) v (admissible_wp_imp _ _ t _))
+    refine this ?_ i s hw
+    intro g ih v t hv
+    rw [FixLoop.step, WPMonadExact.wp_bind_eq, wp_tryCatch] at hv
+    rw [FixLoop.wp_forIn_eq]
+    refine WP.wp_monotone (x := f () v) (fun x t' hx => ?_) ?_ t hv
+    · cases x with
+      | done v' => simpa only [WPMonadExact.wp_pure_eq] using hx
+      | yield v' => exact ih v' t' hx
+    · refine Prod.mk_le _ _ _ (fun l t' hl => ?_) PartialOrder.rel_refl
+      by_cases he : l = e
+      · simp only [he, ↓reduceIte, WPMonadExact.wp_pure_eq] at hl ⊢
+        exact hl
+      · simp only [he, ↓reduceIte, wp_throw] at hl ⊢
+        exact hl
+
 theorem forIn_bind_done {β : Type} (b : PUnit) (x : ExceptT κ (StateT σ UB) β) :
     FixLoop.mk.forIn b (fun _ _ => x >>= fun _ => pure (ForInStep.done PUnit.unit)) = x >>= fun _ => pure PUnit.unit := by
   rw [FixLoop.forIn_eq, bind_assoc]

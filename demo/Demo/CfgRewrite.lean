@@ -80,6 +80,13 @@ theorem modifyIf_true_bind_condState (f : σ → σ) (c : σ → Bool) (x y : Bl
   apply BlockM.ext_wp <;> intro Q E s <;>
     simp only [WPMonadExact.wp_bind_eq, AInstr.wp_modifyIf, wp_condState] <;> split <;> simp_all
 
+theorem tryCatch_exitIf_handle {α : Type} (g : σ → Prop) (f : σ → σ) (l : CfgLabel)
+    (h : CfgLabel → BlockM σ α) :
+    tryCatch (AInstr.exitIf g f l : BlockM σ α) h = AInstr.modifyIf g f >>= fun _ => h l := by
+  apply BlockM.ext_wp <;> intro Q E s <;>
+    simp only [wp_tryCatch_block, AInstr.wp_exitIf, WPMonadExact.wp_bind_eq, AInstr.wp_modifyIf] <;>
+    exact id
+
 theorem tryCatch_condState (c : σ → Bool) (x y : BlockM σ β) (h : CfgLabel → BlockM σ β) :
     tryCatch (condState c x y) h = condState c (tryCatch x h) (tryCatch y h) := by
   apply BlockM.ext_wp <;> intro Q E s <;>

@@ -220,6 +220,31 @@ theorem WordNat.cmp_be_eq {x y : BitVec 64} {i j : Nat} (hx : WordNat x i) (hy :
 
 grind_pattern WordNat.cmp_be_eq => WordNat x i, WordNat y j, CondCode.be.cmp x y
 
+@[ascend_pure high] theorem absEq_ofWordNat {x : BitVec 64} {n : Nat} (h : PureRefinement x n P₁ WordNat) :
+    PureRefinement x (BitVec.ofNat 64 n) P₁ Eq := h
+
+def encodeIdx : Option Nat → BitVec 64
+  | none => 18446744073709551615#64
+  | some j => BitVec.ofNat 64 j
+
+def decodeIdx (r : BitVec 64) : Option Nat :=
+  if r = 18446744073709551615#64 then none else some r.toNat
+
+def IdxWord (v : BitVec 64) (o : Option Nat) : Prop := v = encodeIdx o
+
+@[grind =] theorem encodeIdx_none : encodeIdx none = 18446744073709551615#64 := rfl
+@[grind =] theorem encodeIdx_some (j : Nat) : encodeIdx (some j) = BitVec.ofNat 64 j := rfl
+
+theorem encodeIdx_decodeIdx (r : BitVec 64) : encodeIdx (decodeIdx r) = r := by
+  unfold decodeIdx
+  split
+  · next h => rw [h]; rfl
+  · exact (BitVec.ofNat_toNat 64 r).trans (BitVec.setWidth_eq r)
+
+@[ascend_pure] theorem absIdx (h : PureRefinement x r P₁ Eq) :
+    PureRefinement x (decodeIdx r) P₁ IdxWord := fun hp => by
+  rw [IdxWord, encodeIdx_decodeIdx, h hp]
+
 @[ascend_pure] theorem absN_ushiftRight (k : Nat) (h : PureRefinement a n P₁ WordNat) :
     PureRefinement (a.ushiftRight k) (n / 2 ^ k) (P₁ ∧ n < 2 ^ 64) WordNat :=
   fun ⟨hp, hn⟩ => by
@@ -330,6 +355,14 @@ theorem wrp_forIn_lockstep_bind_unit {βc βa : Type} (R : βc → σc → βa �
   rw [Concretization.post_pi]
   exact ⟨(), hq, hqa⟩
 
+@[ascend] theorem wrp_pure_unit_post {γ : Type} {Q : PUnit → γ → σc → Prop} (c : PUnit) (b : γ) :
+    (fun t => Q c b t) ⊑ wrp (ofStateRepr view) (pure c : BlockM σc PUnit) (pure b : BlockM σa γ) Q E :=
+  wrp_pure (Q := Q) c b
+
+@[ascend 50] theorem wrp_pure_post {γ δ : Type} {Q : γ → δ → σc → Prop} (c : γ) (b : δ) :
+    (fun t => Q c b t) ⊑ wrp (ofStateRepr view) (pure c : BlockM σc γ) (pure b : BlockM σa δ) Q E :=
+  wrp_pure (Q := Q) c b
+
 @[ascend low] theorem wrp_pure_val {γ : Type} {Q : γ → γ → σc → Prop} (c b : γ) (P : Prop) :
     (fun t => PureRefinement c b P Eq ∧ P ∧ ∀ z, c ≐ z → Q c z t)
       ⊑ wrp (ofStateRepr view) (pure c : BlockM σc γ) (pure b : BlockM σa γ) Q E := by
@@ -411,11 +444,11 @@ theorem wrp_forIn_lockstep_unit {βa : Type} (R : MachineData → βa → Prop) 
   exact ⟨hk, hw⟩
 
 @[ascend] theorem wrp_exitIf_assume {CV AV : Type} {Q : CV → AV → MachineData → Prop}
-    (a : MachineData → BitVec 64) (f : MachineData → MachineData) (l l' : CfgLabel) (pa : BitVec 64)
+    (a : MachineData → BitVec 64) (f : MachineData → MachineData) (l : CfgLabel) (pa : BitVec 64)
     (hf : ∀ t, (f t).dmem = t.dmem) :
-    (fun t => a t ≐ pa ∧ (loadOk 8 a t → E.1 l l' (f t)))
+    (fun t => a t ≐ pa ∧ (loadOk 8 a t → E.1 l l (f t)))
       ⊑ wrp (ofStateRepr MachineData.dmem) (exitIf (loadOk 8 a) f l : BlockM MachineData CV)
-          (do StateT.assume (fun m => (Mem.loadInt m pa 8).isSome = true); throw l' : BlockM DataMem AV)
+          (do StateT.assume (fun m => (Mem.loadInt m pa 8).isSome = true); throw l : BlockM DataMem AV)
           Q E := by
   refine wrp_intro fun Qa Ea => ?_
   intro t ht
@@ -427,9 +460,30 @@ theorem wrp_forIn_lockstep_unit {βa : Type} (R : MachineData → βa → Prop) 
   refine ⟨hg, ?_⟩
   simp only [EPostsConcretization.ePosts_cons]
   rw [Concretization.post_pi]
-  refine ⟨l', hk hg, ?_⟩
+  refine ⟨l, hk hg, ?_⟩
   simp only [ofStateRepr_pred, hf]
   exact he
+
+@[ascend] theorem wrp_modifyIf_assume {Q : Unit → PUnit → MachineData → Prop}
+    (a : MachineData → BitVec 64) (f : MachineData → MachineData) (pa : BitVec 64)
+    (hf : ∀ t, (f t).dmem = t.dmem) :
+    (fun t => a t ≐ pa ∧ (loadOk 8 a t → Q () () (f t)))
+      ⊑ wrp (ofStateRepr MachineData.dmem) (modifyIf (loadOk 8 a) f : BlockM MachineData Unit)
+          (do StateT.assume (fun m => (Mem.loadInt m pa 8).isSome = true) : BlockM DataMem PUnit)
+          Q E := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro t ht
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, ExceptT.wp_monadLift_StateT_UB,
+    StateT.wp_assume_eq] at ht
+  obtain ⟨⟨ha, hk⟩, hl, hq⟩ := ht
+  have ha : a t = pa := ha trivial
+  have hg : loadOk 8 a t := by rw [loadOk, ha]; exact hl
+  rw [wp_modifyIf]
+  refine ⟨hg, ?_⟩
+  rw [Concretization.post_pi]
+  refine ⟨(), hk hg, ?_⟩
+  simp only [ofStateRepr_pred, hf]
+  exact hq
 
 end
 

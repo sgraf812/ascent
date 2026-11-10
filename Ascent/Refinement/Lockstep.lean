@@ -94,6 +94,34 @@ theorem wrp_forIn_lockstep {βc βa : Type} (R : βc → σc → βa → Prop) (
     obtain ⟨a', hrel, rfl⟩ := hrel
     exact ih _ _ t' hrel hq
 
+theorem wrp_forIn_lockstep_bind {βc βa γc γa : Type} (R D : βc → σc → βa → Prop) (cinit : βc)
+    (ainit : βa) {fc : Unit → βc → ExceptT εc (StateT σc UB) (ForInStep βc)}
+    {fa : βa → ExceptT εa (StateT σa UB) (ForInStep βa)} {kc : βc → ExceptT εc (StateT σc UB) γc}
+    {ka : βa → ExceptT εa (StateT σa UB) γa} {Q : γc → γa → σc → Prop}
+    (hbody : ∀ c a, (fun t => R c t a) ⊑
+      wrp (ofStateRepr view) (fc () c) (fa a) (fun rc ra t => match rc with
+        | .yield c' => ∃ a', R c' t a' ∧ ra = .yield a'
+        | .done c' => ∃ a', D c' t a' ∧ ra = .done a') E)
+    (hk : ∀ c a, (fun t => D c t a) ⊑ wrp (ofStateRepr view) (kc c) (ka a) Q E) :
+    (fun t => R cinit t ainit) ⊑ wrp (ofStateRepr view) (FixLoop.mk.forIn cinit fc >>= kc)
+      ((FixLoop.mk.forIn ainit fun _ a => fa a) >>= ka) Q E := by
+  have h := wrp_forIn_lockstep (view := view) (Q := fun c a t => D c t a) R cinit ainit hbody
+  exact PartialOrder.rel_trans (PartialOrder.rel_trans h (wrp_mono_post (fun c a => hk c a))) wrp_bind
+
+theorem wrp_forIn_lockstep_pure {βc βa γa : Type} (R D : βc → σc → βa → Prop) (cinit : βc)
+    (ainit : βa) {fc : Unit → βc → ExceptT εc (StateT σc UB) (ForInStep βc)}
+    {fa : βa → ExceptT εa (StateT σa UB) (ForInStep βa)} {ka : βa → ExceptT εa (StateT σa UB) γa}
+    {Q : βc → γa → σc → Prop}
+    (hbody : ∀ c a, (fun t => R c t a) ⊑
+      wrp (ofStateRepr view) (fc () c) (fa a) (fun rc ra t => match rc with
+        | .yield c' => ∃ a', R c' t a' ∧ ra = .yield a'
+        | .done c' => ∃ a', D c' t a' ∧ ra = .done a') E)
+    (hk : ∀ c a, (fun t => D c t a) ⊑
+      wrp (ofStateRepr view) (pure c : ExceptT εc (StateT σc UB) βc) (ka a) Q E) :
+    (fun t => R cinit t ainit) ⊑ wrp (ofStateRepr view) (FixLoop.mk.forIn cinit fc)
+      ((FixLoop.mk.forIn ainit fun _ a => fa a) >>= ka) Q E := by
+  simpa only [bind_pure] using wrp_forIn_lockstep_bind (kc := pure) R D cinit ainit hbody hk
+
 variable {βc βa : Type} {Q : ForInStep βc → ForInStep βa → σc → Prop}
 
 @[ascend] theorem wrp_pure_step (c : ForInStep βc) (a : ForInStep βa) :

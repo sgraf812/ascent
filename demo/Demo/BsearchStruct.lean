@@ -76,6 +76,53 @@ do
 #guard_msgs in
 #print bsearchT
 
+sym_simp_def bsearchR : BlockM MachineData Unit from
+    tryCatch bsearchT (fun l => if l = CfgLabel.exit then pure () else throw l)
+  using pre [tryCatch_modifyIf_bind, tryCatch_peek_bind, tryCatch_condState, tryCatch_condState_bind,
+    tryCatch_bind_assoc, tryCatch_pure, tryCatch_exitIf_handle, tryCatch_forIn_return]
+  post [bsearchT, eq_self, ite_true, ite_false, bind_assoc, pure_bind]
+
+/--
+info: def Ascent.Kraken.bsearchR : BlockM MachineData Unit :=
+do
+  modifyIf (fun x => True) (setReg64 Reg64.rcx fun st => 0#64)
+  { }.forIn PUnit.unit fun u v => do
+      modifyIf (fun x => True) (setReg64 Reg64.r8 fun st => st.regs.rsi.toBitVec)
+      let z ← peek fun st => CondCode.be.cmp st.regs.r8.toBitVec st.regs.rcx.toBitVec
+      condState (fun x => z)
+          (do
+            modifyIf (fun x => True) (setReg64 Reg64.r8 fun st => st.regs.r8.toBitVec - st.regs.rcx.toBitVec)
+            modifyIf (fun x => True) (setReg64 Reg64.rax fun x => 18446744073709551615#64)
+            modifyIf (loadOk 8 fun st => st.regs.rsp.toBitVec)
+                (setReg64 Reg64.rsp fun st => st.regs.rsp.toBitVec + 8#64)
+            pure (ForInStep.done PUnit.unit))
+          do
+          modifyIf (fun x => True) (setReg64 Reg64.r8 fun st => st.regs.r8.toBitVec - st.regs.rcx.toBitVec)
+          modifyIf (fun x => True) (setReg64 Reg64.r8 fun st => st.regs.r8.toBitVec.ushiftRight 1)
+          modifyIf (fun x => True) (setReg64 Reg64.r8 fun st => st.regs.rcx.toBitVec + st.regs.r8.toBitVec)
+          modifyIf (loadOk 8 (sib 8 Reg64.rdi Reg64.r8 0))
+              (loadReg 8 Reg64.r9 (sib 8 Reg64.rdi Reg64.r8 0) fun w x => w)
+          condState (fun st => CondCode.l.cmp st.regs.r9.toBitVec st.regs.rdx.toBitVec)
+              (do
+                modifyIf (fun x => True) (setReg64 Reg64.r8 fun st => st.regs.r8.toBitVec + 1#64)
+                modifyIf (fun x => True) (setReg64 Reg64.r9 fun st => st.regs.r9.toBitVec.replaceLow 1#8)
+                modifyIf (fun x => True) (setReg64 Reg64.rcx fun st => st.regs.r8.toBitVec)
+                pure (ForInStep.yield PUnit.unit))
+              (condState (fun st => CondCode.le.cmp st.regs.r9.toBitVec st.regs.rdx.toBitVec)
+                (do
+                  modifyIf (fun x => True) (setReg64 Reg64.r9 fun st => 0#64)
+                  modifyIf (fun x => True) (setReg64 Reg64.rax fun st => st.regs.r8.toBitVec)
+                  modifyIf (loadOk 8 fun st => st.regs.rsp.toBitVec)
+                      (setReg64 Reg64.rsp fun st => st.regs.rsp.toBitVec + 8#64)
+                  pure (ForInStep.done PUnit.unit))
+                do
+                modifyIf (fun x => True) (setReg64 Reg64.r9 fun st => st.regs.r9.toBitVec.replaceLow 1#8)
+                modifyIf (fun x => True) (setReg64 Reg64.rsi fun st => st.regs.r8.toBitVec)
+                pure (ForInStep.yield PUnit.unit))
+-/
+#guard_msgs in
+#print bsearchR
+
 theorem bsearchT.refines [Host] [FunDecls] [Embeds bsearch] (s : MachineData) (ra : Int64) :
     ⦃(· = s.push64 ra)⦄ bsearch ⪯[ofStateRepr abs] bsearchT ⦃fun _ _ => ⊤; RetRel s ra⦄ :=
   bsearchT.eq ▸ bsearchA.refines s ra
