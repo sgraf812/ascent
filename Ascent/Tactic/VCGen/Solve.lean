@@ -534,7 +534,7 @@ def restoreHoleScope (filled : Option (MetavarDecl × Array Expr × Expr)) : VCG
   for mv in ← getMVars (← instantiateMVarsS b) do
     let d ← mv.getDecl
     unless d.kind matches .natural do continue
-    unless d.lctx.any (fun l => !decl.lctx.contains l.fvarId) do continue
+    unless d.lctx.numIndices > decl.lctx.numIndices do continue
     if outOfScope (← instantiateMVars d.type) then continue
     modifyMCtx (·.modifyExprMVarDecl mv fun d =>
       { d with lctx := decl.lctx, localInstances := decl.localInstances })

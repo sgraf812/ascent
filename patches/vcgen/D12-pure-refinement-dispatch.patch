@@ -1,5 +1,5 @@
 diff -ruN a/Ascent/Tactic/VCGen/RuleConstruction.lean b/Ascent/Tactic/VCGen/RuleConstruction.lean
---- a/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-11-09 14:35:07.880750814 +0000
+--- a/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-11-10 01:33:17.190224461 +0000
 +++ b/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-11-08 18:28:32.064610893 +0000
 @@ -395,41 +395,65 @@
  /-! ## Split rules -/
@@ -120,8 +120,8 @@ diff -ruN a/Ascent/Tactic/VCGen/RuleConstruction.lean b/Ascent/Tactic/VCGen/Rule
    let res ← abstractMVars prf
    mkBackwardRuleFromExpr res.expr res.paramNames.toList
 diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
---- a/Ascent/Tactic/VCGen/Solve.lean	2026-11-09 14:35:07.879456820 +0000
-+++ b/Ascent/Tactic/VCGen/Solve.lean	2026-11-09 05:59:47.811227463 +0000
+--- a/Ascent/Tactic/VCGen/Solve.lean	2026-11-10 01:33:17.188946473 +0000
++++ b/Ascent/Tactic/VCGen/Solve.lean	2026-11-10 01:33:08.290159926 +0000
 @@ -393,14 +393,202 @@
      | .noProgress => return none
    | _ => return none
@@ -267,7 +267,7 @@ diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
 +  for mv in ← getMVars (← instantiateMVarsS b) do
 +    let d ← mv.getDecl
 +    unless d.kind matches .natural do continue
-+    unless d.lctx.any (fun l => !decl.lctx.contains l.fvarId) do continue
++    unless d.lctx.numIndices > decl.lctx.numIndices do continue
 +    if outOfScope (← instantiateMVars d.type) then continue
 +    modifyMCtx (·.modifyExprMVarDecl mv fun d =>
 +      { d with lctx := decl.lctx, localInstances := decl.localInstances })
@@ -387,8 +387,8 @@ diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
  
    -- Phase 4: wp decomposition. The program-shape steps below all consume one unit of fuel
 diff -ruN a/Ascent/Tactic/VCGen/Driver.lean b/Ascent/Tactic/VCGen/Driver.lean
---- a/Ascent/Tactic/VCGen/Driver.lean	2026-11-09 14:35:07.880148138 +0000
-+++ b/Ascent/Tactic/VCGen/Driver.lean	2026-11-09 14:34:36.925612068 +0000
+--- a/Ascent/Tactic/VCGen/Driver.lean	2026-11-10 01:33:17.189565041 +0000
++++ b/Ascent/Tactic/VCGen/Driver.lean	2026-11-09 14:36:34.738166648 +0000
 @@ -9,6 +9,7 @@
  import Lean.Elab.Tactic.VCGen.Context
  import Lean.Elab.Tactic.VCGen.Solve

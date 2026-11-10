@@ -60,7 +60,7 @@ where
 free variables of that context. The unassigned metavariables of the program, which the run
 emitted as sealed goals, take the same context. -/
 def checkHoleScope (hole : MVarId) (decl : MetavarDecl) : MetaM Unit := do
-  resolveDelayedHoles (← instantiateMVars (mkMVar hole))
+  resolveDelayedHoles (mkMVar hole)
   let restore (mv : MVarId) := modifyMCtx (·.modifyExprMVarDecl mv fun d =>
     { d with lctx := decl.lctx, localInstances := decl.localInstances })
   restore hole
@@ -159,8 +159,8 @@ def elabAscend : Tactic := fun stx => withMainContext do
         rest := rest ++ (← Lean.Elab.Tactic.Grind.getUnsolvedGoals)
       Lean.Elab.Tactic.Grind.setGoals rest
   if let (some hole, some decl) := (hole?, holeDecl?) then
-    closeTables hole
     checkHoleScope hole decl
+    closeTables hole
   replaceMainGoal (state.goals.map (·.mvarId))
 
 end Lean.Elab.Tactic.VCGen.Ascend
