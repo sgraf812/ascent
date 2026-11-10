@@ -1,5 +1,6 @@
 import Demo.ZipBinary
 import Demo.MemmovePure
+import Demo.BsearchPure
 
 /-!
 # From x64 to `Array.zipWith`
@@ -292,5 +293,73 @@ fun a => pure a
 
 #check @memmove_correct
 #print axioms memmove_correct
+
+/-! ## 10. A third program: binary search
+
+`bsearch` searches `n` signed words at `rdi` for `rdx` and returns an index or `-1`. Its loop runs
+through several blocks, and `cfgLoop_header` makes the loop header `LBB0_3` a `repeat'`. A byte register
+`r9b` tells the copies of the block `LBB0_2` whether to continue; moving each test before the register
+writes that precede it gives the test the literal value of `r9b`, and the test folds away. The
+registers become a loop over the pair of bounds, and the result leaves through `ret v` with `v` the
+value of `rax`: -/
+
+/--
+info: def Ascent.Kraken.bsearchL : BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → BlockM DataMem Unit :=
+fun rdi rsi rdx rsp => do
+  let mut a := (0#64, rsi)
+  repeat'
+    if a.snd ≤ a.fst then 
+      assume fun m => (Mem.loadInt m rsp 8).isSome = true
+      throw (CfgLabel.ret 18446744073709551615#64)
+    else
+      let x ← load 8 (rdi + (a.fst + (a.snd - a.fst).ushiftRight 1) * 8#64)
+      if x.toInt < rdx.toInt then 
+        a := (a.fst + (a.snd - a.fst).ushiftRight 1 + 1#64, a.snd)
+      else
+        if x.toInt ≤ rdx.toInt then 
+          assume fun m => (Mem.loadInt m rsp 8).isSome = true
+          throw (CfgLabel.ret (a.fst + (a.snd - a.fst).ushiftRight 1))
+        else
+          a := (a.fst, a.fst + (a.snd - a.fst).ushiftRight 1)
+-/
+#guard_msgs in
+#print bsearchL
+
+/-! Over the array of words, the bounds are numbers `lo ≤ hi ≤ n`: -/
+
+/--
+info: def Ascent.Kraken.bsearchArr : BitVec 64 → Nat → Array (BitVec 64) → BlockM Unit Unit :=
+fun key n a => do
+  let mut a_1 := (0, n)
+  repeat'
+    if a_1.snd ≤ a_1.fst then 
+      throw (CfgLabel.ret 18446744073709551615#64)
+    else
+      if a[a_1.fst + (a_1.snd - a_1.fst) / 2]!.toInt < key.toInt then 
+        a_1 := (a_1.fst + (a_1.snd - a_1.fst) / 2 + 1, a_1.snd)
+      else
+        if a[a_1.fst + (a_1.snd - a_1.fst) / 2]!.toInt ≤ key.toInt then 
+          throw (CfgLabel.ret (BitVec.ofNat 64 (a_1.fst + (a_1.snd - a_1.fst) / 2)))
+        else
+          a_1 := (a_1.fst, a_1.fst + (a_1.snd - a_1.fst) / 2)
+-/
+#guard_msgs in
+#print bsearchArr
+
+/-! `vcgen` proves that the loop returns the result of the recursive search `bsearchF`, and
+`ascend_def` synthesizes the pure program: -/
+
+/--
+info: def Ascent.Kraken.bsearchP : BitVec 64 → Nat → Array (BitVec 64) → Id (Option Nat) :=
+fun key n a => pure (bsearchF a key 0 n)
+-/
+#guard_msgs in
+#print bsearchP
+
+/-! `bsearchF` returns an index of `key`, or `none` when the sorted array does not hold `key`. The
+composition gives the result for the x64 text: -/
+
+#check @bsearch_correct
+#print axioms bsearch_correct
 
 end Ascent.Kraken.Walkthrough

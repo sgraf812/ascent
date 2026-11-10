@@ -257,6 +257,22 @@ theorem wrp_purify_throw {CProg σ ε CV : Type}
     rintro l' o' ⟨rfl, rfl⟩
     exact hE
 
+theorem wrp_purify_throwVal {CProg σ ε CV α : Type}
+    [WP CProg CV (σ → Prop) ((ε → σ → Prop) × EStack⟨⟩)] {c : CProg} {P : σ → Prop} {f : α → ε}
+    {r : α} {Q : CV → α → σ → Prop} {E : (ε → σ → Prop) × EStack⟨⟩}
+    (h : Triple c P (fun _ _ => False) (fun l' _ => l' = f r, estack⟨⟩)) :
+    (fun o => P o ∧ ∀ o', E.1 (f r) o') ⊑ wrp (Ascent.purify σ) c (Pure.pure r : Id α) Q E := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro o ho
+  simp only [meet_apply, meet_prop_eq_and] at ho
+  obtain ⟨⟨hP, hE⟩, -⟩ := ho
+  refine WP.wp_monotone (x := c) ?_ ?_ o (h.le_wp o hP)
+  · intro _ _ hq
+    exact hq.elim
+  · refine Prod.mk_le _ _ _ ?_ PartialOrder.rel_refl
+    rintro l' o' rfl
+    exact hE o'
+
 /-! ## Exceptions, for `Except` -/
 
 section
