@@ -59,12 +59,74 @@ info: @zipWithAddA.refines : ∀ [inst : Host] [inst_1 : FunDecls] [Embeds zipWi
 #guard_msgs in
 #check @zipWithAddA.refines
 
+/--
+info: def zipWithAddA : BlockM MachineData Unit :=
+cfgLoop
+  (zipWithAdd.table
+    (Table.get
+      [(CfgLabel.ofLabel
+            { label := none, idx := 0,
+                body :=
+                  [asm|
+                      "test rcx, rcx"
+                      "jle LBB0_3"
+                      "xor eax, eax"],
+                next := some "LBB0_2" }.label,
+          do
+          branch (fun st => CondCode.le.cmp (st.regs.get64 Reg64.rcx &&& st.regs.get64 Reg64.rcx) 0)
+              (CfgLabel.label "LBB0_3")
+          modifyIf (fun x => True)
+              (setReg64 Reg64.rax fun st =>
+                BitVec.setWidth 64 ((st.regs.get64 Reg64.rax).take 32 ^^^ (st.regs.get64 Reg64.rax).take 32))
+          pure PUnit.unit),
+        (CfgLabel.ofLabel
+            { label := some "LBB0_2", idx := 1,
+                body :=
+                  [asm|
+                      "mov r8, QWORD PTR [rsi+rax*8+0]"
+                      "add r8, QWORD PTR [rdi+rax*8+0]"
+                      "mov QWORD PTR [rdx+rax*8+0], r8"
+                      "inc rax"
+                      "cmp rcx, rax"
+                      "jne LBB0_2"],
+                next := some "LBB0_3" }.label,
+          do
+          modifyIf (loadOk 8 (sib 8 Reg64.rsi Reg64.rax 0))
+              (loadReg 8 Reg64.r8 (sib 8 Reg64.rsi Reg64.rax 0) fun w x => w)
+          modifyIf (loadOk 8 (sib 8 Reg64.rdi Reg64.rax 0))
+              (loadReg 8 Reg64.r8 (sib 8 Reg64.rdi Reg64.rax 0) fun w st => w + st.regs.get64 Reg64.r8)
+          modifyIf (storeOk 8 (sib 8 Reg64.rdx Reg64.rax 0))
+              (storeWord 8 (sib 8 Reg64.rdx Reg64.rax 0) fun st => st.regs.get64 Reg64.r8)
+          modifyIf (fun x => True) (setReg64 Reg64.rax fun st => st.regs.get64 Reg64.rax + 1)
+          branch (fun st => CondCode.nz.cmp (st.regs.get64 Reg64.rcx) (st.regs.get64 Reg64.rax))
+              (CfgLabel.label "LBB0_2")
+          pure PUnit.unit),
+        (CfgLabel.ofLabel
+            { label := some "LBB0_3", idx := 2,
+                body :=
+                  [asm|
+                      "ret"],
+                next := none }.label,
+          exitIf (loadOk 8 fun st => st.regs.get64 Reg64.rsp) (setReg64 Reg64.rsp fun st => st.regs.get64 Reg64.rsp + 8)
+            CfgLabel.exit)]))
+  CfgLabel.entry
+-/
+#guard_msgs in
+#print zipWithAddA
+
 /-! ## 3. A structured loop, by rewriting
 
 `sym_simp_def` rewrites the block loop of `zipWithAddA` into an `if` and a `repeat'` loop over the
 machine state: the jump of the loop block to itself becomes `continue`, and the return ends the
 program in both branches. The command proves
 the equation `zipWithAddT.eq`, so the first refinement carries over to `zipWithAddT`: -/
+
+/--
+info: @zipWithAddT.refines : ∀ [inst : Host] [inst_1 : FunDecls] [Embeds zipWithAdd] (s : MachineData) (ra : Int64),
+  ⦃ fun x => x = s.push64 ra ⦄ zipWithAdd ⪯[ofStateRepr abs] zipWithAddT ⦃ fun x x_1 => ⊤; RetRel s ra ⦄
+-/
+#guard_msgs in
+#check @zipWithAddT.refines
 
 /--
 info: def Ascent.Kraken.zipWithAddT : BlockM MachineData Unit :=
@@ -87,12 +149,6 @@ condState (fun st => CondCode.le.cmp (st.regs.rcx.toBitVec &&& st.regs.rcx.toBit
 -/
 #guard_msgs in
 #print zipWithAddT
-/--
-info: @zipWithAddT.refines : ∀ [inst : Host] [inst_1 : FunDecls] [Embeds zipWithAdd] (s : MachineData) (ra : Int64),
-  ⦃ fun x => x = s.push64 ra ⦄ zipWithAdd ⪯[ofStateRepr abs] zipWithAddT ⦃ fun x x_1 => ⊤; RetRel s ra ⦄
--/
-#guard_msgs in
-#check @zipWithAddT.refines
 
 /-! ## 4. Registers as values, synthesized by `ascend_def`
 
@@ -102,6 +158,15 @@ The state is the data memory alone. The lifting relation, the one hint of the ru
 `r8` become variables. `ascend_def` synthesized `zipWithAddL₀`, and `sym_simp_def` states its
 branch conditions as comparisons of the values in `zipWithAddL`. The return is an `assume` that the
 return slot is mapped, followed by `throw CfgLabel.exit`: -/
+
+/--
+info: zipWithAddL.refines : ∀ (rdi rsi rdx rcx rsp : BitVec 64),
+  ⦃ RegsRel [(Reg64.rdi, rdi), (Reg64.rsi, rsi), (Reg64.rdx, rdx), (Reg64.rcx, rcx), (Reg64.rsp, rsp)] ⦄
+    zipWithAddT ⪯[ofStateRepr MachineData.dmem] (zipWithAddL rdi rsi rdx rcx rsp) ⦃ fun x x_1 x_2 => True;
+    estack⟨fun l l' x => l = l'⟩ ⦄
+-/
+#guard_msgs in
+#check @zipWithAddL.refines
 
 /--
 info: def Ascent.Kraken.zipWithAddL : BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → BlockM DataMem Unit :=
@@ -115,7 +180,7 @@ fun rdi rsi rdx rcx rsp =>
       let x ← load 8 (rsi + v * 8#64)
       let x_1 ← load 8 (rdi + v * 8#64)
       store 8 rsp (rdx + v * 8#64) (x_1 + x)
-      if ¬rcx = v + 1#64 then 
+      if ¬rcx = v + 1#64 then ⏎
         v := v + 1#64
       else
         assume fun m => (Mem.loadInt m rsp 8).isSome = true
@@ -123,14 +188,6 @@ fun rdi rsi rdx rcx rsp =>
 -/
 #guard_msgs in
 #print zipWithAddL
-/--
-info: zipWithAddL.refines : ∀ (rdi rsi rdx rcx rsp : BitVec 64),
-  ⦃ RegsRel [(Reg64.rdi, rdi), (Reg64.rsi, rsi), (Reg64.rdx, rdx), (Reg64.rcx, rcx), (Reg64.rsp, rsp)] ⦄
-    zipWithAddT ⪯[ofStateRepr MachineData.dmem] (zipWithAddL rdi rsi rdx rcx rsp) ⦃ fun x x_1 x_2 => True;
-    estack⟨fun l l' x => l = l'⟩ ⦄
--/
-#guard_msgs in
-#check @zipWithAddL.refines
 
 /-! ## 5. Arrays, synthesized by `ascend_def`
 
@@ -144,21 +201,6 @@ return slot. `ascend_def` synthesized `zipWithAddArr₀`, and `sym_simp_def` put
 place and states the conditions as propositions in `zipWithAddArr`: -/
 
 /--
-info: def Ascent.Kraken.zipWithAddArr : Nat → Array (BitVec 64) → Array (BitVec 64) → BlockM (Array (BitVec 64)) Unit :=
-fun n a b =>
-  if n = 0 then throw CfgLabel.exit
-  else do
-    let mut i := 0
-    repeat'
-      modify fun o => o.set! i (a[i]! + b[i]!)
-      if ¬n = i + 1 then 
-        i := i + 1
-      else
-        throw CfgLabel.exit
--/
-#guard_msgs in
-#print zipWithAddArr
-/--
 info: zipWithAddArr.refines : ∀ (A B O rsp : BitVec 64) (n : Nat) (a b : Array (BitVec 64)),
   ⦃ fun m => A ≐ₐ a ∧ B ≐ₐ b ∧ a.size = n ∧ b.size = n ∧ ArrayLayout 8 64 [(A, a), (B, b)] O n [rsp] m ⦄
     (zipWithAddL A B O (BitVec.ofNat 64 n) rsp) ⪯[ofStateRepr (outView 8 64 O n)] (zipWithAddArr n a b) ⦃
@@ -166,6 +208,22 @@ info: zipWithAddArr.refines : ∀ (A B O rsp : BitVec 64) (n : Nat) (a b : Array
 -/
 #guard_msgs in
 #check @zipWithAddArr.refines
+
+/--
+info: def Ascent.Kraken.zipWithAddArr : Nat → Array (BitVec 64) → Array (BitVec 64) → BlockM (Array (BitVec 64)) Unit :=
+fun n a b =>
+  if n = 0 then throw CfgLabel.exit
+  else do
+    let mut i := 0
+    repeat'
+      modify fun o => o.set! i (a[i]! + b[i]!)
+      if ¬n = i + 1 then ⏎
+        i := i + 1
+      else
+        throw CfgLabel.exit
+-/
+#guard_msgs in
+#print zipWithAddArr
 
 /-! ## 6. The pure program
 
@@ -182,6 +240,7 @@ info: @zipWithAddArr_spec : ∀ {n : Nat} {a b : Array (BitVec 64)},
 -/
 #guard_msgs in
 #check @zipWithAddArr_spec
+
 /--
 info: def Ascent.Kraken.zipWithAddP : Array (BitVec 64) → Array (BitVec 64) → Id (Array (BitVec 64)) :=
 fun a b => pure (Array.zipWith HAdd.hAdd a b)
@@ -261,7 +320,7 @@ fun n a back =>
       let mut a_1 := (n, n)
       repeat'
         modify fun o => o.set! (a_1.snd - 1) a[a_1.snd - 1]!
-        if ¬a_1.fst - 1 = 0 then 
+        if ¬a_1.fst - 1 = 0 then
           a_1 := (a_1.fst - 1, a_1.fst - 1)
         else
           throw CfgLabel.exit
@@ -271,7 +330,7 @@ fun n a back =>
       let mut a_1 := (0, n)
       repeat'
         modify fun o => o.set! a_1.fst a[a_1.fst]!
-        if ¬a_1.snd = a_1.fst + 1 then 
+        if ¬a_1.snd = a_1.fst + 1 then
           a_1 := (a_1.fst + 1, a_1.snd)
         else
           throw CfgLabel.exit
@@ -309,16 +368,16 @@ info: def Ascent.Kraken.bsearchL : BitVec 64 → BitVec 64 → BitVec 64 → Bit
 fun rdi rsi rdx rax rsp => do
   let mut a := (0#64, rsi, rax)
   repeat'
-    if a.snd.fst ≤ a.fst then 
+    if a.snd.fst ≤ a.fst then
       assume fun m => (Mem.loadInt m rsp 8).isSome = true
       a := (a.fst, a.snd.fst, 18446744073709551615#64)
       break
     else
       let x ← load 8 (rdi + (a.fst + (a.snd.fst - a.fst).ushiftRight 1) * 8#64)
-      if x.toInt < rdx.toInt then 
+      if x.toInt < rdx.toInt then
         a := (a.fst + (a.snd.fst - a.fst).ushiftRight 1 + 1#64, a.snd.fst, a.snd.snd)
       else
-        if x.toInt ≤ rdx.toInt then 
+        if x.toInt ≤ rdx.toInt then
           assume fun m => (Mem.loadInt m rsp 8).isSome = true
           a := (a.fst, a.snd.fst, a.fst + (a.snd.fst - a.fst).ushiftRight 1)
           break
@@ -337,14 +396,14 @@ info: def Ascent.Kraken.bsearchArr : BitVec 64 → Nat → Array (BitVec 64) →
 fun key n a => do
   let mut a_1 := (0, n, none)
   repeat'
-    if a_1.snd.fst ≤ a_1.fst then 
+    if a_1.snd.fst ≤ a_1.fst then
       a_1 := (a_1.fst, a_1.snd.fst, none)
       break
     else
-      if a[a_1.fst + (a_1.snd.fst - a_1.fst) / 2]!.toInt < key.toInt then 
+      if a[a_1.fst + (a_1.snd.fst - a_1.fst) / 2]!.toInt < key.toInt then
         a_1 := (a_1.fst + (a_1.snd.fst - a_1.fst) / 2 + 1, a_1.snd.fst, a_1.snd.snd)
       else
-        if a[a_1.fst + (a_1.snd.fst - a_1.fst) / 2]!.toInt ≤ key.toInt then 
+        if a[a_1.fst + (a_1.snd.fst - a_1.fst) / 2]!.toInt ≤ key.toInt then
           a_1 := (a_1.fst, a_1.snd.fst, some (a_1.fst + (a_1.snd.fst - a_1.fst) / 2))
           break
         else
