@@ -258,17 +258,32 @@ variable (st : MachineData)
 
 end
 
-theorem Mem.storeInt_one_take {w : Nat} (m : Mem w) (a : BitVec w) (x : BitVec 64) :
-    Mem.storeInt m a 1 ((x.take 8).toInt) = Mem.storeInt m a 1 x.toInt := by
+theorem Mem.storeInt_take {w : Nat} (m : Mem w) (a : BitVec w) (n k : Nat) (h : n ≤ 8) (hk : k = 8 * n)
+    (x : BitVec 64) : Mem.storeInt m a n ((x.take k).toInt) = Mem.storeInt m a n x.toInt := by
+  subst hk
   unfold Mem.storeInt
-  rw [← Int.toBytes_emod 1 ((x.take 8).toInt), ← Int.toBytes_emod 1 x.toInt]
+  rw [← Int.toBytes_emod n ((x.take (8 * n)).toInt), ← Int.toBytes_emod n x.toInt]
   congr 2
+  have hd : (2:Int) ^ (8 * n) ∣ 2 ^ 64 := ⟨2 ^ (64 - 8 * n), by rw [← Int.pow_add]; congr 1; omega⟩
   simp only [Int.take]
-  rw [BitVec.toInt_emod_two_pow,
-    ← Int.emod_emod_of_dvd x.toInt (show (2:Int) ^ (8 * 1) ∣ 2 ^ 64 from ⟨2 ^ 56, rfl⟩),
-    BitVec.toInt_emod_two_pow]
+  rw [BitVec.toInt_emod_two_pow, ← Int.emod_emod_of_dvd x.toInt hd, BitVec.toInt_emod_two_pow]
   simp only [BitVec.take, BitVec.extractLsb'_toNat, Nat.shiftRight_zero]
-  omega
+  push_cast
+  rfl
+
+theorem word_setWidth (n k : Nat) (h : n ≤ 8) (hk : k = 8 * n) (a : BitVec 64) (st : MachineData) :
+    (word n a st).setWidth k = BitVec.ofInt k (Mem.loadInt st.dmem a n).get! := by
+  subst hk
+  apply BitVec.eq_of_toNat_eq
+  have hd : (2:Nat) ^ (8 * n) ≤ 2 ^ 64 := Nat.pow_le_pow_right (by omega) (by omega)
+  simp only [word, BitVec.toNat_setWidth, BitVec.toNat_ofInt]
+  generalize (Mem.loadInt st.dmem a n).get! = v
+  rw [show (2 : Int) ^ (8 * n) = ((2 ^ (8 * n) : Nat) : Int) by push_cast; rfl]
+  generalize hc : 2 ^ (8 * n) = c at *
+  have hp : 0 < c := hc ▸ Nat.pow_pos (by omega)
+  have h0 := Int.emod_nonneg v (show (c : Int) ≠ 0 by omega)
+  have h1 := Int.emod_lt_of_pos v (show (0 : Int) < c by omega)
+  rw [Int.emod_eq_of_lt h0 (by omega), Nat.mod_eq_of_lt (by omega)]
 
 section
 variable [Host] [FunDecls] {Q : Unit → MachineData → Prop} {E : Int64 → MachineData → Prop}
@@ -311,7 +326,7 @@ theorem Spec.mov_sib1_reg8 (b i : Reg64) (d : Int64) (rs : Reg64) :
   simp only [Directive.interp, Instr.interp, Operation.interp, Operand.interp, RegOrMem.interp,
     MachineData.set, MachineData.store, Reg64s.get_low_W8, AddrExpr.zeroExtend_interp_sib1,
     Width.bytes, hv, Effects.All]
-  rw [Mem.storeInt_one_take]
+  rw [Mem.storeInt_take _ _ 1 8 (by omega) rfl]
   exact hn _ hq
 
 end
@@ -1084,6 +1099,239 @@ open scoped Program.WP
   refine ⟨(), hk hm, ?_⟩
   simp only [ofStateRepr_pred, loadReg, setReg64, word_eight, Reg64s.get64_set64, ↓reduceIte,
     BitVec.add_sub_cancel, abs_regs, abs_dmem] at hw ⊢
+  exact hw
+
+end
+end Ascent.Kraken.AInstr
+
+/-! ## Stack frames and narrow accesses
+
+`sub rsp, k` and `add rsp, k` move the stack pointer by an immediate. A byte or 16-bit `mov` through a
+base register and a displacement writes the low `n` bytes of a register or of memory: `movb al, 3(rsp)`
+is `storeWord 1 (fun st => st.regs.get64 .rsp + 3) fun st => st.regs.get64 .rax`. A 16-bit `push`
+or `pop` moves the stack pointer by two. -/
+
+namespace Ascent.Kraken.AInstr
+
+section
+variable [Host] [FunDecls] {Q : Unit → MachineData → Prop} {E : Int64 → MachineData → Prop}
+open scoped Program.WP
+
+theorem Spec.movzx_reg32_mem1 (r b : Reg64) (d : Int64) :
+    ⦃ fun s =>
+        let a := s.regs.get64 b + BitVec.ofInt 64 d.toInt
+        (Mem.loadInt s.dmem a 1).isSome = true ∧ Q () { s with regs := s.regs.set64 r (word 1 a s) } ⦄
+      (Directive.instr (.regular .W64 .W32
+          (@Operation.movzx .W32 .W8 (.reg (.low r .W32)) (.mem ⟨some (.reg b), none, .int64 d⟩))))
+    ⦃ Q; E ⦄ := by
+  refine Triple.intro fun s ⟨hsome, hq⟩ => ?_
+  obtain ⟨v, hv⟩ := Option.isSome_iff_exists.mp hsome
+  refine Program.wp_single fun _ _ _ _ hn _ => ?_
+  simp only [Directive.interp, Instr.interp, Operation.interp, RegOrMem.interp, MachineData.load,
+    MachineData.set, MachineData.setReg, Reg64s.set_low_W32, AddrExpr.zeroExtend_interp_base_disp,
+    Width.bytes, hv, Effects.All]
+  refine hn _ ?_
+  have hw : word 1 (s.regs.get64 b + BitVec.ofInt 64 d.toInt) s
+      = BitVec.zeroExtend 64 (BitVec.zeroExtend Width.W32.bits (BitVec.ofInt Width.W8.bits v)) := by
+    apply BitVec.eq_of_toNat_eq
+    simp only [word, hv, Option.get!_some, BitVec.toNat_setWidth, BitVec.toNat_ofInt, Width.bits,
+      Int.natCast_pow]
+    omega
+  rw [← hw]
+  exact hq
+
+theorem Spec.push_reg16 (rs : Reg64) :
+    ⦃ fun s => (Mem.loadInt s.dmem (s.regs.get64 .rsp - 2#64) 2).isSome = true
+        ∧ Q () { s with regs := s.regs.set64 .rsp (s.regs.get64 .rsp - 2#64),
+                        dmem := Mem.storeInt s.dmem (s.regs.get64 .rsp - 2#64) 2 (s.regs.get64 rs).toInt } ⦄
+      (Directive.instr (.regular .W64 .W16 (.push (.regOrMem (.reg (.low rs .W16))))))
+    ⦃ Q; E ⦄ := by
+  refine Triple.intro fun s ⟨hsome, hq⟩ => ?_
+  obtain ⟨v, hv⟩ := Option.isSome_iff_exists.mp hsome
+  refine Program.wp_single fun _ _ _ _ hn _ => ?_
+  simp only [Directive.interp, Instr.interp, Operation.interp, Operand.interp, RegOrMem.interp,
+    MachineData.store, Reg64s.get_low_W16, Width.bytes, Width.bytesv, hv, Effects.All]
+  rw [Mem.storeInt_take _ _ 2 16 (by omega) rfl]
+  exact hn _ hq
+
+theorem Spec.pop_reg16 (rd : Reg64) :
+    ⦃ fun s =>
+        let rs := s.regs.set64 .rsp (s.regs.get64 .rsp + 2#64)
+        let v := BitVec.ofInt 16 (Mem.loadInt s.dmem (s.regs.get64 .rsp) 2).get!
+        (Mem.loadInt s.dmem (s.regs.get64 .rsp) 2).isSome = true
+          ∧ Q () { s with regs := rs.set64 rd ((rs.get64 rd).replaceLow v) } ⦄
+      (Directive.instr (.regular .W64 .W16 (.pop (.reg (.low rd .W16)))))
+    ⦃ Q; E ⦄ := by
+  refine Triple.intro fun s ⟨hsome, hq⟩ => ?_
+  obtain ⟨v, hv⟩ := Option.isSome_iff_exists.mp hsome
+  refine Program.wp_single fun _ _ _ _ hn _ => ?_
+  simp only [Directive.interp, Instr.interp, Operation.interp, MachineData.load, MachineData.set,
+    MachineData.setReg, Reg64s.set_low_W16, Width.bytes, Width.bytesv, hv, Effects.All]
+  exact hn _ (by rwa [hv, Option.get!_some] at hq)
+
+end
+
+section
+variable [Host] [FunDecls] {Q : Unit → Unit → MachineData → Prop}
+  {E : Int64 → Int64 → MachineData → Prop}
+open scoped Program.WP
+
+@[ascend] theorem wrp_subRegImm (asz : Width) (r : Reg64) (i : Int64) :
+    (fun s => True → Q () () { s with
+        regs := s.regs.set64 r (s.regs.get64 r - BitVec.setWidth 64 i.toBitVec),
+        status := StatusFlags.ofSub (s.regs.get64 r) (BitVec.setWidth 64 i.toBitVec) })
+      ⊑ wrp (ofStateRepr abs)
+          (Directive.instr (.regular asz .W64 (.sub (.reg (.low r .W64)) (.imm (.int64 i)))))
+          (modifyIf (fun _ => True) (setReg64 r fun st => st.regs.get64 r - BitVec.setWidth 64 i.toBitVec))
+          Q E := by
+  refine wrp_modifyIf (pre := fun _ => True) (g := fun _ => True)
+    (fun Q E s _ hq => (Program.WP.Spec.sub_reg_imm (Q := Q) (E := E) asz r i).le_wp s hq) ?_
+  intro s _
+  exact ⟨trivial, rfl⟩
+
+@[ascend] theorem wrp_addRegImm (asz : Width) (r : Reg64) (i : Int64) :
+    (fun s => True → Q () () { s with
+        regs := s.regs.set64 r (BitVec.setWidth 64 i.toBitVec + s.regs.get64 r),
+        status := StatusFlags.ofAdd (BitVec.setWidth 64 i.toBitVec) (s.regs.get64 r) })
+      ⊑ wrp (ofStateRepr abs)
+          (Directive.instr (.regular asz .W64 (.add (.reg (.low r .W64)) (.imm (.int64 i)))))
+          (modifyIf (fun _ => True) (setReg64 r fun st => BitVec.setWidth 64 i.toBitVec + st.regs.get64 r))
+          Q E := by
+  refine wrp_modifyIf (pre := fun _ => True) (g := fun _ => True)
+    (fun Q E s _ hq => (Program.WP.Spec.add_reg_imm (Q := Q) (E := E) asz r i).le_wp s hq) ?_
+  intro s _
+  exact ⟨trivial, rfl⟩
+
+@[ascend] theorem wrp_movMemReg8 (b : Reg64) (d : Int64) (rs : Reg64) :
+    (fun s =>
+      let a := s.regs.get64 b + BitVec.ofInt 64 d.toInt
+      (Mem.loadInt s.dmem a 1).isSome = true →
+        Q () () { s with dmem := Mem.storeInt s.dmem a 1 (s.regs.get64 rs).toInt })
+      ⊑ wrp (ofStateRepr abs)
+          (Directive.instr (.regular .W64 .W8
+            (.mov (.mem ⟨some (.reg b), none, .int64 d⟩) (.regOrMem (.reg (.low rs .W8))))))
+          (modifyIf (storeOk 1 fun st => st.regs.get64 b + BitVec.ofInt 64 d.toInt)
+            (storeWord 1 (fun st => st.regs.get64 b + BitVec.ofInt 64 d.toInt) fun st => st.regs.get64 rs))
+          Q E := by
+  refine PartialOrder.rel_trans ?_ (wrp_modifyIf
+    (g := storeOk 1 fun st => st.regs.get64 b + BitVec.ofInt 64 d.toInt)
+    (fun Q E s hp hq => (Program.WP.Spec.mov_mem_reg8 (Q := Q) (E := E) b d rs).le_wp s
+      ⟨hp, by rwa [Reg64s.get_low_W8, Mem.storeInt_take _ _ 1 8 (by omega) rfl]⟩)
+    fun s hg => ⟨hg, rfl⟩)
+  intro s h hg
+  exact h hg
+
+@[ascend] theorem wrp_movMemReg16 (b : Reg64) (d : Int64) (rs : Reg64) :
+    (fun s =>
+      let a := s.regs.get64 b + BitVec.ofInt 64 d.toInt
+      (Mem.loadInt s.dmem a 2).isSome = true →
+        Q () () { s with dmem := Mem.storeInt s.dmem a 2 (s.regs.get64 rs).toInt })
+      ⊑ wrp (ofStateRepr abs)
+          (Directive.instr (.regular .W64 .W16
+            (.mov (.mem ⟨some (.reg b), none, .int64 d⟩) (.regOrMem (.reg (.low rs .W16))))))
+          (modifyIf (storeOk 2 fun st => st.regs.get64 b + BitVec.ofInt 64 d.toInt)
+            (storeWord 2 (fun st => st.regs.get64 b + BitVec.ofInt 64 d.toInt) fun st => st.regs.get64 rs))
+          Q E := by
+  refine PartialOrder.rel_trans ?_ (wrp_modifyIf
+    (g := storeOk 2 fun st => st.regs.get64 b + BitVec.ofInt 64 d.toInt)
+    (fun Q E s hp hq => (Program.WP.Spec.mov_mem_reg16 (Q := Q) (E := E) b d rs).le_wp s
+      ⟨hp, by rwa [Reg64s.get_low_W16, Mem.storeInt_take _ _ 2 16 (by omega) rfl]⟩)
+    fun s hg => ⟨hg, rfl⟩)
+  intro s h hg
+  exact h hg
+
+@[ascend] theorem wrp_movReg8Mem (r b : Reg64) (d : Int64) :
+    (fun s =>
+      let a := s.regs.get64 b + BitVec.ofInt 64 d.toInt
+      (Mem.loadInt s.dmem a 1).isSome = true →
+        let v := BitVec.ofInt 8 (Mem.loadInt s.dmem a 1).get!
+        Q () () { s with regs := s.regs.set64 r ((s.regs.get64 r).replaceLow v) })
+      ⊑ wrp (ofStateRepr abs)
+          (Directive.instr (.regular .W64 .W8
+            (.mov (.reg (.low r .W8)) (.regOrMem (.mem ⟨some (.reg b), none, .int64 d⟩)))))
+          (modifyIf (loadOk 1 fun st => st.regs.get64 b + BitVec.ofInt 64 d.toInt)
+            (loadReg 1 r (fun st => st.regs.get64 b + BitVec.ofInt 64 d.toInt)
+              fun w st => (st.regs.get64 r).replaceLow (w.setWidth 8))) Q E := by
+  refine wrp_modifyIf (g := loadOk 1 fun st => st.regs.get64 b + BitVec.ofInt 64 d.toInt)
+    (fun Q E s hp hq => (Program.WP.Spec.mov_reg8_mem (Q := Q) (E := E) r b d).le_wp s ⟨hp, hq⟩) ?_
+  intro s hg
+  exact ⟨hg, by rw [loadReg, word_setWidth 1 8 (by omega) rfl]; rfl⟩
+
+@[ascend] theorem wrp_movReg16Mem (r b : Reg64) (d : Int64) :
+    (fun s =>
+      let a := s.regs.get64 b + BitVec.ofInt 64 d.toInt
+      (Mem.loadInt s.dmem a 2).isSome = true →
+        let v := BitVec.ofInt 16 (Mem.loadInt s.dmem a 2).get!
+        Q () () { s with regs := s.regs.set64 r ((s.regs.get64 r).replaceLow v) })
+      ⊑ wrp (ofStateRepr abs)
+          (Directive.instr (.regular .W64 .W16
+            (.mov (.reg (.low r .W16)) (.regOrMem (.mem ⟨some (.reg b), none, .int64 d⟩)))))
+          (modifyIf (loadOk 2 fun st => st.regs.get64 b + BitVec.ofInt 64 d.toInt)
+            (loadReg 2 r (fun st => st.regs.get64 b + BitVec.ofInt 64 d.toInt)
+              fun w st => (st.regs.get64 r).replaceLow (w.setWidth 16))) Q E := by
+  refine wrp_modifyIf (g := loadOk 2 fun st => st.regs.get64 b + BitVec.ofInt 64 d.toInt)
+    (fun Q E s hp hq => (Program.WP.Spec.mov_reg16_mem (Q := Q) (E := E) r b d).le_wp s ⟨hp, hq⟩) ?_
+  intro s hg
+  exact ⟨hg, by rw [loadReg, word_setWidth 2 16 (by omega) rfl]; rfl⟩
+
+@[ascend] theorem wrp_movzxRegMem1 (r b : Reg64) (d : Int64) :
+    (fun s =>
+      let a := s.regs.get64 b + BitVec.ofInt 64 d.toInt
+      (Mem.loadInt s.dmem a 1).isSome = true → Q () () { s with regs := s.regs.set64 r (word 1 a s) })
+      ⊑ wrp (ofStateRepr abs)
+          (Directive.instr (.regular .W64 .W32
+            (@Operation.movzx .W32 .W8 (.reg (.low r .W32)) (.mem ⟨some (.reg b), none, .int64 d⟩))))
+          (modifyIf (loadOk 1 fun st => st.regs.get64 b + BitVec.ofInt 64 d.toInt)
+            (loadReg 1 r (fun st => st.regs.get64 b + BitVec.ofInt 64 d.toInt) fun w _ => w)) Q E := by
+  refine wrp_modifyIf (g := loadOk 1 fun st => st.regs.get64 b + BitVec.ofInt 64 d.toInt)
+    (fun Q E s hp hq => (Spec.movzx_reg32_mem1 (Q := Q) (E := E) r b d).le_wp s ⟨hp, hq⟩) ?_
+  intro s hg
+  exact ⟨hg, rfl⟩
+
+@[ascend] theorem wrp_pushReg16 (rs : Reg64) :
+    (fun s =>
+      let a := s.regs.get64 .rsp - 2#64
+      (Mem.loadInt s.dmem a 2).isSome = true →
+        Q () () { s with regs := s.regs.set64 .rsp a, dmem := Mem.storeInt s.dmem a 2 (s.regs.get64 rs).toInt })
+      ⊑ wrp (ofStateRepr abs)
+          (Directive.instr (.regular .W64 .W16 (.push (.regOrMem (.reg (.low rs .W16))))))
+          (do
+            modifyIf (storeOk 2 fun st => st.regs.get64 .rsp - 2#64)
+              (storeWord 2 (fun st => st.regs.get64 .rsp - 2#64) fun st => st.regs.get64 rs)
+            modifyIf (fun _ => True) (setReg64 .rsp fun st => st.regs.get64 .rsp - 2#64)) Q E := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro s hs
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, WPMonadExact.wp_bind_eq, wp_modifyIf] at hs
+  obtain ⟨hk, hm, -, hw⟩ := hs
+  refine (Spec.push_reg16 rs).le_wp s ⟨hm, ?_⟩
+  show (ofStateRepr abs).post Q Qa () _
+  rw [Concretization.post_pi]
+  exact ⟨(), hk hm, hw⟩
+
+@[ascend] theorem wrp_popReg16 (rd : Reg64) :
+    (fun s =>
+      let v := BitVec.ofInt 16 (Mem.loadInt s.dmem (s.regs.get64 .rsp) 2).get!
+      let rs := s.regs.set64 .rsp (s.regs.get64 .rsp + 2#64)
+      (Mem.loadInt s.dmem (s.regs.get64 .rsp) 2).isSome = true →
+        Q () () { s with regs := rs.set64 rd ((rs.get64 rd).replaceLow v) })
+      ⊑ wrp (ofStateRepr abs) (Directive.instr (.regular .W64 .W16 (.pop (.reg (.low rd .W16)))))
+          (do
+            modifyIf (fun _ => True) (setReg64 .rsp fun st => st.regs.get64 .rsp + 2#64)
+            modifyIf (loadOk 2 fun st => st.regs.get64 .rsp - 2#64)
+              (loadReg 2 rd (fun st => st.regs.get64 .rsp - 2#64)
+                fun w st => (st.regs.get64 rd).replaceLow (w.setWidth 16))) Q E := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro s hs
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, WPMonadExact.wp_bind_eq, wp_modifyIf,
+    loadOk, setReg64_regs, setReg64_dmem, abs_regs, abs_dmem, Reg64s.get64_set64, ↓reduceIte,
+    BitVec.add_sub_cancel] at hs
+  obtain ⟨hk, -, hm, hw⟩ := hs
+  refine (Spec.pop_reg16 rd).le_wp s ⟨hm, ?_⟩
+  show (ofStateRepr abs).post Q Qa () _
+  rw [Concretization.post_pi]
+  refine ⟨(), by simpa only [Reg64s.get64_set64] using hk hm, ?_⟩
+  simp only [ofStateRepr_pred, loadReg, setReg64, word_setWidth 2 16 (by omega) rfl, Reg64s.get64_set64,
+    ↓reduceIte, BitVec.add_sub_cancel, abs_regs, abs_dmem] at hw ⊢
   exact hw
 
 end

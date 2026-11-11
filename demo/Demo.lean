@@ -29,3 +29,4 @@ import Demo.SwapStruct
 import Demo.SwapL
 import Demo.SwapSpec
 import Demo.Rev10
+import Demo.Tests.StackFrame

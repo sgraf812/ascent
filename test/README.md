@@ -76,3 +76,11 @@ Past problems that a test here does not pin:
 - Open: vcgen gives no option to raise the step limit of its `Sym.simp` step (100,000 per call).
 - `List.mem_cons` in `vcgen_simp` rewrites the binder domain of `∀ x ∈ a :: l` and stops the
   `forall_mem_cons_intro` split. A configuration pitfall, not an engine bug.
+
+## Tests in the demo
+
+The kraken-free suite has no machine memory, so tests of stack accesses live in the demo, which
+imports kraken. `demo/Demo/Tests/StackFrame.lean` pins the L1 synthesis and the structuring of leaf
+functions that push and pop words and 16-bit values, reserve a local area with `sub rsp`, spill
+words and bytes at unaligned offsets, and use the red zone below `rsp`. Build it with
+`lake build Demo.Tests.StackFrame` in `demo/`.
