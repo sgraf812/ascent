@@ -113,7 +113,7 @@ fun r₀ ra => do
   modifyIf (loadOk 8 fun st => st.regs.rsp.toBitVec + BitVec.ofInt 64 (Int64.toInt 8))
       (loadReg 8 Reg64.rax (fun st => st.regs.rsp.toBitVec + BitVec.ofInt 64 (Int64.toInt 8)) fun w x => w)
   modifyIf (loadOk 8 fun st => st.regs.rsp.toBitVec) (loadReg 8 Reg64.rcx (fun st => st.regs.rsp.toBitVec) fun w x => w)
-  modifyIf (fun x => True) (setReg64 Reg64.rsp fun st => 16#64 + st.regs.rsp.toBitVec)
+  modifyIf (fun x => True) (setReg64 Reg64.rsp fun st => st.regs.rsp.toBitVec + 16#64)
   exitIf (retOk r₀ ra) (setReg64 Reg64.rsp fun x => r₀ + 8#64) ra
 -/
 #guard_msgs in
@@ -158,7 +158,7 @@ fun r₀ ra => do
         st.regs.rcx.toBitVec.replaceLow (BitVec.setWidth 8 w))
   modifyIf (loadOk 1 fun st => st.regs.rsp.toBitVec + BitVec.ofInt 64 (Int64.toInt 3))
       (loadReg 1 Reg64.rdx (fun st => st.regs.rsp.toBitVec + BitVec.ofInt 64 (Int64.toInt 3)) fun w x => w)
-  modifyIf (fun x => True) (setReg64 Reg64.rsp fun st => 16#64 + st.regs.rsp.toBitVec)
+  modifyIf (fun x => True) (setReg64 Reg64.rsp fun st => st.regs.rsp.toBitVec + 16#64)
   exitIf (retOk r₀ ra) (setReg64 Reg64.rsp fun x => r₀ + 8#64) ra
 -/
 #guard_msgs in
@@ -209,7 +209,7 @@ fun r₀ ra => do
   modifyIf (loadOk 2 fun st => st.regs.rsp.toBitVec + BitVec.ofInt 64 (Int64.toInt 5))
       (loadReg 2 Reg64.rdx (fun st => st.regs.rsp.toBitVec + BitVec.ofInt 64 (Int64.toInt 5)) fun w st =>
         st.regs.rdx.toBitVec.replaceLow (BitVec.setWidth 16 w))
-  modifyIf (fun x => True) (setReg64 Reg64.rsp fun st => 8#64 + st.regs.rsp.toBitVec)
+  modifyIf (fun x => True) (setReg64 Reg64.rsp fun st => st.regs.rsp.toBitVec + 8#64)
   exitIf (retOk r₀ ra) (setReg64 Reg64.rsp fun x => r₀ + 8#64) ra
 -/
 #guard_msgs in

@@ -1191,12 +1191,13 @@ open scoped Program.WP
 
 @[ascend] theorem wrp_addRegImm (asz : Width) (r : Reg64) (i : Int64) :
     (fun s => True → Q () () { s with
-        regs := s.regs.set64 r (BitVec.setWidth 64 i.toBitVec + s.regs.get64 r),
+        regs := s.regs.set64 r (s.regs.get64 r + BitVec.setWidth 64 i.toBitVec),
         status := StatusFlags.ofAdd (BitVec.setWidth 64 i.toBitVec) (s.regs.get64 r) })
       ⊑ wrp (ofStateRepr abs)
           (Directive.instr (.regular asz .W64 (.add (.reg (.low r .W64)) (.imm (.int64 i)))))
-          (modifyIf (fun _ => True) (setReg64 r fun st => BitVec.setWidth 64 i.toBitVec + st.regs.get64 r))
+          (modifyIf (fun _ => True) (setReg64 r fun st => st.regs.get64 r + BitVec.setWidth 64 i.toBitVec))
           Q E := by
+  simp only [BitVec.add_comm _ (BitVec.setWidth 64 i.toBitVec)]
   refine wrp_modifyIf (pre := fun _ => True) (g := fun _ => True)
     (fun Q E s _ hq => (Program.WP.Spec.add_reg_imm (Q := Q) (E := E) asz r i).le_wp s hq) ?_
   intro s _
