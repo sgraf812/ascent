@@ -6,15 +6,17 @@ import Ascent.Refinement.Lockstep
 # Block loops
 
 A block program runs in `ExceptT κ (StateT σ UB)`, and a jump to a label `l` is the exception `l`.
-`cfgLoop T l` runs the blocks of the table `T`: at a label `l` with a block `b` it runs `b`, a jump
-of `b` continues the loop at its target, and a normal end of `b` ends the loop. At a label without
-a block the loop leaves by throwing that label, so the targets outside `T` are the exits of the loop.
+`cfgLoop stay T l` runs the blocks of the table `T` while the state satisfies `stay`: at a label `l`
+with a block `b`, in a state `s` with `stay s`, it runs `b`; a jump of `b` continues the loop at its
+target, and a normal end of `b` ends the loop. At a label without a block, or in a state without
+`stay`, the loop leaves by throwing the label. For a machine, `stay` is the test that the stack
+pointer still lies in the frame of the loop, so a return leaves the loop at any address.
 
 `cfgLoop_header` makes a label `h` with block `b` the header of a loop over the remaining blocks:
-running from `h` is a `repeat'` loop. An iteration runs `b` and then the loop over `T.erase h`;
-leaving that loop at `h` continues the iteration, leaving it at any other label leaves the `repeat'`
-loop. Applied at every label, the equation turns a table into nested `repeat'` loops. It is Bekić's
-elimination of one variable from a system of fixpoint equations.
+running from `h` in a state with `stay` is a `repeat'` loop. An iteration runs `b` and then the loop
+over `T.erase h`; leaving that loop at `h` in a state with `stay` continues the iteration, leaving it
+otherwise leaves the `repeat'` loop. Applied at every label, the equation turns a table into nested
+`repeat'` loops. It is Bekić's elimination of one variable from a system of fixpoint equations.
 
 `ThrowsOnly P x` is the exception effect of `x`: every label that `x` throws satisfies `P`. It has one
 rule for each program form, and the rule for a loop asks the effect of the loop body. A header
@@ -114,67 +116,125 @@ end BlockLoop
 open BlockLoop
 
 section
+variable {κ σ α : Type}
+
+def condState (c : σ → Bool) (x y : ExceptT κ (StateT σ UB) α) : ExceptT κ (StateT σ UB) α :=
+  get >>= fun s => if c s then x else y
+
+theorem condState_run (c : σ → Bool) (x y : ExceptT κ (StateT σ UB) α) (s : σ) :
+    (condState c x y).run.run s = (if c s then x else y).run.run s := rfl
+
+theorem wp_condState (c : σ → Bool) (x y : ExceptT κ (StateT σ UB) α) (Q : α → σ → Prop)
+    (E : (κ → σ → Prop) × EStack⟨⟩) (s : σ) :
+    wp (condState c x y) Q E s = if c s then wp x Q E s else wp y Q E s := by
+  rw [wp_run_eq, condState_run]
+  cases c s <;> simp only [Bool.false_eq_true, ↓reduceIte] <;> rw [wp_run_eq]
+
+theorem condState_const (b : Bool) (x y : ExceptT κ (StateT σ UB) α) :
+    condState (fun _ => b) x y = if b = true then x else y := by
+  cases b <;> apply ext_wp <;> intro Q E s <;> simp [wp_condState]
+
+theorem condState_true (x y : ExceptT κ (StateT σ UB) α) : condState (fun _ => true) x y = x := by
+  simpa using condState_const true x y
+
+theorem condState_false (x y : ExceptT κ (StateT σ UB) α) : condState (fun _ => false) x y = y := by
+  simpa using condState_const false x y
+
+theorem condState_self (c : σ → Bool) (x : ExceptT κ (StateT σ UB) α) : condState c x x = x := by
+  apply ext_wp <;> intro Q E s <;> rw [wp_condState] <;> split <;> exact id
+
+theorem tryCatch_condState (c : σ → Bool) (x y : ExceptT κ (StateT σ UB) α)
+    (h : κ → ExceptT κ (StateT σ UB) α) :
+    tryCatch (condState c x y) h = condState c (tryCatch x h) (tryCatch y h) := by
+  apply ext_wp <;> intro Q E s <;> simp only [wp_tryCatch, wp_condState] <;> split <;> exact id
+
+theorem condState_bind {β : Type} (c : σ → Bool) (x y : ExceptT κ (StateT σ UB) α)
+    (k : α → ExceptT κ (StateT σ UB) β) :
+    (condState c x y >>= k) = condState c (x >>= k) (y >>= k) := by
+  apply ext_wp <;> intro Q E s <;> simp only [WPMonadExact.wp_bind_eq, wp_condState] <;> split <;>
+    exact id
+
+
+end
+
+section
 variable {κ σ : Type} [DecidableEq κ]
 
-/-- The fixpoint, at the state-passing type that carries the `CCPO`. -/
-def cfgFix (T : Table κ (ExceptT κ (StateT σ UB) Unit)) (l : κ) (s : σ) :
+def cfgFix (stay : σ → Bool) (T : Table κ (ExceptT κ (StateT σ UB) Unit)) (l : κ) (s : σ) :
     UB (Except κ Unit × σ) :=
-  match T.get? l with
-  | none => pure (.error l, s)
-  | some b => b.run.run s >>= fun p =>
-    match p.1 with
-    | .ok _ => pure (.ok (), p.2)
-    | .error l' => cfgFix T l' p.2
-partial_fixpoint
-
-def cfgLoop (T : Table κ (ExceptT κ (StateT σ UB) Unit)) (l : κ) : ExceptT κ (StateT σ UB) Unit :=
-  cfgFix T l
-
-variable (T : Table κ (ExceptT κ (StateT σ UB) Unit))
-
-def cfgStep (f : κ → ExceptT κ (StateT σ UB) Unit) (l : κ) : ExceptT κ (StateT σ UB) Unit :=
-  show σ → UB (Except κ Unit × σ) from fun s =>
+  if stay s then
     match T.get? l with
     | none => pure (.error l, s)
     | some b => b.run.run s >>= fun p =>
       match p.1 with
       | .ok _ => pure (.ok (), p.2)
-      | .error l' => (f l').run.run p.2
+      | .error l' => cfgFix stay T l' p.2
+  else pure (.error l, s)
+partial_fixpoint
 
-theorem cfgLoop_eq_cfgStep : cfgLoop T = cfgStep T (cfgLoop T) := by
+def cfgLoop (stay : σ → Bool) (T : Table κ (ExceptT κ (StateT σ UB) Unit)) (l : κ) :
+    ExceptT κ (StateT σ UB) Unit :=
+  cfgFix stay T l
+
+variable (stay : σ → Bool) (T : Table κ (ExceptT κ (StateT σ UB) Unit))
+
+def cfgStep (f : κ → ExceptT κ (StateT σ UB) Unit) (l : κ) : ExceptT κ (StateT σ UB) Unit :=
+  show σ → UB (Except κ Unit × σ) from fun s =>
+    if stay s then
+      match T.get? l with
+      | none => pure (.error l, s)
+      | some b => b.run.run s >>= fun p =>
+        match p.1 with
+        | .ok _ => pure (.ok (), p.2)
+        | .error l' => (f l').run.run p.2
+    else pure (.error l, s)
+
+theorem cfgLoop_eq_cfgStep : cfgLoop stay T = cfgStep stay T (cfgLoop stay T) := by
   funext l
-  show (cfgFix T l : σ → UB (Except κ Unit × σ)) = cfgStep T _ l
+  show (cfgFix stay T l : σ → UB (Except κ Unit × σ)) = cfgStep stay T _ l
   funext s
   rw [cfgFix]
   rfl
 
 theorem cfgLoop_induct (motive : (κ → ExceptT κ (StateT σ UB) Unit) → Prop) (hadm : admissible motive)
-    (h : ∀ f, motive f → motive (cfgStep T f)) : motive (cfgLoop T) :=
-  cfgFix.fixpoint_induct T motive hadm h
+    (h : ∀ f, motive f → motive (cfgStep stay T f)) : motive (cfgLoop stay T) :=
+  cfgFix.fixpoint_induct stay T motive hadm h
 
-theorem cfgLoop_run (l : κ) (s : σ) : (cfgLoop T l).run.run s = cfgFix T l s := rfl
+theorem cfgLoop_run (l : κ) (s : σ) : (cfgLoop stay T l).run.run s = cfgFix stay T l s := rfl
 
 section
 variable (f : κ → ExceptT κ (StateT σ UB) Unit) {l : κ} (Q : Unit → σ → Prop)
-  (E : (κ → σ → Prop) × EStack⟨⟩) (s : σ)
+  (E : (κ → σ → Prop) × EStack⟨⟩) {s : σ}
 
-theorem cfgStep_run_none (hl : T.get? l = none) : (cfgStep T f l).run.run s = pure (.error l, s) := by
+theorem cfgStep_run_none (hl : T.get? l = none) :
+    (cfgStep stay T f l).run.run s = pure (.error l, s) := by
   simp only [cfgStep, ExceptT.run, StateT.run, hl]
+  split <;> rfl
 
-theorem cfgStep_run_some {b : ExceptT κ (StateT σ UB) Unit} (hl : T.get? l = some b) :
-    (cfgStep T f l).run.run s = (b.run.run s >>= fun p =>
+theorem cfgStep_run_leave (hs : stay s = false) :
+    (cfgStep stay T f l).run.run s = pure (.error l, s) := by
+  simp only [cfgStep, ExceptT.run, StateT.run, hs, Bool.false_eq_true, ↓reduceIte]
+
+theorem cfgStep_run_some {b : ExceptT κ (StateT σ UB) Unit} (hl : T.get? l = some b)
+    (hs : stay s = true) :
+    (cfgStep stay T f l).run.run s = (b.run.run s >>= fun p =>
       match p.1 with
       | .ok _ => pure (.ok (), p.2)
       | .error l' => (f l').run.run p.2) := by
-  simp only [cfgStep, ExceptT.run, StateT.run, hl]
+  simp only [cfgStep, ExceptT.run, StateT.run, hl, hs, ↓reduceIte]
 
-theorem wp_cfgStep_none (hl : T.get? l = none) : wp (cfgStep T f l) Q E s = E.1 l s := by
+theorem wp_cfgStep_none (hl : T.get? l = none) : wp (cfgStep stay T f l) Q E s = E.1 l s := by
   rw [wp_run_eq, cfgStep_run_none _ _ _ hl]
   rfl
 
-theorem wp_cfgStep_some {b : ExceptT κ (StateT σ UB) Unit} (hl : T.get? l = some b) :
-    wp (cfgStep T f l) Q E s = wp b Q (fun l' => wp (f l') Q E, E.2) s := by
-  rw [wp_run_eq, wp_run_eq b, cfgStep_run_some _ _ _ hl]
+theorem wp_cfgStep_leave (hs : stay s = false) : wp (cfgStep stay T f l) Q E s = E.1 l s := by
+  rw [wp_run_eq, cfgStep_run_leave _ _ _ hs]
+  rfl
+
+theorem wp_cfgStep_some {b : ExceptT κ (StateT σ UB) Unit} (hl : T.get? l = some b)
+    (hs : stay s = true) :
+    wp (cfgStep stay T f l) Q E s = wp b Q (fun l' => wp (f l') Q E, E.2) s := by
+  rw [wp_run_eq, wp_run_eq b, cfgStep_run_some _ _ _ hl hs]
   rcases b.run.run s with _ | ⟨l' | ⟨⟩, s'⟩
   · rfl
   · simp only [some_bind]
@@ -184,23 +244,30 @@ theorem wp_cfgStep_some {b : ExceptT κ (StateT σ UB) Unit} (hl : T.get? l = so
 end
 
 section
-variable {l : κ} (Q : Unit → σ → Prop) (E : (κ → σ → Prop) × EStack⟨⟩) (s : σ)
+variable {l : κ} (Q : Unit → σ → Prop) (E : (κ → σ → Prop) × EStack⟨⟩) {s : σ}
 
-theorem wp_cfgLoop_none (hl : T.get? l = none) : wp (cfgLoop T l) Q E s = E.1 l s := by
-  rw [congrFun (cfgLoop_eq_cfgStep T) l, wp_cfgStep_none _ _ _ _ _ hl]
+theorem wp_cfgLoop_none (hl : T.get? l = none) : wp (cfgLoop stay T l) Q E s = E.1 l s := by
+  rw [congrFun (cfgLoop_eq_cfgStep stay T) l, wp_cfgStep_none _ _ _ _ _ hl]
 
-theorem wp_cfgLoop_some {b : ExceptT κ (StateT σ UB) Unit} (hl : T.get? l = some b) :
-    wp (cfgLoop T l) Q E s = wp b Q (fun l' => wp (cfgLoop T l') Q E, E.2) s := by
-  rw [congrFun (cfgLoop_eq_cfgStep T) l, wp_cfgStep_some _ _ _ _ _ hl]
+theorem wp_cfgLoop_leave (hs : stay s = false) : wp (cfgLoop stay T l) Q E s = E.1 l s := by
+  rw [congrFun (cfgLoop_eq_cfgStep stay T) l, wp_cfgStep_leave _ _ _ _ _ hs]
+
+theorem wp_cfgLoop_some {b : ExceptT κ (StateT σ UB) Unit} (hl : T.get? l = some b)
+    (hs : stay s = true) :
+    wp (cfgLoop stay T l) Q E s = wp b Q (fun l' => wp (cfgLoop stay T l') Q E, E.2) s := by
+  rw [congrFun (cfgLoop_eq_cfgStep stay T) l, wp_cfgStep_some _ _ _ _ _ hl hs]
 
 end
 
-theorem cfgLoop_none {l : κ} (hl : T.get? l = none) : cfgLoop T l = throw l := by
+theorem cfgLoop_none {l : κ} (hl : T.get? l = none) : cfgLoop stay T l = throw l := by
   apply ext_wp <;> intro Q E s <;> rw [wp_cfgLoop_none _ _ _ _ hl, wp_throw] <;> exact id
 
 theorem cfgLoop_some {l : κ} {b : ExceptT κ (StateT σ UB) Unit} (hl : T.get? l = some b) :
-    cfgLoop T l = tryCatch b (cfgLoop T) := by
-  apply ext_wp <;> intro Q E s <;> rw [wp_cfgLoop_some _ _ _ _ hl, wp_tryCatch] <;> exact id
+    cfgLoop stay T l = condState stay (tryCatch b (cfgLoop stay T)) (throw l) := by
+  apply ext_wp <;> intro Q E s <;> rw [wp_condState] <;> cases hs : stay s
+  all_goals first
+    | simp only [wp_cfgLoop_leave _ _ _ _ hs, wp_throw, Bool.false_eq_true, ↓reduceIte]; exact id
+    | simp only [wp_cfgLoop_some _ _ _ _ hl hs, wp_tryCatch, ↓reduceIte]; exact id
 
 omit [DecidableEq κ] in
 theorem admissible_wp_imp_fn (P : κ → (Unit → σ → Prop) → ((κ → σ → Prop) × EStack⟨⟩) → σ → Prop) :
@@ -213,17 +280,20 @@ theorem admissible_wp_imp_fn (P : κ → (Unit → σ → Prop) → ((κ → σ 
 
 theorem wp_header_body (h : κ) (b : ExceptT κ (StateT σ UB) Unit) (R : ForInStep PUnit → σ → Prop)
     (E : (κ → σ → Prop) × EStack⟨⟩) (s : σ) :
-    wp (tryCatch (tryCatch b (cfgLoop (T.erase h)) >>= fun _ => pure (ForInStep.done PUnit.unit))
-        (fun l' => if l' = h then pure (ForInStep.yield PUnit.unit) else throw l')) R E s
+    wp (tryCatch (tryCatch b (cfgLoop stay (T.erase h)) >>= fun _ => pure (ForInStep.done PUnit.unit))
+        (fun l' => if l' = h then condState stay (pure (ForInStep.yield PUnit.unit)) (throw l')
+          else throw l')) R E s
       = wp b (fun _ => R (.done PUnit.unit))
-          (fun l' => wp (cfgLoop (T.erase h) l') (fun _ => R (.done PUnit.unit))
-            (fun l'' => if l'' = h then R (.yield PUnit.unit) else E.1 l'', E.2), E.2) s := by
-  have hH : (fun l' => wp ((if l' = h then pure (ForInStep.yield PUnit.unit) else throw l' :
-      ExceptT κ (StateT σ UB) (ForInStep PUnit))) R E)
-      = fun l' => if l' = h then R (.yield PUnit.unit) else E.1 l' := by
+          (fun l' => wp (cfgLoop stay (T.erase h) l') (fun _ => R (.done PUnit.unit))
+            (fun l'' t => if l'' = h then (if stay t then R (.yield PUnit.unit) t else E.1 l'' t)
+              else E.1 l'' t, E.2), E.2) s := by
+  have hH : (fun l' => wp ((if l' = h then condState stay (pure (ForInStep.yield PUnit.unit)) (throw l')
+      else throw l' : ExceptT κ (StateT σ UB) (ForInStep PUnit))) R E)
+      = fun l' t => if l' = h then (if stay t then R (.yield PUnit.unit) t else E.1 l' t) else E.1 l' t := by
     funext l' t
     split
-    · simp only [WPMonadExact.wp_pure_eq]
+    · rw [wp_condState]
+      simp only [WPMonadExact.wp_pure_eq, wp_throw]
     · exact wp_throw _ _ _ _
   rw [wp_tryCatch, hH, WPMonadExact.wp_bind_eq]
   simp only [WPMonadExact.wp_pure_eq]
@@ -236,15 +306,21 @@ variable {h : κ} {b : ExceptT κ (StateT σ UB) Unit} (hb : T.get? h = some b)
 include hb
 
 theorem wp_cfgLoop_imp_forIn (Q : Unit → σ → Prop) (E : (κ → σ → Prop) × EStack⟨⟩) (s : σ) :
-    wp (cfgLoop T h) Q E s → wp (FixLoop.mk.forIn PUnit.unit (fun _ _ =>
-      tryCatch (tryCatch b (cfgLoop (T.erase h)) >>= fun _ => pure (ForInStep.done PUnit.unit))
-      (fun l' => if l' = h then pure (ForInStep.yield PUnit.unit) else throw l'))) Q E s := by
+    wp (cfgLoop stay T h) Q E s → wp (condState stay (FixLoop.mk.forIn PUnit.unit (fun _ _ =>
+      tryCatch (tryCatch b (cfgLoop stay (T.erase h)) >>= fun _ => pure (ForInStep.done PUnit.unit))
+      (fun l' => if l' = h then condState stay (pure (ForInStep.yield PUnit.unit)) (throw l')
+        else throw l'))) (throw h)) Q E s := by
   let loop := FixLoop.mk.forIn PUnit.unit (fun _ _ =>
-      tryCatch (tryCatch b (cfgLoop (T.erase h)) >>= fun _ => pure (ForInStep.done PUnit.unit))
-      (fun l' => if l' = h then pure (ForInStep.yield PUnit.unit) else throw l'))
-  let H : κ → ExceptT κ (StateT σ UB) Unit := fun l' => if l' = h then loop else throw l'
+      tryCatch (tryCatch b (cfgLoop stay (T.erase h)) >>= fun _ => pure (ForInStep.done PUnit.unit))
+      (fun l' => if l' = h then condState stay (pure (ForInStep.yield PUnit.unit)) (throw l')
+        else throw l'))
+  let G : ExceptT κ (StateT σ UB) Unit := condState stay loop (throw h)
+  let H : κ → ExceptT κ (StateT σ UB) Unit := fun l' => if l' = h then G else throw l'
+  have hG : ∀ (Q : Unit → σ → Prop) E t, wp G Q E t = if stay t then wp loop Q E t else E.1 h t := by
+    intro Q E t
+    simp only [G, wp_condState, wp_throw]
   have hH : ∀ (Q : Unit → σ → Prop) E, (fun l'' => wp (H l'') Q E)
-      = fun l'' => if l'' = h then wp loop Q E else E.1 l'' := by
+      = fun l'' => if l'' = h then wp G Q E else E.1 l'' := by
     intro Q E
     funext l'' t
     simp only [H]
@@ -253,48 +329,61 @@ theorem wp_cfgLoop_imp_forIn (Q : Unit → σ → Prop) (E : (κ → σ → Prop
     · exact wp_throw _ _ _ _
   have hnone : (T.erase h).get? h = none := by simp only [Table.get?_erase, ↓reduceIte]
   have hloop : ∀ (Q : Unit → σ → Prop) E s,
-      wp loop Q E s = wp b (fun _ => Q ()) (fun l' => wp (cfgLoop (T.erase h) l') (fun _ => Q ())
-        (fun l'' => if l'' = h then wp loop Q E else E.1 l'', E.2), E.2) s := by
+      wp loop Q E s = wp b (fun _ => Q ()) (fun l' => wp (cfgLoop stay (T.erase h) l') (fun _ => Q ())
+        (fun l'' => if l'' = h then wp G Q E else E.1 l'', E.2), E.2) s := by
     intro Q E s
-    show wp (FixLoop.mk.forIn PUnit.unit (fun _ _ =>
-      tryCatch (tryCatch b (cfgLoop (T.erase h)) >>= fun _ => pure (ForInStep.done PUnit.unit))
-      (fun l' => if l' = h then pure (ForInStep.yield PUnit.unit) else throw l'))) Q E s = _
     refine (congrFun (FixLoop.wp_forIn_eq _ _ _ Q E) s).trans ?_
     rw [wp_header_body]
-  have key := cfgLoop_induct T
-    (fun f => ∀ l Q E s, wp (f l) Q E s → wp (tryCatch (cfgLoop (T.erase h) l) H) Q E s)
+    refine congrArg (fun F => wp b (fun _ => Q ()) (F, E.2) s) (funext fun l' => ?_)
+    refine congrArg (fun F => wp (cfgLoop stay (T.erase h) l') (fun _ => Q ()) (F, E.2))
+      (funext fun l'' => funext fun t => ?_)
+    split
+    · next he => subst he; rw [hG]
+    · rfl
+  have key := cfgLoop_induct stay T
+    (fun f => ∀ l Q E s, wp (f l) Q E s → wp (tryCatch (cfgLoop stay (T.erase h) l) H) Q E s)
     (admissible_wp_imp_fn _)
   refine fun hw => ?_
   have hR := (key ?_) h Q E s hw
   · rw [wp_tryCatch, wp_cfgLoop_none _ _ _ _ hnone, hH] at hR
     simpa only [↓reduceIte] using hR
-  intro f ih l Q E s hw
+  intro f ih l Q E s hwf
   rw [wp_tryCatch, hH]
+  cases hs : stay s with
+  | false =>
+    rw [wp_cfgStep_leave _ _ _ _ _ hs] at hwf
+    rw [wp_cfgLoop_leave _ _ _ _ hs]
+    by_cases hlh : l = h
+    · subst hlh
+      simp only [↓reduceIte, hG, hs, Bool.false_eq_true]
+      exact hwf
+    · simpa only [hlh, ↓reduceIte] using hwf
+  | true =>
   cases hl : T.get? l with
   | none =>
     have hne : l ≠ h := fun he => by rw [he, hb] at hl; exact nomatch hl
-    rw [wp_cfgStep_none _ _ _ _ _ hl] at hw
+    rw [wp_cfgStep_none _ _ _ _ _ hl] at hwf
     have hl' : (T.erase h).get? l = none := by simp only [Table.get?_erase, hne, hl, ↓reduceIte]
     rw [wp_cfgLoop_none _ _ _ _ hl']
-    simpa only [hne, ↓reduceIte] using hw
+    simpa only [hne, ↓reduceIte] using hwf
   | some b' =>
-    rw [wp_cfgStep_some _ _ _ _ _ hl] at hw
+    rw [wp_cfgStep_some _ _ _ _ _ hl hs] at hwf
     by_cases hlh : l = h
     · subst hlh
       rw [hb] at hl
       obtain rfl := Option.some.inj hl
       rw [wp_cfgLoop_none _ _ _ _ hnone]
-      simp only [↓reduceIte]
+      simp only [↓reduceIte, hG, hs]
       rw [hloop, unit_post]
-      refine WP.wp_monotone (x := b) (fun _ _ ht => ht) ?_ s hw
+      refine WP.wp_monotone (x := b) (fun _ _ ht => ht) ?_ s hwf
       refine Prod.mk_le _ _ _ ?_ PartialOrder.rel_refl
       intro l' t ht
       have := ih l' Q E t ht
       rw [wp_tryCatch, hH] at this
       exact this
     · have hl' : (T.erase h).get? l = some b' := by simp only [Table.get?_erase, hlh, hl, ↓reduceIte]
-      rw [wp_cfgLoop_some _ _ _ _ hl']
-      refine WP.wp_monotone (x := b') (fun _ _ ht => ht) ?_ s hw
+      rw [wp_cfgLoop_some _ _ _ _ hl' hs]
+      refine WP.wp_monotone (x := b') (fun _ _ ht => ht) ?_ s hwf
       refine Prod.mk_le _ _ _ ?_ PartialOrder.rel_refl
       intro l' t ht
       have := ih l' Q E t ht
@@ -302,32 +391,53 @@ theorem wp_cfgLoop_imp_forIn (Q : Unit → σ → Prop) (E : (κ → σ → Prop
       exact this
 
 theorem wp_forIn_imp_cfgLoop (Q : Unit → σ → Prop) (E : (κ → σ → Prop) × EStack⟨⟩) (s : σ) :
-    wp (FixLoop.mk.forIn PUnit.unit (fun _ _ =>
-      tryCatch (tryCatch b (cfgLoop (T.erase h)) >>= fun _ => pure (ForInStep.done PUnit.unit))
-      (fun l' => if l' = h then pure (ForInStep.yield PUnit.unit) else throw l'))) Q E s →
-      wp (cfgLoop T h) Q E s := by
+    wp (condState stay (FixLoop.mk.forIn PUnit.unit (fun _ _ =>
+      tryCatch (tryCatch b (cfgLoop stay (T.erase h)) >>= fun _ => pure (ForInStep.done PUnit.unit))
+      (fun l' => if l' = h then condState stay (pure (ForInStep.yield PUnit.unit)) (throw l')
+        else throw l'))) (throw h)) Q E s →
+      wp (cfgLoop stay T h) Q E s := by
   have inner : ∀ (g : PUnit → ExceptT κ (StateT σ UB) PUnit),
-      (∀ (Q : Unit → σ → Prop) E s, wp (g PUnit.unit) Q E s → wp (cfgLoop T h) Q E s) →
+      (∀ (Q : Unit → σ → Prop) E s, stay s = true → wp (g PUnit.unit) Q E s →
+        wp (cfgLoop stay T h) Q E s) →
       ∀ (Q : Unit → σ → Prop) (E : (κ → σ → Prop) × EStack⟨⟩) l s,
-        wp (cfgLoop (T.erase h) l) Q
-          (fun l'' => if l'' = h then wp (g PUnit.unit) Q E else E.1 l'', E.2) s →
-        wp (cfgLoop T l) Q E s := by
+        wp (cfgLoop stay (T.erase h) l) Q
+          (fun l'' t => if l'' = h then (if stay t then wp (g PUnit.unit) Q E t else E.1 l'' t)
+            else E.1 l'' t, E.2) s →
+        wp (cfgLoop stay T l) Q E s := by
     intro g hg Q E
     let E' : (κ → σ → Prop) × EStack⟨⟩ :=
-      (fun l'' => if l'' = h then wp (g PUnit.unit) Q E else E.1 l'', E.2)
-    have := cfgLoop_induct (T.erase h)
-      (fun f => ∀ l s, wp (f l) Q E' s → wp (cfgLoop T l) Q E s)
+      (fun l'' t => if l'' = h then (if stay t then wp (g PUnit.unit) Q E t else E.1 l'' t)
+        else E.1 l'' t, E.2)
+    have hE'h : ∀ t, E'.1 h t → wp (cfgLoop stay T h) Q E t := by
+      intro t ht
+      cases hs : stay t
+      · simp only [E', hs, ↓reduceIte, Bool.false_eq_true] at ht
+        rw [wp_cfgLoop_leave _ _ _ _ hs]
+        exact ht
+      · simp only [E', hs, ↓reduceIte] at ht
+        exact hg Q E t hs ht
+    have := cfgLoop_induct stay (T.erase h)
+      (fun f => ∀ l s, wp (f l) Q E' s → wp (cfgLoop stay T l) Q E s)
       (admissible_pi _ fun l => admissible_pi _ fun s =>
         admissible_apply (fun _ u => wp u Q E' s → _) l (admissible_wp_imp _ E' s _))
     refine this ?_
     intro f ih l s hw
+    cases hs : stay s with
+    | false =>
+      rw [wp_cfgStep_leave _ _ _ _ _ hs] at hw
+      by_cases hlh : l = h
+      · subst hlh
+        exact hE'h s hw
+      · simp only [E', hlh, ↓reduceIte] at hw
+        rw [wp_cfgLoop_leave _ _ _ _ hs]
+        exact hw
+    | true =>
     cases hl : (T.erase h).get? l with
     | none =>
       rw [wp_cfgStep_none _ _ _ _ _ hl] at hw
       by_cases hlh : l = h
       · subst hlh
-        simp only [E', ↓reduceIte] at hw
-        exact hg Q E s hw
+        exact hE'h s hw
       · simp only [E', hlh, ↓reduceIte] at hw
         have hT : T.get? l = none := by simpa only [Table.get?_erase, hlh, ↓reduceIte] using hl
         rw [wp_cfgLoop_none _ _ _ _ hT]
@@ -335,23 +445,34 @@ theorem wp_forIn_imp_cfgLoop (Q : Unit → σ → Prop) (E : (κ → σ → Prop
     | some b' =>
       have hlh : l ≠ h := fun he => by simp only [he, Table.get?_erase, ↓reduceIte] at hl; exact nomatch hl
       have hT : T.get? l = some b' := by simpa only [Table.get?_erase, hlh, ↓reduceIte] using hl
-      rw [wp_cfgStep_some _ _ _ _ _ hl] at hw
-      rw [wp_cfgLoop_some _ _ _ _ hT]
+      rw [wp_cfgStep_some _ _ _ _ _ hl hs] at hw
+      rw [wp_cfgLoop_some _ _ _ _ hT hs]
       refine WP.wp_monotone (x := b') (fun _ _ ht => ht) ?_ s hw
       refine Prod.mk_le _ _ _ ?_ PartialOrder.rel_refl
       intro l' t ht
       exact ih l' t ht
   have := FixLoop.forIn_induct (m := ExceptT κ (StateT σ UB)) (β := PUnit) (fun _ _ =>
-      tryCatch (tryCatch b (cfgLoop (T.erase h)) >>= fun _ => pure (ForInStep.done PUnit.unit))
-      (fun l' => if l' = h then pure (ForInStep.yield PUnit.unit) else throw l'))
-    (fun g => ∀ (Q : Unit → σ → Prop) E s, wp (g PUnit.unit) Q E s → wp (cfgLoop T h) Q E s)
-    (admissible_pi _ fun Q => admissible_pi _ fun E => admissible_pi _ fun s =>
+      tryCatch (tryCatch b (cfgLoop stay (T.erase h)) >>= fun _ => pure (ForInStep.done PUnit.unit))
+      (fun l' => if l' = h then condState stay (pure (ForInStep.yield PUnit.unit)) (throw l')
+        else throw l'))
+    (fun g => ∀ (Q : Unit → σ → Prop) E s, stay s = true → wp (g PUnit.unit) Q E s →
+      wp (cfgLoop stay T h) Q E s)
+    (admissible_pi _ fun Q => admissible_pi _ fun E => admissible_pi _ fun s => admissible_pi _ fun _ =>
       admissible_apply (fun _ u => wp u Q E s → _) PUnit.unit (admissible_wp_imp _ E s _))
-  refine this ?_ Q E s
-  intro g ih Q E s hw
+  intro hw0
+  rw [wp_condState] at hw0
+  cases hs0 : stay s with
+  | false =>
+    simp only [hs0, Bool.false_eq_true, ↓reduceIte, wp_throw] at hw0
+    rw [wp_cfgLoop_leave _ _ _ _ hs0]
+    exact hw0
+  | true =>
+  simp only [hs0, ↓reduceIte] at hw0
+  refine this ?_ Q E s hs0 hw0
+  intro g ih Q E s hs hw
   rw [FixLoop.step, WPMonadExact.wp_bind_eq, wp_header_body] at hw
   simp only [WPMonadExact.wp_pure_eq] at hw
-  rw [wp_cfgLoop_some _ _ _ _ hb]
+  rw [wp_cfgLoop_some _ _ _ _ hb hs]
   rw [← unit_post Q]
   refine WP.wp_monotone (x := b) (fun _ _ ht => ht) ?_ s hw
   refine Prod.mk_le _ _ _ ?_ PartialOrder.rel_refl
@@ -360,33 +481,36 @@ theorem wp_forIn_imp_cfgLoop (Q : Unit → σ → Prop) (E : (κ → σ → Prop
   rw [unit_post] at ht
   exact inner g ih Q E l' t ht
 
-theorem cfgLoop_header_of_some : cfgLoop T h = FixLoop.mk.forIn PUnit.unit (fun _ _ =>
-      tryCatch (tryCatch b (cfgLoop (T.erase h)) >>= fun _ => pure (ForInStep.done PUnit.unit))
-        (fun l' => if l' = h then pure (ForInStep.yield PUnit.unit) else throw l')) :=
-  ext_wp (wp_cfgLoop_imp_forIn T hb) (wp_forIn_imp_cfgLoop T hb)
+theorem cfgLoop_header_of_some : cfgLoop stay T h = condState stay (FixLoop.mk.forIn PUnit.unit (fun _ _ =>
+      tryCatch (tryCatch b (cfgLoop stay (T.erase h)) >>= fun _ => pure (ForInStep.done PUnit.unit))
+        (fun l' => if l' = h then condState stay (pure (ForInStep.yield PUnit.unit)) (throw l')
+          else throw l'))) (throw h) :=
+  ext_wp (wp_cfgLoop_imp_forIn stay T hb) (wp_forIn_imp_cfgLoop stay T hb)
 
 end
 
 theorem cfgLoop_header {h : κ} (hb : (T.get? h).isSome = true) :
-    cfgLoop T h = FixLoop.mk.forIn PUnit.unit (fun _ _ =>
-      tryCatch (tryCatch ((T.get? h).getD (throw h)) (cfgLoop (T.erase h)) >>= fun _ =>
+    cfgLoop stay T h = condState stay (FixLoop.mk.forIn PUnit.unit (fun _ _ =>
+      tryCatch (tryCatch ((T.get? h).getD (throw h)) (cfgLoop stay (T.erase h)) >>= fun _ =>
           pure (ForInStep.done PUnit.unit))
-        (fun l' => if l' = h then pure (ForInStep.yield PUnit.unit) else throw l')) := by
+        (fun l' => if l' = h then condState stay (pure (ForInStep.yield PUnit.unit)) (throw l')
+          else throw l'))) (throw h) := by
   obtain ⟨b, hb'⟩ := Option.isSome_iff_exists.mp hb
   rw [hb']
-  exact cfgLoop_header_of_some T hb'
+  exact cfgLoop_header_of_some stay T hb'
 
-theorem cfgLoop_eq_throw {l : κ} (hl : T.get? l = none) : cfgLoop T l = throw l := cfgLoop_none T hl
+theorem cfgLoop_eq_throw {l : κ} (hl : T.get? l = none) : cfgLoop stay T l = throw l :=
+  cfgLoop_none stay T hl
 
 /-! ## The exception effect of a program -/
 
-/-- `x` throws only labels that satisfy `P`. -/
-def ThrowsOnly {α : Type} (P : κ → Prop) (x : ExceptT κ (StateT σ UB) α) : Prop :=
+/-- `x` throws a label `l` in a state `t` only if `P l t`. -/
+def ThrowsOnly {α : Type} (P : κ → σ → Prop) (x : ExceptT κ (StateT σ UB) α) : Prop :=
   ∀ (Q : α → σ → Prop) (E : (κ → σ → Prop) × EStack⟨⟩) s,
-    wp x Q E s → wp x Q (fun l t => P l ∧ E.1 l t, E.2) s
+    wp x Q E s → wp x Q (fun l t => P l t ∧ E.1 l t, E.2) s
 
 section
-variable {α β : Type} {P : κ → Prop}
+variable {α β : Type} {P : κ → σ → Prop}
 
 omit [DecidableEq κ] in
 theorem ThrowsOnly.pure (a : α) : ThrowsOnly P (pure a : ExceptT κ (StateT σ UB) α) = True := eq_true <| by
@@ -394,11 +518,11 @@ theorem ThrowsOnly.pure (a : α) : ThrowsOnly P (pure a : ExceptT κ (StateT σ 
   simpa only [WPMonadExact.wp_pure_eq] using hw
 
 omit [DecidableEq κ] in
-theorem ThrowsOnly.throw {l : κ} (hl : P l) :
+theorem ThrowsOnly.throw {l : κ} (hl : ∀ s, P l s) :
     ThrowsOnly P (throw l : ExceptT κ (StateT σ UB) α) = True := eq_true <| by
   intro Q E s hw
   rw [wp_throw] at hw ⊢
-  exact ⟨hl, hw⟩
+  exact ⟨hl s, hw⟩
 
 omit [DecidableEq κ] in
 theorem ThrowsOnly.bind {x : ExceptT κ (StateT σ UB) α} {k : α → ExceptT κ (StateT σ UB) β}
@@ -415,7 +539,7 @@ theorem ThrowsOnly.map {x : ExceptT κ (StateT σ UB) α} (f : α → β) (hx : 
   exact of_eq_true (ThrowsOnly.bind hx fun _ => of_eq_true (ThrowsOnly.pure _))
 
 theorem ThrowsOnly.tryCatch {x : ExceptT κ (StateT σ UB) α} {h : κ} {y : ExceptT κ (StateT σ UB) α}
-    (hx : ThrowsOnly (fun l => l = h ∨ P l) x) (hy : ThrowsOnly P y) :
+    (hx : ThrowsOnly (fun l s => l = h ∨ P l s) x) (hy : ThrowsOnly P y) :
     ThrowsOnly P (tryCatch x (fun l' => if l' = h then y else MonadExcept.throw l')) = True := eq_true <| by
   intro Q E s hw
   rw [wp_tryCatch] at hw ⊢
@@ -434,7 +558,7 @@ theorem ThrowsOnly.forIn {b : α} {f : Unit → α → ExceptT κ (StateT σ UB)
   haveI : Nonempty α := ⟨b⟩
   have := FixLoop.forIn_induct (m := ExceptT κ (StateT σ UB)) f
     (fun g => ∀ v (Q : α → σ → Prop) E s, wp (g v) Q E s →
-      wp (FixLoop.mk.forIn v f) Q (fun l t => P l ∧ E.1 l t, E.2) s)
+      wp (FixLoop.mk.forIn v f) Q (fun l t => P l t ∧ E.1 l t, E.2) s)
     (admissible_pi _ fun v => admissible_pi _ fun Q => admissible_pi _ fun E => admissible_pi _ fun s =>
       admissible_apply (fun _ u => wp u Q E s → _) v (admissible_wp_imp _ E s _))
   refine fun Q E s hw => this ?_ b Q E s hw
@@ -447,18 +571,27 @@ theorem ThrowsOnly.forIn {b : α} {f : Unit → α → ExceptT κ (StateT σ UB)
   | done v' => simpa only [WPMonadExact.wp_pure_eq] using ht
   | yield v' => exact ih v' Q E t ht
 
+omit [DecidableEq κ] in
+theorem ThrowsOnly.condState (c : σ → Bool) {x y : ExceptT κ (StateT σ UB) α} (hx : ThrowsOnly P x)
+    (hy : ThrowsOnly P y) : ThrowsOnly P (condState c x y) = True := eq_true <| by
+  intro Q E s hw
+  rw [wp_condState] at hw ⊢
+  by_cases hc : c s = true
+  · rw [ite_eq_left hc] at hw ⊢
+    exact hx _ _ s hw
+  · rw [ite_eq_right hc] at hw ⊢
+    exact hy _ _ s hw
+
 end
 
-/-- A handler that catches only `h` crosses a loop that never throws `h`. -/
-theorem tryCatch_forIn_bind {β γ : Type} {h : κ} {i : β} {f : Unit → β → ExceptT κ (StateT σ UB) (ForInStep β)}
-    {k : β → ExceptT κ (StateT σ UB) γ} {y : ExceptT κ (StateT σ UB) γ}
-    (hf : ThrowsOnly (· ≠ h) (FixLoop.mk.forIn i f)) :
-    tryCatch (FixLoop.mk.forIn i f >>= k) (fun l' => if l' = h then y else throw l')
-      = FixLoop.mk.forIn i f >>= fun r => tryCatch (k r) (fun l' => if l' = h then y else throw l') := by
-  have hE : ∀ (Q : γ → σ → Prop) (E : (κ → σ → Prop) × EStack⟨⟩) l t, l ≠ h →
-      (wp (if l = h then y else throw l) Q E t ↔ E.1 l t) := by
-    intro Q E l t hl
-    simp only [hl, ↓reduceIte, wp_throw]
+omit [DecidableEq κ] in
+/-- A handler `H` that throws on every label a loop may throw crosses the loop. -/
+theorem tryCatch_forIn_bind_of {β γ : Type} {P : κ → σ → Prop} {i : β}
+    {f : Unit → β → ExceptT κ (StateT σ UB) (ForInStep β)} {k : β → ExceptT κ (StateT σ UB) γ}
+    {H : κ → ExceptT κ (StateT σ UB) γ}
+    (hH : ∀ (Q : γ → σ → Prop) (E : (κ → σ → Prop) × EStack⟨⟩) l t, P l t → (wp (H l) Q E t ↔ E.1 l t))
+    (hf : ThrowsOnly P (FixLoop.mk.forIn i f)) :
+    tryCatch (FixLoop.mk.forIn i f >>= k) H = FixLoop.mk.forIn i f >>= fun r => tryCatch (k r) H := by
   apply ext_wp
   · intro Q E s hw
     rw [wp_tryCatch, WPMonadExact.wp_bind_eq] at hw
@@ -467,7 +600,7 @@ theorem tryCatch_forIn_bind {β γ : Type} {h : κ} {i : β} {f : Unit → β �
     · rw [wp_tryCatch]; exact ht
     · refine Prod.mk_le _ _ _ ?_ PartialOrder.rel_refl
       intro l t ⟨hl, ht⟩
-      exact (hE Q E l t hl).mp ht
+      exact (hH Q E l t hl).mp ht
   · intro Q E s hw
     rw [WPMonadExact.wp_bind_eq] at hw
     rw [wp_tryCatch, WPMonadExact.wp_bind_eq]
@@ -475,25 +608,81 @@ theorem tryCatch_forIn_bind {β γ : Type} {h : κ} {i : β} {f : Unit → β �
     · rw [wp_tryCatch] at ht; exact ht
     · refine Prod.mk_le _ _ _ ?_ PartialOrder.rel_refl
       intro l t ⟨hl, ht⟩
-      exact (hE Q E l t hl).mpr ht
+      exact (hH Q E l t hl).mpr ht
 
-theorem tryCatch_map_forIn {β γ : Type} {h : κ} {i : β}
-    {f : Unit → β → ExceptT κ (StateT σ UB) (ForInStep β)} {g : β → γ} {y : ExceptT κ (StateT σ UB) γ}
-    (hf : ThrowsOnly (· ≠ h) (FixLoop.mk.forIn i f)) :
-    tryCatch (g <$> FixLoop.mk.forIn i f) (fun l' => if l' = h then y else throw l')
-      = g <$> FixLoop.mk.forIn i f := by
-  have hp : ∀ r : β, tryCatch (pure (g r) : ExceptT κ (StateT σ UB) γ)
-      (fun l' => if l' = h then y else throw l') = pure (g r) := fun r => by
+omit [DecidableEq κ] in
+theorem tryCatch_map_forIn_of {β γ : Type} {P : κ → σ → Prop} {i : β}
+    {f : Unit → β → ExceptT κ (StateT σ UB) (ForInStep β)} {g : β → γ} {H : κ → ExceptT κ (StateT σ UB) γ}
+    (hH : ∀ (Q : γ → σ → Prop) (E : (κ → σ → Prop) × EStack⟨⟩) l t, P l t → (wp (H l) Q E t ↔ E.1 l t))
+    (hf : ThrowsOnly P (FixLoop.mk.forIn i f)) :
+    tryCatch (g <$> FixLoop.mk.forIn i f) H = g <$> FixLoop.mk.forIn i f := by
+  have hp : ∀ r : β, tryCatch (pure (g r) : ExceptT κ (StateT σ UB) γ) H = pure (g r) := fun r => by
     apply ext_wp <;> intro Q E s <;> rw [wp_tryCatch] <;>
       simp only [WPMonadExact.wp_pure_eq] <;> exact id
-  have := tryCatch_forIn_bind (k := fun r => pure (g r)) (y := y) hf
+  have := tryCatch_forIn_bind_of (k := fun r => pure (g r)) hH hf
   simp only [hp] at this
   simpa only [map_eq_pure_bind] using this
 
+omit [DecidableEq κ] in
+theorem handler_throws {γ : Type} {h l : κ} [Decidable (l = h)] {y : ExceptT κ (StateT σ UB) γ}
+    (Q : γ → σ → Prop) (E : (κ → σ → Prop) × EStack⟨⟩) (t : σ) (hl : l ≠ h) :
+    wp (if l = h then y else throw l) Q E t ↔ E.1 l t := by
+  simp only [hl, ↓reduceIte, wp_throw]
+
+omit [DecidableEq κ] in
+theorem header_handler_throws {γ : Type} {h l : κ} [Decidable (l = h)] {c : σ → Bool}
+    {y : ExceptT κ (StateT σ UB) γ} (Q : γ → σ → Prop) (E : (κ → σ → Prop) × EStack⟨⟩) (t : σ)
+    (hl : l ≠ h ∨ c t = false) :
+    wp (if l = h then condState c y (throw l) else throw l) Q E t ↔ E.1 l t := by
+  by_cases hlh : l = h
+  · simp only [hlh, ↓reduceIte, wp_condState, wp_throw]
+    simp only [hlh, ne_eq, not_true_eq_false, false_or] at hl
+    simp [hl]
+  · simp only [hlh, ↓reduceIte, wp_throw]
+
+/-- A handler that catches only `h` crosses a loop that never throws `h`. -/
+theorem tryCatch_forIn_bind {β γ : Type} {h : κ} {i : β} {f : Unit → β → ExceptT κ (StateT σ UB) (ForInStep β)}
+    {k : β → ExceptT κ (StateT σ UB) γ} {y : ExceptT κ (StateT σ UB) γ}
+    (hf : ThrowsOnly (fun l _ => l ≠ h) (FixLoop.mk.forIn i f)) :
+    tryCatch (FixLoop.mk.forIn i f >>= k) (fun l' => if l' = h then y else throw l')
+      = FixLoop.mk.forIn i f >>= fun r => tryCatch (k r) (fun l' => if l' = h then y else throw l') :=
+  tryCatch_forIn_bind_of (fun Q E _ t hl => handler_throws Q E t hl) hf
+
+theorem tryCatch_map_forIn {β γ : Type} {h : κ} {i : β}
+    {f : Unit → β → ExceptT κ (StateT σ UB) (ForInStep β)} {g : β → γ} {y : ExceptT κ (StateT σ UB) γ}
+    (hf : ThrowsOnly (fun l _ => l ≠ h) (FixLoop.mk.forIn i f)) :
+    tryCatch (g <$> FixLoop.mk.forIn i f) (fun l' => if l' = h then y else throw l')
+      = g <$> FixLoop.mk.forIn i f :=
+  tryCatch_map_forIn_of (fun Q E _ t hl => handler_throws Q E t hl) hf
+
 theorem tryCatch_forIn {β : Type} {h : κ} {i : β} {f : Unit → β → ExceptT κ (StateT σ UB) (ForInStep β)}
-    {y : ExceptT κ (StateT σ UB) β} (hf : ThrowsOnly (· ≠ h) (FixLoop.mk.forIn i f)) :
+    {y : ExceptT κ (StateT σ UB) β} (hf : ThrowsOnly (fun l _ => l ≠ h) (FixLoop.mk.forIn i f)) :
     tryCatch (FixLoop.mk.forIn i f) (fun l' => if l' = h then y else throw l') = FixLoop.mk.forIn i f := by
   simpa only [id_map] using tryCatch_map_forIn (g := id) (y := y) hf
+
+/-- A header handler crosses a loop that throws its header only in states without the stay test. -/
+theorem tryCatch_forIn_bind_header {β γ : Type} {h : κ} {c : σ → Bool} {i : β}
+    {f : Unit → β → ExceptT κ (StateT σ UB) (ForInStep β)}
+    {k : β → ExceptT κ (StateT σ UB) γ} {y : ExceptT κ (StateT σ UB) γ}
+    (hf : ThrowsOnly (fun l t => l ≠ h ∨ c t = false) (FixLoop.mk.forIn i f)) :
+    tryCatch (FixLoop.mk.forIn i f >>= k) (fun l' => if l' = h then condState c y (throw l') else throw l')
+      = FixLoop.mk.forIn i f >>= fun r =>
+          tryCatch (k r) (fun l' => if l' = h then condState c y (throw l') else throw l') :=
+  tryCatch_forIn_bind_of (fun Q E _ t hl => header_handler_throws Q E t hl) hf
+
+theorem tryCatch_map_forIn_header {β γ : Type} {h : κ} {c : σ → Bool} {i : β}
+    {f : Unit → β → ExceptT κ (StateT σ UB) (ForInStep β)} {g : β → γ} {y : ExceptT κ (StateT σ UB) γ}
+    (hf : ThrowsOnly (fun l t => l ≠ h ∨ c t = false) (FixLoop.mk.forIn i f)) :
+    tryCatch (g <$> FixLoop.mk.forIn i f) (fun l' => if l' = h then condState c y (throw l') else throw l')
+      = g <$> FixLoop.mk.forIn i f :=
+  tryCatch_map_forIn_of (fun Q E _ t hl => header_handler_throws Q E t hl) hf
+
+theorem tryCatch_forIn_header {β : Type} {h : κ} {c : σ → Bool} {i : β}
+    {f : Unit → β → ExceptT κ (StateT σ UB) (ForInStep β)} {y : ExceptT κ (StateT σ UB) β}
+    (hf : ThrowsOnly (fun l t => l ≠ h ∨ c t = false) (FixLoop.mk.forIn i f)) :
+    tryCatch (FixLoop.mk.forIn i f) (fun l' => if l' = h then condState c y (throw l') else throw l')
+      = FixLoop.mk.forIn i f := by
+  simpa only [id_map] using tryCatch_map_forIn_header (g := id) (y := y) hf
 
 theorem tryCatch_forIn_return {β : Type} {e : κ} {i r : β}
     {f : Unit → β → ExceptT κ (StateT σ UB) (ForInStep β)} :
@@ -547,11 +736,53 @@ theorem tryCatch_forIn_return {β : Type} {e : κ} {i r : β}
       · simp only [he, ↓reduceIte, wp_throw] at hl ⊢
         exact hl
 
+omit [DecidableEq κ] in
 theorem forIn_bind_done {β : Type} (b : PUnit) (x : ExceptT κ (StateT σ UB) β) :
     FixLoop.mk.forIn b (fun _ _ => x >>= fun _ => pure (ForInStep.done PUnit.unit)) = x >>= fun _ => pure PUnit.unit := by
   rw [FixLoop.forIn_eq, bind_assoc]
   simp only [pure_bind]
 
+omit [DecidableEq κ] in
+theorem condState_condState_left (c : σ → Bool) {α : Type} (x y z : ExceptT κ (StateT σ UB) α) :
+    condState c (condState c x y) z = condState c x z := by
+  apply ext_wp <;> intro Q E s <;> simp only [wp_condState] <;> cases c s <;> exact id
+
+omit [DecidableEq κ] in
+theorem condState_condState_right (c : σ → Bool) {α : Type} (x y z : ExceptT κ (StateT σ UB) α) :
+    condState c x (condState c y z) = condState c x z := by
+  apply ext_wp <;> intro Q E s <;> simp only [wp_condState] <;> cases c s <;> exact id
+
+omit [DecidableEq κ] in
+theorem condState_map {α β : Type} (c : σ → Bool) (f : α → β) (x y : ExceptT κ (StateT σ UB) α) :
+    condState c (f <$> x) (f <$> y) = f <$> condState c x y := by
+  simp only [map_eq_pure_bind, condState_bind]
+
+omit [DecidableEq κ] in
+theorem bind_map {α β γ : Type} (x : ExceptT κ (StateT σ UB) α) (y : α → ExceptT κ (StateT σ UB) β)
+    (f : β → γ) : (x >>= fun a => f <$> y a) = f <$> (x >>= y) :=
+  (map_bind _ _ _).symm
+
+omit [DecidableEq κ] in
+theorem throw_step (l : κ) :
+    (throw l : ExceptT κ (StateT σ UB) (ForInStep PUnit))
+      = ForInStep.done <$> (throw l : ExceptT κ (StateT σ UB) PUnit) := by
+  rw [map_eq_pure_bind, throw_bind]
+
+omit [DecidableEq κ] in
+theorem forIn_map_done (x : ExceptT κ (StateT σ UB) PUnit) :
+    FixLoop.mk.forIn PUnit.unit (fun _ _ => ForInStep.done <$> x) = x := by
+  rw [FixLoop.forIn_eq, map_eq_pure_bind, bind_assoc]
+  simp only [pure_bind]
+  exact bind_pure_unit
+
+omit [DecidableEq κ] in
+theorem forIn_bind_throw {α β : Type} (b : β) (x : ExceptT κ (StateT σ UB) α) (l : κ) :
+    FixLoop.mk.forIn b (fun _ _ => x >>= fun _ => (throw l : ExceptT κ (StateT σ UB) (ForInStep β)))
+      = x >>= fun _ => throw l := by
+  rw [FixLoop.forIn_eq, bind_assoc]
+  simp only [throw_bind]
+
+omit [DecidableEq κ] in
 theorem forIn_throw {β : Type} (b : β) (l : κ) :
     FixLoop.mk.forIn b (fun _ _ => (throw l : ExceptT κ (StateT σ UB) (ForInStep β))) = throw l := by
   rw [FixLoop.forIn_eq, throw_bind]
@@ -561,33 +792,43 @@ theorem forIn_throw {β : Type} (b : β) (l : κ) :
 def count : Nat → κ → σ → UB Nat
   | 0, _, _ => UB.fail
   | n + 1, l, st =>
-    match T.get? l with
-    | none => pure 0
-    | some b => b.run.run st >>= fun p =>
-      match p.1 with
-      | .ok _ => pure 1
-      | .error l' => (· + 1) <$> count n l' p.2
+    if stay st then
+      match T.get? l with
+      | none => pure 0
+      | some b => b.run.run st >>= fun p =>
+        match p.1 with
+        | .ok _ => pure 1
+        | .error l' => (· + 1) <$> count n l' p.2
+    else pure 0
 
 theorem count_of_cfgFix : ∀ (l : κ) (st : σ) (r : Except κ Unit × σ),
-    cfgFix T l st = some r → ∃ n k, count T n l st = some k := by
-  refine cfgFix.fixpoint_induct T
-    (fun f => ∀ l st r, f l st = some r → ∃ n k, count T n l st = some k) ?_ ?_
+    cfgFix stay T l st = some r → ∃ n k, count stay T n l st = some k := by
+  refine cfgFix.fixpoint_induct stay T
+    (fun f => ∀ l st r, f l st = some r → ∃ n k, count stay T n l st = some k) ?_ ?_
   · refine admissible_pi_apply
       (fun l (g : σ → UB (Except κ Unit × σ)) =>
-        ∀ st r, g st = some r → ∃ n k, count T n l st = some k) fun l => ?_
+        ∀ st r, g st = some r → ∃ n k, count stay T n l st = some k) fun l => ?_
     refine admissible_pi_apply
       (fun st (u : UB (Except κ Unit × σ)) =>
-        ∀ r, u = some r → ∃ n k, count T n l st = some k) fun st => ?_
+        ∀ r, u = some r → ∃ n k, count stay T n l st = some k) fun st => ?_
     exact admissible_flatOrder (b := (none : Option (Except κ Unit × σ)))
       (fun u => ∀ r, (show UB (Except κ Unit × σ) from u) = some r →
-        ∃ n k, count T n l st = some k)
+        ∃ n k, count stay T n l st = some k)
       (fun _ h => nomatch h)
   · intro f ih l st r h
     dsimp only at h
+    cases hs : stay st with
+    | false =>
+      refine ⟨0 + 1, 0, ?_⟩
+      simp only [count, hs, Bool.false_eq_true, ↓reduceIte]
+      rfl
+    | true =>
+    rw [hs] at h
+    simp only [↓reduceIte] at h
     cases hl : T.get? l with
     | none =>
       refine ⟨0 + 1, 0, ?_⟩
-      rw [count, hl]
+      simp only [count, hs, hl, ↓reduceIte]
       rfl
     | some b =>
       rw [hl] at h
@@ -595,24 +836,32 @@ theorem count_of_cfgFix : ∀ (l : κ) (st : σ) (r : Except κ Unit × σ),
       rcases r' with l' | _
       · obtain ⟨n, k, hk⟩ := ih l' st' r hr
         refine ⟨n + 1, k + 1, ?_⟩
-        rw [count, hl]
+        simp only [count, hs, hl, ↓reduceIte]
         show (b.run.run st >>= _) = _
         rw [hp, some_bind]
-        show (· + 1) <$> count T n l' st' = some (k + 1)
+        show (· + 1) <$> count stay T n l' st' = some (k + 1)
         rw [hk]
         rfl
       · refine ⟨0 + 1, 1, ?_⟩
-        rw [count, hl]
+        simp only [count, hs, hl, ↓reduceIte]
         show (b.run.run st >>= _) = _
         rw [hp, some_bind]
         rfl
 
 theorem count_unique : ∀ (n n' : Nat) (l : κ) (st : σ) (k k' : Nat),
-    count T n l st = some k → count T n' l st = some k' → k = k'
+    count stay T n l st = some k → count stay T n' l st = some k' → k = k'
   | 0, _, _, _, _, _, h, _ => nomatch h
   | _ + 1, 0, _, _, _, _, _, h' => nomatch h'
   | n + 1, n' + 1, l, st, k, k', h, h' => by
     rw [count] at h h'
+    cases hs : stay st with
+    | false =>
+      simp only [hs, Bool.false_eq_true, ↓reduceIte] at h h'
+      have := Option.some.inj h
+      have := Option.some.inj h'
+      omega
+    | true =>
+    simp only [hs, ↓reduceIte] at h h'
     cases hl : T.get? l with
     | none =>
       rw [hl] at h h'
@@ -635,28 +884,28 @@ theorem count_unique : ∀ (n n' : Nat) (l : κ) (st : σ) (k k' : Nat),
 
 open Classical in
 noncomputable def steps (l : κ) (st : σ) : Nat :=
-  if h : ∃ k n, count T n l st = some k then Classical.choose h else 0
+  if h : ∃ k n, count stay T n l st = some k then Classical.choose h else 0
 
-theorem steps_eq {n : Nat} {l : κ} {st : σ} {k : Nat} (h : count T n l st = some k) :
-    steps T l st = k := by
-  have hex : ∃ k n, count T n l st = some k := ⟨k, n, h⟩
+theorem steps_eq {n : Nat} {l : κ} {st : σ} {k : Nat} (h : count stay T n l st = some k) :
+    steps stay T l st = k := by
+  have hex : ∃ k n, count stay T n l st = some k := ⟨k, n, h⟩
   simp only [steps, hex, ↓reduceDIte]
   obtain ⟨n', hn'⟩ := Classical.choose_spec hex
-  exact count_unique T n' n l st _ k hn' h
+  exact count_unique stay T n' n l st _ k hn' h
 
 theorem steps_lt {l l' : κ} {st st' : σ} {b : ExceptT κ (StateT σ UB) Unit} (hl : T.get? l = some b)
-    (hrun : b.run.run st = some (.error l', st')) {r : Except κ Unit × σ}
-    (hfix : cfgFix T l st = some r) : steps T l' st' < steps T l st := by
-  obtain ⟨n, k, hk⟩ := count_of_cfgFix T l st r hfix
+    (hs : stay st = true) (hrun : b.run.run st = some (.error l', st')) {r : Except κ Unit × σ}
+    (hfix : cfgFix stay T l st = some r) : steps stay T l' st' < steps stay T l st := by
+  obtain ⟨n, k, hk⟩ := count_of_cfgFix stay T l st r hfix
   cases n with
   | zero => exact nomatch hk
   | succ n =>
     have hk0 := hk
-    rw [count, hl] at hk
+    simp only [count, hs, hl, ↓reduceIte] at hk
     change (b.run.run st >>= _) = _ at hk
     rw [hrun, some_bind] at hk
     obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp hk
-    rw [steps_eq T hk0, steps_eq T hk']
+    rw [steps_eq stay T hk0, steps_eq stay T hk']
     omega
 
 end
