@@ -43,16 +43,16 @@ attribute [local vcgen_simp] zipWithAdd
 
 
 
-ascend_def zipWithAddA [Host] [FunDecls] [Embeds zipWithAdd] (s₀ : MachineData) :
+ascend_def zipWithAddA [Host] [FunDecls] [Embeds zipWithAdd] (r₀ : BitVec 64) (ra : Int64) :
     BlockM MachineData Unit from
-  ⦃(· = s₀)⦄ zipWithAdd ⪯[ofStateRepr abs] zipWithAddA ⦃fun _ _ => ⊤; AddrRel s₀⦄
+  ⦃fun s => s.regs.get64 .rsp = r₀ ∧ s.retAddr = some ra⦄ zipWithAdd ⪯[ofStateRepr abs] zipWithAddA ⦃fun _ _ => ⊤; AddrRel r₀ ra⦄
   ascend [refines_cfg (p := zipWithAdd) (habs := abs_regs)] with finish
 
 
 /--
-info: def zipWithAddA : [Host] → MachineData → BlockM MachineData Unit :=
-fun [Host] s₀ =>
-  Program.loop zipWithAdd s₀.regs.rsp.toBitVec
+info: def zipWithAddA : [Host] → BitVec 64 → Int64 → BlockM MachineData Unit :=
+fun [Host] r₀ ra =>
+  Program.loop zipWithAdd r₀
     (Table.get
       [({ label := none, idx := 0,
               body :=
@@ -62,8 +62,8 @@ fun [Host] s₀ =>
                     "xor eax, eax"],
               next := some "LBB0_2" }.label,
           do
-          branch (stayIn (s₀.regs.get64 Reg64.rsp))
-              (fun st => CondCode.le.cmp (st.regs.get64 Reg64.rcx &&& st.regs.get64 Reg64.rcx) 0) (label "LBB0_3")
+          branch (stayIn r₀) (fun st => CondCode.le.cmp (st.regs.get64 Reg64.rcx &&& st.regs.get64 Reg64.rcx) 0)
+              (label "LBB0_3")
           modifyIf (fun x => True)
               (setReg64 Reg64.rax fun st =>
                 BitVec.setWidth 64 ((st.regs.get64 Reg64.rax).take 32 ^^^ (st.regs.get64 Reg64.rax).take 32))
@@ -86,15 +86,15 @@ fun [Host] s₀ =>
           modifyIf (storeOk 8 (sib 8 Reg64.rdx Reg64.rax 0))
               (storeWord 8 (sib 8 Reg64.rdx Reg64.rax 0) fun st => st.regs.get64 Reg64.r8)
           modifyIf (fun x => True) (setReg64 Reg64.rax fun st => st.regs.get64 Reg64.rax + 1)
-          branch (stayIn (s₀.regs.get64 Reg64.rsp))
-              (fun st => CondCode.nz.cmp (st.regs.get64 Reg64.rcx) (st.regs.get64 Reg64.rax)) (label "LBB0_2")
+          branch (stayIn r₀) (fun st => CondCode.nz.cmp (st.regs.get64 Reg64.rcx) (st.regs.get64 Reg64.rax))
+              (label "LBB0_2")
           pure PUnit.unit),
         ({ label := some "LBB0_3", idx := 2,
               body :=
                 [asm|
                     "ret"],
               next := none }.label,
-          exitIf (retOk s₀) (setReg64 Reg64.rsp fun x => s₀.regs.get64 Reg64.rsp + 8) s₀.retAddr.get!)])
+          exitIf (retOk r₀ ra) (setReg64 Reg64.rsp fun x => r₀ + 8) ra)])
 -/
 #guard_msgs in
 #print zipWithAddA

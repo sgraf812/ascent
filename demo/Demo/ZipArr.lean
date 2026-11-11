@@ -17,30 +17,30 @@ open Ascent.Concretization (ofStateRepr)
 namespace Ascent.Kraken
 
 
-ascend_def zipWithAddArr₀ (A B O : BitVec 64) (s₀ : MachineData) (n : Nat) (a b : Array (BitVec 64)) :
+ascend_def zipWithAddArr₀ (A B O : BitVec 64) (r₀ : BitVec 64) (ra : Int64) (n : Nat) (a b : Array (BitVec 64)) :
     BlockM (Array (BitVec 64)) Unit from
-  ⦃fun m => A ≐ₐ a ∧ B ≐ₐ b ∧ a.size = n ∧ b.size = n ∧ ArrayLayout 8 64 [(A, a), (B, b)] O n [(s₀.regs.get64 .rsp, s₀.retAddr.get!)] m⦄
-  (zipWithAddL₀ A B O (BitVec.ofNat 64 n) (s₀.regs.get64 .rsp) s₀) ⪯[ofStateRepr (outView 8 64 O n)] zipWithAddArr₀
+  ⦃fun m => A ≐ₐ a ∧ B ≐ₐ b ∧ a.size = n ∧ b.size = n ∧ ArrayLayout 8 64 [(A, a), (B, b)] O n [(r₀, ra)] m⦄
+  (zipWithAddL₀ A B O (BitVec.ofNat 64 n) (r₀) r₀ ra) ⪯[ofStateRepr (outView 8 64 O n)] zipWithAddArr₀
   ⦃fun _ _ _ => True; (fun l l' _ => l = l', estack⟨⟩)⦄
   ascend [zipWithAddL₀, wrp_forIn_lockstep_bind_unit
     (R := fun (v : BitVec 64) m (i : Nat) =>
       v ≐ₙ i ∧ i < n ∧ a.size = n ∧ b.size = n ∧
-        ArrayLayout 8 64 [(A, a), (B, b)] O n [(s₀.regs.get64 .rsp, s₀.retAddr.get!)] m)]
+        ArrayLayout 8 64 [(A, a), (B, b)] O n [(r₀, ra)] m)]
     with finish
 
 
 
-sym_simp_def zipWithAddArr (s₀ : MachineData) (n : Nat) (a b : Array (BitVec 64)) :
-    BlockM (Array (BitVec 64)) Unit from zipWithAddArr₀ s₀ n a b
+sym_simp_def zipWithAddArr (ra : Int64) (n : Nat) (a b : Array (BitVec 64)) :
+    BlockM (Array (BitVec 64)) Unit from zipWithAddArr₀ ra n a b
   using pre [] post [zipWithAddArr₀, BitVec.setWidth_eq, pure_bind, bind_pure_unit, condState_const, beq_eq_true_eq,
     bne_eq_true_eq]
 
-theorem zipWithAddArr.refines (A B O : BitVec 64) (s₀ : MachineData) (n : Nat) (a b : Array (BitVec 64)) :
-    ⦃fun m => A ≐ₐ a ∧ B ≐ₐ b ∧ a.size = n ∧ b.size = n ∧ ArrayLayout 8 64 [(A, a), (B, b)] O n [(s₀.regs.get64 .rsp, s₀.retAddr.get!)] m⦄
-      (zipWithAddL A B O (BitVec.ofNat 64 n) s₀) ⪯[ofStateRepr (outView 8 64 O n)]
-      (zipWithAddArr s₀ n a b) ⦃fun _ _ _ => True; (fun l l' _ => l = l', estack⟨⟩)⦄ :=
-  zipWithAddL.eq A B O (BitVec.ofNat 64 n) s₀ ▸ zipWithAddArr.eq s₀ n a b ▸
-    zipWithAddArr₀.refines A B O s₀ n a b
+theorem zipWithAddArr.refines (A B O : BitVec 64) (r₀ : BitVec 64) (ra : Int64) (n : Nat) (a b : Array (BitVec 64)) :
+    ⦃fun m => A ≐ₐ a ∧ B ≐ₐ b ∧ a.size = n ∧ b.size = n ∧ ArrayLayout 8 64 [(A, a), (B, b)] O n [(r₀, ra)] m⦄
+      (zipWithAddL A B O (BitVec.ofNat 64 n) r₀ ra) ⪯[ofStateRepr (outView 8 64 O n)]
+      (zipWithAddArr ra n a b) ⦃fun _ _ _ => True; (fun l l' _ => l = l', estack⟨⟩)⦄ :=
+  zipWithAddL.eq A B O (BitVec.ofNat 64 n) r₀ ra ▸ zipWithAddArr.eq ra n a b ▸
+    zipWithAddArr₀.refines A B O r₀ ra n a b
 
 
 end Ascent.Kraken

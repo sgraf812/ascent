@@ -53,16 +53,17 @@ cleared and `cmp; jcc` fused into one branch. Each step is a register write `set
 register `loadReg 8`, or a store `storeWord 8`. `ascend_def` synthesized it and proved: -/
 
 /--
-info: @zipWithAddA.refines : ∀ [inst : Host] [inst_1 : FunDecls] [Embeds zipWithAdd] (s₀ : MachineData),
-  ⦃ fun x => x = s₀ ⦄ zipWithAdd ⪯[ofStateRepr abs] (zipWithAddA s₀) ⦃ fun x x_1 => ⊤; AddrRel s₀ ⦄
+info: @zipWithAddA.refines : ∀ [inst : Host] [inst_1 : FunDecls] [Embeds zipWithAdd] (r₀ : BitVec 64) (ra : Int64),
+  ⦃ fun s => s.regs.get64 Reg64.rsp = r₀ ∧ s.retAddr = some ra ⦄ zipWithAdd ⪯[ofStateRepr abs] (zipWithAddA r₀ ra) ⦃
+    fun x x_1 => ⊤; AddrRel r₀ ra ⦄
 -/
 #guard_msgs in
 #check @zipWithAddA.refines
 
 /--
-info: def zipWithAddA : [Host] → MachineData → BlockM MachineData Unit :=
-fun [Host] s₀ =>
-  Program.loop zipWithAdd s₀.regs.rsp.toBitVec
+info: def zipWithAddA : [Host] → BitVec 64 → Int64 → BlockM MachineData Unit :=
+fun [Host] r₀ ra =>
+  Program.loop zipWithAdd r₀
     (Table.get
       [({ label := none, idx := 0,
               body :=
@@ -72,8 +73,8 @@ fun [Host] s₀ =>
                     "xor eax, eax"],
               next := some "LBB0_2" }.label,
           do
-          branch (stayIn (s₀.regs.get64 Reg64.rsp))
-              (fun st => CondCode.le.cmp (st.regs.get64 Reg64.rcx &&& st.regs.get64 Reg64.rcx) 0) (label "LBB0_3")
+          branch (stayIn r₀) (fun st => CondCode.le.cmp (st.regs.get64 Reg64.rcx &&& st.regs.get64 Reg64.rcx) 0)
+              (label "LBB0_3")
           modifyIf (fun x => True)
               (setReg64 Reg64.rax fun st =>
                 BitVec.setWidth 64 ((st.regs.get64 Reg64.rax).take 32 ^^^ (st.regs.get64 Reg64.rax).take 32))
@@ -96,15 +97,15 @@ fun [Host] s₀ =>
           modifyIf (storeOk 8 (sib 8 Reg64.rdx Reg64.rax 0))
               (storeWord 8 (sib 8 Reg64.rdx Reg64.rax 0) fun st => st.regs.get64 Reg64.r8)
           modifyIf (fun x => True) (setReg64 Reg64.rax fun st => st.regs.get64 Reg64.rax + 1)
-          branch (stayIn (s₀.regs.get64 Reg64.rsp))
-              (fun st => CondCode.nz.cmp (st.regs.get64 Reg64.rcx) (st.regs.get64 Reg64.rax)) (label "LBB0_2")
+          branch (stayIn r₀) (fun st => CondCode.nz.cmp (st.regs.get64 Reg64.rcx) (st.regs.get64 Reg64.rax))
+              (label "LBB0_2")
           pure PUnit.unit),
         ({ label := some "LBB0_3", idx := 2,
               body :=
                 [asm|
                     "ret"],
               next := none }.label,
-          exitIf (retOk s₀) (setReg64 Reg64.rsp fun x => s₀.regs.get64 Reg64.rsp + 8) s₀.retAddr.get!)])
+          exitIf (retOk r₀ ra) (setReg64 Reg64.rsp fun x => r₀ + 8) ra)])
 -/
 #guard_msgs in
 #print zipWithAddA
@@ -117,22 +118,23 @@ program in both branches. The command proves
 the equation `zipWithAddT.eq`, so the first refinement carries over to `zipWithAddT`: -/
 
 /--
-info: @zipWithAddT.refines : ∀ [inst : Host] [inst_1 : FunDecls] [Embeds zipWithAdd] (s₀ : MachineData),
-  ⦃ fun x => x = s₀ ⦄ zipWithAdd ⪯[ofStateRepr abs] (zipWithAddT s₀) ⦃ fun x x_1 => ⊤; AddrRel s₀ ⦄
+info: @zipWithAddT.refines : ∀ [inst : Host] [inst_1 : FunDecls] [Embeds zipWithAdd] (r₀ : BitVec 64) (ra : Int64),
+  ⦃ fun s => s.regs.get64 Reg64.rsp = r₀ ∧ s.retAddr = some ra ⦄ zipWithAdd ⪯[ofStateRepr abs] (zipWithAddT r₀ ra) ⦃
+    fun x x_1 => ⊤; AddrRel r₀ ra ⦄
 -/
 #guard_msgs in
 #check @zipWithAddT.refines
 
 /--
-info: def Ascent.Kraken.zipWithAddT : MachineData → BlockM MachineData Unit :=
-fun s₀ =>
+info: def Ascent.Kraken.zipWithAddT : BitVec 64 → Int64 → BlockM MachineData Unit :=
+fun r₀ ra =>
   condState (fun st => CondCode.le.cmp (st.regs.rcx.toBitVec &&& st.regs.rcx.toBitVec) 0#64)
     (do
-      modifyIf (fun s => stayIn s₀.regs.rsp.toBitVec s = true) id
-      exitIf (retOk s₀) (setReg64 Reg64.rsp fun x => s₀.regs.rsp.toBitVec + 8#64) s₀.retAddr.get!)
+      modifyIf (fun s => stayIn r₀ s = true) id
+      exitIf (retOk r₀ ra) (setReg64 Reg64.rsp fun x => r₀ + 8#64) ra)
     do
     modifyIf (fun x => True) (setReg64 Reg64.rax fun st => 0#64)
-    modifyIf (fun s => stayIn s₀.regs.rsp.toBitVec s = true) id
+    modifyIf (fun s => stayIn r₀ s = true) id
     { }.forIn PUnit.unit fun x x_1 => do
         modifyIf (loadOk 8 (sib 8 Reg64.rsi Reg64.rax 0))
             (loadReg 8 Reg64.r8 (sib 8 Reg64.rsi Reg64.rax 0) fun w x => w)
@@ -143,11 +145,11 @@ fun s₀ =>
         modifyIf (fun x => True) (setReg64 Reg64.rax fun st => st.regs.rax.toBitVec + 1#64)
         condState (fun st => CondCode.nz.cmp st.regs.rcx.toBitVec st.regs.rax.toBitVec)
             (do
-              modifyIf (fun s => stayIn s₀.regs.rsp.toBitVec s = true) id
+              modifyIf (fun s => stayIn r₀ s = true) id
               pure (ForInStep.yield PUnit.unit))
             do
-            modifyIf (fun s => stayIn s₀.regs.rsp.toBitVec s = true) id
-            exitIf (retOk s₀) (setReg64 Reg64.rsp fun x => s₀.regs.rsp.toBitVec + 8#64) s₀.retAddr.get!
+            modifyIf (fun s => stayIn r₀ s = true) id
+            exitIf (retOk r₀ ra) (setReg64 Reg64.rsp fun x => r₀ + 8#64) ra
 -/
 #guard_msgs in
 #print zipWithAddT
@@ -159,27 +161,26 @@ The state is the data memory alone. The lifting relation, the one hint of the ru
 `rdx`, `rcx` and `rsp` are parameters, and `rax` is the value of the loop. The loaded values of
 `r8` become variables. `ascend_def` synthesized `zipWithAddL₀`, and `sym_simp_def` states its
 branch conditions as comparisons of the values in `zipWithAddL`. A jump is an `assume` that the
-stack pointer `rsp` lies in the frame of the entry state `s₀`. The return is an `assume` that `rsp`
-is the stack pointer of `s₀` and that the return slot holds the return address of `s₀`, followed by
-`throw s₀.retAddr.get!`: -/
+stack pointer lies in the frame; with `rsp` the stack pointer of the entry, these tests hold and
+vanish. The return is an `assume` that the return slot at `rsp` holds the return address `ra`,
+followed by `throw ra`: -/
 
 /--
-info: zipWithAddL.refines : ∀ (rdi rsi rdx rcx : BitVec 64) (s₀ : MachineData),
-  ⦃
-    RegsRel
-      [(Reg64.rdi, rdi), (Reg64.rsi, rsi), (Reg64.rdx, rdx), (Reg64.rcx, rcx), (Reg64.rsp, s₀.regs.get64 Reg64.rsp)] ⦄
-    (zipWithAddT s₀) ⪯[ofStateRepr MachineData.dmem] (zipWithAddL rdi rsi rdx rcx s₀) ⦃ fun x x_1 x_2 => True;
-    estack⟨fun l l' t => l = l' ∧ t.regs.get64 Reg64.rsp = s₀.regs.get64 Reg64.rsp + 8⟩ ⦄
+info: zipWithAddL.refines : ∀ (rdi rsi rdx rcx rsp : BitVec 64) (ra : Int64),
+  ⦃ RegsRel [(Reg64.rdi, rdi), (Reg64.rsi, rsi), (Reg64.rdx, rdx), (Reg64.rcx, rcx), (Reg64.rsp, rsp)] ⦄
+    (zipWithAddT rsp ra) ⪯[ofStateRepr MachineData.dmem] (zipWithAddL rdi rsi rdx rcx rsp ra) ⦃ fun x x_1 x_2 => True;
+    estack⟨fun l l' t => l = l' ∧ t.regs.get64 Reg64.rsp = rsp + 8⟩ ⦄
 -/
 #guard_msgs in
 #check @zipWithAddL.refines
 
 /--
-info: def Ascent.Kraken.zipWithAddL : BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → MachineData → BlockM DataMem Unit :=
-fun rdi rsi rdx rcx s₀ =>
+info: def Ascent.Kraken.zipWithAddL : BitVec 64 →
+  BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → Int64 → BlockM DataMem Unit :=
+fun rdi rsi rdx rcx rsp ra =>
   if rcx.toInt ≤ 0 then do
-    assume fun m => retAddrAt m s₀.regs.rsp.toBitVec = some s₀.retAddr.get!
-    throw s₀.retAddr.get!
+    assume fun m => retAddrAt m rsp = some ra
+    throw ra
   else do
     let mut v := 0#64
     repeat'
@@ -189,8 +190,8 @@ fun rdi rsi rdx rcx s₀ =>
       if ¬rcx = v + 1#64 then 
         v := v + 1#64
       else
-        assume fun m => retAddrAt m s₀.regs.rsp.toBitVec = some s₀.retAddr.get!
-        throw s₀.retAddr.get!
+        assume fun m => retAddrAt m rsp = some ra
+        throw ra
 -/
 #guard_msgs in
 #print zipWithAddL
@@ -207,22 +208,19 @@ return slot. `ascend_def` synthesized `zipWithAddArr₀`, and `sym_simp_def` put
 place and states the conditions as propositions in `zipWithAddArr`: -/
 
 /--
-info: zipWithAddArr.refines : ∀ (A B O : BitVec 64) (s₀ : MachineData) (n : Nat) (a b : Array (BitVec 64)),
-  ⦃ fun m =>
-    A ≐ₐ a ∧
-      B ≐ₐ b ∧
-        a.size = n ∧ b.size = n ∧ ArrayLayout 8 64 [(A, a), (B, b)] O n [(s₀.regs.get64 Reg64.rsp, s₀.retAddr.get!)] m ⦄
-    (zipWithAddL A B O (BitVec.ofNat 64 n) s₀) ⪯[ofStateRepr (outView 8 64 O n)] (zipWithAddArr s₀ n a b) ⦃
+info: zipWithAddArr.refines : ∀ (A B O r₀ : BitVec 64) (ra : Int64) (n : Nat) (a b : Array (BitVec 64)),
+  ⦃ fun m => A ≐ₐ a ∧ B ≐ₐ b ∧ a.size = n ∧ b.size = n ∧ ArrayLayout 8 64 [(A, a), (B, b)] O n [(r₀, ra)] m ⦄
+    (zipWithAddL A B O (BitVec.ofNat 64 n) r₀ ra) ⪯[ofStateRepr (outView 8 64 O n)] (zipWithAddArr ra n a b) ⦃
     fun x x_1 x_2 => True; estack⟨fun l l' x => l = l'⟩ ⦄
 -/
 #guard_msgs in
 #check @zipWithAddArr.refines
 
 /--
-info: def Ascent.Kraken.zipWithAddArr : MachineData →
+info: def Ascent.Kraken.zipWithAddArr : Int64 →
   Nat → Array (BitVec 64) → Array (BitVec 64) → BlockM (Array (BitVec 64)) Unit :=
-fun s₀ n a b =>
-  if n = 0 then throw s₀.retAddr.get!
+fun ra n a b =>
+  if n = 0 then throw ra
   else do
     let mut i := 0
     repeat'
@@ -230,7 +228,7 @@ fun s₀ n a b =>
       if ¬n = i + 1 then 
         i := i + 1
       else
-        throw s₀.retAddr.get!
+        throw ra
 -/
 #guard_msgs in
 #print zipWithAddArr
@@ -242,11 +240,11 @@ invariant and a measure. `ascend_def` takes this result as the premise of `wrp_p
 synthesizes the pure program: -/
 
 /--
-info: @zipWithAddArr_spec : ∀ {s₀ : MachineData} {n : Nat} {a b : Array (BitVec 64)},
+info: @zipWithAddArr_spec : ∀ {ra : Int64} {n : Nat} {a b : Array (BitVec 64)},
   a.size = n →
     b.size = n →
-      ⦃ fun x => x.size = n ⦄ zipWithAddArr s₀ n a b ⦃ fun x x_1 => False;
-        estack⟨fun l o' => l = s₀.retAddr.get! ∧ o' = Array.zipWith (fun x1 x2 => x1 + x2) a b⟩ ⦄
+      ⦃ fun x => x.size = n ⦄ zipWithAddArr ra n a b ⦃ fun x x_1 => False;
+        estack⟨fun l o' => l = ra ∧ o' = Array.zipWith (fun x1 x2 => x1 + x2) a b⟩ ⦄
 -/
 #guard_msgs in
 #check @zipWithAddArr_spec
@@ -322,10 +320,10 @@ layer assumes that the source and the destination do not overlap, names the dire
 and reads the source as the array `a`: -/
 
 /--
-info: def Ascent.Kraken.memmoveArr : MachineData → Nat → Array (BitVec 8) → Bool → BlockM (Array (BitVec 8)) Unit :=
-fun s₀ n a back =>
+info: def Ascent.Kraken.memmoveArr : Int64 → Nat → Array (BitVec 8) → Bool → BlockM (Array (BitVec 8)) Unit :=
+fun ra n a back =>
   if back = true then
-    if n = 0 then throw s₀.retAddr.get!
+    if n = 0 then throw ra
     else do
       let mut a_1 := (n, n)
       repeat'
@@ -333,9 +331,9 @@ fun s₀ n a back =>
         if ¬a_1.fst - 1 = 0 then 
           a_1 := (a_1.fst - 1, a_1.fst - 1)
         else
-          throw s₀.retAddr.get!
+          throw ra
   else
-    if n = 0 then throw s₀.retAddr.get!
+    if n = 0 then throw ra
     else do
       let mut a_1 := (0, n)
       repeat'
@@ -343,7 +341,7 @@ fun s₀ n a back =>
         if ¬a_1.snd = a_1.fst + 1 then 
           a_1 := (a_1.fst + 1, a_1.snd)
         else
-          throw s₀.retAddr.get!
+          throw ra
 -/
 #guard_msgs in
 #print memmoveArr
@@ -374,12 +372,13 @@ machine code becomes a `break` that leaves the loop with `rax` set, and the func
 after the loop: -/
 
 /--
-info: def Ascent.Kraken.bsearchL : BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → MachineData → BlockM DataMem (BitVec 64) :=
-fun rdi rsi rdx rax s₀ => do
+info: def Ascent.Kraken.bsearchL : BitVec 64 →
+  BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → Int64 → BlockM DataMem (BitVec 64) :=
+fun rdi rsi rdx rax rsp ra => do
   let mut a := (0#64, rsi, rax)
   repeat'
     if a.snd.fst ≤ a.fst then 
-      assume fun m => retAddrAt m s₀.regs.rsp.toBitVec = some s₀.retAddr.get!
+      assume fun m => retAddrAt m rsp = some ra
       a := (a.fst, a.snd.fst, 18446744073709551615#64)
       break
     else
@@ -388,7 +387,7 @@ fun rdi rsi rdx rax s₀ => do
         a := (a.fst + (a.snd.fst - a.fst).ushiftRight 1 + 1#64, a.snd.fst, a.snd.snd)
       else
         if x.toInt ≤ rdx.toInt then 
-          assume fun m => retAddrAt m s₀.regs.rsp.toBitVec = some s₀.retAddr.get!
+          assume fun m => retAddrAt m rsp = some ra
           a := (a.fst, a.snd.fst, a.fst + (a.snd.fst - a.fst).ushiftRight 1)
           break
         else

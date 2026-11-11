@@ -70,17 +70,17 @@ LBB0_9:
 
 attribute [local vcgen_simp] bsearch
 
-ascend_def bsearchA [Host] [FunDecls] [Embeds bsearch] (s₀ : MachineData) :
+ascend_def bsearchA [Host] [FunDecls] [Embeds bsearch] (r₀ : BitVec 64) (ra : Int64) :
     BlockM MachineData Unit from
-  ⦃(· = s₀)⦄ bsearch ⪯[ofStateRepr abs] bsearchA ⦃fun _ _ => ⊤; AddrRel s₀⦄
+  ⦃fun s => s.regs.get64 .rsp = r₀ ∧ s.retAddr = some ra⦄ bsearch ⪯[ofStateRepr abs] bsearchA ⦃fun _ _ => ⊤; AddrRel r₀ ra⦄
   ascend [refines_cfg (p := bsearch) (habs := abs_regs)] with finish
 
 
 
 /--
-info: def Ascent.Kraken.bsearchA : [Host] → MachineData → BlockM MachineData Unit :=
-fun [Host] s₀ =>
-  Program.loop bsearch s₀.regs.rsp.toBitVec
+info: def Ascent.Kraken.bsearchA : [Host] → BitVec 64 → Int64 → BlockM MachineData Unit :=
+fun [Host] r₀ ra =>
+  Program.loop bsearch r₀
     (Table.get
       [({ label := none, idx := 0,
               body :=
@@ -92,7 +92,7 @@ fun [Host] s₀ =>
           modifyIf (fun x => True)
               (setReg64 Reg64.rcx fun st =>
                 BitVec.setWidth 64 ((st.regs.get64 Reg64.rcx).take 32 ^^^ (st.regs.get64 Reg64.rcx).take 32))
-          branch (stayIn (s₀.regs.get64 Reg64.rsp)) (fun x => true) (label "LBB0_3")),
+          branch (stayIn r₀) (fun x => true) (label "LBB0_3")),
         ({ label := some "LBB0_1", idx := 1,
               body :=
                 [asm|
@@ -113,7 +113,7 @@ fun [Host] s₀ =>
                     "je LBB0_9"],
               next := some "LBB0_3" }.label,
           do
-          branch (stayIn (s₀.regs.get64 Reg64.rsp))
+          branch (stayIn r₀)
               (fun st =>
                 CondCode.z.interp
                   (StatusFlags.from_result ((st.regs.get64 Reg64.r9).take 8 &&& (st.regs.get64 Reg64.r9).take 8)
@@ -140,19 +140,19 @@ fun [Host] s₀ =>
           modifyIf (fun x => True) (setReg64 Reg64.r8 fun st => st.regs.get64 Reg64.rsi)
           let c ← peek fun st => CondCode.be.cmp (st.regs.get64 Reg64.r8) (st.regs.get64 Reg64.rcx)
           modifyIf (fun x => True) (setReg64 Reg64.r8 fun st => st.regs.get64 Reg64.r8 - st.regs.get64 Reg64.rcx)
-          branch (stayIn (s₀.regs.get64 Reg64.rsp)) (fun x => c) (label "LBB0_8")
+          branch (stayIn r₀) (fun x => c) (label "LBB0_8")
           modifyIf (fun x => True) (setReg64 Reg64.r8 fun st => (st.regs.get64 Reg64.r8).ushiftRight 1)
           modifyIf (fun x => True) (setReg64 Reg64.r8 fun st => st.regs.get64 Reg64.rcx + st.regs.get64 Reg64.r8)
           modifyIf (loadOk 8 (sib 8 Reg64.rdi Reg64.r8 0))
               (loadReg 8 Reg64.r9 (sib 8 Reg64.rdi Reg64.r8 0) fun w x => w)
-          branch (stayIn (s₀.regs.get64 Reg64.rsp))
-              (fun st => CondCode.l.cmp (st.regs.get64 Reg64.r9) (st.regs.get64 Reg64.rdx)) (label "LBB0_1")
-          branch (stayIn (s₀.regs.get64 Reg64.rsp))
-              (fun st => CondCode.le.cmp (st.regs.get64 Reg64.r9) (st.regs.get64 Reg64.rdx)) (label "LBB0_7")
+          branch (stayIn r₀) (fun st => CondCode.l.cmp (st.regs.get64 Reg64.r9) (st.regs.get64 Reg64.rdx))
+              (label "LBB0_1")
+          branch (stayIn r₀) (fun st => CondCode.le.cmp (st.regs.get64 Reg64.r9) (st.regs.get64 Reg64.rdx))
+              (label "LBB0_7")
           modifyIf (fun x => True)
               (setReg64 Reg64.r9 fun st => (st.regs.get64 Reg64.r9).replaceLow (BitVec.setWidth 8 (Int64.toBitVec 1)))
           modifyIf (fun x => True) (setReg64 Reg64.rsi fun st => st.regs.get64 Reg64.r8)
-          branch (stayIn (s₀.regs.get64 Reg64.rsp)) (fun x => true) (label "LBB0_2")),
+          branch (stayIn r₀) (fun x => true) (label "LBB0_2")),
         ({ label := some "LBB0_7", idx := 4,
               body :=
                 [asm|
@@ -165,7 +165,7 @@ fun [Host] s₀ =>
               (setReg64 Reg64.r9 fun st =>
                 BitVec.setWidth 64 ((st.regs.get64 Reg64.r9).take 32 ^^^ (st.regs.get64 Reg64.r9).take 32))
           modifyIf (fun x => True) (setReg64 Reg64.rax fun st => st.regs.get64 Reg64.r8)
-          branch (stayIn (s₀.regs.get64 Reg64.rsp)) (fun x => true) (label "LBB0_2")),
+          branch (stayIn r₀) (fun x => true) (label "LBB0_2")),
         ({ label := some "LBB0_8", idx := 5,
               body :=
                 [asm|
@@ -179,7 +179,7 @@ fun [Host] s₀ =>
                 [asm|
                     "ret"],
               next := none }.label,
-          exitIf (retOk s₀) (setReg64 Reg64.rsp fun x => s₀.regs.get64 Reg64.rsp + 8) s₀.retAddr.get!)])
+          exitIf (retOk r₀ ra) (setReg64 Reg64.rsp fun x => r₀ + 8) ra)])
 -/
 #guard_msgs in
 #print bsearchA

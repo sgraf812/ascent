@@ -436,12 +436,12 @@ theorem wp_get_bind {σ α : Type} (k : σ → BlockM σ α) (Q : α → σ → 
 
 /-! ## The exit relation -/
 
-/-- The concrete exit address equals the abstract exception. The entry state `s₀` names the frame
-for the rules of a step. -/
-def AddrRel (_s₀ : MachineData) : Int64 → Int64 → MachineData → Prop := fun a a' _ => a = a'
+/-- The concrete exit address equals the abstract exception. The stack pointer `r₀` and the return
+address `ra` of the entry state name the frame for the rules of a step. -/
+def AddrRel (_r₀ : BitVec 64) (_ra : Int64) : Int64 → Int64 → MachineData → Prop := fun a a' _ => a = a'
 
-@[simp, grind =] theorem AddrRel_eq (s₀ : MachineData) (a a' : Int64) (s : MachineData) :
-    AddrRel s₀ a a' s = (a = a') := rfl
+@[simp, grind =] theorem AddrRel_eq (r₀ : BitVec 64) (ra : Int64) (a a' : Int64) (s : MachineData) :
+    AddrRel r₀ ra a a' s = (a = a') := rfl
 
 noncomputable instance {Aσ : Type} :
     EPostsConcretization (MachineData → Prop) (Aσ → Prop) (Int64 → MachineData → Prop)
@@ -460,12 +460,12 @@ variable [Host] [FunDecls] (abs : MachineData → MachineData)
 include habs
 
 theorem wrp_cfg_le {p : Program} [Embeds p] (hs : Program.Separated p = true)
-    {cell : Option Label → BlockM MachineData Unit} {s₀ : MachineData}
+    {cell : Option Label → BlockM MachineData Unit} {s₀ : MachineData} {ra : Int64}
     (h : ∀ blk ∈ Program.blocks p, ∀ t,
       ⦃(· = t)⦄ blk.body ⪯[Concretization.ofStateRepr abs] (cell blk.label)
-        ⦃fun _ _ _ => True; AddrRel s₀⦄) :
+        ⦃fun _ _ _ => True; AddrRel (s₀.regs.get64 .rsp) ra⦄) :
     (fun t => t = s₀) ⊑ wrp (Concretization.ofStateRepr abs) p
-      (Program.loop p (s₀.regs.get64 .rsp) cell) (fun _ _ => ⊤) (AddrRel s₀) := by
+      (Program.loop p (s₀.regs.get64 .rsp) cell) (fun _ _ => ⊤) (AddrRel (s₀.regs.get64 .rsp) ra) := by
   have hstay : ∀ t, stayIn (s₀.regs.get64 .rsp) (abs t) = true ↔ t.StackAtOrBelow s₀ := by
     intro t
     rw [stayIn_iff]
@@ -488,7 +488,7 @@ theorem wrp_cfg_le {p : Program} [Embeds p] (hs : Program.Separated p = true)
     unfold Program.blocks Program.entryNext
     cases (Program.view p).2 <;> rfl
   refine Program.WP.cfg (p := p) (Q := Q)
-    (E := EPostsConcretization.ePosts (Concretization.ofStateRepr abs) (AddrRel t) Ea)
+    (E := EPostsConcretization.ePosts (Concretization.ofStateRepr abs) (AddrRel (t.regs.get64 .rsp) ra) Ea)
     (s₀ := t) @I var ?_
   intro blk hmem u hI
   have hrun : wp (cell blk.label >>= fun _ => jumpTo st blk.next) Qa H (abs u)
@@ -549,13 +549,13 @@ theorem wrp_cfg_le {p : Program} [Embeds p] (hs : Program.Separated p = true)
       (∀ l, blk.label = some l → steps st T a (abs v) < steps st T (label l) (abs u)) →
       Program.Intercept (Program.labels p) t
         (fun l j s' => I (s₀ := t) l s' ∧ Program.Decreases var blk.label blk.idx u l j s')
-        (EPostsConcretization.ePosts (Concretization.ofStateRepr abs) (AddrRel t) Ea) a v := by
+        (EPostsConcretization.ePosts (Concretization.ofStateRepr abs) (AddrRel (t.regs.get64 .rsp) ra) Ea) a v := by
     intro v a hE hd
     cases hsv : st (abs v) with
     | false =>
       rw [wp_cfgLoop_leave st T Qa Ea hsv] at hE
       refine Program.Intercept.intro (Or.inr ⟨?_, fun _ _ _ => ?_⟩)
-      · show (Concretization.ofStateRepr abs).post (AddrRel t) Ea.1 a v
+      · show (Concretization.ofStateRepr abs).post (AddrRel (t.regs.get64 .rsp) ra) Ea.1 a v
         simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
           meet_prop_eq_and, Concretization.ofStateRepr_pred, AddrRel]
         exact ⟨a, rfl, hE⟩
@@ -570,7 +570,7 @@ theorem wrp_cfg_le {p : Program} [Embeds p] (hs : Program.Separated p = true)
     | none =>
       rw [wp_cfgLoop_none st T Qa Ea hT] at hE
       refine Program.Intercept.intro (Or.inr ⟨?_, fun l hl ha => ?_⟩)
-      · show (Concretization.ofStateRepr abs).post (AddrRel t) Ea.1 a v
+      · show (Concretization.ofStateRepr abs).post (AddrRel (t.regs.get64 .rsp) ra) Ea.1 a v
         simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
           meet_prop_eq_and, Concretization.ofStateRepr_pred, AddrRel]
         exact ⟨a, rfl, hE⟩
@@ -609,7 +609,7 @@ theorem wrp_cfg_le {p : Program} [Embeds p] (hs : Program.Separated p = true)
         rw [AInstr.branch_run]
         simp only [AInstr.branch, ↓reduceIte, UB.assume_bind_of_pos hsu]
         rfl
-  · change (Concretization.ofStateRepr abs).post (AddrRel t) Ea'.1 u'.pc u'.data at hu
+  · change (Concretization.ofStateRepr abs).post (AddrRel (t.regs.get64 .rsp) ra) Ea'.1 u'.pc u'.data at hu
     simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
       meet_prop_eq_and, Concretization.ofStateRepr_pred, AddrRel] at hu
     obtain ⟨a', rfl, hE, hc⟩ := hu
@@ -619,14 +619,16 @@ theorem wrp_cfg_le {p : Program} [Embeds p] (hs : Program.Separated p = true)
 
 /-- The control-flow rule as a spec: the abstract program is the block loop over the table of the
 text, whose cells `ascend` fills block by block. -/
-theorem refines_cfg {p : Program} [Embeds p] {s₀ : MachineData} {r₀ : BitVec 64}
+theorem refines_cfg {p : Program} [Embeds p] {r₀ : BitVec 64} {ra : Int64}
     (tbl : Table (Option Label) (BlockM MachineData Unit)) (hs : Program.Separated p = true := by decide +kernel)
     (h : ∀ blk ∈ Program.blocks p, ∀ t,
       ⦃(· = t)⦄ blk.body ⪯[Concretization.ofStateRepr abs] (Table.get tbl blk.label)
-        ⦃fun _ _ _ => True; AddrRel s₀⦄) (hr : s₀.regs.get64 .rsp = r₀) :
-    ⦃(· = s₀)⦄ p ⪯[Concretization.ofStateRepr abs]
-      (Program.loop p r₀ (Table.get tbl)) ⦃fun _ _ => ⊤; AddrRel s₀⦄ :=
-  hr ▸ ⟨wrp_cfg_le abs habs hs h⟩
+        ⦃fun _ _ _ => True; AddrRel r₀ ra⦄) :
+    ⦃fun s => s.regs.get64 .rsp = r₀ ∧ s.retAddr = some ra⦄ p ⪯[Concretization.ofStateRepr abs]
+      (Program.loop p r₀ (Table.get tbl)) ⦃fun _ _ => ⊤; AddrRel r₀ ra⦄ :=
+  ⟨fun t ⟨hrt, _⟩ => by
+    subst hrt
+    exact wrp_cfg_le abs habs hs (s₀ := t) h t rfl⟩
 
 end
 

@@ -482,11 +482,11 @@ def retAddrAt (m : DataMem) (p : BitVec 64) : Option Int64 :=
     retAddrAt m p = (Mem.loadInt m p 8).map fun i => Int64.ofBitVec (BitVec.ofInt 64 i) := rfl
 
 @[ascend] theorem wrp_exitIf_retOk {CV AV : Type} {Q : CV → AV → MachineData → Prop}
-    (s₀ : MachineData) (f : MachineData → MachineData) (l : Int64) (pa : BitVec 64)
+    (r₀ : BitVec 64) (ra : Int64) (f : MachineData → MachineData) (l : Int64) (pa : BitVec 64)
     (hf : ∀ t, (f t).dmem = t.dmem) :
-    (fun t => t.regs.get64 .rsp ≐ pa ∧ (retOk s₀ t → E.1 l l (f t)))
-      ⊑ wrp (ofStateRepr MachineData.dmem) (exitIf (retOk s₀) f l : BlockM MachineData CV)
-          (do StateT.assume (fun m => pa = s₀.regs.get64 .rsp ∧ retAddrAt m pa = some s₀.retAddr.get!)
+    (fun t => t.regs.get64 .rsp ≐ pa ∧ (retOk r₀ ra t → E.1 l l (f t)))
+      ⊑ wrp (ofStateRepr MachineData.dmem) (exitIf (retOk r₀ ra) f l : BlockM MachineData CV)
+          (do StateT.assume (fun m => pa = r₀ ∧ retAddrAt m pa = some ra)
               throw l : BlockM DataMem AV)
           Q E := by
   refine wrp_intro fun Qa Ea => ?_
@@ -494,7 +494,7 @@ def retAddrAt (m : DataMem) (p : BitVec 64) : Option Int64 :=
   simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_assume_throw] at ht
   obtain ⟨⟨ha, hk⟩, ⟨hr, hl⟩, he⟩ := ht
   have ha : t.regs.get64 .rsp = pa := ha trivial
-  have hg : retOk s₀ t := ⟨ha.trans hr, by rw [MachineData.retAddr_eq, ha]; exact hl⟩
+  have hg : retOk r₀ ra t := ⟨ha.trans hr, by rw [MachineData.retAddr_eq, ha]; exact hl⟩
   rw [wp_exitIf]
   refine ⟨hg, ?_⟩
   simp only [EPostsConcretization.ePosts_cons]
@@ -516,11 +516,11 @@ theorem assume_true :
     exact id
 
 @[ascend] theorem wrp_modifyIf_retOk {Q : Unit → PUnit → MachineData → Prop}
-    (s₀ : MachineData) (f : MachineData → MachineData) (pa : BitVec 64)
+    (r₀ : BitVec 64) (ra : Int64) (f : MachineData → MachineData) (pa : BitVec 64)
     (hf : ∀ t, (f t).dmem = t.dmem) :
-    (fun t => t.regs.get64 .rsp ≐ pa ∧ (retOk s₀ t → Q () () (f t)))
-      ⊑ wrp (ofStateRepr MachineData.dmem) (modifyIf (retOk s₀) f : BlockM MachineData Unit)
-          (do StateT.assume (fun m => pa = s₀.regs.get64 .rsp ∧ retAddrAt m pa = some s₀.retAddr.get!)
+    (fun t => t.regs.get64 .rsp ≐ pa ∧ (retOk r₀ ra t → Q () () (f t)))
+      ⊑ wrp (ofStateRepr MachineData.dmem) (modifyIf (retOk r₀ ra) f : BlockM MachineData Unit)
+          (do StateT.assume (fun m => pa = r₀ ∧ retAddrAt m pa = some ra)
             : BlockM DataMem PUnit)
           Q E := by
   refine wrp_intro fun Qa Ea => ?_
@@ -529,7 +529,7 @@ theorem assume_true :
     StateT.wp_assume_eq] at ht
   obtain ⟨⟨ha, hk⟩, ⟨hr, hl⟩, hq⟩ := ht
   have ha : t.regs.get64 .rsp = pa := ha trivial
-  have hg : retOk s₀ t := ⟨ha.trans hr, by rw [MachineData.retAddr_eq, ha]; exact hl⟩
+  have hg : retOk r₀ ra t := ⟨ha.trans hr, by rw [MachineData.retAddr_eq, ha]; exact hl⟩
   rw [wp_modifyIf]
   refine ⟨hg, ?_⟩
   rw [Concretization.post_pi]

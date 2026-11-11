@@ -130,30 +130,30 @@ attribute [grind →] SearchWords.len SearchWords.map
     (words 8 64 m p n).toArray.toList = words 8 64 m p n := rfl
 
 section
-variable [Host] [Embeds bsearch] (s₀ : MachineData)
+variable [Host] [Embeds bsearch] (r₀ : BitVec 64) (ra : Int64)
 
 theorem bsearchR_refines_Arr {A key rax : BitVec 64} {n : Nat} {a : Array (BitVec 64)} :
-    ⦃fun t => RegsRel [(.rdi, A), (.rsi, BitVec.ofNat 64 n), (.rdx, key), (.rax, rax), (.rsp, s₀.regs.get64 .rsp)] t ∧
+    ⦃fun t => RegsRel [(.rdi, A), (.rsi, BitVec.ofNat 64 n), (.rdx, key), (.rax, rax), (.rsp, r₀)] t ∧
       (A ≐ₐ a ∧ a.size = n ∧ n < 2 ^ 61 ∧ words 8 64 t.dmem A a.size = a.toList ∧
         Mem.Mapped [(A, 8 * a.size)] t.dmem ∧
-        retAddrAt t.dmem (s₀.regs.get64 .rsp) = some s₀.retAddr.get!)⦄
-      (bsearchR s₀) ⪯[(ofStateRepr MachineData.dmem).comp (ofStateRepr (fun _ : DataMem => ()))]
+        retAddrAt t.dmem (r₀) = some ra)⦄
+      (bsearchR r₀ ra) ⪯[(ofStateRepr MachineData.dmem).comp (ofStateRepr (fun _ : DataMem => ()))]
       (bsearchArr key n a)
-      ⦃fun _ o t => t.regs.get64 .rax = encodeIdx o ∧ t.regs.get64 .rsp = s₀.regs.get64 .rsp + 8;
+      ⦃fun _ o t => t.regs.get64 .rax = encodeIdx o ∧ t.regs.get64 .rsp = r₀ + 8;
         (fun l l' _ => l = l', estack⟨⟩)⦄ :=
-  Refinement.comp_le (by grind) (by grind) (by grind) (bsearchArr.refines A key rax s₀ n a)
-    ((bsearchL.refines A (BitVec.ofNat 64 n) key rax s₀).weaken fun t h => h.1)
+  Refinement.comp_le (by grind) (by grind) (by grind) (bsearchArr.refines A key rax r₀ ra n a)
+    ((bsearchL.refines A (BitVec.ofNat 64 n) key rax r₀ ra).weaken fun t h => h.1)
 
 theorem bsearchR_refines_P {A key rax : BitVec 64} {n : Nat} {a : Array (BitVec 64)} :
-    ⦃fun t => RegsRel [(.rdi, A), (.rsi, BitVec.ofNat 64 n), (.rdx, key), (.rax, rax), (.rsp, s₀.regs.get64 .rsp)] t ∧
+    ⦃fun t => RegsRel [(.rdi, A), (.rsi, BitVec.ofNat 64 n), (.rdx, key), (.rax, rax), (.rsp, r₀)] t ∧
       (A ≐ₐ a ∧ a.size = n ∧ n < 2 ^ 61 ∧ words 8 64 t.dmem A a.size = a.toList ∧
         Mem.Mapped [(A, 8 * a.size)] t.dmem ∧
-        retAddrAt t.dmem (s₀.regs.get64 .rsp) = some s₀.retAddr.get!)⦄
-      (bsearchR s₀) ⪯[((ofStateRepr MachineData.dmem).comp (ofStateRepr (fun _ : DataMem => ()))).comp (purify Unit)]
+        retAddrAt t.dmem (r₀) = some ra)⦄
+      (bsearchR r₀ ra) ⪯[((ofStateRepr MachineData.dmem).comp (ofStateRepr (fun _ : DataMem => ()))).comp (purify Unit)]
       (bsearchP key n a)
-      ⦃fun _ o t => t.regs.get64 .rax = encodeIdx o ∧ t.regs.get64 .rsp = s₀.regs.get64 .rsp + 8;
+      ⦃fun _ o t => t.regs.get64 .rax = encodeIdx o ∧ t.regs.get64 .rsp = r₀ + 8;
         (fun _ _ => False, estack⟨⟩)⦄ :=
-  Refinement.comp_le (by grind) (by grind) (by grind) (bsearchP.refines key n a) (bsearchR_refines_Arr s₀)
+  Refinement.comp_le (by grind) (by grind) (by grind) (bsearchP.refines key n a) (bsearchR_refines_Arr r₀ ra)
 
 end
 
@@ -176,13 +176,13 @@ theorem bsearch_correct {A key : BitVec 64} {n : Nat}
           (t.regs.get64 .rax = -1 ∧ ∀ j < n, (words 8 64 (s.push64 ra).dmem A n).toArray[j]! ≠ key))) := by
   have hs : IntSorted (words 8 64 (s.push64 ra).dmem A n).toArray n := hsorted
   clear hsorted
-  have hr : retAddrAt (s.push64 ra).dmem ((s.push64 ra).regs.get64 .rsp) = some (s.push64 ra).retAddr.get! := by
+  have hr : retAddrAt (s.push64 ra).dmem ((s.push64 ra).regs.get64 .rsp) = some ra := by
     have h := MachineData.retAddr_push64 s ra
-    rw [h, Option.get!_some]
     rw [MachineData.retAddr_eq] at h
     exact h
-  have h := Refinement.transport_catchExit (bsearchT.refines (s.push64 ra))
-    ((bsearchR.eq (s.push64 ra)).symm ▸ (bsearchR_refines_Arr (s.push64 ra) (A := A) (key := key)
+  have h := Refinement.transport_catchExit ((bsearchT.refines ((s.push64 ra).regs.get64 .rsp) ra).weaken (P' := (· = s.push64 ra)) fun t ht => by
+      subst ht; exact ⟨rfl, MachineData.retAddr_push64 s ra⟩)
+    ((bsearchR.eq ((s.push64 ra).regs.get64 .rsp) ra).symm ▸ (bsearchR_refines_Arr ((s.push64 ra).regs.get64 .rsp) ra (A := A) (key := key)
       (rax := (s.push64 ra).regs.get64 .rax) (a := (words 8 64 (s.push64 ra).dmem A n).toArray)).transport
       (bsearchArr_mem_spec key n _ hs (size_words_toArray _ _ _)))
   refine ⟨fun t ht => WP.wp_monotone (x := bsearch) (fun _ _ _ => trivial) ?_ t (h.le_wp t (by grind))⟩

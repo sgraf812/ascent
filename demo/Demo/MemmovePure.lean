@@ -20,9 +20,9 @@ set_option experimental.vcgen true
 
 namespace Ascent.Kraken
 
-theorem memmoveArr_spec {s₀ : MachineData} {n : Nat} {a : Array (BitVec 8)} (back : Bool) (ha : a.size = n) :
-    ⦃(·.size = n)⦄ memmoveArr s₀ n a back
-      ⦃fun _ _ => False; (fun (l : Int64) (o' : Array (BitVec 8)) => l = s₀.retAddr.get! ∧ o' = a, estack⟨⟩)⦄ := by
+theorem memmoveArr_spec {ra : Int64} {n : Nat} {a : Array (BitVec 8)} (back : Bool) (ha : a.size = n) :
+    ⦃(·.size = n)⦄ memmoveArr ra n a back
+      ⦃fun _ _ => False; (fun (l : Int64) (o' : Array (BitVec 8)) => l = ra ∧ o' = a, estack⟨⟩)⦄ := by
   vcgen [memmoveArr]
     invariants
     · WhileInvariant.mk fun (done : Bool) (ik : Nat × Nat) (o' : Array (BitVec 8)) =>
@@ -37,10 +37,10 @@ theorem memmoveArr_spec {s₀ : MachineData} {n : Nat} {a : Array (BitVec 8)} (b
 
 /-! ## The pure program -/
 
-ascend_def memmoveP (s₀ : MachineData) (n : Nat) (a : Array (BitVec 8)) (back : Bool) (ha : a.size = n) :
+ascend_def memmoveP (ra : Int64) (n : Nat) (a : Array (BitVec 8)) (back : Bool) (ha : a.size = n) :
     Id (Array (BitVec 8)) from
-  ⦃(·.size = n)⦄ (memmoveArr s₀ n a back) ⪯[purify (Array (BitVec 8))] memmoveP
-    ⦃fun _ _ _ => False; (fun l o => l = s₀.retAddr.get! ∧ o = Id.run memmoveP, estack⟨⟩)⦄
+  ⦃(·.size = n)⦄ (memmoveArr ra n a back) ⪯[purify (Array (BitVec 8))] memmoveP
+    ⦃fun _ _ _ => False; (fun l o => l = ra ∧ o = Id.run memmoveP, estack⟨⟩)⦄
   ascend [wrp_purify_throw (memmoveArr_spec back ha)] with finish
 
 /-! ## The chain of refinements -/
@@ -79,28 +79,28 @@ noncomputable abbrev machineToBytes (O : BitVec 64) (n : Nat) := (ofStateRepr ab
 attribute [grind =] memmoveP
 
 section
-variable [Host] [Embeds memmove] (s₀ : MachineData)
+variable [Host] [Embeds memmove] (r₀ : BitVec 64) (ra : Int64)
 
 theorem memmoveT_refines_Arr {O S : BitVec 64} {n : Nat} {a : Array (BitVec 8)} {back : Bool} :
-    ⦃fun t => RegsRel [(.rdi, O), (.rsi, S), (.rdx, BitVec.ofNat 64 n), (.rsp, s₀.regs.get64 .rsp)] t ∧
-      (CondCode.nc.cmp O S ≐ back ∧ S ≐ₐ a ∧ a.size = n ∧ ArrayLayout 1 8 [(S, a)] O n [(s₀.regs.get64 .rsp, s₀.retAddr.get!)] t.dmem)⦄
-      (memmoveT s₀) ⪯[(ofStateRepr MachineData.dmem).comp (ofStateRepr (outView 1 8 O n))]
-      (memmoveArr s₀ n a back)
+    ⦃fun t => RegsRel [(.rdi, O), (.rsi, S), (.rdx, BitVec.ofNat 64 n), (.rsp, r₀)] t ∧
+      (CondCode.nc.cmp O S ≐ back ∧ S ≐ₐ a ∧ a.size = n ∧ ArrayLayout 1 8 [(S, a)] O n [(r₀, ra)] t.dmem)⦄
+      (memmoveT r₀ ra) ⪯[(ofStateRepr MachineData.dmem).comp (ofStateRepr (outView 1 8 O n))]
+      (memmoveArr ra n a back)
       ⦃fun _ _ _ => True; (fun l l' t => l = l' ∧ t.regs.get64 .rax = O ∧
-        t.regs.get64 .rsp = s₀.regs.get64 .rsp + 8, estack⟨⟩)⦄ := by
-  exact Refinement.comp_le (by grind) (by grind) (by grind) (memmoveArr.refines O S s₀ n a back)
-    ((memmoveL.refines O S (BitVec.ofNat 64 n) s₀).weaken fun t h => h.1)
+        t.regs.get64 .rsp = r₀ + 8, estack⟨⟩)⦄ := by
+  exact Refinement.comp_le (by grind) (by grind) (by grind) (memmoveArr.refines O S r₀ ra n a back)
+    ((memmoveL.refines O S (BitVec.ofNat 64 n) r₀ ra).weaken fun t h => h.1)
 
 theorem memmoveT_refines_P {O S : BitVec 64} {n : Nat} {a : Array (BitVec 8)} {back : Bool}
     (ha : a.size = n) :
-    ⦃fun t => RegsRel [(.rdi, O), (.rsi, S), (.rdx, BitVec.ofNat 64 n), (.rsp, s₀.regs.get64 .rsp)] t ∧
-      (CondCode.nc.cmp O S ≐ back ∧ S ≐ₐ a ∧ a.size = n ∧ ArrayLayout 1 8 [(S, a)] O n [(s₀.regs.get64 .rsp, s₀.retAddr.get!)] t.dmem)⦄
-      (memmoveT s₀) ⪯[memToBytes O n] (memmoveP a)
-      ⦃fun _ _ _ => False; (fun l t => l = s₀.retAddr.get! ∧ t.regs.get64 .rax = O ∧
-        t.regs.get64 .rsp = s₀.regs.get64 .rsp + 8 ∧
+    ⦃fun t => RegsRel [(.rdi, O), (.rsi, S), (.rdx, BitVec.ofNat 64 n), (.rsp, r₀)] t ∧
+      (CondCode.nc.cmp O S ≐ back ∧ S ≐ₐ a ∧ a.size = n ∧ ArrayLayout 1 8 [(S, a)] O n [(r₀, ra)] t.dmem)⦄
+      (memmoveT r₀ ra) ⪯[memToBytes O n] (memmoveP a)
+      ⦃fun _ _ _ => False; (fun l t => l = ra ∧ t.regs.get64 .rax = O ∧
+        t.regs.get64 .rsp = r₀ + 8 ∧
         outView 1 8 O n t.dmem = Id.run (memmoveP a), estack⟨⟩)⦄ := by
-  exact Refinement.comp_le (by grind) (by grind) (by grind) (memmoveP.refines s₀ n a back ha)
-    (memmoveT_refines_Arr s₀)
+  exact Refinement.comp_le (by grind) (by grind) (by grind) (memmoveP.refines ra n a back ha)
+    (memmoveT_refines_Arr r₀ ra)
 
 end
 
@@ -121,8 +121,9 @@ theorem memmove_refines_P {O S : BitVec 64} {n : Nat}
     rw [MachineData.retAddr_eq] at h
     exact h
   exact Refinement.comp_le (by grind) (by grind) (by grind)
-    (memmoveT_refines_P (s.push64 ra) (S := S) (back := CondCode.nc.cmp O S) (size_bytes_toArray _ _ _))
-    (memmoveT.refines (s.push64 ra))
+    (memmoveT_refines_P ((s.push64 ra).regs.get64 .rsp) ra (S := S) (back := CondCode.nc.cmp O S) (size_bytes_toArray _ _ _))
+    ((memmoveT.refines ((s.push64 ra).regs.get64 .rsp) ra).weaken fun t ht => by
+      subst ht; exact ⟨rfl, MachineData.retAddr_push64 s ra⟩)
 
 /-- What the x64 text of `memmove` computes on disjoint regions: started at `s.push64 ra` with
 `rdi` pointing to the destination, `rsi` to the source and `rdx` holding the length `n`, it returns

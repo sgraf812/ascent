@@ -136,8 +136,8 @@ theorem bsearch.label_ne_5_4 [Host] [Embeds bsearch] : (label "LBB0_9" = label "
   Program.label_eq_false (p := bsearch) (by decide +kernel) (by decide +kernel) (by decide +kernel)
     (by decide +kernel)
 
-sym_simp_def bsearchT [Host] [Embeds bsearch] (s₀ : MachineData) :
-    BlockM MachineData Unit from bsearchA s₀
+sym_simp_def bsearchT [Host] [Embeds bsearch] (r₀ : BitVec 64) (ra : Int64) :
+    BlockM MachineData Unit from bsearchA r₀ ra
   using pre [tryCatch_bind_assoc, BlockLoop.tryCatch_pure, BlockLoop.tryCatch_throw,
     tryCatch_modifyIf_bind, tryCatch_branch_bind, tryCatch_branch, tryCatch_peek_bind,
     tryCatch_exitIf_handler, tryCatch_exitIf_cfgLoop, tryCatch_condState_bind, tryCatch_condState,
@@ -161,8 +161,8 @@ sym_simp_def bsearchT [Host] [Embeds bsearch] (s₀ : MachineData) :
     forIn_exitIf, forIn_bind_exitIf, forIn_bind_bind_exitIf, forIn_bind_exitIf_eta, forIn_throw, bind_assoc, condState_true,
     condState_false, stayIn_setReg64_rsp, BitVec.reduceSLT, Bool.not_true, eq_self_iff_true, BitVec.xor_self, BitVec.setWidth_zero]
 
-sym_simp_def bsearchR [Host] [Embeds bsearch] (s₀ : MachineData) : BlockM MachineData Unit from
-    catchExit s₀.retAddr.get! (bsearchT s₀)
+sym_simp_def bsearchR [Host] [Embeds bsearch] (r₀ : BitVec 64) (ra : Int64) : BlockM MachineData Unit from
+    catchExit ra (bsearchT r₀ ra)
   using pre [catchExit, tryCatch_modifyIf_bind, tryCatch_peek_bind, tryCatch_condState, tryCatch_condState_bind,
     tryCatch_bind_assoc, BlockLoop.tryCatch_pure, tryCatch_exitIf_handle, tryCatch_forIn_return,
     tryCatch_ite]
@@ -173,25 +173,25 @@ sym_simp_def bsearchR [Host] [Embeds bsearch] (s₀ : MachineData) : BlockM Mach
 
 
 
-theorem bsearchT.refines [Host] [FunDecls] [Embeds bsearch] (s₀ : MachineData) :
-    ⦃(· = s₀)⦄ bsearch ⪯[ofStateRepr abs] (bsearchT s₀) ⦃fun _ _ => ⊤; AddrRel s₀⦄ :=
-  bsearchT.eq s₀ ▸ bsearchA.refines s₀
+theorem bsearchT.refines [Host] [FunDecls] [Embeds bsearch] (r₀ : BitVec 64) (ra : Int64) :
+    ⦃fun s => s.regs.get64 .rsp = r₀ ∧ s.retAddr = some ra⦄ bsearch ⪯[ofStateRepr abs] (bsearchT r₀ ra) ⦃fun _ _ => ⊤; AddrRel r₀ ra⦄ :=
+  bsearchT.eq r₀ ra ▸ bsearchA.refines r₀ ra
 
 /--
-info: def Ascent.Kraken.bsearchT : MachineData → BlockM MachineData Unit :=
-fun s₀ => do
+info: def Ascent.Kraken.bsearchT : BitVec 64 → Int64 → BlockM MachineData Unit :=
+fun r₀ ra => do
   modifyIf (fun x => True) (setReg64 Reg64.rcx fun st => 0#64)
-  modifyIf (fun s => stayIn s₀.regs.rsp.toBitVec s = true) id
+  modifyIf (fun s => stayIn r₀ s = true) id
   { }.forIn PUnit.unit fun x x_1 => do
       modifyIf (fun x => True) (setReg64 Reg64.r8 fun st => st.regs.rsi.toBitVec)
       let z ← peek fun st => CondCode.be.cmp st.regs.r8.toBitVec st.regs.rcx.toBitVec
       modifyIf (fun x => True) (setReg64 Reg64.r8 fun st => st.regs.r8.toBitVec - st.regs.rcx.toBitVec)
       condState (fun x => z)
           (do
-            modifyIf (fun s => stayIn s₀.regs.rsp.toBitVec s = true) id
+            modifyIf (fun s => stayIn r₀ s = true) id
             modifyIf (fun x => True) (setReg64 Reg64.rax fun x => 18446744073709551615#64)
-            modifyIf (fun s => stayIn s₀.regs.rsp.toBitVec s = true) id
-            exitIf (retOk s₀) (setReg64 Reg64.rsp fun x => s₀.regs.rsp.toBitVec + 8#64) s₀.retAddr.get!)
+            modifyIf (fun s => stayIn r₀ s = true) id
+            exitIf (retOk r₀ ra) (setReg64 Reg64.rsp fun x => r₀ + 8#64) ra)
           do
           modifyIf (fun x => True) (setReg64 Reg64.r8 fun st => st.regs.r8.toBitVec.ushiftRight 1)
           modifyIf (fun x => True) (setReg64 Reg64.r8 fun st => st.regs.rcx.toBitVec + st.regs.r8.toBitVec)
@@ -199,73 +199,73 @@ fun s₀ => do
               (loadReg 8 Reg64.r9 (sib 8 Reg64.rdi Reg64.r8 0) fun w x => w)
           condState (fun st => CondCode.l.cmp st.regs.r9.toBitVec st.regs.rdx.toBitVec)
               (do
-                modifyIf (fun s => stayIn s₀.regs.rsp.toBitVec s = true) id
+                modifyIf (fun s => stayIn r₀ s = true) id
                 modifyIf (fun x => True) (setReg64 Reg64.r8 fun st => st.regs.r8.toBitVec + 1#64)
                 modifyIf (fun x => True) (setReg64 Reg64.r9 fun st => st.regs.r9.toBitVec.replaceLow 1#8)
                 modifyIf (fun x => True) (setReg64 Reg64.rcx fun st => st.regs.r8.toBitVec)
-                modifyIf (fun s => stayIn s₀.regs.rsp.toBitVec s = true) id
+                modifyIf (fun s => stayIn r₀ s = true) id
                 condState
                     (fun st =>
                       CondCode.z.interp
                         (StatusFlags.from_result (st.regs.r9.toBitVec.take 8 &&& st.regs.r9.toBitVec.take 8)
                           { cf := false, af := false, of := false }))
                     (do
-                      modifyIf (fun s => stayIn s₀.regs.rsp.toBitVec s = true) id
-                      exitIf (retOk s₀) (setReg64 Reg64.rsp fun x => s₀.regs.rsp.toBitVec + 8#64) s₀.retAddr.get!)
+                      modifyIf (fun s => stayIn r₀ s = true) id
+                      exitIf (retOk r₀ ra) (setReg64 Reg64.rsp fun x => r₀ + 8#64) ra)
                     do
-                    modifyIf (fun s => stayIn s₀.regs.rsp.toBitVec s = true) id
+                    modifyIf (fun s => stayIn r₀ s = true) id
                     pure (ForInStep.yield PUnit.unit))
               (condState (fun st => CondCode.le.cmp st.regs.r9.toBitVec st.regs.rdx.toBitVec)
                 (do
-                  modifyIf (fun s => stayIn s₀.regs.rsp.toBitVec s = true) id
+                  modifyIf (fun s => stayIn r₀ s = true) id
                   modifyIf (fun x => True) (setReg64 Reg64.r9 fun st => 0#64)
                   modifyIf (fun x => True) (setReg64 Reg64.rax fun st => st.regs.r8.toBitVec)
-                  modifyIf (fun s => stayIn s₀.regs.rsp.toBitVec s = true) id
+                  modifyIf (fun s => stayIn r₀ s = true) id
                   condState
                       (fun st =>
                         CondCode.z.interp
                           (StatusFlags.from_result (st.regs.r9.toBitVec.take 8 &&& st.regs.r9.toBitVec.take 8)
                             { cf := false, af := false, of := false }))
                       (do
-                        modifyIf (fun s => stayIn s₀.regs.rsp.toBitVec s = true) id
-                        exitIf (retOk s₀) (setReg64 Reg64.rsp fun x => s₀.regs.rsp.toBitVec + 8#64) s₀.retAddr.get!)
+                        modifyIf (fun s => stayIn r₀ s = true) id
+                        exitIf (retOk r₀ ra) (setReg64 Reg64.rsp fun x => r₀ + 8#64) ra)
                       do
-                      modifyIf (fun s => stayIn s₀.regs.rsp.toBitVec s = true) id
+                      modifyIf (fun s => stayIn r₀ s = true) id
                       pure (ForInStep.yield PUnit.unit))
                 do
                 modifyIf (fun x => True) (setReg64 Reg64.r9 fun st => st.regs.r9.toBitVec.replaceLow 1#8)
                 modifyIf (fun x => True) (setReg64 Reg64.rsi fun st => st.regs.r8.toBitVec)
-                modifyIf (fun s => stayIn s₀.regs.rsp.toBitVec s = true) id
+                modifyIf (fun s => stayIn r₀ s = true) id
                 condState
                     (fun st =>
                       CondCode.z.interp
                         (StatusFlags.from_result (st.regs.r9.toBitVec.take 8 &&& st.regs.r9.toBitVec.take 8)
                           { cf := false, af := false, of := false }))
                     (do
-                      modifyIf (fun s => stayIn s₀.regs.rsp.toBitVec s = true) id
-                      exitIf (retOk s₀) (setReg64 Reg64.rsp fun x => s₀.regs.rsp.toBitVec + 8#64) s₀.retAddr.get!)
+                      modifyIf (fun s => stayIn r₀ s = true) id
+                      exitIf (retOk r₀ ra) (setReg64 Reg64.rsp fun x => r₀ + 8#64) ra)
                     do
-                    modifyIf (fun s => stayIn s₀.regs.rsp.toBitVec s = true) id
+                    modifyIf (fun s => stayIn r₀ s = true) id
                     pure (ForInStep.yield PUnit.unit))
 -/
 #guard_msgs in
 #print bsearchT
 
 /--
-info: def Ascent.Kraken.bsearchR : MachineData → BlockM MachineData Unit :=
-fun s₀ => do
+info: def Ascent.Kraken.bsearchR : BitVec 64 → Int64 → BlockM MachineData Unit :=
+fun r₀ ra => do
   modifyIf (fun x => True) (setReg64 Reg64.rcx fun st => 0#64)
-  modifyIf (fun s => stayIn s₀.regs.rsp.toBitVec s = true) id
+  modifyIf (fun s => stayIn r₀ s = true) id
   { }.forIn PUnit.unit fun u v => do
       modifyIf (fun x => True) (setReg64 Reg64.r8 fun st => st.regs.rsi.toBitVec)
       let z ← peek fun st => CondCode.be.cmp st.regs.r8.toBitVec st.regs.rcx.toBitVec
       condState (fun x => z)
           (do
             modifyIf (fun x => True) (setReg64 Reg64.r8 fun st => st.regs.r8.toBitVec - st.regs.rcx.toBitVec)
-            modifyIf (fun s => stayIn s₀.regs.rsp.toBitVec s = true) id
+            modifyIf (fun s => stayIn r₀ s = true) id
             modifyIf (fun x => True) (setReg64 Reg64.rax fun x => 18446744073709551615#64)
-            modifyIf (fun s => stayIn s₀.regs.rsp.toBitVec s = true) id
-            modifyIf (retOk s₀) (setReg64 Reg64.rsp fun x => s₀.regs.rsp.toBitVec + 8#64)
+            modifyIf (fun s => stayIn r₀ s = true) id
+            modifyIf (retOk r₀ ra) (setReg64 Reg64.rsp fun x => r₀ + 8#64)
             pure (ForInStep.done PUnit.unit))
           do
           modifyIf (fun x => True) (setReg64 Reg64.r8 fun st => st.regs.r8.toBitVec - st.regs.rcx.toBitVec)
@@ -275,27 +275,27 @@ fun s₀ => do
               (loadReg 8 Reg64.r9 (sib 8 Reg64.rdi Reg64.r8 0) fun w x => w)
           condState (fun st => CondCode.l.cmp st.regs.r9.toBitVec st.regs.rdx.toBitVec)
               (do
-                modifyIf (fun s => stayIn s₀.regs.rsp.toBitVec s = true) id
+                modifyIf (fun s => stayIn r₀ s = true) id
                 modifyIf (fun x => True) (setReg64 Reg64.r8 fun st => st.regs.r8.toBitVec + 1#64)
                 modifyIf (fun x => True) (setReg64 Reg64.r9 fun st => st.regs.r9.toBitVec.replaceLow 1#8)
                 modifyIf (fun x => True) (setReg64 Reg64.rcx fun st => st.regs.r8.toBitVec)
-                modifyIf (fun s => stayIn s₀.regs.rsp.toBitVec s = true) id
-                modifyIf (fun s => stayIn s₀.regs.rsp.toBitVec s = true) id
+                modifyIf (fun s => stayIn r₀ s = true) id
+                modifyIf (fun s => stayIn r₀ s = true) id
                 pure (ForInStep.yield PUnit.unit))
               (condState (fun st => CondCode.le.cmp st.regs.r9.toBitVec st.regs.rdx.toBitVec)
                 (do
-                  modifyIf (fun s => stayIn s₀.regs.rsp.toBitVec s = true) id
+                  modifyIf (fun s => stayIn r₀ s = true) id
                   modifyIf (fun x => True) (setReg64 Reg64.r9 fun st => 0#64)
                   modifyIf (fun x => True) (setReg64 Reg64.rax fun st => st.regs.r8.toBitVec)
-                  modifyIf (fun s => stayIn s₀.regs.rsp.toBitVec s = true) id
-                  modifyIf (fun s => stayIn s₀.regs.rsp.toBitVec s = true) id
-                  modifyIf (retOk s₀) (setReg64 Reg64.rsp fun x => s₀.regs.rsp.toBitVec + 8#64)
+                  modifyIf (fun s => stayIn r₀ s = true) id
+                  modifyIf (fun s => stayIn r₀ s = true) id
+                  modifyIf (retOk r₀ ra) (setReg64 Reg64.rsp fun x => r₀ + 8#64)
                   pure (ForInStep.done PUnit.unit))
                 do
                 modifyIf (fun x => True) (setReg64 Reg64.r9 fun st => st.regs.r9.toBitVec.replaceLow 1#8)
                 modifyIf (fun x => True) (setReg64 Reg64.rsi fun st => st.regs.r8.toBitVec)
-                modifyIf (fun s => stayIn s₀.regs.rsp.toBitVec s = true) id
-                modifyIf (fun s => stayIn s₀.regs.rsp.toBitVec s = true) id
+                modifyIf (fun s => stayIn r₀ s = true) id
+                modifyIf (fun s => stayIn r₀ s = true) id
                 pure (ForInStep.yield PUnit.unit))
 -/
 #guard_msgs in

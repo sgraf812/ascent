@@ -64,16 +64,16 @@ LBB0_7:
 
 attribute [local vcgen_simp] memmove
 
-ascend_def memmoveA [Host] [FunDecls] [Embeds memmove] (s₀ : MachineData) :
+ascend_def memmoveA [Host] [FunDecls] [Embeds memmove] (r₀ : BitVec 64) (ra : Int64) :
     BlockM MachineData Unit from
-  ⦃(· = s₀)⦄ memmove ⪯[ofStateRepr abs] memmoveA ⦃fun _ _ => ⊤; AddrRel s₀⦄
+  ⦃fun s => s.regs.get64 .rsp = r₀ ∧ s.retAddr = some ra⦄ memmove ⪯[ofStateRepr abs] memmoveA ⦃fun _ _ => ⊤; AddrRel r₀ ra⦄
   ascend [refines_cfg (p := memmove) (habs := abs_regs)] with finish
 
 
 /--
-info: def Ascent.Kraken.memmoveA : [Host] → MachineData → BlockM MachineData Unit :=
-fun [Host] s₀ =>
-  Program.loop memmove s₀.regs.rsp.toBitVec
+info: def Ascent.Kraken.memmoveA : [Host] → BitVec 64 → Int64 → BlockM MachineData Unit :=
+fun [Host] r₀ ra =>
+  Program.loop memmove r₀
     (Table.get
       [({ label := none, idx := 0,
               body :=
@@ -87,10 +87,10 @@ fun [Host] s₀ =>
               next := some "LBB0_6" }.label,
           do
           modifyIf (fun x => True) (setReg64 Reg64.rax fun st => st.regs.get64 Reg64.rdi)
-          branch (stayIn (s₀.regs.get64 Reg64.rsp))
-              (fun st => CondCode.nc.cmp (st.regs.get64 Reg64.rdi) (st.regs.get64 Reg64.rsi)) (label "LBB0_1")
-          branch (stayIn (s₀.regs.get64 Reg64.rsp))
-              (fun st => CondCode.z.cmp (st.regs.get64 Reg64.rdx &&& st.regs.get64 Reg64.rdx) 0) (label "LBB0_7")
+          branch (stayIn r₀) (fun st => CondCode.nc.cmp (st.regs.get64 Reg64.rdi) (st.regs.get64 Reg64.rsi))
+              (label "LBB0_1")
+          branch (stayIn r₀) (fun st => CondCode.z.cmp (st.regs.get64 Reg64.rdx &&& st.regs.get64 Reg64.rdx) 0)
+              (label "LBB0_7")
           modifyIf (fun x => True)
               (setReg64 Reg64.rcx fun st =>
                 BitVec.setWidth 64 ((st.regs.get64 Reg64.rcx).take 32 ^^^ (st.regs.get64 Reg64.rcx).take 32))
@@ -111,9 +111,9 @@ fun [Host] s₀ =>
           modifyIf (storeOk 1 (sib 1 Reg64.rax Reg64.rcx 0))
               (storeWord 1 (sib 1 Reg64.rax Reg64.rcx 0) fun st => st.regs.get64 Reg64.rdi)
           modifyIf (fun x => True) (setReg64 Reg64.rcx fun st => st.regs.get64 Reg64.rcx + 1)
-          branch (stayIn (s₀.regs.get64 Reg64.rsp))
-              (fun st => CondCode.nz.cmp (st.regs.get64 Reg64.rdx) (st.regs.get64 Reg64.rcx)) (label "LBB0_6")
-          branch (stayIn (s₀.regs.get64 Reg64.rsp)) (fun x => true) (label "LBB0_7")),
+          branch (stayIn r₀) (fun st => CondCode.nz.cmp (st.regs.get64 Reg64.rdx) (st.regs.get64 Reg64.rcx))
+              (label "LBB0_6")
+          branch (stayIn r₀) (fun x => true) (label "LBB0_7")),
         ({ label := some "LBB0_1", idx := 2,
               body :=
                 [asm|
@@ -122,8 +122,8 @@ fun [Host] s₀ =>
                     "mov rcx, rdx"],
               next := some "LBB0_3" }.label,
           do
-          branch (stayIn (s₀.regs.get64 Reg64.rsp))
-              (fun st => CondCode.z.cmp (st.regs.get64 Reg64.rdx &&& st.regs.get64 Reg64.rdx) 0) (label "LBB0_7")
+          branch (stayIn r₀) (fun st => CondCode.z.cmp (st.regs.get64 Reg64.rdx &&& st.regs.get64 Reg64.rdx) 0)
+              (label "LBB0_7")
           modifyIf (fun x => True) (setReg64 Reg64.rcx fun st => st.regs.get64 Reg64.rdx)
           pure PUnit.unit),
         ({ label := some "LBB0_3", idx := 3,
@@ -146,14 +146,14 @@ fun [Host] s₀ =>
           modifyIf (storeOk 1 (sib 1 Reg64.rax Reg64.rdx (-1)))
               (storeWord 1 (sib 1 Reg64.rax Reg64.rdx (-1)) fun st => st.regs.get64 Reg64.rdi)
           modifyIf (fun x => True) (setReg64 Reg64.rdx fun st => st.regs.get64 Reg64.rcx)
-          branch (stayIn (s₀.regs.get64 Reg64.rsp)) (fun x_1 => !x) (label "LBB0_3")
+          branch (stayIn r₀) (fun x_1 => !x) (label "LBB0_3")
           pure PUnit.unit),
         ({ label := some "LBB0_7", idx := 4,
               body :=
                 [asm|
                     "ret"],
               next := none }.label,
-          exitIf (retOk s₀) (setReg64 Reg64.rsp fun x => s₀.regs.get64 Reg64.rsp + 8) s₀.retAddr.get!)])
+          exitIf (retOk r₀ ra) (setReg64 Reg64.rsp fun x => r₀ + 8) ra)])
 -/
 #guard_msgs in
 #print memmoveA
