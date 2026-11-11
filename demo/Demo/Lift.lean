@@ -507,6 +507,18 @@ def retAddrAt (m : DataMem) (p : BitVec 64) : Option Int64 :=
   simp only [ofStateRepr_pred, hf]
   exact he
 
+theorem assume_true_bind {α : Type} (k : PUnit → BlockM DataMem α) :
+    ((do StateT.assume (fun (_ : DataMem) => True) : BlockM DataMem PUnit) >>= k) = k PUnit.unit := by
+  apply BlockLoop.ext_wp <;> intro Q E m <;>
+    simp only [WPMonadExact.wp_bind_eq, ExceptT.wp_monadLift_StateT_UB, StateT.wp_assume_eq, true_and] <;>
+    exact id
+
+theorem assume_true :
+    (do StateT.assume (fun (_ : DataMem) => True) : BlockM DataMem PUnit) = pure PUnit.unit := by
+  apply BlockLoop.ext_wp <;> intro Q E m <;>
+    simp only [WPMonadExact.wp_pure_eq, ExceptT.wp_monadLift_StateT_UB, StateT.wp_assume_eq, true_and] <;>
+    exact id
+
 @[ascend] theorem wrp_modifyIf_retOk {Q : Unit → PUnit → MachineData → Prop}
     (s₀ : MachineData) (f : MachineData → MachineData) (pa : BitVec 64)
     (hf : ∀ t, (f t).dmem = t.dmem) :

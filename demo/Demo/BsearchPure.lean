@@ -142,7 +142,7 @@ theorem bsearchR_refines_Arr {A key rax : BitVec 64} {n : Nat} {a : Array (BitVe
       ⦃fun _ o t => t.regs.get64 .rax = encodeIdx o ∧ t.regs.get64 .rsp = s₀.regs.get64 .rsp + 8;
         (fun l l' _ => l = l', estack⟨⟩)⦄ :=
   Refinement.comp_le (by grind) (by grind) (by grind) (bsearchArr.refines A key rax s₀ n a)
-    ((bsearchL.refines A (BitVec.ofNat 64 n) key rax (s₀.regs.get64 .rsp) s₀).weaken fun t h => h.1)
+    ((bsearchL.refines A (BitVec.ofNat 64 n) key rax s₀).weaken fun t h => h.1)
 
 theorem bsearchR_refines_P {A key rax : BitVec 64} {n : Nat} {a : Array (BitVec 64)} :
     ⦃fun t => RegsRel [(.rdi, A), (.rsi, BitVec.ofNat 64 n), (.rdx, key), (.rax, rax), (.rsp, s₀.regs.get64 .rsp)] t ∧

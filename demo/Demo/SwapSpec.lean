@@ -21,7 +21,7 @@ theorem swapL_spec (p q : BitVec 64) (s₀ : MachineData) (m : DataMem)
     (hr : retAddrAt m (s₀.regs.get64 .rsp) = some s₀.retAddr.get!)
     (hpr : Mem.Blocks.Disjoint [(s₀.regs.get64 .rsp, 8)] [(p, 8)])
     (hqr : Mem.Blocks.Disjoint [(s₀.regs.get64 .rsp, 8)] [(q, 8)]) :
-    ⦃(· = m)⦄ swapL p q (s₀.regs.get64 .rsp) s₀
+    ⦃(· = m)⦄ swapL p q s₀
       ⦃fun _ _ => False; (fun l m' => l = s₀.retAddr.get! ∧
         m' = Mem.storeInt (Mem.storeInt m p 8 (BitVec.ofInt 64 ((Mem.loadInt m q 8).get! % 2 ^ (8 * 8))).toInt)
           q 8 (BitVec.ofInt 64 ((Mem.loadInt m p 8).get! % 2 ^ (8 * 8))).toInt,
@@ -34,12 +34,12 @@ variable [Host] [FunDecls] [Embeds swap] (s : MachineData) (ra : Int64)
 theorem swap_refines_L {p q : BitVec 64}
     (hrdi : (s.push64 ra).regs.get64 .rdi = p) (hrsi : (s.push64 ra).regs.get64 .rsi = q) :
     ⦃(· = s.push64 ra)⦄ swap ⪯[(ofStateRepr abs).comp (ofStateRepr MachineData.dmem)]
-      (swapL p q ((s.push64 ra).regs.get64 .rsp) (s.push64 ra))
+      (swapL p q (s.push64 ra))
       ⦃fun _ _ _ => True; fun a l t => a = l ∧ t.regs.get64 .rsp = s.regs.get64 .rsp ∧
         RegsRel [(.rbx, s.regs.get64 .rbx), (.rbp, s.regs.get64 .rbp), (.r12, s.regs.get64 .r12),
           (.r13, s.regs.get64 .r13), (.r14, s.regs.get64 .r14), (.r15, s.regs.get64 .r15)] t⦄ := by
   exact Refinement.comp_le (by grind) (by grind) (by grind)
-    (swapL.refines p q ((s.push64 ra).regs.get64 .rsp) (s.regs.get64 .rbx) (s.regs.get64 .rbp)
+    (swapL.refines p q (s.regs.get64 .rbx) (s.regs.get64 .rbp)
       (s.regs.get64 .r12) (s.regs.get64 .r13) (s.regs.get64 .r14) (s.regs.get64 .r15) (s.push64 ra))
     (swapT.refines (s.push64 ra))
 

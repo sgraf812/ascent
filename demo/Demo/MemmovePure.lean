@@ -90,7 +90,7 @@ theorem memmoveT_refines_Arr {O S : BitVec 64} {n : Nat} {a : Array (BitVec 8)} 
       ⦃fun _ _ _ => True; (fun l l' t => l = l' ∧ t.regs.get64 .rax = O ∧
         t.regs.get64 .rsp = s₀.regs.get64 .rsp + 8, estack⟨⟩)⦄ := by
   exact Refinement.comp_le (by grind) (by grind) (by grind) (memmoveArr.refines O S s₀ n a back)
-    ((memmoveL.refines O S (BitVec.ofNat 64 n) (s₀.regs.get64 .rsp) s₀).weaken fun t h => h.1)
+    ((memmoveL.refines O S (BitVec.ofNat 64 n) s₀).weaken fun t h => h.1)
 
 theorem memmoveT_refines_P {O S : BitVec 64} {n : Nat} {a : Array (BitVec 8)} {back : Bool}
     (ha : a.size = n) :

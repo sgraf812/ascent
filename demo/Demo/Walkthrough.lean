@@ -164,40 +164,33 @@ is the stack pointer of `s₀` and that the return slot holds the return address
 `throw s₀.retAddr.get!`: -/
 
 /--
-info: zipWithAddL.refines : ∀ (rdi rsi rdx rcx rsp : BitVec 64) (s₀ : MachineData),
-  ⦃ RegsRel [(Reg64.rdi, rdi), (Reg64.rsi, rsi), (Reg64.rdx, rdx), (Reg64.rcx, rcx), (Reg64.rsp, rsp)] ⦄
-    (zipWithAddT s₀) ⪯[ofStateRepr MachineData.dmem] (zipWithAddL rdi rsi rdx rcx rsp s₀) ⦃ fun x x_1 x_2 => True;
+info: zipWithAddL.refines : ∀ (rdi rsi rdx rcx : BitVec 64) (s₀ : MachineData),
+  ⦃
+    RegsRel
+      [(Reg64.rdi, rdi), (Reg64.rsi, rsi), (Reg64.rdx, rdx), (Reg64.rcx, rcx), (Reg64.rsp, s₀.regs.get64 Reg64.rsp)] ⦄
+    (zipWithAddT s₀) ⪯[ofStateRepr MachineData.dmem] (zipWithAddL rdi rsi rdx rcx s₀) ⦃ fun x x_1 x_2 => True;
     estack⟨fun l l' t => l = l' ∧ t.regs.get64 Reg64.rsp = s₀.regs.get64 Reg64.rsp + 8⟩ ⦄
 -/
 #guard_msgs in
 #check @zipWithAddL.refines
 
 /--
-info: def Ascent.Kraken.zipWithAddL : BitVec 64 →
-  BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → MachineData → BlockM DataMem Unit :=
-fun rdi rsi rdx rcx rsp s₀ =>
+info: def Ascent.Kraken.zipWithAddL : BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → MachineData → BlockM DataMem Unit :=
+fun rdi rsi rdx rcx s₀ =>
   if rcx.toInt ≤ 0 then do
-    assume fun x => stayAt s₀.regs.rsp.toBitVec rsp = true
-    assume fun m => rsp = s₀.regs.rsp.toBitVec ∧ retAddrAt m rsp = some s₀.retAddr.get!
+    assume fun m => retAddrAt m s₀.regs.rsp.toBitVec = some s₀.retAddr.get!
     throw s₀.retAddr.get!
   else do
-    assume fun x => stayAt s₀.regs.rsp.toBitVec rsp = true
-    let _ ←
-      do
-        let mut v := 0#64
-        repeat'
-          let x ← load 8 (rsi + v * 8#64)
-          let x_1 ← load 8 (rdi + v * 8#64)
-          store 8 rsp (rdx + v * 8#64) (x_1 + x)
-          if ¬rcx = v + 1#64 then 
-            assume fun x => stayAt s₀.regs.rsp.toBitVec rsp = true
-            v := v + 1#64
-          else
-            assume fun x => stayAt s₀.regs.rsp.toBitVec rsp = true
-            assume fun m => rsp = s₀.regs.rsp.toBitVec ∧ retAddrAt m rsp = some s₀.retAddr.get!
-            throw s₀.retAddr.get!
-        pure v
-    pure PUnit.unit
+    let mut v := 0#64
+    repeat'
+      let x ← load 8 (rsi + v * 8#64)
+      let x_1 ← load 8 (rdi + v * 8#64)
+      store 8 s₀.regs.rsp.toBitVec (rdx + v * 8#64) (x_1 + x)
+      if ¬rcx = v + 1#64 then 
+        v := v + 1#64
+      else
+        assume fun m => retAddrAt m s₀.regs.rsp.toBitVec = some s₀.retAddr.get!
+        throw s₀.retAddr.get!
 -/
 #guard_msgs in
 #print zipWithAddL
@@ -219,8 +212,8 @@ info: zipWithAddArr.refines : ∀ (A B O : BitVec 64) (s₀ : MachineData) (n : 
     A ≐ₐ a ∧
       B ≐ₐ b ∧
         a.size = n ∧ b.size = n ∧ ArrayLayout 8 64 [(A, a), (B, b)] O n [(s₀.regs.get64 Reg64.rsp, s₀.retAddr.get!)] m ⦄
-    (zipWithAddL A B O (BitVec.ofNat 64 n) (s₀.regs.get64 Reg64.rsp) s₀) ⪯[ofStateRepr (outView 8 64 O n)]
-    (zipWithAddArr s₀ n a b) ⦃ fun x x_1 x_2 => True; estack⟨fun l l' x => l = l'⟩ ⦄
+    (zipWithAddL A B O (BitVec.ofNat 64 n) s₀) ⪯[ofStateRepr (outView 8 64 O n)] (zipWithAddArr s₀ n a b) ⦃
+    fun x x_1 x_2 => True; estack⟨fun l l' x => l = l'⟩ ⦄
 -/
 #guard_msgs in
 #check @zipWithAddArr.refines
@@ -381,40 +374,25 @@ machine code becomes a `break` that leaves the loop with `rax` set, and the func
 after the loop: -/
 
 /--
-info: def Ascent.Kraken.bsearchL : BitVec 64 →
-  BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → MachineData → BlockM DataMem (BitVec 64) :=
-fun rdi rsi rdx rax rsp s₀ => do
-  assume fun x => stayAt s₀.regs.rsp.toBitVec rsp = true
-  let a ←
-    do
-      let mut a := (0#64, rsi, rax)
-      repeat'
-        if a.snd.fst ≤ a.fst then 
-          assume fun x => stayAt s₀.regs.rsp.toBitVec rsp = true
-          assume fun x => stayAt s₀.regs.rsp.toBitVec rsp = true
-          assume fun m => rsp = s₀.regs.rsp.toBitVec ∧ retAddrAt m rsp = some s₀.retAddr.get!
-          a := (a.fst, a.snd.fst, 18446744073709551615#64)
+info: def Ascent.Kraken.bsearchL : BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → MachineData → BlockM DataMem (BitVec 64) :=
+fun rdi rsi rdx rax s₀ => do
+  let mut a := (0#64, rsi, rax)
+  repeat'
+    if a.snd.fst ≤ a.fst then 
+      assume fun m => retAddrAt m s₀.regs.rsp.toBitVec = some s₀.retAddr.get!
+      a := (a.fst, a.snd.fst, 18446744073709551615#64)
+      break
+    else
+      let x ← load 8 (rdi + (a.fst + (a.snd.fst - a.fst).ushiftRight 1) * 8#64)
+      if x.toInt < rdx.toInt then 
+        a := (a.fst + (a.snd.fst - a.fst).ushiftRight 1 + 1#64, a.snd.fst, a.snd.snd)
+      else
+        if x.toInt ≤ rdx.toInt then 
+          assume fun m => retAddrAt m s₀.regs.rsp.toBitVec = some s₀.retAddr.get!
+          a := (a.fst, a.snd.fst, a.fst + (a.snd.fst - a.fst).ushiftRight 1)
           break
         else
-          let x ← load 8 (rdi + (a.fst + (a.snd.fst - a.fst).ushiftRight 1) * 8#64)
-          if x.toInt < rdx.toInt then 
-            assume fun x => stayAt s₀.regs.rsp.toBitVec rsp = true
-            assume fun x => stayAt s₀.regs.rsp.toBitVec rsp = true
-            assume fun x => stayAt s₀.regs.rsp.toBitVec rsp = true
-            a := (a.fst + (a.snd.fst - a.fst).ushiftRight 1 + 1#64, a.snd.fst, a.snd.snd)
-          else
-            if x.toInt ≤ rdx.toInt then 
-              assume fun x => stayAt s₀.regs.rsp.toBitVec rsp = true
-              assume fun x => stayAt s₀.regs.rsp.toBitVec rsp = true
-              assume fun x => stayAt s₀.regs.rsp.toBitVec rsp = true
-              assume fun m => rsp = s₀.regs.rsp.toBitVec ∧ retAddrAt m rsp = some s₀.retAddr.get!
-              a := (a.fst, a.snd.fst, a.fst + (a.snd.fst - a.fst).ushiftRight 1)
-              break
-            else
-              assume fun x => stayAt s₀.regs.rsp.toBitVec rsp = true
-              assume fun x => stayAt s₀.regs.rsp.toBitVec rsp = true
-              a := (a.fst, a.fst + (a.snd.fst - a.fst).ushiftRight 1, a.snd.snd)
-      pure a
+          a := (a.fst, a.fst + (a.snd.fst - a.fst).ushiftRight 1, a.snd.snd)
   pure a.snd.snd
 -/
 #guard_msgs in

@@ -61,10 +61,10 @@ fun key n a => do
 theorem bsearchArr.refines (A key rax : BitVec 64) (s₀ : MachineData) (n : Nat) (a : Array (BitVec 64)) :
     ⦃fun m => A ≐ₐ a ∧ a.size = n ∧ n < 2 ^ 61 ∧ words 8 64 m A a.size = a.toList ∧
       Mem.Mapped [(A, 8 * a.size)] m ∧ retAddrAt m (s₀.regs.get64 .rsp) = some s₀.retAddr.get!⦄
-      (bsearchL A (BitVec.ofNat 64 n) key rax (s₀.regs.get64 .rsp) s₀) ⪯[ofStateRepr (fun _ : DataMem => ())]
+      (bsearchL A (BitVec.ofNat 64 n) key rax s₀) ⪯[ofStateRepr (fun _ : DataMem => ())]
         (bsearchArr key n a)
       ⦃fun v o _ => PureRefinement v o True IdxWord; (fun l l' _ => l = l', estack⟨⟩)⦄ :=
-  bsearchL.eq A (BitVec.ofNat 64 n) key rax (s₀.regs.get64 .rsp) s₀ ▸ bsearchArr.eq key n a ▸
+  bsearchL.eq A (BitVec.ofNat 64 n) key rax s₀ ▸ bsearchArr.eq key n a ▸
     bsearchArr₀.refines A key rax s₀ n a
 
 end Ascent.Kraken

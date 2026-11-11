@@ -100,7 +100,7 @@ theorem zipWithAddT_refines_Arr {A B O : BitVec 64} {n : Nat} {a b : Array (BitV
       (zipWithAddArr s₀ n a b)
       ⦃fun _ _ _ => True; (fun l l' t => l = l' ∧ t.regs.get64 .rsp = s₀.regs.get64 .rsp + 8, estack⟨⟩)⦄ := by
   exact Refinement.comp_le (by grind) (by grind) (by grind) (zipWithAddArr.refines A B O s₀ n a b)
-    ((zipWithAddL.refines A B O (BitVec.ofNat 64 n) (s₀.regs.get64 .rsp) s₀).weaken fun t h => h.1)
+    ((zipWithAddL.refines A B O (BitVec.ofNat 64 n) s₀).weaken fun t h => h.1)
 
 theorem zipWithAddT_refines_P {A B O : BitVec 64} {n : Nat} {a b : Array (BitVec 64)}
     (ha : a.size = n) (hb : b.size = n) :

@@ -37,9 +37,9 @@ sym_simp_def zipWithAddArr (s₀ : MachineData) (n : Nat) (a b : Array (BitVec 6
 
 theorem zipWithAddArr.refines (A B O : BitVec 64) (s₀ : MachineData) (n : Nat) (a b : Array (BitVec 64)) :
     ⦃fun m => A ≐ₐ a ∧ B ≐ₐ b ∧ a.size = n ∧ b.size = n ∧ ArrayLayout 8 64 [(A, a), (B, b)] O n [(s₀.regs.get64 .rsp, s₀.retAddr.get!)] m⦄
-      (zipWithAddL A B O (BitVec.ofNat 64 n) (s₀.regs.get64 .rsp) s₀) ⪯[ofStateRepr (outView 8 64 O n)]
+      (zipWithAddL A B O (BitVec.ofNat 64 n) s₀) ⪯[ofStateRepr (outView 8 64 O n)]
       (zipWithAddArr s₀ n a b) ⦃fun _ _ _ => True; (fun l l' _ => l = l', estack⟨⟩)⦄ :=
-  zipWithAddL.eq A B O (BitVec.ofNat 64 n) (s₀.regs.get64 .rsp) s₀ ▸ zipWithAddArr.eq s₀ n a b ▸
+  zipWithAddL.eq A B O (BitVec.ofNat 64 n) s₀ ▸ zipWithAddArr.eq s₀ n a b ▸
     zipWithAddArr₀.refines A B O s₀ n a b
 
 

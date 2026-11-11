@@ -36,9 +36,9 @@ sym_simp_def memmoveArr (s₀ : MachineData) (n : Nat) (a : Array (BitVec 8)) (b
 
 theorem memmoveArr.refines (O S : BitVec 64) (s₀ : MachineData) (n : Nat) (a : Array (BitVec 8)) (back : Bool) :
     ⦃fun m => CondCode.nc.cmp O S ≐ back ∧ S ≐ₐ a ∧ a.size = n ∧ ArrayLayout 1 8 [(S, a)] O n [(s₀.regs.get64 .rsp, s₀.retAddr.get!)] m⦄
-      (memmoveL O S (BitVec.ofNat 64 n) (s₀.regs.get64 .rsp) s₀) ⪯[ofStateRepr (outView 1 8 O n)]
+      (memmoveL O S (BitVec.ofNat 64 n) s₀) ⪯[ofStateRepr (outView 1 8 O n)]
       (memmoveArr s₀ n a back) ⦃fun _ _ _ => True; (fun l l' _ => l = l', estack⟨⟩)⦄ :=
-  memmoveL.eq O S (BitVec.ofNat 64 n) (s₀.regs.get64 .rsp) s₀ ▸ memmoveArr.eq s₀ n a back ▸
+  memmoveL.eq O S (BitVec.ofNat 64 n) s₀ ▸ memmoveArr.eq s₀ n a back ▸
     memmoveArr₀.refines O S s₀ n a back
 
 
