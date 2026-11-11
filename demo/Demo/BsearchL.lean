@@ -16,51 +16,70 @@ open Ascent.Concretization (ofStateRepr)
 
 namespace Ascent.Kraken
 
-ascend_def bsearchL₀ (rdi rsi rdx rax rsp : BitVec 64) : BlockM DataMem (BitVec 64) from
+ascend_def bsearchL₀ (rdi rsi rdx rax rsp : BitVec 64) (s₀ : MachineData) : BlockM DataMem (BitVec 64) from
   ⦃RegsRel [(.rdi, rdi), (.rsi, rsi), (.rdx, rdx), (.rax, rax), (.rsp, rsp)]⦄
-  bsearchR ⪯[ofStateRepr MachineData.dmem] bsearchL₀
-  ⦃fun _ v t => t.regs.get64 .rax ≐ v; (fun l l' _ => l = l', estack⟨⟩)⦄
+  (bsearchR s₀) ⪯[ofStateRepr MachineData.dmem] bsearchL₀
+  ⦃fun _ v t => t.regs.get64 .rax ≐ v ∧ t.regs.get64 .rsp = s₀.regs.get64 .rsp + 8;
+    (fun l l' _ => l = l', estack⟨⟩)⦄
   ascend [bsearchR, wrp_forIn_lockstep_pure
     (fun _ t (v : BitVec 64 × BitVec 64 × BitVec 64) => match v with
       | (lo, hi, res) => RegsRel [(.rdi, rdi), (.rdx, rdx), (.rsp, rsp), (.rcx, lo), (.rsi, hi), (.rax, res)] t)
     (fun _ t (v : BitVec 64 × BitVec 64 × BitVec 64) => match v with
-      | (lo, hi, res) => RegsRel [(.rcx, lo), (.rsi, hi), (.rax, res)] t) _ (_, _, _)]
+      | (lo, hi, res) => RegsRel [(.rcx, lo), (.rsi, hi), (.rax, res)] t ∧
+          t.regs.get64 .rsp = s₀.regs.get64 .rsp + 8) _ (_, _, _)]
   with finish
 
-sym_simp_def bsearchL (rdi rsi rdx rax rsp : BitVec 64) : BlockM DataMem (BitVec 64) from
-    bsearchL₀ rdi rsi rdx rax rsp
+sym_simp_def bsearchL (rdi rsi rdx rax rsp : BitVec 64) (s₀ : MachineData) : BlockM DataMem (BitVec 64) from
+    bsearchL₀ rdi rsi rdx rax rsp s₀
   using pre [] post [bsearchL₀, condState_const, CondCode.cmp_be_eq_true, CondCode.cmp_l_eq_true,
     CondCode.cmp_le_eq_true, bind_pure_unit, pure_bind, Bool.not_eq_true']
 
+
+theorem bsearchL.refines (rdi rsi rdx rax rsp : BitVec 64) (s₀ : MachineData) :
+    ⦃RegsRel [(.rdi, rdi), (.rsi, rsi), (.rdx, rdx), (.rax, rax), (.rsp, rsp)]⦄
+      (bsearchR s₀) ⪯[ofStateRepr MachineData.dmem] (bsearchL rdi rsi rdx rax rsp s₀)
+      ⦃fun _ v t => t.regs.get64 .rax ≐ v ∧ t.regs.get64 .rsp = s₀.regs.get64 .rsp + 8;
+        (fun l l' _ => l = l', estack⟨⟩)⦄ :=
+  bsearchL.eq rdi rsi rdx rax rsp s₀ ▸ bsearchL₀.refines rdi rsi rdx rax rsp s₀
+
 /--
-info: def Ascent.Kraken.bsearchL : BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → BlockM DataMem (BitVec 64) :=
-fun rdi rsi rdx rax rsp => do
-  let mut a := (0#64, rsi, rax)
-  repeat'
-    if a.snd.fst ≤ a.fst then 
-      StateT.assume fun m => (Mem.loadInt m rsp 8).isSome = true
-      a := (a.fst, a.snd.fst, 18446744073709551615#64)
-      break
-    else
-      let x ← load 8 (rdi + (a.fst + (a.snd.fst - a.fst).ushiftRight 1) * 8#64)
-      if x.toInt < rdx.toInt then 
-        a := (a.fst + (a.snd.fst - a.fst).ushiftRight 1 + 1#64, a.snd.fst, a.snd.snd)
-      else
-        if x.toInt ≤ rdx.toInt then 
-          StateT.assume fun m => (Mem.loadInt m rsp 8).isSome = true
-          a := (a.fst, a.snd.fst, a.fst + (a.snd.fst - a.fst).ushiftRight 1)
+info: def Ascent.Kraken.bsearchL : BitVec 64 →
+  BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → MachineData → BlockM DataMem (BitVec 64) :=
+fun rdi rsi rdx rax rsp s₀ => do
+  StateT.assume fun x => stayAt s₀.regs.rsp.toBitVec rsp = true
+  let a ←
+    do
+      let mut a := (0#64, rsi, rax)
+      repeat'
+        if a.snd.fst ≤ a.fst then 
+          StateT.assume fun x => stayAt s₀.regs.rsp.toBitVec rsp = true
+          StateT.assume fun x => stayAt s₀.regs.rsp.toBitVec rsp = true
+          StateT.assume fun m => rsp = s₀.regs.rsp.toBitVec ∧ retAddrAt m rsp = some s₀.retAddr.get!
+          a := (a.fst, a.snd.fst, 18446744073709551615#64)
           break
         else
-          a := (a.fst, a.fst + (a.snd.fst - a.fst).ushiftRight 1, a.snd.snd)
+          let x ← load 8 (rdi + (a.fst + (a.snd.fst - a.fst).ushiftRight 1) * 8#64)
+          if x.toInt < rdx.toInt then 
+            StateT.assume fun x => stayAt s₀.regs.rsp.toBitVec rsp = true
+            StateT.assume fun x => stayAt s₀.regs.rsp.toBitVec rsp = true
+            StateT.assume fun x => stayAt s₀.regs.rsp.toBitVec rsp = true
+            a := (a.fst + (a.snd.fst - a.fst).ushiftRight 1 + 1#64, a.snd.fst, a.snd.snd)
+          else
+            if x.toInt ≤ rdx.toInt then 
+              StateT.assume fun x => stayAt s₀.regs.rsp.toBitVec rsp = true
+              StateT.assume fun x => stayAt s₀.regs.rsp.toBitVec rsp = true
+              StateT.assume fun x => stayAt s₀.regs.rsp.toBitVec rsp = true
+              StateT.assume fun m => rsp = s₀.regs.rsp.toBitVec ∧ retAddrAt m rsp = some s₀.retAddr.get!
+              a := (a.fst, a.snd.fst, a.fst + (a.snd.fst - a.fst).ushiftRight 1)
+              break
+            else
+              StateT.assume fun x => stayAt s₀.regs.rsp.toBitVec rsp = true
+              StateT.assume fun x => stayAt s₀.regs.rsp.toBitVec rsp = true
+              a := (a.fst, a.fst + (a.snd.fst - a.fst).ushiftRight 1, a.snd.snd)
+      pure a
   pure a.snd.snd
 -/
 #guard_msgs in
 #print bsearchL
-
-theorem bsearchL.refines (rdi rsi rdx rax rsp : BitVec 64) :
-    ⦃RegsRel [(.rdi, rdi), (.rsi, rsi), (.rdx, rdx), (.rax, rax), (.rsp, rsp)]⦄
-      bsearchR ⪯[ofStateRepr MachineData.dmem] (bsearchL rdi rsi rdx rax rsp)
-      ⦃fun _ v t => t.regs.get64 .rax ≐ v; (fun l l' _ => l = l', estack⟨⟩)⦄ :=
-  bsearchL.eq rdi rsi rdx rax rsp ▸ bsearchL₀.refines rdi rsi rdx rax rsp
 
 end Ascent.Kraken

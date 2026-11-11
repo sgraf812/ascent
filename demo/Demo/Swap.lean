@@ -35,9 +35,9 @@ _swap:
 
 attribute [local vcgen_simp] swap
 
-ascend_def swapA [Host] [FunDecls] [Embeds swap] (s : MachineData) (ra : Int64) :
+ascend_def swapA [Host] [FunDecls] [Embeds swap] (s₀ : MachineData) :
     BlockM MachineData Unit from
-  ⦃(· = s.push64 ra)⦄ swap ⪯[ofStateRepr abs] swapA ⦃fun _ _ => ⊤; RetRel s ra⦄
-  ascend [refines_cfg (p := swap)] with finish
+  ⦃(· = s₀)⦄ swap ⪯[ofStateRepr abs] swapA ⦃fun _ _ => ⊤; AddrRel s₀⦄
+  ascend [refines_cfg (p := swap) (habs := abs_regs)] with finish
 
 end Ascent.Kraken

@@ -42,7 +42,7 @@ theorem ofInt_emod_two_pow (n : Nat) (x : Int) : BitVec.ofInt n (x % 2 ^ n) = Bi
 
 section
 variable (Q : BitVec 64 → DataMem → Prop) (Qu : Unit → DataMem → Prop)
-  (E : (CfgLabel → DataMem → Prop) × EStack⟨⟩) (m : DataMem)
+  (E : (Int64 → DataMem → Prop) × EStack⟨⟩) (m : DataMem)
 
 theorem wp_load (n : Nat) (a : BitVec 64) :
     wp (load n a) Q E m
@@ -78,7 +78,7 @@ grind_pattern Mem.Mapped.loadInt_isSome_single => Mem.Mapped [(a, n)] m, Mem.loa
       ∧ Qu () (Mem.storeInt m a n v.toInt)⦄ store n rsp a v ⦃Qu; E⦄ :=
   ⟨fun m h => by rw [wp_store]; exact h⟩
 
-theorem wp_assume_throw {α : Type} {Qα : α → DataMem → Prop} (g : DataMem → Prop) (l : CfgLabel) :
+theorem wp_assume_throw {α : Type} {Qα : α → DataMem → Prop} (g : DataMem → Prop) (l : Int64) :
     wp (do StateT.assume g; throw l : BlockM DataMem α) Qα E m = (g m ∧ E.1 l m) := by
   rw [WPMonadExact.wp_bind_eq, ExceptT.wp_monadLift_StateT_UB, StateT.wp_assume_eq, wp_throw_block]
 
@@ -283,7 +283,7 @@ attribute [ascend] wrp_bind
 
 section
 variable {Q : Unit → BitVec 64 → MachineData → Prop} {Qu : Unit → Unit → MachineData → Prop}
-  {E : (CfgLabel → CfgLabel → MachineData → Prop) × EStack⟨⟩}
+  {E : (Int64 → Int64 → MachineData → Prop) × EStack⟨⟩}
 
 @[ascend] theorem wrp_pure_unit :
     Qu () () ⊑ wrp (ofStateRepr MachineData.dmem) (pure () : BlockM MachineData Unit)
@@ -339,7 +339,7 @@ end
 /-! ## Control -/
 
 section
-variable {σc σa : Type} {view : σc → σa} {E : (CfgLabel → CfgLabel → σc → Prop) × EStack⟨⟩}
+variable {σc σa : Type} {view : σc → σa} {E : (Int64 → Int64 → σc → Prop) × EStack⟨⟩}
 
 theorem wrp_forIn_lockstep_bind_unit {βc βa : Type} (R : βc → σc → βa → Prop) (cinit : βc)
     (ainit : βa) {fc : Unit → βc → BlockM σc (ForInStep βc)}
@@ -391,7 +391,7 @@ end
 
 section
 variable {AV : Type} {Qu : Unit → AV → MachineData → Prop}
-  {E : (CfgLabel → CfgLabel → MachineData → Prop) × EStack⟨⟩}
+  {E : (Int64 → Int64 → MachineData → Prop) × EStack⟨⟩}
 
 theorem wrp_forIn_lockstep_unit {βa : Type} (R : MachineData → βa → Prop) (ab : βa)
     {fc : Unit → PUnit → BlockM MachineData (ForInStep PUnit)}
@@ -420,7 +420,7 @@ theorem wrp_forIn_lockstep_unit {βa : Type} (R : MachineData → βa → Prop) 
   exact ⟨(), hq, hqa⟩
 
 @[ascend] theorem wrp_condState {σc σa CV AV : Type} {view : σc → σa}
-    {E : (CfgLabel → CfgLabel → σc → Prop) × EStack⟨⟩} {Q : CV → AV → σc → Prop} {c : σc → Bool}
+    {E : (Int64 → Int64 → σc → Prop) × EStack⟨⟩} {Q : CV → AV → σc → Prop} {c : σc → Bool}
     {x y : BlockM σc CV} {ax ay : BlockM σa AV} (b : Bool) (P : Prop) :
     (fun t => PureRefinement (c t) b P Eq ∧ P ∧
       (b = true → wrp (ofStateRepr view) x ax Q E t) ∧
@@ -458,7 +458,7 @@ theorem wrp_forIn_lockstep_unit {βa : Type} (R : MachineData → βa → Prop) 
   exact ⟨hk, hw⟩
 
 @[ascend] theorem wrp_exitIf_assume {CV AV : Type} {Q : CV → AV → MachineData → Prop}
-    (a : MachineData → BitVec 64) (f : MachineData → MachineData) (l : CfgLabel) (pa : BitVec 64)
+    (a : MachineData → BitVec 64) (f : MachineData → MachineData) (l : Int64) (pa : BitVec 64)
     (hf : ∀ t, (f t).dmem = t.dmem) :
     (fun t => a t ≐ pa ∧ (loadOk 8 a t → E.1 l l (f t)))
       ⊑ wrp (ofStateRepr MachineData.dmem) (exitIf (loadOk 8 a) f l : BlockM MachineData CV)
@@ -477,6 +477,75 @@ theorem wrp_forIn_lockstep_unit {βa : Type} (R : MachineData → βa → Prop) 
   refine ⟨l, hk hg, ?_⟩
   simp only [ofStateRepr_pred, hf]
   exact he
+
+/-- The return slot at `p` holds the address `ra`. -/
+def retAddrAt (m : DataMem) (p : BitVec 64) : Option Int64 :=
+  (Mem.loadInt m p 8).map fun i => Int64.ofBitVec (BitVec.ofInt 64 i)
+
+@[grind =] theorem retAddrAt_eq (m : DataMem) (p : BitVec 64) :
+    retAddrAt m p = (Mem.loadInt m p 8).map fun i => Int64.ofBitVec (BitVec.ofInt 64 i) := rfl
+
+@[ascend] theorem wrp_exitIf_retOk {CV AV : Type} {Q : CV → AV → MachineData → Prop}
+    (s₀ : MachineData) (f : MachineData → MachineData) (l : Int64) (pa : BitVec 64)
+    (hf : ∀ t, (f t).dmem = t.dmem) :
+    (fun t => t.regs.get64 .rsp ≐ pa ∧ (retOk s₀ t → E.1 l l (f t)))
+      ⊑ wrp (ofStateRepr MachineData.dmem) (exitIf (retOk s₀) f l : BlockM MachineData CV)
+          (do StateT.assume (fun m => pa = s₀.regs.get64 .rsp ∧ retAddrAt m pa = some s₀.retAddr.get!)
+              throw l : BlockM DataMem AV)
+          Q E := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro t ht
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_assume_throw] at ht
+  obtain ⟨⟨ha, hk⟩, ⟨hr, hl⟩, he⟩ := ht
+  have ha : t.regs.get64 .rsp = pa := ha trivial
+  have hg : retOk s₀ t := ⟨ha.trans hr, by rw [MachineData.retAddr_eq, ha]; exact hl⟩
+  rw [wp_exitIf]
+  refine ⟨hg, ?_⟩
+  simp only [EPostsConcretization.ePosts_cons]
+  rw [Concretization.post_pi]
+  refine ⟨l, hk hg, ?_⟩
+  simp only [ofStateRepr_pred, hf]
+  exact he
+
+@[ascend] theorem wrp_modifyIf_retOk {Q : Unit → PUnit → MachineData → Prop}
+    (s₀ : MachineData) (f : MachineData → MachineData) (pa : BitVec 64)
+    (hf : ∀ t, (f t).dmem = t.dmem) :
+    (fun t => t.regs.get64 .rsp ≐ pa ∧ (retOk s₀ t → Q () () (f t)))
+      ⊑ wrp (ofStateRepr MachineData.dmem) (modifyIf (retOk s₀) f : BlockM MachineData Unit)
+          (do StateT.assume (fun m => pa = s₀.regs.get64 .rsp ∧ retAddrAt m pa = some s₀.retAddr.get!)
+            : BlockM DataMem PUnit)
+          Q E := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro t ht
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, ExceptT.wp_monadLift_StateT_UB,
+    StateT.wp_assume_eq] at ht
+  obtain ⟨⟨ha, hk⟩, ⟨hr, hl⟩, hq⟩ := ht
+  have ha : t.regs.get64 .rsp = pa := ha trivial
+  have hg : retOk s₀ t := ⟨ha.trans hr, by rw [MachineData.retAddr_eq, ha]; exact hl⟩
+  rw [wp_modifyIf]
+  refine ⟨hg, ?_⟩
+  rw [Concretization.post_pi]
+  refine ⟨(), hk hg, ?_⟩
+  simp only [ofStateRepr_pred, hf]
+  exact hq
+
+@[ascend] theorem wrp_modifyIf_stay {Q : Unit → PUnit → MachineData → Prop} (r₀ pa : BitVec 64) :
+    (fun t => t.regs.get64 .rsp ≐ pa ∧ (stayIn r₀ t = true → Q () () t))
+      ⊑ wrp (ofStateRepr MachineData.dmem)
+          (modifyIf (fun s => stayIn r₀ s = true) id : BlockM MachineData Unit)
+          (do StateT.assume (fun (_ : DataMem) => stayAt r₀ pa = true) : BlockM DataMem PUnit)
+          Q E := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro t ht
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, ExceptT.wp_monadLift_StateT_UB,
+    StateT.wp_assume_eq] at ht
+  obtain ⟨⟨ha, hk⟩, hl, hq⟩ := ht
+  have ha : t.regs.get64 .rsp = pa := ha trivial
+  have hg : stayIn r₀ t = true := by rw [stayIn, ha]; exact hl
+  rw [wp_modifyIf]
+  refine ⟨hg, ?_⟩
+  rw [Concretization.post_pi]
+  exact ⟨(), hk hg, hq⟩
 
 @[ascend] theorem wrp_modifyIf_assume {Q : Unit → PUnit → MachineData → Prop}
     (a : MachineData → BitVec 64) (f : MachineData → MachineData) (pa : BitVec 64)

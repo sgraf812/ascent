@@ -15,60 +15,79 @@ open Ascent.Concretization (ofStateRepr)
 
 namespace Ascent.Kraken
 
-ascend_def memmoveL₀ (rdi rsi rdx rsp : BitVec 64) : BlockM DataMem Unit from
+ascend_def memmoveL₀ (rdi rsi rdx rsp : BitVec 64) (s₀ : MachineData) : BlockM DataMem Unit from
   ⦃RegsRel [(.rdi, rdi), (.rsi, rsi), (.rdx, rdx), (.rsp, rsp)]⦄
-  memmoveT ⪯[ofStateRepr MachineData.dmem] memmoveL₀
-  ⦃fun _ _ _ => True; (fun l l' t => l = l' ∧ t.regs.get64 .rax = rdi, estack⟨⟩)⦄
+  (memmoveT s₀) ⪯[ofStateRepr MachineData.dmem] memmoveL₀
+  ⦃fun _ _ _ => True; (fun l l' t => l = l' ∧ t.regs.get64 .rax = rdi ∧ t.regs.get64 .rsp = s₀.regs.get64 .rsp + 8, estack⟨⟩)⦄
   ascend [memmoveT, wrp_forIn_lockstep_unit (ab := (_, _)) (R := fun t (v : BitVec 64 × BitVec 64) =>
     match v with
     | (rcx, rdx) => RegsRel [(.rsi, rsi), (.rax, rdi), (.rsp, rsp), (.rcx, rcx), (.rdx, rdx)] t)]
   with finish
 
-sym_simp_def memmoveL (rdi rsi rdx rsp : BitVec 64) : BlockM DataMem Unit from
-    memmoveL₀ rdi rsi rdx rsp
+sym_simp_def memmoveL (rdi rsi rdx rsp : BitVec 64) (s₀ : MachineData) : BlockM DataMem Unit from
+    memmoveL₀ rdi rsi rdx rsp s₀
   using pre [] post [memmoveL₀, condState_const, CondCode.cmp_nz_eq_true, CondCode.cmp_z_eq_true,
     CondCode.cmp_nc_eq_true, BitVec.and_self, BitVec.mul_one, bind_pure_unit, pure_bind, Bool.not_eq_true',
     beq_eq_true_eq, beq_eq_false_iff_ne, add_ofInt_neg_one]
 
+
+
+theorem memmoveL.refines (rdi rsi rdx rsp : BitVec 64) (s₀ : MachineData) :
+    ⦃RegsRel [(.rdi, rdi), (.rsi, rsi), (.rdx, rdx), (.rsp, rsp)]⦄
+      (memmoveT s₀) ⪯[ofStateRepr MachineData.dmem] (memmoveL rdi rsi rdx rsp s₀)
+      ⦃fun _ _ _ => True; (fun l l' t => l = l' ∧ t.regs.get64 .rax = rdi ∧ t.regs.get64 .rsp = s₀.regs.get64 .rsp + 8, estack⟨⟩)⦄ :=
+  memmoveL.eq rdi rsi rdx rsp s₀ ▸ memmoveL₀.refines rdi rsi rdx rsp s₀
+
 /--
-info: def Ascent.Kraken.memmoveL : BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → BlockM DataMem Unit :=
-fun rdi rsi rdx rsp =>
-  if rsi ≤ rdi then
+info: def Ascent.Kraken.memmoveL : BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → MachineData → BlockM DataMem Unit :=
+fun rdi rsi rdx rsp s₀ =>
+  if rsi ≤ rdi then do
+    StateT.assume fun x => stayAt s₀.regs.rsp.toBitVec rsp = true
     if rdx = 0#64 then do
-      StateT.assume fun m => (Mem.loadInt m rsp 8).isSome = true
-      throw CfgLabel.exit
-    else do
-      let mut a := (rdx, rdx)
-      repeat'
-        let x ← load 1 (rsi + a.snd - 1#64)
-        store 1 rsp (rdi + a.snd - 1#64) x
-        if ¬a.fst - 1#64 = 0#64 then 
-          a := (a.fst - 1#64, a.fst - 1#64)
-        else
-          StateT.assume fun m => (Mem.loadInt m rsp 8).isSome = true
-          throw CfgLabel.exit
+        StateT.assume fun x => stayAt s₀.regs.rsp.toBitVec rsp = true
+        StateT.assume fun m => rsp = s₀.regs.rsp.toBitVec ∧ retAddrAt m rsp = some s₀.retAddr.get!
+        throw s₀.retAddr.get!
+      else do
+        StateT.assume fun x => stayAt s₀.regs.rsp.toBitVec rsp = true
+        let _ ←
+          do
+            let mut a := (rdx, rdx)
+            repeat'
+              let x ← load 1 (rsi + a.snd - 1#64)
+              store 1 rsp (rdi + a.snd - 1#64) x
+              if ¬a.fst - 1#64 = 0#64 then 
+                StateT.assume fun x => stayAt s₀.regs.rsp.toBitVec rsp = true
+                a := (a.fst - 1#64, a.fst - 1#64)
+              else
+                StateT.assume fun x => stayAt s₀.regs.rsp.toBitVec rsp = true
+                StateT.assume fun m => rsp = s₀.regs.rsp.toBitVec ∧ retAddrAt m rsp = some s₀.retAddr.get!
+                throw s₀.retAddr.get!
+            pure a
+        pure PUnit.unit
   else
     if rdx = 0#64 then do
-      StateT.assume fun m => (Mem.loadInt m rsp 8).isSome = true
-      throw CfgLabel.exit
+      StateT.assume fun x => stayAt s₀.regs.rsp.toBitVec rsp = true
+      StateT.assume fun m => rsp = s₀.regs.rsp.toBitVec ∧ retAddrAt m rsp = some s₀.retAddr.get!
+      throw s₀.retAddr.get!
     else do
-      let mut a := (0#64, rdx)
-      repeat'
-        let x ← load 1 (rsi + a.fst)
-        store 1 rsp (rdi + a.fst) x
-        if ¬a.snd = a.fst + 1#64 then 
-          a := (a.fst + 1#64, a.snd)
-        else
-          StateT.assume fun m => (Mem.loadInt m rsp 8).isSome = true
-          throw CfgLabel.exit
+      StateT.assume fun x => stayAt s₀.regs.rsp.toBitVec rsp = true
+      let _ ←
+        do
+          let mut a := (0#64, rdx)
+          repeat'
+            let x ← load 1 (rsi + a.fst)
+            store 1 rsp (rdi + a.fst) x
+            if ¬a.snd = a.fst + 1#64 then 
+              StateT.assume fun x => stayAt s₀.regs.rsp.toBitVec rsp = true
+              a := (a.fst + 1#64, a.snd)
+            else
+              StateT.assume fun x => stayAt s₀.regs.rsp.toBitVec rsp = true
+              StateT.assume fun m => rsp = s₀.regs.rsp.toBitVec ∧ retAddrAt m rsp = some s₀.retAddr.get!
+              throw s₀.retAddr.get!
+          pure a
+      pure PUnit.unit
 -/
 #guard_msgs in
 #print memmoveL
-
-theorem memmoveL.refines (rdi rsi rdx rsp : BitVec 64) :
-    ⦃RegsRel [(.rdi, rdi), (.rsi, rsi), (.rdx, rdx), (.rsp, rsp)]⦄
-      memmoveT ⪯[ofStateRepr MachineData.dmem] (memmoveL rdi rsi rdx rsp)
-      ⦃fun _ _ _ => True; (fun l l' t => l = l' ∧ t.regs.get64 .rax = rdi, estack⟨⟩)⦄ :=
-  memmoveL.eq rdi rsi rdx rsp ▸ memmoveL₀.refines rdi rsi rdx rsp
 
 end Ascent.Kraken

@@ -16,22 +16,57 @@ open Ascent.Concretization (ofStateRepr)
 
 namespace Ascent.Kraken
 
-ascend_def zipWithAddL₀ (rdi rsi rdx rcx rsp : BitVec 64) : BlockM DataMem Unit from
+ascend_def zipWithAddL₀ (rdi rsi rdx rcx rsp : BitVec 64) (s₀ : MachineData) :
+    BlockM DataMem Unit from
   ⦃RegsRel [(.rdi, rdi), (.rsi, rsi), (.rdx, rdx), (.rcx, rcx), (.rsp, rsp)]⦄
-  zipWithAddT ⪯[ofStateRepr MachineData.dmem] zipWithAddL₀
-  ⦃fun _ _ _ => True; (fun l l' _ => l = l', estack⟨⟩)⦄
+  (zipWithAddT s₀) ⪯[ofStateRepr MachineData.dmem] zipWithAddL₀
+  ⦃fun _ _ _ => True; (fun l l' t => l = l' ∧ t.regs.get64 .rsp = s₀.regs.get64 .rsp + 8, estack⟨⟩)⦄
   ascend [zipWithAddT, wrp_forIn_lockstep_unit (R := fun t rax =>
-    RegsRel [(.rdi, rdi), (.rsi, rsi), (.rdx, rdx), (.rcx, rcx), (.rsp, rsp), (.rax, rax)] t)]
+    RegsRel [(.rdi, rdi), (.rsi, rsi), (.rdx, rdx), (.rcx, rcx), (.rsp, rsp),
+      (.rax, rax)] t)]
 
-sym_simp_def zipWithAddL (rdi rsi rdx rcx rsp : BitVec 64) : BlockM DataMem Unit from
-    zipWithAddL₀ rdi rsi rdx rcx rsp
+
+sym_simp_def zipWithAddL (rdi rsi rdx rcx rsp : BitVec 64) (s₀ : MachineData) :
+    BlockM DataMem Unit from zipWithAddL₀ rdi rsi rdx rcx rsp s₀
   using pre [] post [zipWithAddL₀, condState_const, CondCode.cmp_nz_eq_true, CondCode.cmp_le_eq_true, BitVec.and_self,
-    BitVec.toInt_zero, bind_pure_unit, pure_bind]
+    BitVec.toInt_zero, bind_pure_unit, pure_bind, BitVec.sub_self, BitVec.reduceSLT, Bool.not_false,
+    true_and]
 
-theorem zipWithAddL.refines (rdi rsi rdx rcx rsp : BitVec 64) :
+
+theorem zipWithAddL.refines (rdi rsi rdx rcx rsp : BitVec 64) (s₀ : MachineData) :
     ⦃RegsRel [(.rdi, rdi), (.rsi, rsi), (.rdx, rdx), (.rcx, rcx), (.rsp, rsp)]⦄
-      zipWithAddT ⪯[ofStateRepr MachineData.dmem] (zipWithAddL rdi rsi rdx rcx rsp)
-      ⦃fun _ _ _ => True; (fun l l' _ => l = l', estack⟨⟩)⦄ :=
-  zipWithAddL.eq rdi rsi rdx rcx rsp ▸ zipWithAddL₀.refines rdi rsi rdx rcx rsp
+      (zipWithAddT s₀) ⪯[ofStateRepr MachineData.dmem] (zipWithAddL rdi rsi rdx rcx rsp s₀)
+      ⦃fun _ _ _ => True; (fun l l' t => l = l' ∧ t.regs.get64 .rsp = s₀.regs.get64 .rsp + 8, estack⟨⟩)⦄ :=
+  zipWithAddL.eq rdi rsi rdx rcx rsp s₀ ▸ zipWithAddL₀.refines rdi rsi rdx rcx rsp s₀
+
+/--
+info: def Ascent.Kraken.zipWithAddL : BitVec 64 →
+  BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → MachineData → BlockM DataMem Unit :=
+fun rdi rsi rdx rcx rsp s₀ =>
+  if rcx.toInt ≤ 0 then do
+    StateT.assume fun x => stayAt s₀.regs.rsp.toBitVec rsp = true
+    StateT.assume fun m => rsp = s₀.regs.rsp.toBitVec ∧ retAddrAt m rsp = some s₀.retAddr.get!
+    throw s₀.retAddr.get!
+  else do
+    StateT.assume fun x => stayAt s₀.regs.rsp.toBitVec rsp = true
+    let _ ←
+      do
+        let mut v := 0#64
+        repeat'
+          let x ← load 8 (rsi + v * 8#64)
+          let x_1 ← load 8 (rdi + v * 8#64)
+          store 8 rsp (rdx + v * 8#64) (x_1 + x)
+          if ¬rcx = v + 1#64 then 
+            StateT.assume fun x => stayAt s₀.regs.rsp.toBitVec rsp = true
+            v := v + 1#64
+          else
+            StateT.assume fun x => stayAt s₀.regs.rsp.toBitVec rsp = true
+            StateT.assume fun m => rsp = s₀.regs.rsp.toBitVec ∧ retAddrAt m rsp = some s₀.retAddr.get!
+            throw s₀.retAddr.get!
+        pure v
+    pure PUnit.unit
+-/
+#guard_msgs in
+#print zipWithAddL
 
 end Ascent.Kraken

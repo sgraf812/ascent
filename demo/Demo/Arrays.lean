@@ -123,8 +123,8 @@ end
 
 `ArrayLayout w b ins o n rsv m` states the memory `m` of a program that writes the array of `n`
 words of `w` bytes at `o`, read as `b`-bit vectors: each input `(p, a)` of `ins` holds the array `a`
-at `p`, each reserved word of `rsv`, such as a return slot, is mapped, and the written array is
-mapped and apart from the inputs and from the reserved words. A store into the written array keeps
+at `p`, each reserved word `(p, ra)` of `rsv`, such as a return slot, holds the address `ra`, and
+the written array is mapped and apart from the inputs and from the reserved words. A store into the written array keeps
 the layout. -/
 
 /-- The array `a` lies at `p`, apart from the written array of `n` words at `o`. -/
@@ -135,22 +135,30 @@ structure InputAt (w b : Nat) (m : DataMem) (o : BitVec 64) (n : Nat) (p : BitVe
   mapped : Mem.Mapped [(p, w * a.size)] m
   disj : Mem.Blocks.Disjoint [(o, w * n)] [(p, w * a.size)]
 
-/-- The word at `p` is mapped and apart from the written array of `n` words at `o`. -/
-structure ReservedAt (w : Nat) (m : DataMem) (o : BitVec 64) (n : Nat) (p : BitVec 64) : Prop where
-  loadInt_isSome : (Mem.loadInt m p 8).isSome = true
+/-- The word at `p` holds the address `ra` and lies apart from the written array of `n` words at
+`o`. -/
+structure ReservedAt (w : Nat) (m : DataMem) (o : BitVec 64) (n : Nat) (p : BitVec 64) (ra : Int64) :
+    Prop where
+  retAddr : retAddrAt m p = some ra
   disj : Mem.Blocks.Disjoint [(p, 8)] [(o, w * n)]
+
+theorem ReservedAt.loadInt_isSome {w : Nat} {m : DataMem} {o : BitVec 64} {n : Nat} {p : BitVec 64}
+    {ra : Int64} (h : ReservedAt w m o n p ra) : (Mem.loadInt m p 8).isSome = true := by
+  have := h.retAddr
+  simp only [retAddrAt] at this
+  cases hl : Mem.loadInt m p 8 <;> simp_all
 
 def Inputs (w b : Nat) (m : DataMem) (o : BitVec 64) (n : Nat) :
     List (BitVec 64 × Array (BitVec b)) → Prop
   | [] => True
   | (p, a) :: ins => InputAt w b m o n p a ∧ Inputs w b m o n ins
 
-def Reserved (w : Nat) (m : DataMem) (o : BitVec 64) (n : Nat) : List (BitVec 64) → Prop
+def Reserved (w : Nat) (m : DataMem) (o : BitVec 64) (n : Nat) : List (BitVec 64 × Int64) → Prop
   | [] => True
-  | p :: rsv => ReservedAt w m o n p ∧ Reserved w m o n rsv
+  | (p, ra) :: rsv => ReservedAt w m o n p ra ∧ Reserved w m o n rsv
 
 structure ArrayLayout (w b : Nat) (ins : List (BitVec 64 × Array (BitVec b))) (o : BitVec 64)
-    (n : Nat) (rsv : List (BitVec 64)) (m : DataMem) : Prop where
+    (n : Nat) (rsv : List (BitVec 64 × Int64)) (m : DataMem) : Prop where
   width : w ≤ 8
   bits : b = 8 * w
   len : n < 2 ^ 61
@@ -158,7 +166,8 @@ structure ArrayLayout (w b : Nat) (ins : List (BitVec 64 × Array (BitVec b))) (
   inputs : Inputs w b m o n ins
   reserved : Reserved w m o n rsv
 
-attribute [grind →] InputAt.len InputAt.words InputAt.mapped InputAt.disj ReservedAt.loadInt_isSome
+attribute [grind →] InputAt.len InputAt.words InputAt.mapped InputAt.disj ReservedAt.retAddr
+  ReservedAt.loadInt_isSome
   ReservedAt.disj ArrayLayout.width ArrayLayout.bits ArrayLayout.len ArrayLayout.mapped
   ArrayLayout.inputs ArrayLayout.reserved
 
@@ -169,8 +178,8 @@ variable {w b : Nat} {m : DataMem} {o : BitVec 64} {n : Nat}
 @[grind =] theorem Inputs.cons (p : BitVec 64) (a : Array (BitVec b)) ins :
     Inputs w b m o n ((p, a) :: ins) = (InputAt w b m o n p a ∧ Inputs w b m o n ins) := rfl
 @[grind =] theorem Reserved.nil : Reserved w m o n [] = True := rfl
-@[grind =] theorem Reserved.cons (p : BitVec 64) rsv :
-    Reserved w m o n (p :: rsv) = (ReservedAt w m o n p ∧ Reserved w m o n rsv) := rfl
+@[grind =] theorem Reserved.cons (p : BitVec 64) (ra : Int64) rsv :
+    Reserved w m o n ((p, ra) :: rsv) = (ReservedAt w m o n p ra ∧ Reserved w m o n rsv) := rfl
 
 variable {k : Nat} (hw : w ≤ 8) (hk : k < n) (hn : n < 2 ^ 61) (x : Int)
 include hw hk hn
@@ -182,9 +191,9 @@ theorem InputAt.storeInt {p : BitVec 64} {a : Array (BitVec b)} (h : InputAt w b
   mapped := Mem.Mapped.storeInt h.mapped _ _ _
   disj := h.disj
 
-theorem ReservedAt.storeInt {p : BitVec 64} (h : ReservedAt w m o n p) :
-    ReservedAt w (Mem.storeInt m (cell w o k) w x) o n p :=
-  ⟨by rw [loadInt_storeInt_cell_of_disjoint hw h.disj hk hn]; exact h.loadInt_isSome, h.disj⟩
+theorem ReservedAt.storeInt {p : BitVec 64} {ra : Int64} (h : ReservedAt w m o n p ra) :
+    ReservedAt w (Mem.storeInt m (cell w o k) w x) o n p ra :=
+  ⟨by rw [retAddrAt, loadInt_storeInt_cell_of_disjoint hw h.disj hk hn]; exact h.retAddr, h.disj⟩
 
 theorem Inputs.storeInt : ∀ {ins : List (BitVec 64 × Array (BitVec b))}, Inputs w b m o n ins →
     Inputs w b (Mem.storeInt m (cell w o k) w x) o n ins
@@ -194,12 +203,12 @@ theorem Inputs.storeInt : ∀ {ins : List (BitVec 64 × Array (BitVec b))}, Inpu
 theorem Reserved.storeInt : ∀ {rsv}, Reserved w m o n rsv →
     Reserved w (Mem.storeInt m (cell w o k) w x) o n rsv
   | [], _ => trivial
-  | _ :: _, ⟨h, hs⟩ => ⟨h.storeInt hw hk hn x, Reserved.storeInt hs⟩
+  | (_, _) :: _, ⟨h, hs⟩ => ⟨h.storeInt hw hk hn x, Reserved.storeInt hs⟩
 
 end
 
 theorem ArrayLayout.storeInt_cell {w b : Nat} {ins : List (BitVec 64 × Array (BitVec b))}
-    {o : BitVec 64} {n : Nat} {rsv : List (BitVec 64)} {m : DataMem} (h : ArrayLayout w b ins o n rsv m)
+    {o : BitVec 64} {n : Nat} {rsv : List (BitVec 64 × Int64)} {m : DataMem} (h : ArrayLayout w b ins o n rsv m)
     {k : Nat} (hk : k < n) (x : Int) :
     ArrayLayout w b ins o n rsv (Mem.storeInt m (cell w o k) w x) :=
   ⟨h.width, h.bits, h.len, Mem.Mapped.storeInt h.mapped _ _ _, h.inputs.storeInt h.width hk h.len x,
@@ -209,7 +218,7 @@ grind_pattern ArrayLayout.storeInt_cell => Mem.storeInt m (cell w o k) w x, Arra
 
 /-! ## Steps -/
 
-theorem wp_modify {σ : Type} (f : σ → σ) (Q : Unit → σ → Prop) (E : (CfgLabel → σ → Prop) × EStack⟨⟩)
+theorem wp_modify {σ : Type} (f : σ → σ) (Q : Unit → σ → Prop) (E : (Int64 → σ → Prop) × EStack⟨⟩)
     (s : σ) : wp (modify f : BlockM σ Unit) Q E s = Q () (f s) := by
   rw [wp_BlockM_eq]
   rfl
@@ -217,7 +226,7 @@ theorem wp_modify {σ : Type} (f : σ → σ) (Q : Unit → σ → Prop) (E : (C
 
 section
 variable {σa : Type} {view : DataMem → σa}
-  {E : (CfgLabel → CfgLabel → DataMem → Prop) × EStack⟨⟩}
+  {E : (Int64 → Int64 → DataMem → Prop) × EStack⟨⟩}
 
 @[ascend] theorem wrp_load_getElem {Q : BitVec 64 → BitVec 64 → DataMem → Prop}
     (w b : Nat) (p o : BitVec 64) (arr : Array (BitVec b)) (j : Nat) (P : Prop) :
@@ -316,7 +325,7 @@ theorem cell_pred {w j : Nat} (p : BitVec 64) (hj : 0 < j) :
   exact hq
 
 @[ascend default + 1] theorem wrp_assume_throw {CV AV : Type} {Q : CV → AV → DataMem → Prop}
-    (g : DataMem → Prop) (l : CfgLabel) :
+    (g : DataMem → Prop) (l : Int64) :
     (fun m => g m ∧ E.1 l l m)
       ⊑ wrp (ofStateRepr view) (do StateT.assume g; throw l : BlockM DataMem CV)
           (throw l : BlockM σa AV) Q E := by

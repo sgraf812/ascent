@@ -16,17 +16,17 @@ open Ascent.Concretization (ofStateRepr)
 
 namespace Ascent.Kraken
 
-ascend_def bsearchArr₀ (A key rax rsp : BitVec 64) (n : Nat) (a : Array (BitVec 64)) :
+ascend_def bsearchArr₀ (A key rax : BitVec 64) (s₀ : MachineData) (n : Nat) (a : Array (BitVec 64)) :
     BlockM Unit (Option Nat) from
   ⦃fun m => A ≐ₐ a ∧ a.size = n ∧ n < 2 ^ 61 ∧ words 8 64 m A a.size = a.toList ∧
-    Mem.Mapped [(A, 8 * a.size)] m ∧ (Mem.loadInt m rsp 8).isSome = true⦄
-  (bsearchL₀ A (BitVec.ofNat 64 n) key rax rsp) ⪯[ofStateRepr (fun _ : DataMem => ())] bsearchArr₀
+    Mem.Mapped [(A, 8 * a.size)] m ∧ retAddrAt m (s₀.regs.get64 .rsp) = some s₀.retAddr.get!⦄
+  (bsearchL₀ A (BitVec.ofNat 64 n) key rax (s₀.regs.get64 .rsp) s₀) ⪯[ofStateRepr (fun _ : DataMem => ())] bsearchArr₀
   ⦃fun v o _ => PureRefinement v o True IdxWord; (fun l l' _ => l = l', estack⟨⟩)⦄
   ascend [bsearchL₀, wrp_forIn_lockstep_bind
     (fun (v : BitVec 64 × BitVec 64 × BitVec 64) m (iko : Nat × Nat × Option Nat) => match v, iko with
       | (c, d, res), (i, k, o) => c ≐ₙ i ∧ d ≐ₙ k ∧ PureRefinement res o True Unrelated ∧ i ≤ k ∧ k ≤ n ∧ a.size = n ∧
           n < 2 ^ 61 ∧ words 8 64 m A a.size = a.toList ∧ Mem.Mapped [(A, 8 * a.size)] m ∧
-          (Mem.loadInt m rsp 8).isSome = true)
+          retAddrAt m (s₀.regs.get64 .rsp) = some s₀.retAddr.get!)
     (fun (v : BitVec 64 × BitVec 64 × BitVec 64) _ (iko : Nat × Nat × Option Nat) => match v, iko with
       | (c, d, res), (i, k, o) => c ≐ₙ i ∧ d ≐ₙ k ∧ PureRefinement res o True IdxWord) _ (_, _, none)]
     with finish
@@ -58,13 +58,13 @@ fun key n a => do
 #guard_msgs in
 #print bsearchArr
 
-theorem bsearchArr.refines (A key rax rsp : BitVec 64) (n : Nat) (a : Array (BitVec 64)) :
+theorem bsearchArr.refines (A key rax : BitVec 64) (s₀ : MachineData) (n : Nat) (a : Array (BitVec 64)) :
     ⦃fun m => A ≐ₐ a ∧ a.size = n ∧ n < 2 ^ 61 ∧ words 8 64 m A a.size = a.toList ∧
-      Mem.Mapped [(A, 8 * a.size)] m ∧ (Mem.loadInt m rsp 8).isSome = true⦄
-      (bsearchL A (BitVec.ofNat 64 n) key rax rsp) ⪯[ofStateRepr (fun _ : DataMem => ())]
+      Mem.Mapped [(A, 8 * a.size)] m ∧ retAddrAt m (s₀.regs.get64 .rsp) = some s₀.retAddr.get!⦄
+      (bsearchL A (BitVec.ofNat 64 n) key rax (s₀.regs.get64 .rsp) s₀) ⪯[ofStateRepr (fun _ : DataMem => ())]
         (bsearchArr key n a)
       ⦃fun v o _ => PureRefinement v o True IdxWord; (fun l l' _ => l = l', estack⟨⟩)⦄ :=
-  bsearchL.eq A (BitVec.ofNat 64 n) key rax rsp ▸ bsearchArr.eq key n a ▸
-    bsearchArr₀.refines A key rax rsp n a
+  bsearchL.eq A (BitVec.ofNat 64 n) key rax (s₀.regs.get64 .rsp) s₀ ▸ bsearchArr.eq key n a ▸
+    bsearchArr₀.refines A key rax s₀ n a
 
 end Ascent.Kraken

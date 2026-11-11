@@ -42,26 +42,59 @@ LBB0_3:
 attribute [local vcgen_simp] zipWithAdd
 
 
-ascend_def zipWithAddA [Host] [FunDecls] [Embeds zipWithAdd] (s : MachineData) (ra : Int64) :
-    BlockM MachineData Unit from
-  ⦃(· = s.push64 ra)⦄ zipWithAdd ⪯[ofStateRepr abs] zipWithAddA ⦃fun _ _ => ⊤; RetRel s ra⦄
-  ascend [refines_cfg (p := zipWithAdd)] with finish
 
-/-- The synthesized L1 program: the text over the abstract machine, block by block. -/
-example [Host] [FunDecls] [Embeds zipWithAdd] (s : MachineData) (ra : Int64) :
-    zipWithAddA = cfgLoop (Program.table zipWithAdd (Table.get [
-      (.entry, do
-        branch (fun st => CondCode.le.cmp (st.regs.get64 .rcx &&& st.regs.get64 .rcx) 0) (.label "LBB0_3")
-        modifyIf (fun _ => True) (setReg64 .rax fun st =>
-          ((st.regs.get64 .rax).take 32 ^^^ (st.regs.get64 .rax).take 32).zeroExtend 64)
-        pure ()),
-      (.label "LBB0_2", do
-        modifyIf (loadOk 8 (sib 8 .rsi .rax 0)) (loadReg 8 .r8 (sib 8 .rsi .rax 0) fun w _ => w)
-        modifyIf (loadOk 8 (sib 8 .rdi .rax 0))
-          (loadReg 8 .r8 (sib 8 .rdi .rax 0) fun w st => w + st.regs.get64 .r8)
-        modifyIf (storeOk 8 (sib 8 .rdx .rax 0)) (storeWord 8 (sib 8 .rdx .rax 0) fun st => st.regs.get64 .r8)
-        modifyIf (fun _ => True) (setReg64 .rax fun st => st.regs.get64 .rax + 1)
-        branch (fun st => CondCode.nz.cmp (st.regs.get64 .rcx) (st.regs.get64 .rax)) (.label "LBB0_2")
-        pure ()),
-      (.label "LBB0_3", exitIf (loadOk 8 fun st => st.regs.get64 .rsp)
-        (setReg64 .rsp fun st => st.regs.get64 .rsp + 8) .exit)])) .entry := rfl
+ascend_def zipWithAddA [Host] [FunDecls] [Embeds zipWithAdd] (s₀ : MachineData) :
+    BlockM MachineData Unit from
+  ⦃(· = s₀)⦄ zipWithAdd ⪯[ofStateRepr abs] zipWithAddA ⦃fun _ _ => ⊤; AddrRel s₀⦄
+  ascend [refines_cfg (p := zipWithAdd) (habs := abs_regs)] with finish
+
+
+/--
+info: def zipWithAddA : [Host] → MachineData → BlockM MachineData Unit :=
+fun [Host] s₀ =>
+  Program.loop zipWithAdd s₀.regs.rsp.toBitVec
+    (Table.get
+      [({ label := none, idx := 0,
+              body :=
+                [asm|
+                    "test rcx, rcx"
+                    "jle LBB0_3"
+                    "xor eax, eax"],
+              next := some "LBB0_2" }.label,
+          do
+          branch (stayIn (s₀.regs.get64 Reg64.rsp))
+              (fun st => CondCode.le.cmp (st.regs.get64 Reg64.rcx &&& st.regs.get64 Reg64.rcx) 0) (label "LBB0_3")
+          modifyIf (fun x => True)
+              (setReg64 Reg64.rax fun st =>
+                BitVec.setWidth 64 ((st.regs.get64 Reg64.rax).take 32 ^^^ (st.regs.get64 Reg64.rax).take 32))
+          pure PUnit.unit),
+        ({ label := some "LBB0_2", idx := 1,
+              body :=
+                [asm|
+                    "mov r8, QWORD PTR [rsi+rax*8+0]"
+                    "add r8, QWORD PTR [rdi+rax*8+0]"
+                    "mov QWORD PTR [rdx+rax*8+0], r8"
+                    "inc rax"
+                    "cmp rcx, rax"
+                    "jne LBB0_2"],
+              next := some "LBB0_3" }.label,
+          do
+          modifyIf (loadOk 8 (sib 8 Reg64.rsi Reg64.rax 0))
+              (loadReg 8 Reg64.r8 (sib 8 Reg64.rsi Reg64.rax 0) fun w x => w)
+          modifyIf (loadOk 8 (sib 8 Reg64.rdi Reg64.rax 0))
+              (loadReg 8 Reg64.r8 (sib 8 Reg64.rdi Reg64.rax 0) fun w st => w + st.regs.get64 Reg64.r8)
+          modifyIf (storeOk 8 (sib 8 Reg64.rdx Reg64.rax 0))
+              (storeWord 8 (sib 8 Reg64.rdx Reg64.rax 0) fun st => st.regs.get64 Reg64.r8)
+          modifyIf (fun x => True) (setReg64 Reg64.rax fun st => st.regs.get64 Reg64.rax + 1)
+          branch (stayIn (s₀.regs.get64 Reg64.rsp))
+              (fun st => CondCode.nz.cmp (st.regs.get64 Reg64.rcx) (st.regs.get64 Reg64.rax)) (label "LBB0_2")
+          pure PUnit.unit),
+        ({ label := some "LBB0_3", idx := 2,
+              body :=
+                [asm|
+                    "ret"],
+              next := none }.label,
+          exitIf (retOk s₀) (setReg64 Reg64.rsp fun x => s₀.regs.get64 Reg64.rsp + 8) s₀.retAddr.get!)])
+-/
+#guard_msgs in
+#print zipWithAddA
