@@ -49,7 +49,7 @@ fun rdi rsi rdx s₀ =>
       let mut a := (rdx, rdx)
       repeat'
         let x ← load 1 (rsi + a.snd - 1#64)
-        store 1 s₀.regs.rsp.toBitVec (rdi + a.snd - 1#64) x
+        store 1 (rdi + a.snd - 1#64) x
         if ¬a.fst - 1#64 = 0#64 then 
           a := (a.fst - 1#64, a.fst - 1#64)
         else
@@ -63,7 +63,7 @@ fun rdi rsi rdx s₀ =>
       let mut a := (0#64, rdx)
       repeat'
         let x ← load 1 (rsi + a.fst)
-        store 1 s₀.regs.rsp.toBitVec (rdi + a.fst) x
+        store 1 (rdi + a.fst) x
         if ¬a.snd = a.fst + 1#64 then 
           a := (a.fst + 1#64, a.snd)
         else

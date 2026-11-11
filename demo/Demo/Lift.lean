@@ -30,11 +30,9 @@ noncomputable def load (n : Nat) (a : BitVec 64) : BlockM DataMem (BitVec 64) :=
   UB.assume ((Mem.loadInt m a n).isSome = true) >>= fun _ =>
     pure (.ok (BitVec.ofInt 64 ((Mem.loadInt m a n).get! % 2 ^ (8 * n))), m)
 
-/-- Store the low `n` bytes of `v` at `a`, undefined behaviour unless the cell is mapped and apart
-from the return slot at `rsp`. -/
-noncomputable def store (n : Nat) (rsp a v : BitVec 64) : BlockM DataMem Unit :=
-  modifyIf (fun m => (Mem.loadInt m a n).isSome = true ∧ Mem.Blocks.Disjoint [(rsp, 8)] [(a, n)])
-    fun m => Mem.storeInt m a n v.toInt
+/-- Store the low `n` bytes of `v` at `a`, undefined behaviour unless the cell is mapped. -/
+noncomputable def store (n : Nat) (a v : BitVec 64) : BlockM DataMem Unit :=
+  modifyIf (fun m => (Mem.loadInt m a n).isSome = true) fun m => Mem.storeInt m a n v.toInt
 
 theorem ofInt_emod_two_pow (n : Nat) (x : Int) : BitVec.ofInt n (x % 2 ^ n) = BitVec.ofInt n x := by
   apply BitVec.eq_of_toNat_eq
@@ -57,10 +55,10 @@ theorem wp_load (n : Nat) (a : BitVec 64) :
     simp only [Bool.not_eq_true] at h
     simp [h]
 
-theorem wp_store (n : Nat) (rsp a v : BitVec 64) :
-    wp (store n rsp a v) Qu E m
-      = (((Mem.loadInt m a n).isSome = true ∧ Mem.Blocks.Disjoint [(rsp, 8)] [(a, n)])
-          ∧ Qu () (Mem.storeInt m a n v.toInt)) := wp_modifyIf _ _ _ _ _
+theorem wp_store (n : Nat) (a v : BitVec 64) :
+    wp (store n a v) Qu E m
+      = ((Mem.loadInt m a n).isSome = true ∧ Qu () (Mem.storeInt m a n v.toInt)) :=
+  wp_modifyIf _ _ _ _ _
 
 theorem _root_.Mem.Mapped.loadInt_isSome_single {m : DataMem} {a : BitVec 64} {n : Nat}
     (h : Mem.Mapped [(a, n)] m) : (Mem.loadInt m a n).isSome = true :=
@@ -73,9 +71,9 @@ grind_pattern Mem.Mapped.loadInt_isSome_single => Mem.Mapped [(a, n)] m, Mem.loa
       ∧ Q (BitVec.ofInt 64 ((Mem.loadInt m a n).get! % 2 ^ (8 * n))) m⦄ load n a ⦃Q; E⦄ :=
   ⟨fun m h => by rw [wp_load]; exact h⟩
 
-@[spec] theorem Spec.store (n : Nat) (rsp a v : BitVec 64) :
-    ⦃fun m => ((Mem.loadInt m a n).isSome = true ∧ Mem.Blocks.Disjoint [(rsp, 8)] [(a, n)])
-      ∧ Qu () (Mem.storeInt m a n v.toInt)⦄ store n rsp a v ⦃Qu; E⦄ :=
+@[spec] theorem Spec.store (n : Nat) (a v : BitVec 64) :
+    ⦃fun m => (Mem.loadInt m a n).isSome = true ∧ Qu () (Mem.storeInt m a n v.toInt)⦄
+      store n a v ⦃Qu; E⦄ :=
   ⟨fun m h => by rw [wp_store]; exact h⟩
 
 theorem wp_assume_throw {α : Type} {Qα : α → DataMem → Prop} (g : DataMem → Prop) (l : Int64) :
@@ -306,19 +304,17 @@ variable {Q : Unit → BitVec 64 → MachineData → Prop} {Qu : Unit → Unit �
   refine ⟨hg, _, hk hg _ (PureRefinement.of_rel ?_), hq⟩
   rw [word, ha]
 
-@[ascend] theorem wrp_storeWord_store (n : Nat) (a v : MachineData → BitVec 64) (sp pa pv : BitVec 64) :
-    (fun t => t.regs.get64 .rsp ≐ sp ∧ a t ≐ pa ∧ v t ≐ pv ∧
-      (storeOk n a t → Qu () () (storeWord n a v t)))
+@[ascend] theorem wrp_storeWord_store (n : Nat) (a v : MachineData → BitVec 64) (pa pv : BitVec 64) :
+    (fun t => a t ≐ pa ∧ v t ≐ pv ∧ (storeOk n a t → Qu () () (storeWord n a v t)))
       ⊑ wrp (ofStateRepr MachineData.dmem) (modifyIf (storeOk n a) (storeWord n a v))
-          (store n sp pa pv) Qu E := by
+          (store n pa pv) Qu E := by
   refine wrp_intro fun Qa Ea => ?_
   intro t ht
   simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_store] at ht
-  obtain ⟨⟨hsp, ha, hv, hk⟩, ⟨hl, hd⟩, hq⟩ := ht
-  have hsp : t.regs.get64 .rsp = sp := hsp trivial
+  obtain ⟨⟨ha, hv, hk⟩, hl, hq⟩ := ht
   have ha : a t = pa := ha trivial
   have hv : v t = pv := hv trivial
-  have hg : storeOk n a t := by rw [storeOk, loadOk, ha, hsp]; exact ⟨hl, hd⟩
+  have hg : storeOk n a t := by rw [storeOk, loadOk, ha]; exact hl
   rw [wp_modifyIf, Concretization.post_pi]
   refine ⟨hg, (), hk hg, ?_⟩
   simp only [ofStateRepr_pred, storeWord, ha, hv]

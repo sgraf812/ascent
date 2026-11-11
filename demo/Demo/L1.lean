@@ -194,7 +194,7 @@ end
 
 A memory operand `d(b, i, k)` reads the address `sib k b i d st`. The guard `loadOk n a` of a load
 of `n` bytes from the address `a st` is that the bytes are mapped. The guard `storeOk n a` of a store
-adds that the cell is apart from the return slot of the frame.
+is the same: the bytes are mapped.
 
 The step of an instruction is `modifyIf` of its guard and one of three writes. `setReg64 r e`
 writes the value `e st` to the register `r`. `loadReg n r a e` reads the `n`-byte word `w` at the
@@ -209,7 +209,7 @@ def loadOk (n : Nat) (a : MachineData → BitVec 64) (st : MachineData) : Prop :
   (Mem.loadInt st.dmem (a st) n).isSome = true
 
 def storeOk (n : Nat) (a : MachineData → BitVec 64) (st : MachineData) : Prop :=
-  loadOk n a st ∧ Mem.Blocks.Disjoint [(st.regs.get64 .rsp, 8)] [(a st, n)]
+  loadOk n a st
 
 def word (n : Nat) (a : BitVec 64) (st : MachineData) : BitVec 64 :=
   BitVec.ofInt 64 ((Mem.loadInt st.dmem a n).get! % 2 ^ (8 * n))
@@ -359,7 +359,7 @@ variable [Host] [FunDecls] {Q : Unit → Unit → MachineData → Prop}
 @[ascend] theorem wrp_movSib8Reg (b i : Reg64) (d : Int64) (rs : Reg64) :
     (fun s =>
       let a := s.regs.get64 b + s.regs.get64 i * 8 + BitVec.ofInt 64 d.toInt
-      (Mem.loadInt s.dmem a 8).isSome = true → Mem.Blocks.Disjoint [(s.regs.get64 .rsp, 8)] [(a, 8)] →
+      (Mem.loadInt s.dmem a 8).isSome = true →
         Q () () { s with dmem := Mem.storeInt s.dmem a 8 (s.regs.get64 rs).toInt })
       ⊑ wrp (ofStateRepr abs)
           (Directive.instr (.regular .W64 .W64
@@ -369,9 +369,9 @@ variable [Host] [FunDecls] {Q : Unit → Unit → MachineData → Prop}
   refine PartialOrder.rel_trans ?_ (wrp_modifyIf
     (g := storeOk 8 (sib 8 b i d))
     (fun Q E s hp hq => (Program.WP.Spec.mov_sib8_reg (Q := Q) (E := E) b i d rs).le_wp s ⟨hp, hq⟩)
-    fun s hg => ⟨hg.1, rfl⟩)
+    fun s hg => ⟨hg, rfl⟩)
   intro s h hg
-  exact h hg.1 hg.2
+  exact h hg
 
 @[ascend] theorem wrp_incReg (asz : Width) (r : Reg64) :
     (fun s => True → Q () () { s with
@@ -557,7 +557,7 @@ so the branch reads the flag that `dec` wrote. -/
 @[ascend] theorem wrp_movSib1Reg8 (b i : Reg64) (d : Int64) (rs : Reg64) :
     (fun s =>
       let a := s.regs.get64 b + s.regs.get64 i + BitVec.ofInt 64 d.toInt
-      (Mem.loadInt s.dmem a 1).isSome = true → Mem.Blocks.Disjoint [(s.regs.get64 .rsp, 8)] [(a, 1)] →
+      (Mem.loadInt s.dmem a 1).isSome = true →
         Q () () { s with dmem := Mem.storeInt s.dmem a 1 (s.regs.get64 rs).toInt })
       ⊑ wrp (ofStateRepr abs)
           (Directive.instr (.regular .W64 .W8
@@ -566,11 +566,11 @@ so the branch reads the flag that `dec` wrote. -/
   refine PartialOrder.rel_trans ?_ (wrp_modifyIf
     (g := storeOk 1 (sib 1 b i d))
     (fun Q E s hp hq => (Spec.mov_sib1_reg8 (Q := Q) (E := E) b i d rs).le_wp s ⟨hp, hq⟩)
-    fun s hg => ⟨by simpa only [storeOk, loadOk, sib_one, abs_regs, abs_dmem] using hg.1,
+    fun s hg => ⟨by simpa only [storeOk, loadOk, sib_one, abs_regs, abs_dmem] using hg,
       by simp only [abs, storeWord, sib_one]⟩)
   intro s h hg
   simp only [storeOk, loadOk, sib_one, abs_regs, abs_dmem] at hg
-  simpa only [sib_one] using h hg.1 hg.2
+  simpa only [sib_one] using h hg
 
 @[ascend] theorem wrp_movRegReg (asz : Width) (rd rs : Reg64) :
     (fun s => True → Q () () { s with regs := s.regs.set64 rd (s.regs.get64 rs) })
@@ -1026,7 +1026,7 @@ open scoped Program.WP
 @[ascend] theorem wrp_movMemReg (b : Reg64) (d : Int64) (rs : Reg64) :
     (fun s =>
       let a := s.regs.get64 b + BitVec.ofInt 64 d.toInt
-      (Mem.loadInt s.dmem a 8).isSome = true → Mem.Blocks.Disjoint [(s.regs.get64 .rsp, 8)] [(a, 8)] →
+      (Mem.loadInt s.dmem a 8).isSome = true →
         Q () () { s with dmem := Mem.storeInt s.dmem a 8 (s.regs.get64 rs).toInt })
       ⊑ wrp (ofStateRepr abs)
           (Directive.instr (.regular .W64 .W64
@@ -1038,14 +1038,14 @@ open scoped Program.WP
   refine PartialOrder.rel_trans ?_ (wrp_modifyIf
     (g := storeOk 8 fun st => st.regs.get64 b + BitVec.ofInt 64 d.toInt)
     (fun Q E s hp hq => (Program.WP.Spec.mov_mem_reg (Q := Q) (E := E) b d rs).le_wp s ⟨hp, hq⟩)
-    fun s hg => ⟨hg.1, rfl⟩)
+    fun s hg => ⟨hg, rfl⟩)
   intro s h hg
-  exact h hg.1 hg.2
+  exact h hg
 
 @[ascend] theorem wrp_pushReg (rs : Reg64) :
     (fun s =>
       let a := s.regs.get64 .rsp - 8#64
-      (Mem.loadInt s.dmem a 8).isSome = true → Mem.Blocks.Disjoint [(s.regs.get64 .rsp, 8)] [(a, 8)] →
+      (Mem.loadInt s.dmem a 8).isSome = true →
         Q () () { s with regs := s.regs.set64 .rsp a, dmem := Mem.storeInt s.dmem a 8 (s.regs.get64 rs).toInt })
       ⊑ wrp (ofStateRepr abs)
           (Directive.instr (.regular .W64 .W64 (.push (.regOrMem (.reg (.low rs .W64))))))
@@ -1056,11 +1056,11 @@ open scoped Program.WP
   refine wrp_intro fun Qa Ea => ?_
   intro s hs
   simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, WPMonadExact.wp_bind_eq, wp_modifyIf] at hs
-  obtain ⟨hk, ⟨hm, hd⟩, -, hw⟩ := hs
+  obtain ⟨hk, hm, -, hw⟩ := hs
   refine (Program.WP.Spec.push_reg rs).le_wp s ⟨hm, ?_⟩
   show (ofStateRepr abs).post Q Qa () _
   rw [Concretization.post_pi]
-  exact ⟨(), hk hm hd, hw⟩
+  exact ⟨(), hk hm, hw⟩
 
 @[ascend] theorem wrp_popReg (rd : Reg64) :
     (fun s =>

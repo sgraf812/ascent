@@ -6,9 +6,10 @@ import Demo.Lift
 `zipWithAddL₀` is `zipWithAddT` over the data memory alone, synthesized by `ascend`, and
 `zipWithAddL` is `zipWithAddL₀` with its branch conditions stated as comparisons of the values. The lifting
 relation `RegsRel` names the registers that become values: `rdi`, `rsi`, `rdx`, `rcx` and `rsp` are
-parameters, and `rax` is the value of the loop. The run binds the loaded values of `r8` as
-variables and keeps the guards of the first layer: a load needs a mapped cell, a store also needs
-the cell apart from the return slot at `rsp`, and the return needs a mapped return slot.
+parameters, and `rax` is the value of the loop. `zipWithAddL` takes the stack pointer of the entry
+state `s₀` for `rsp`, so the stack tests of the jumps hold and vanish. The run binds the loaded
+values of `r8` as variables and keeps the guards of the first layer: a load and a store need a
+mapped cell, and the return needs the return address of `s₀` in the return slot.
 -/
 
 open Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
@@ -51,7 +52,7 @@ fun rdi rsi rdx rcx s₀ =>
     repeat'
       let x ← load 8 (rsi + v * 8#64)
       let x_1 ← load 8 (rdi + v * 8#64)
-      store 8 s₀.regs.rsp.toBitVec (rdx + v * 8#64) (x_1 + x)
+      store 8 (rdx + v * 8#64) (x_1 + x)
       if ¬rcx = v + 1#64 then 
         v := v + 1#64
       else

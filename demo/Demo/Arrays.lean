@@ -283,43 +283,40 @@ theorem cell_pred {w j : Nat} (p : BitVec 64) (hj : 0 < j) :
   · simp only [ofStateRepr_pred]
     exact hq
 
-@[ascend] theorem wrp_store_set {Q : Unit → Unit → DataMem → Prop} (w b : Nat) (sp p o v v' : BitVec 64)
+@[ascend] theorem wrp_store_set {Q : Unit → Unit → DataMem → Prop} (w b : Nat) (p o v v' : BitVec 64)
     (n j : Nat) (P : Prop) :
     (fun m => v ≐ v' ∧ PureRefinement o j P (Scaled w) ∧ P ∧ w ≤ 8 ∧ b = 8 * w ∧ j < n ∧ n < 2 ^ 61 ∧
-      Mem.Mapped [(p, w * n)] m ∧ Mem.Blocks.Disjoint [(sp, 8)] [(p, w * n)] ∧
+      Mem.Mapped [(p, w * n)] m ∧
       Q () () (Mem.storeInt m (cell w p j) w v.toInt))
-      ⊑ wrp (ofStateRepr (outView w b p n)) (store w sp (p + o) v)
+      ⊑ wrp (ofStateRepr (outView w b p n)) (store w (p + o) v)
           (modify fun o => o.set! j (v'.setWidth b) : BlockM (Array (BitVec b)) Unit) Q E := by
   refine wrp_intro fun Qa Ea => ?_
   intro m hm
   simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_modify] at hm
-  obtain ⟨⟨hv, hij, hP, hw, hb, hj, hn, hmap, hd, hk⟩, hq⟩ := hm
+  obtain ⟨⟨hv, hij, hP, hw, hb, hj, hn, hmap, hk⟩, hq⟩ := hm
   have hv : v = v' := hv trivial
   have hcell : p + o = cell w p j := by rw [hij hP]; rfl
   rw [wp_store, Concretization.post_pi, hcell]
-  refine ⟨⟨Mem.Mapped.loadInt_isSome hmap (cell_inside hw hj hn),
-    Mem.Blocks.Disjoint.of_inside_right_pair hd (cell_inside hw hj hn)⟩, (), hk, ?_⟩
+  refine ⟨Mem.Mapped.loadInt_isSome hmap (cell_inside hw hj hn), (), hk, ?_⟩
   simp only [ofStateRepr_pred]
   rw [outView_storeInt hw hb hj hn, hv]
   exact hq
 
 @[ascend default + 1] theorem wrp_store_set_pred {Q : Unit → Unit → DataMem → Prop} (w b : Nat)
-    (sp p o v v' : BitVec 64) (d : Int) (n j : Nat) (P : Prop) :
+    (p o v v' : BitVec 64) (d : Int) (n j : Nat) (P : Prop) :
     (fun m => v ≐ v' ∧ PureRefinement o j P (Scaled w) ∧ P ∧ 0 < j ∧ d = -(w : Int) ∧ w ≤ 8 ∧
       b = 8 * w ∧ j - 1 < n ∧ n < 2 ^ 61 ∧ Mem.Mapped [(p, w * n)] m ∧
-      Mem.Blocks.Disjoint [(sp, 8)] [(p, w * n)] ∧
       Q () () (Mem.storeInt m (cell w p (j - 1)) w v.toInt))
-      ⊑ wrp (ofStateRepr (outView w b p n)) (store w sp (p + o + BitVec.ofInt 64 d) v)
+      ⊑ wrp (ofStateRepr (outView w b p n)) (store w (p + o + BitVec.ofInt 64 d) v)
           (modify fun o => o.set! (j - 1) (v'.setWidth b) : BlockM (Array (BitVec b)) Unit) Q E := by
   refine wrp_intro fun Qa Ea => ?_
   intro m hm
   simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_modify] at hm
-  obtain ⟨⟨hv, hij, hP, hj0, hd, hw, hb, hj, hn, hmap, hdj, hk⟩, hq⟩ := hm
+  obtain ⟨⟨hv, hij, hP, hj0, hd, hw, hb, hj, hn, hmap, hk⟩, hq⟩ := hm
   have hv : v = v' := hv trivial
   have hcell : p + o + BitVec.ofInt 64 d = cell w p (j - 1) := by rw [hij hP, hd, cell_pred p hj0]
   rw [wp_store, Concretization.post_pi, hcell]
-  refine ⟨⟨Mem.Mapped.loadInt_isSome hmap (cell_inside hw hj hn),
-    Mem.Blocks.Disjoint.of_inside_right_pair hdj (cell_inside hw hj hn)⟩, (), hk, ?_⟩
+  refine ⟨Mem.Mapped.loadInt_isSome hmap (cell_inside hw hj hn), (), hk, ?_⟩
   simp only [ofStateRepr_pred]
   rw [outView_storeInt hw hb hj hn, hv]
   exact hq

@@ -185,7 +185,7 @@ fun rdi rsi rdx rcx s₀ =>
     repeat'
       let x ← load 8 (rsi + v * 8#64)
       let x_1 ← load 8 (rdi + v * 8#64)
-      store 8 s₀.regs.rsp.toBitVec (rdx + v * 8#64) (x_1 + x)
+      store 8 (rdx + v * 8#64) (x_1 + x)
       if ¬rcx = v + 1#64 then 
         v := v + 1#64
       else

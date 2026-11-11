@@ -46,8 +46,7 @@ ascend_def memmoveP (s₀ : MachineData) (n : Nat) (a : Array (BitVec 8)) (back 
 /-! ## The chain of refinements -/
 
 /-- The memory at the entry of `memmove`: the source `S` and the destination `O` of `n` mapped
-bytes, apart from each other, the destination apart from the return slot at `rsp`, and the return
-slot. -/
+bytes, apart from each other, and the destination apart from the return slot at `rsp`. -/
 structure MoveBytes (m : DataMem) (S O rsp : BitVec 64) (n : Nat) : Prop where
   len : n < 2 ^ 61
   mapS : Mem.Mapped [(S, 1 * n)] m

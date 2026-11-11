@@ -42,8 +42,8 @@ info: def Ascent.Kraken.swapL : BitVec 64 → BitVec 64 → MachineData → Bloc
 fun rdi rsi s₀ => do
   let x ← load 8 rdi
   let x_1 ← load 8 rsi
-  store 8 s₀.regs.rsp.toBitVec rdi x_1
-  store 8 s₀.regs.rsp.toBitVec rsi x
+  store 8 rdi x_1
+  store 8 rsi x
   StateT.assume fun m => retAddrAt m s₀.regs.rsp.toBitVec = some s₀.retAddr.get!
   throw s₀.retAddr.get!
 -/
