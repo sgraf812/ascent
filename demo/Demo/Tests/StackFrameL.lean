@@ -25,7 +25,7 @@ ascend_def pushPopL₀ [Host] [Embeds pushPop] (rdi rsi rbx r12 rsp : BitVec 64)
 sym_simp_def pushPopL [Host] [Embeds pushPop] (rbx r12 rsp : BitVec 64) (ra : Int64) :
     BlockM DataMem Unit from
     pushPopL₀ rbx r12 rsp rsp ra
-  using pre [] post [stayAt_self, eq_self_iff_true, true_and, assume_true_bind, assume_true, pure_bind,
+  using pre [add_ofInt_neg] post [stayAt_self, eq_self_iff_true, true_and, assume_true_bind, assume_true, pure_bind,
     bind_pure, pushPopL₀, bind_pure_unit, BitVec.sub_add_cancel, BitVec.ofInt_int64ToInt,
     Int64.toBitVec_ofNat, Int64.toBitVec_neg, BitVec.ofNat_eq_ofNat, BitVec.add_neg_eq_sub]
 
@@ -53,7 +53,7 @@ ascend_def localsL₀ [Host] [Embeds locals] (rdi rsi rsp : BitVec 64) (r₀ : B
 sym_simp_def localsL [Host] [Embeds locals] (rdi rsi rsp : BitVec 64) (ra : Int64) :
     BlockM DataMem Unit from
     localsL₀ rdi rsi rsp rsp ra
-  using pre [] post [stayAt_self, eq_self_iff_true, true_and, assume_true_bind, assume_true, pure_bind,
+  using pre [add_ofInt_neg] post [stayAt_self, eq_self_iff_true, true_and, assume_true_bind, assume_true, pure_bind,
     bind_pure, localsL₀, bind_pure_unit, BitVec.sub_add_cancel, BitVec.ofInt_int64ToInt,
     Int64.toBitVec_ofNat, Int64.toBitVec_neg, BitVec.ofNat_eq_ofNat, BitVec.add_neg_eq_sub]
 
@@ -81,7 +81,7 @@ ascend_def bytesL₀ [Host] [Embeds bytes] (rax rcx rsp : BitVec 64) (r₀ : Bit
 sym_simp_def bytesL [Host] [Embeds bytes] (rax rsp : BitVec 64) (ra : Int64) :
     BlockM DataMem Unit from
     bytesL₀ rax rsp rsp ra
-  using pre [] post [stayAt_self, eq_self_iff_true, true_and, assume_true_bind, assume_true, pure_bind,
+  using pre [add_ofInt_neg] post [stayAt_self, eq_self_iff_true, true_and, assume_true_bind, assume_true, pure_bind,
     bind_pure, bytesL₀, bind_pure_unit, BitVec.sub_add_cancel, BitVec.ofInt_int64ToInt,
     Int64.toBitVec_ofNat, Int64.toBitVec_neg, BitVec.ofNat_eq_ofNat, BitVec.add_neg_eq_sub]
 
@@ -108,7 +108,7 @@ ascend_def halvesL₀ [Host] [Embeds halves] (rax rcx rdx rsp : BitVec 64) (r₀
 sym_simp_def halvesL [Host] [Embeds halves] (rax rsp : BitVec 64) (ra : Int64) :
     BlockM DataMem Unit from
     halvesL₀ rax rsp rsp ra
-  using pre [] post [stayAt_self, eq_self_iff_true, true_and, assume_true_bind, assume_true, pure_bind,
+  using pre [add_ofInt_neg] post [stayAt_self, eq_self_iff_true, true_and, assume_true_bind, assume_true, pure_bind,
     bind_pure, halvesL₀, bind_pure_unit, BitVec.sub_add_cancel, BitVec.ofInt_int64ToInt,
     Int64.toBitVec_ofNat, Int64.toBitVec_neg, BitVec.ofNat_eq_ofNat, BitVec.add_neg_eq_sub]
 
@@ -136,17 +136,17 @@ ascend_def redZoneL₀ [Host] [Embeds redZone] (rdi rax rsp : BitVec 64) (r₀ :
 sym_simp_def redZoneL [Host] [Embeds redZone] (rdi rax rsp : BitVec 64) (ra : Int64) :
     BlockM DataMem Unit from
     redZoneL₀ rdi rax rsp rsp ra
-  using pre [] post [stayAt_self, eq_self_iff_true, true_and, assume_true_bind, assume_true, pure_bind,
+  using pre [add_ofInt_neg] post [stayAt_self, eq_self_iff_true, true_and, assume_true_bind, assume_true, pure_bind,
     bind_pure, redZoneL₀, bind_pure_unit, BitVec.sub_add_cancel, BitVec.ofInt_int64ToInt,
     Int64.toBitVec_ofNat, Int64.toBitVec_neg, BitVec.ofNat_eq_ofNat, BitVec.add_neg_eq_sub]
 
 /--
 info: def Ascent.Kraken.Tests.StackFrame.redZoneL : BitVec 64 → BitVec 64 → BitVec 64 → Int64 → BlockM DataMem Unit :=
 fun rdi rax rsp ra => do
-  store 8 (rsp + 18446744073709551608#64) rdi
-  store 1 (rsp + 18446744073709551605#64) rax
-  let _ ← load 8 (rsp + 18446744073709551608#64)
-  let _ ← load 1 (rsp + 18446744073709551605#64)
+  store 8 (rsp - 8#64) rdi
+  store 1 (rsp - 11#64) rax
+  let _ ← load 8 (rsp - 8#64)
+  let _ ← load 1 (rsp - 11#64)
   StateT.assume fun m => retAddrAt m rsp = some ra
   throw ra
 -/

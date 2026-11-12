@@ -27,3 +27,5 @@ import AscentTests.Regress.ExistsHole
 import AscentTests.Regress.GuardConsequence
 import AscentTests.Regress.BlockLoop
 import AscentTests.Regress.CatchExit
+import AscentTests.Regress.IdentityEntry
+import AscentTests.Regress.OuterKeys

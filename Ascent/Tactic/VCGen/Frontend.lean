@@ -148,7 +148,11 @@ def elabAscend : Tactic := fun stx => withMainContext do
   let params ← Grind.mkDefaultParams { clean := false }
   let (_, state) ← Grind.GrindTacticM.runAtGoal goal params (sym := true) do
     let g ← Lean.Elab.Tactic.Grind.getMainGoal
-    let result ← Lean.Elab.Tactic.Grind.liftGrindM (run g ctx scope coreScope)
+    let result ← Lean.Elab.Tactic.Grind.liftGrindM do
+      if let some decl := holeDecl? then
+        pureEnvExt.modifyState fun env =>
+          { env with outer := decl.lctx.foldl (fun xs d => xs.insert d.fvarId) {} }
+      run g ctx scope coreScope
     Lean.Elab.Tactic.Grind.replaceMainGoal result.vcs.toList
     -- The step runs on every verification condition, as `vcgen … <;> g` does.
     if let some step := step? then

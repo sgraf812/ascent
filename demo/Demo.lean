@@ -5,6 +5,7 @@ import Demo.Zip
 import Demo.CfgRewrite
 import Demo.ZipStruct
 import Demo.Lift
+import Demo.Frame
 import Demo.Words
 import Demo.ZipL
 import Demo.Arrays
@@ -31,3 +32,4 @@ import Demo.SwapSpec
 import Demo.Rev10
 import Demo.Tests.StackFrame
 import Demo.Tests.StackFrameL
+import Demo.Tests.StackFrameF

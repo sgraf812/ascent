@@ -18,8 +18,9 @@ term.
 The solver closes a goal `PureRefinement cv ?av ?P Q` by recursion over `cv`, at the `simp`
 normal form of each `cv`, and also under a `⊤ ⊑` precondition. It applies the
 environment rules for `cv` and then the `@[ascend_pure]` rules by priority, solves the premises in
-order, and backtracks to the next rule when a premise fails. A rule without premises applies only
-if its abstract value mentions no free variable of the `c` of an environment entry.
+order, and backtracks to the next rule when a premise fails. An `@[ascend_pure]` rule without
+premises applies only if its abstract value mentions no free variable of the `c` of an environment
+entry.
 
 The solver solves the goal at a fresh precondition `?P₀` and simplifies `?P₀` to `P` with the
 `simp` methods of the run. A goal whose guard is a hole gets `P`; a goal with a guard `P_goal`
@@ -74,9 +75,11 @@ initialize registerBuiltinAttribute {
 }
 
 /-- The rules of the environment entries. `seen` holds every local declaration already scanned,
-and `keys` the concrete variable `c` of every entry. -/
+and `outer` the variables in scope of the abstract program. `keys` holds the concrete variable `c`
+of every entry, and for an entry with a compound `c`, the variables of `c` outside `outer`. -/
 structure PureEnv where
   seen : Std.HashSet FVarId := {}
+  outer : Std.HashSet FVarId := {}
   keys : Std.HashSet FVarId := {}
   /-- The rule `hx`, keyed on `c`. -/
   entries : DiscrTree PureRule := DiscrTree.empty
@@ -139,7 +142,9 @@ def updatePureEnv : VCGenM PureEnv := do
         #[args[0]!, args[1]!, args[2]!, args[3]!, args[5]!, hx]
       let relRule ← (← mkBackwardRuleFromExpr rel).shareCommon
       env := { env with
-        keys := (collectFVars {} c).fvarIds.foldl (·.insert ·) env.keys
+        keys := if c.isFVar then env.keys.insert c.fvarId! else
+          (collectFVars {} c).fvarIds.foldl (fun ks x => if env.outer.contains x then ks else ks.insert x)
+            env.keys
         entries := Sym.insertPattern env.entries entry.key entry
         rels := Sym.insertPattern env.rels relRule.pattern { key := relRule.pattern, rule := relRule } }
   pureEnvExt.modifyState fun _ => env
@@ -162,13 +167,15 @@ partial def solveCore (rules : DiscrTree PureRule) (env : PureEnv) (goal : MVarI
       goal.assign (← mkAppNS ofCvEq #[args[0]!, args[1]!, cv₀, args[3]!, args[4]!, args[5]!, cv, g, e])
       pure (g.mvarId!, type')
   let mctx ← getMCtx
-  let candidates := Sym.getMatch mctx env.entries cv ++
-    (Sym.getMatch mctx rules cv).qsort (·.priority > ·.priority)
+  let entries := Sym.getMatch mctx env.entries cv
+  let candidates := entries ++ (Sym.getMatch mctx rules cv).qsort (·.priority > ·.priority)
   let mut failure := cv
-  for r in candidates do
+  for h : i in [0:candidates.size] do
+    let r := candidates[i]
     let saved ← (saveState : MetaM Meta.SavedState)
     let .goals premises ← r.rule.apply goal | continue
-    if premises.isEmpty && (← instantiateMVarsS (type.getArg! 3)).hasAnyFVar env.keys.contains then
+    if entries.size ≤ i && premises.isEmpty &&
+        (← instantiateMVarsS (type.getArg! 3)).hasAnyFVar env.keys.contains then
       (saved.restore : MetaM Unit)
       continue
     let mut inner := none

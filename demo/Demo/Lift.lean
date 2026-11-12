@@ -85,6 +85,12 @@ end
 /-- `c ≐ x`: the concrete value `c` abstracts to the abstract value `x`. -/
 scoped notation:50 c:51 " ≐ " x:51 => PureRefinement c x True Eq
 
+/-! ## Offsets -/
+
+theorem add_ofInt_neg (x : BitVec 64) (d : Int64) :
+    x + BitVec.ofInt 64 (-d).toInt = x - BitVec.ofInt 64 d.toInt := by
+  rw [BitVec.ofInt_int64ToInt, BitVec.ofInt_int64ToInt, Int64.toBitVec_neg, BitVec.add_neg_eq_sub]
+
 /-! ## Values -/
 
 /-- `RegsRel rs t`: each register `r` of `rs` holds its abstract value `v` in the state `t`. -/
@@ -335,6 +341,26 @@ end
 /-! ## Control -/
 
 section
+variable {σa : Type} {view : DataMem → σa} {E : (Int64 → Int64 → DataMem → Prop) × EStack⟨⟩}
+
+@[ascend default + 1] theorem wrp_assume_throw {CV AV : Type} {Q : CV → AV → DataMem → Prop}
+    (g : DataMem → Prop) (l : Int64) :
+    (fun m => g m ∧ E.1 l l m)
+      ⊑ wrp (ofStateRepr view) (do StateT.assume g; throw l : BlockM DataMem CV)
+          (throw l : BlockM σa AV) Q E := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro m hm
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_throw_block] at hm
+  obtain ⟨⟨hg, he⟩, hw⟩ := hm
+  rw [wp_assume_throw]
+  refine ⟨hg, ?_⟩
+  simp only [EPostsConcretization.ePosts_cons]
+  rw [Concretization.post_pi]
+  exact ⟨l, he, hw⟩
+
+end
+
+section
 variable {σc σa : Type} {view : σc → σa} {E : (Int64 → Int64 → σc → Prop) × EStack⟨⟩}
 
 theorem wrp_forIn_lockstep_bind_unit {βc βa : Type} (R : βc → σc → βa → Prop) (cinit : βc)
@@ -364,6 +390,19 @@ theorem wrp_forIn_lockstep_bind_unit {βc βa : Type} (R : βc → σc → βa �
   simp only [WPMonadExact.wp_pure_eq]
   rw [Concretization.post_pi]
   exact ⟨(), hq, hqa⟩
+
+@[ascend] theorem wrp_assume_skip {Q : PUnit → PUnit → σc → Prop} (g : σc → Prop) :
+    (fun m => g m ∧ Q () () m)
+      ⊑ wrp (ofStateRepr view) (do StateT.assume g : BlockM σc PUnit)
+          (pure () : BlockM σa PUnit) Q E := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro m hm
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, WPMonadExact.wp_pure_eq] at hm
+  obtain ⟨⟨hg, hq⟩, hw⟩ := hm
+  simp only [ExceptT.wp_monadLift_StateT_UB, StateT.wp_assume_eq]
+  refine ⟨hg, ?_⟩
+  rw [Concretization.post_pi]
+  exact ⟨(), hq, hw⟩
 
 @[ascend] theorem wrp_pure_unit_post {γ : Type} {Q : PUnit → γ → σc → Prop} (c : PUnit) (b : γ) :
     (fun t => Q c b t) ⊑ wrp (ofStateRepr view) (pure c : BlockM σc PUnit) (pure b : BlockM σa γ) Q E :=
