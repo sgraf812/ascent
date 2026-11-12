@@ -40,3 +40,6 @@ import Demo.Tests.StackFrameF
 import Demo.Tests.Call
 import Demo.Reverse
 import Demo.ReverseStruct
+import Demo.LiftCall
+import Demo.SwapCall
+import Demo.ReverseL

@@ -77,10 +77,19 @@ the frame `r - 8`, hides the return slot, runs `k (r - 8)`, and returns when `k`
 stack pointer `r`. The callee's exception is the return, whatever its label; falling through the end
 of the callee is undefined behaviour. -/
 
+/-- The memory without the return slot at `q`. -/
+def hideSlot (q : BitVec 64) (m : DataMem) : DataMem :=
+  m.filter fun p _ => !decide (Mem.Blocks.Inside p 1 [(q, 8)])
+
 /-- The state at the entry of a callee at the frame `r - 8`, with its return slot hidden. -/
 def hidePush (r : BitVec 64) (s : MachineData) : MachineData :=
-  { s with regs := s.regs.set64 .rsp (r - 8#64),
-           dmem := s.dmem.filter fun p _ => !decide (Mem.Blocks.Inside p 1 [(r - 8#64, 8)]) }
+  { s with regs := s.regs.set64 .rsp (r - 8#64), dmem := hideSlot (r - 8#64) s.dmem }
+
+@[simp, vcgen_simp] theorem hidePush_regs (r : BitVec 64) (s : MachineData) :
+    (hidePush r s).regs = s.regs.set64 .rsp (r - 8#64) := rfl
+
+@[simp, vcgen_simp] theorem hidePush_dmem (r : BitVec 64) (s : MachineData) :
+    (hidePush r s).dmem = hideSlot (r - 8#64) s.dmem := rfl
 
 noncomputable def callA (k : BitVec 64 → BlockM MachineData Unit) : BlockM MachineData Unit := do
   let r ← peek fun s => s.regs.get64 .rsp
@@ -118,7 +127,7 @@ theorem jrel_hidePush {P : DataMem} {s a : MachineData} (h : JRel (Mem.SubSlots 
   refine ⟨?_, h.2.1, h.2.2.1, ?_, ?_⟩
   · simp only [hidePush, MachineData.push64, abs_regs, hr]
   · intro q v hq
-    simp only [hidePush, Std.ExtHashMap.get?_eq_getElem?, Std.ExtHashMap.getElem?_filter'] at hq
+    simp only [hidePush, hideSlot, Std.ExtHashMap.get?_eq_getElem?, Std.ExtHashMap.getElem?_filter'] at hq
     cases hqa : a.dmem[q]? with
     | none => rw [hqa] at hq; exact nomatch hq
     | some y =>
@@ -143,7 +152,7 @@ theorem jrel_hidePush {P : DataMem} {s a : MachineData} (h : JRel (Mem.SubSlots 
       · exact nomatch hq
   · intro q v hq
     have hr' : a.regs.get64 .rsp = s.regs.get64 .rsp := by rw [hr]
-    simp only [abs_dmem, MachineData.push64, hidePush]
+    simp only [abs_dmem, MachineData.push64, hidePush, hideSlot]
     rw [Mem.get?_storeInt] at hq ⊢
     cases hat : ((Int.toBytes 8 ra.toBitVec.toInt).At (s.regs.get64 .rsp - 8#64))[q]? with
     | some y =>

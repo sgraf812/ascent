@@ -164,6 +164,17 @@ variable {w : Nat} {a b x y : BitVec w} {P₁ P₂ : Prop}
     PureRefinement (¬p) (¬q) P₁ Eq := fun hp => by
   rw [h hp]
 
+@[ascend_pure] theorem abs_pair {α β : Type} {a x : α} {b y : β}
+    (h₁ : PureRefinement a x P₁ Eq) (h₂ : PureRefinement b y P₂ Eq) :
+    PureRefinement (a, b) (x, y) (P₁ ∧ P₂) Eq := fun ⟨hp₁, hp₂⟩ => by
+  rw [h₁ hp₁, h₂ hp₂]
+
+@[ascend_pure] theorem abs_fst {α β : Type} {p q : α × β} (h : PureRefinement p q P₁ Eq) :
+    PureRefinement p.1 q.1 P₁ Eq := fun hp => by rw [h hp]
+
+@[ascend_pure] theorem abs_snd {α β : Type} {p q : α × β} (h : PureRefinement p q P₁ Eq) :
+    PureRefinement p.2 q.2 P₁ Eq := fun hp => by rw [h hp]
+
 @[ascend_pure low] theorem abs_refl {α : Type} {c : α} : PureRefinement c c True Eq :=
   PureRefinement.of_rel rfl
 
@@ -539,6 +550,26 @@ theorem wrp_forIn_lockstep_unit {βa : Type} (R : MachineData → βa → Prop) 
   obtain ⟨⟨ha, hk⟩, hl, he⟩ := ht
   have ha : a t = pa := ha trivial
   have hg : loadOk 8 a t := by rw [loadOk, ha]; exact hl
+  rw [wp_exitIf]
+  refine ⟨hg, ?_⟩
+  simp only [EPostsConcretization.ePosts_cons]
+  rw [Concretization.post_pi]
+  refine ⟨l, hk hg, ?_⟩
+  simp only [ofStateRepr_pred, hf]
+  exact he
+
+@[ascend] theorem wrp_exitIf_rsp {CV AV : Type} {Q : CV → AV → MachineData → Prop}
+    (r₀ : BitVec 64) (f : MachineData → MachineData) (l : Int64) (pa : BitVec 64)
+    (hf : ∀ t, (f t).dmem = t.dmem) :
+    (fun t => t.regs.get64 .rsp ≐ pa ∧ (t.regs.rsp.toBitVec = r₀ → E.1 l l (f t)))
+      ⊑ wrp (ofStateRepr MachineData.dmem) (exitIf (fun s => s.regs.rsp.toBitVec = r₀) f l : BlockM MachineData CV)
+          (do StateT.assume (fun (_ : DataMem) => pa = r₀); throw l : BlockM DataMem AV)
+          Q E := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro t ht
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_assume_throw] at ht
+  obtain ⟨⟨ha, hk⟩, hl, he⟩ := ht
+  have hg : t.regs.rsp.toBitVec = r₀ := by rw [← Reg64s.get64_rsp]; exact (ha trivial).trans hl
   rw [wp_exitIf]
   refine ⟨hg, ?_⟩
   simp only [EPostsConcretization.ePosts_cons]
