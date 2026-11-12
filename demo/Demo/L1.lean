@@ -25,7 +25,7 @@ stack pointer `r₀` and the return address `ra₀` of the entry state. A jump t
 -/
 
 open Std.WP Lean.Order Ascent
-open Ascent.Concretization (ofStateRepr ofStateRepr_pred)
+open Ascent.Concretization (ofStateRepr ofStateRepr_pred ofStateRel ofStateRel_pred)
 open scoped Program.WP
 
 def StatusFlags.clear : StatusFlags := ⟨false, false, false, false, false, false⟩
@@ -124,6 +124,82 @@ def abs (s : MachineData) : MachineData := { s with status := .clear }
 @[simp, vcgen_simp, grind =] theorem abs_zmms (s : MachineData) : (abs s).zmms = s.zmms := rfl
 @[simp, vcgen_simp] theorem abs_status (s : MachineData) : (abs s).status = .clear := rfl
 @[simp, vcgen_simp, grind =] theorem abs_dmem (s : MachineData) : (abs s).dmem = s.dmem := rfl
+
+/-! ## Memory relations -/
+
+/-- The memory `m` is a sub-map of `m'`. -/
+def Mem.Sub (m m' : DataMem) : Prop := ∀ p v, m.get? p = some v → m'.get? p = some v
+
+theorem Mem.Sub.refl (m : DataMem) : Mem.Sub m m := fun _ _ h => h
+
+theorem Mem.Sub.storeInt {m m' : DataMem} (h : Mem.Sub m m') (a : BitVec 64) (n : Nat) (v : Int) :
+    Mem.Sub (m.storeInt a n v) (m'.storeInt a n v) := fun p x hp => by
+  rw [Mem.get?_storeInt] at hp ⊢
+  cases hb : ((Int.toBytes n v).At a)[p]? with
+  | some y => rw [hb] at hp; exact hp
+  | none => rw [hb] at hp; exact h p x hp
+
+theorem Mem.Sub.loadBytes {m m' : DataMem} (h : Mem.Sub m m') {a : BitVec 64} {n : Nat}
+    {bs : List UInt8} (hl : m.loadBytes a n = some bs) : m'.loadBytes a n = some bs := by
+  rw [Mem.loadBytes_eq_some_iff] at hl ⊢
+  exact ⟨hl.1, fun i hi => h _ _ (hl.2 i hi)⟩
+
+theorem Mem.Sub.loadInt {m m' : DataMem} (h : Mem.Sub m m') {a : BitVec 64} {n : Nat} {v : Int}
+    (hl : m.loadInt a n = some v) : m'.loadInt a n = some v := by
+  simp only [Mem.loadInt, Option.map_eq_some_iff] at hl ⊢
+  obtain ⟨bs, hbs, rfl⟩ := hl
+  exact ⟨bs, h.loadBytes hbs, rfl⟩
+
+theorem Mem.Sub.loadInt_isSome {m m' : DataMem} (h : Mem.Sub m m') {a : BitVec 64} {n : Nat}
+    (hl : (m.loadInt a n).isSome = true) : (m'.loadInt a n).isSome = true := by
+  obtain ⟨v, hv⟩ := Option.isSome_iff_exists.mp hl
+  rw [h.loadInt hv]
+  rfl
+
+theorem Mem.Sub.loadInt_get! {m m' : DataMem} (h : Mem.Sub m m') {a : BitVec 64} {n : Nat}
+    (hl : (m.loadInt a n).isSome = true) : (m.loadInt a n).get! = (m'.loadInt a n).get! := by
+  obtain ⟨v, hv⟩ := Option.isSome_iff_exists.mp hl
+  rw [hv, h.loadInt hv]
+
+/-- A relation between memories that the step rules support: it is a sub-map relation and stores
+keep it. -/
+class MemRel (M : DataMem → DataMem → Prop) : Prop where
+  sub : ∀ {m m'}, M m m' → Mem.Sub m m'
+  store : ∀ {m m'}, M m m' → ∀ a n v, M (m.storeInt a n v) (m'.storeInt a n v)
+
+instance : MemRel (Eq : DataMem → DataMem → Prop) where
+  sub h := h ▸ Mem.Sub.refl _
+  store h _ _ _ := h ▸ rfl
+
+instance : MemRel Mem.Sub where
+  sub h := h
+  store h a n v := h.storeInt a n v
+
+/-- The abstract states `a` and `b` agree on the registers and the flags, and their memories are
+related by `M`. -/
+def StRel (M : DataMem → DataMem → Prop) (a b : MachineData) : Prop :=
+  a.regs = b.regs ∧ a.zmms = b.zmms ∧ a.status = b.status ∧ M a.dmem b.dmem
+
+/-- The concrete state `s` and an abstract state related to `abs s` by `StRel M`. -/
+def JRel (M : DataMem → DataMem → Prop) (s a : MachineData) : Prop := StRel M a (abs s)
+
+theorem jrel_eq_iff (s a : MachineData) : JRel Eq s a ↔ a = abs s := by
+  constructor
+  · rintro ⟨h₁, h₂, h₃, h₄⟩
+    cases a
+    simp only [abs] at h₁ h₂ h₃ h₄ ⊢
+    subst h₁ h₂ h₃ h₄
+    rfl
+  · rintro rfl
+    exact ⟨rfl, rfl, rfl, rfl⟩
+
+theorem ofStateRepr_abs_eq : ofStateRepr abs = ofStateRel (JRel Eq) := by
+  rw [ofStateRepr_eq_ofStateRel]
+  congr 1
+  funext s a
+  exact propext (jrel_eq_iff s a).symm
+
+theorem JRel.regs {M} {s a : MachineData} (h : JRel M s a) : a.regs = s.regs := h.1
 
 namespace AInstr
 
@@ -420,6 +496,48 @@ variable [Host] [FunDecls] {Q : Unit → Unit → MachineData → Prop}
 
 /-- `cmp ra, rb; jcc cc, l` branches on the comparison of the two registers. The flags the pair
 writes are cleared by `abs`. -/
+@[ascend default + 1] theorem wrp_cmpJcc_rel {M : DataMem → DataMem → Prop} {r₀ : BitVec 64} {ra₀ : Int64} (asz₁ asz₂ osz : Width) (ra rb : Reg64) (cc : CondCode)
+    (l : Label) (p : Program) (k : Unit → BlockM MachineData Unit)
+    (hN : Program.labels (Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p) = []) :
+    (fun s =>
+      let s' := { s with status := StatusFlags.ofSub (s.regs.get64 ra) (s.regs.get64 rb) }
+      (cc.cmp (s.regs.get64 ra) (s.regs.get64 rb) = true → (AddrRel r₀ ra₀) (label l) (label l) s')
+        ∧ (cc.cmp (s.regs.get64 ra) (s.regs.get64 rb) = false → wrp (ofStateRel (JRel M)) p (k ()) Q (AddrRel r₀ ra₀) s'))
+      ⊑ wrp (ofStateRel (JRel M))
+          (Directive.instr (.regular asz₁ .W64
+              (.cmp (.reg (.low ra .W64)) (.regOrMem (.reg (.low rb .W64)))))
+            :: Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p)
+          (branch (stayIn (r₀)) (fun st => cc.cmp (st.regs.get64 ra) (st.regs.get64 rb)) (label l) >>= k) Q (AddrRel r₀ ra₀) := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro s hs
+  simp only [meet_apply, meet_prop_eq_and, ofStateRel_pred, WPMonadExact.wp_bind_eq,
+    wp_branch] at hs
+  obtain ⟨⟨hjmp, hfall⟩, a, hJ, hw⟩ := hs
+  rw [JRel.regs hJ] at hw
+  have h₂ : wp (Directive.instr (.regular asz₂ osz (.jcc cc l)))
+      (fun _ => wp p ((ofStateRel (JRel M)).post Q Qa) (EPostsConcretization.ePosts (ofStateRel (JRel M)) (AddrRel r₀ ra₀) Ea))
+      (EPostsConcretization.ePosts (ofStateRel (JRel M)) (AddrRel r₀ ra₀) Ea)
+      { s with status := StatusFlags.ofSub (s.regs.get64 ra) (s.regs.get64 rb) } := by
+    refine (Program.WP.Spec.jcc_label asz₂ osz cc l).le_wp _ ⟨fun h => ?_, fun h => ?_⟩
+    · rw [CondCode.interp_ofSub] at h
+      simp only [h, ↓reduceIte] at hw
+      show (ofStateRel (JRel M)).post (AddrRel r₀ ra₀) Ea.1 (label l) _
+      simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
+        meet_prop_eq_and, ofStateRel_pred]
+      exact ⟨label l, hjmp h, a, hJ, hw.2⟩
+    · rw [CondCode.interp_ofSub] at h
+      simp only [h, Bool.false_eq_true, ↓reduceIte] at hw
+      refine wrp_transport (P := wrp (ofStateRel (JRel M)) p (k ()) Q (AddrRel r₀ ra₀)) PartialOrder.rel_refl Qa Ea _ ?_
+      simp only [meet_apply, meet_prop_eq_and, ofStateRel_pred]
+      exact ⟨hfall h, a, hJ, hw⟩
+  have h₁ : wp (Directive.instr (.regular asz₁ .W64
+        (.cmp (.reg (.low ra .W64)) (.regOrMem (.reg (.low rb .W64))))))
+      (fun _ => wp (Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p)
+        ((ofStateRel (JRel M)).post Q Qa) (EPostsConcretization.ePosts (ofStateRel (JRel M)) (AddrRel r₀ ra₀) Ea))
+      (EPostsConcretization.ePosts (ofStateRel (JRel M)) (AddrRel r₀ ra₀) Ea) s :=
+    (Program.WP.Spec.cmp_reg_reg asz₁ ra rb).le_wp s (Program.wp_cons hN h₂)
+  exact Program.wp_cons (by rw [Program.labels_cons_instr]; exact hN) h₁
+
 @[ascend default + 1] theorem wrp_cmpJcc {r₀ : BitVec 64} {ra₀ : Int64} (asz₁ asz₂ osz : Width) (ra rb : Reg64) (cc : CondCode)
     (l : Label) (p : Program) (k : Unit → BlockM MachineData Unit)
     (hN : Program.labels (Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p) = []) :
@@ -432,36 +550,55 @@ writes are cleared by `abs`. -/
               (.cmp (.reg (.low ra .W64)) (.regOrMem (.reg (.low rb .W64)))))
             :: Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p)
           (branch (stayIn (r₀)) (fun st => cc.cmp (st.regs.get64 ra) (st.regs.get64 rb)) (label l) >>= k) Q (AddrRel r₀ ra₀) := by
-  refine wrp_intro fun Qa Ea => ?_
-  intro s hs
-  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, WPMonadExact.wp_bind_eq,
-    wp_branch, abs_regs] at hs
-  obtain ⟨⟨hjmp, hfall⟩, hw⟩ := hs
-  have h₂ : wp (Directive.instr (.regular asz₂ osz (.jcc cc l)))
-      (fun _ => wp p ((ofStateRepr abs).post Q Qa) (EPostsConcretization.ePosts (ofStateRepr abs) (AddrRel r₀ ra₀) Ea))
-      (EPostsConcretization.ePosts (ofStateRepr abs) (AddrRel r₀ ra₀) Ea)
-      { s with status := StatusFlags.ofSub (s.regs.get64 ra) (s.regs.get64 rb) } := by
-    refine (Program.WP.Spec.jcc_label asz₂ osz cc l).le_wp _ ⟨fun h => ?_, fun h => ?_⟩
-    · rw [CondCode.interp_ofSub] at h
-      simp only [h, ↓reduceIte] at hw
-      show (ofStateRepr abs).post (AddrRel r₀ ra₀) Ea.1 (label l) _
-      simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
-        meet_prop_eq_and, ofStateRepr_pred]
-      exact ⟨label l, hjmp h, hw.2⟩
-    · rw [CondCode.interp_ofSub] at h
-      simp only [h, Bool.false_eq_true, ↓reduceIte] at hw
-      refine wrp_transport (P := wrp (ofStateRepr abs) p (k ()) Q (AddrRel r₀ ra₀)) PartialOrder.rel_refl Qa Ea _ ?_
-      simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred]
-      exact ⟨hfall h, hw⟩
-  have h₁ : wp (Directive.instr (.regular asz₁ .W64
-        (.cmp (.reg (.low ra .W64)) (.regOrMem (.reg (.low rb .W64))))))
-      (fun _ => wp (Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p)
-        ((ofStateRepr abs).post Q Qa) (EPostsConcretization.ePosts (ofStateRepr abs) (AddrRel r₀ ra₀) Ea))
-      (EPostsConcretization.ePosts (ofStateRepr abs) (AddrRel r₀ ra₀) Ea) s :=
-    (Program.WP.Spec.cmp_reg_reg asz₁ ra rb).le_wp s (Program.wp_cons hN h₂)
-  exact Program.wp_cons (by rw [Program.labels_cons_instr]; exact hN) h₁
+  rw [ofStateRepr_abs_eq]
+  exact wrp_cmpJcc_rel asz₁ asz₂ osz ra rb cc l p k hN
 
 /-- `test ra, rb; jcc cc, l` branches on the comparison of `ra &&& rb` with zero. -/
+@[ascend default + 1] theorem wrp_testJcc_rel {M : DataMem → DataMem → Prop} {r₀ : BitVec 64} {ra₀ : Int64} (asz₁ asz₂ osz : Width) (ra rb : Reg64) (cc : CondCode)
+    (l : Label) (p : Program) (k : Unit → BlockM MachineData Unit)
+    (hN : Program.labels (Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p) = []) :
+    (fun s => ∀ af : Bool,
+      let s' := { s with status := StatusFlags.ofLogic (s.regs.get64 ra &&& s.regs.get64 rb) af }
+      (cc.cmp (s.regs.get64 ra &&& s.regs.get64 rb) 0 = true → (AddrRel r₀ ra₀) (label l) (label l) s')
+        ∧ (cc.cmp (s.regs.get64 ra &&& s.regs.get64 rb) 0 = false →
+            wrp (ofStateRel (JRel M)) p (k ()) Q (AddrRel r₀ ra₀) s'))
+      ⊑ wrp (ofStateRel (JRel M))
+          (Directive.instr (.regular asz₁ .W64
+              (.test (.reg (.low ra .W64)) (.regOrMem (.reg (.low rb .W64)))))
+            :: Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p)
+          (branch (stayIn (r₀)) (fun st => cc.cmp (st.regs.get64 ra &&& st.regs.get64 rb) 0) (label l) >>= k) Q (AddrRel r₀ ra₀) := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro s hs
+  simp only [meet_apply, meet_prop_eq_and, ofStateRel_pred, WPMonadExact.wp_bind_eq,
+    wp_branch] at hs
+  obtain ⟨hpre, a, hJ, hw⟩ := hs
+  rw [JRel.regs hJ] at hw
+  have h₂ : ∀ af : Bool, wp (Directive.instr (.regular asz₂ osz (.jcc cc l)))
+      (fun _ => wp p ((ofStateRel (JRel M)).post Q Qa) (EPostsConcretization.ePosts (ofStateRel (JRel M)) (AddrRel r₀ ra₀) Ea))
+      (EPostsConcretization.ePosts (ofStateRel (JRel M)) (AddrRel r₀ ra₀) Ea)
+      { s with status := StatusFlags.ofLogic (s.regs.get64 ra &&& s.regs.get64 rb) af } := by
+    intro af
+    obtain ⟨hjmp, hfall⟩ := hpre af
+    refine (Program.WP.Spec.jcc_label asz₂ osz cc l).le_wp _ ⟨fun h => ?_, fun h => ?_⟩
+    · rw [CondCode.interp_ofLogic] at h
+      simp only [h, ↓reduceIte] at hw
+      show (ofStateRel (JRel M)).post (AddrRel r₀ ra₀) Ea.1 (label l) _
+      simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
+        meet_prop_eq_and, ofStateRel_pred]
+      exact ⟨label l, hjmp h, a, hJ, hw.2⟩
+    · rw [CondCode.interp_ofLogic] at h
+      simp only [h, Bool.false_eq_true, ↓reduceIte] at hw
+      refine wrp_transport (P := wrp (ofStateRel (JRel M)) p (k ()) Q (AddrRel r₀ ra₀)) PartialOrder.rel_refl Qa Ea _ ?_
+      simp only [meet_apply, meet_prop_eq_and, ofStateRel_pred]
+      exact ⟨hfall h, a, hJ, hw⟩
+  have h₁ : wp (Directive.instr (.regular asz₁ .W64
+        (.test (.reg (.low ra .W64)) (.regOrMem (.reg (.low rb .W64))))))
+      (fun _ => wp (Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p)
+        ((ofStateRel (JRel M)).post Q Qa) (EPostsConcretization.ePosts (ofStateRel (JRel M)) (AddrRel r₀ ra₀) Ea))
+      (EPostsConcretization.ePosts (ofStateRel (JRel M)) (AddrRel r₀ ra₀) Ea) s :=
+    (Program.WP.Spec.test_reg_reg asz₁ ra rb).le_wp s fun af => Program.wp_cons hN (h₂ af)
+  exact Program.wp_cons (by rw [Program.labels_cons_instr]; exact hN) h₁
+
 @[ascend default + 1] theorem wrp_testJcc {r₀ : BitVec 64} {ra₀ : Int64} (asz₁ asz₂ osz : Width) (ra rb : Reg64) (cc : CondCode)
     (l : Label) (p : Program) (k : Unit → BlockM MachineData Unit)
     (hN : Program.labels (Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p) = []) :
@@ -475,36 +612,8 @@ writes are cleared by `abs`. -/
               (.test (.reg (.low ra .W64)) (.regOrMem (.reg (.low rb .W64)))))
             :: Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p)
           (branch (stayIn (r₀)) (fun st => cc.cmp (st.regs.get64 ra &&& st.regs.get64 rb) 0) (label l) >>= k) Q (AddrRel r₀ ra₀) := by
-  refine wrp_intro fun Qa Ea => ?_
-  intro s hs
-  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, WPMonadExact.wp_bind_eq,
-    wp_branch, abs_regs] at hs
-  obtain ⟨hpre, hw⟩ := hs
-  have h₂ : ∀ af : Bool, wp (Directive.instr (.regular asz₂ osz (.jcc cc l)))
-      (fun _ => wp p ((ofStateRepr abs).post Q Qa) (EPostsConcretization.ePosts (ofStateRepr abs) (AddrRel r₀ ra₀) Ea))
-      (EPostsConcretization.ePosts (ofStateRepr abs) (AddrRel r₀ ra₀) Ea)
-      { s with status := StatusFlags.ofLogic (s.regs.get64 ra &&& s.regs.get64 rb) af } := by
-    intro af
-    obtain ⟨hjmp, hfall⟩ := hpre af
-    refine (Program.WP.Spec.jcc_label asz₂ osz cc l).le_wp _ ⟨fun h => ?_, fun h => ?_⟩
-    · rw [CondCode.interp_ofLogic] at h
-      simp only [h, ↓reduceIte] at hw
-      show (ofStateRepr abs).post (AddrRel r₀ ra₀) Ea.1 (label l) _
-      simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
-        meet_prop_eq_and, ofStateRepr_pred]
-      exact ⟨label l, hjmp h, hw.2⟩
-    · rw [CondCode.interp_ofLogic] at h
-      simp only [h, Bool.false_eq_true, ↓reduceIte] at hw
-      refine wrp_transport (P := wrp (ofStateRepr abs) p (k ()) Q (AddrRel r₀ ra₀)) PartialOrder.rel_refl Qa Ea _ ?_
-      simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred]
-      exact ⟨hfall h, hw⟩
-  have h₁ : wp (Directive.instr (.regular asz₁ .W64
-        (.test (.reg (.low ra .W64)) (.regOrMem (.reg (.low rb .W64))))))
-      (fun _ => wp (Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p)
-        ((ofStateRepr abs).post Q Qa) (EPostsConcretization.ePosts (ofStateRepr abs) (AddrRel r₀ ra₀) Ea))
-      (EPostsConcretization.ePosts (ofStateRepr abs) (AddrRel r₀ ra₀) Ea) s :=
-    (Program.WP.Spec.test_reg_reg asz₁ ra rb).le_wp s fun af => Program.wp_cons hN (h₂ af)
-  exact Program.wp_cons (by rw [Program.labels_cons_instr]; exact hN) h₁
+  rw [ofStateRepr_abs_eq]
+  exact wrp_testJcc_rel asz₁ asz₂ osz ra rb cc l p k hN
 
 /-- The guard of a return from the frame `r₀`: the stack pointer is `r₀` and the return slot holds
 `ra`. -/
@@ -824,6 +933,53 @@ theorem CondCode.interp_from_result_af {w : Nat} (cc : CondCode) (v : BitVec w) 
 
 /-- `sub rd, rs; jcc cc, l` writes the difference and branches on the comparison of the two
 values before the write, which the abstract program reads with `peek`. -/
+@[ascend default + 1] theorem wrp_subJcc_rel {M : DataMem → DataMem → Prop} {r₀ : BitVec 64} {ra₀ : Int64} (asz₁ asz₂ osz : Width) (rd rs : Reg64) (cc : CondCode)
+    (l : Label) (p : Program) (k : Unit → BlockM MachineData Unit)
+    (hN : Program.labels (Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p) = []) :
+    (fun s =>
+      let s' := { s with regs := s.regs.set64 rd (s.regs.get64 rd - s.regs.get64 rs), status := StatusFlags.ofSub (s.regs.get64 rd) (s.regs.get64 rs) }
+      (cc.cmp (s.regs.get64 rd) (s.regs.get64 rs) = true → (AddrRel r₀ ra₀) (label l) (label l) s')
+        ∧ (cc.cmp (s.regs.get64 rd) (s.regs.get64 rs) = false → wrp (ofStateRel (JRel M)) p (k ()) Q (AddrRel r₀ ra₀) s'))
+      ⊑ wrp (ofStateRel (JRel M))
+          (Directive.instr (.regular asz₁ .W64
+              (.sub (.reg (.low rd .W64)) (.regOrMem (.reg (.low rs .W64)))))
+            :: Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p)
+          (peek (fun st => cc.cmp (st.regs.get64 rd) (st.regs.get64 rs)) >>= fun c =>
+            modifyIf (fun _ => True) (setReg64 rd fun st => st.regs.get64 rd - st.regs.get64 rs) >>= fun _ =>
+            branch (stayIn (r₀)) (fun _ => c) (label l) >>= k) Q (AddrRel r₀ ra₀) := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro s hs
+  simp only [meet_apply, meet_prop_eq_and, ofStateRel_pred, WPMonadExact.wp_bind_eq, wp_peek,
+    wp_modifyIf, wp_branch] at hs
+  obtain ⟨⟨hjmp, hfall⟩, a, hJ, -, hw⟩ := hs
+  rw [JRel.regs hJ] at hw
+  have hJ' : JRel M { s with regs := s.regs.set64 rd (s.regs.get64 rd - s.regs.get64 rs), status := StatusFlags.ofSub (s.regs.get64 rd) (s.regs.get64 rs) }
+      (setReg64 rd (fun st => st.regs.get64 rd - st.regs.get64 rs) a) :=
+    ⟨by simp only [setReg64_regs, abs_regs, JRel.regs hJ], hJ.2.1, hJ.2.2.1, hJ.2.2.2⟩
+  have h₂ : wp (Directive.instr (.regular asz₂ osz (.jcc cc l)))
+      (fun _ => wp p ((ofStateRel (JRel M)).post Q Qa) (EPostsConcretization.ePosts (ofStateRel (JRel M)) (AddrRel r₀ ra₀) Ea))
+      (EPostsConcretization.ePosts (ofStateRel (JRel M)) (AddrRel r₀ ra₀) Ea)
+      { s with regs := s.regs.set64 rd (s.regs.get64 rd - s.regs.get64 rs), status := StatusFlags.ofSub (s.regs.get64 rd) (s.regs.get64 rs) } := by
+    refine (Program.WP.Spec.jcc_label asz₂ osz cc l).le_wp _ ⟨fun h => ?_, fun h => ?_⟩
+    · rw [CondCode.interp_ofSub] at h
+      simp only [h, ↓reduceIte] at hw
+      show (ofStateRel (JRel M)).post (AddrRel r₀ ra₀) Ea.1 (label l) _
+      simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
+        meet_prop_eq_and, ofStateRel_pred]
+      exact ⟨label l, hjmp h, _, hJ', hw.2⟩
+    · rw [CondCode.interp_ofSub] at h
+      simp only [h, Bool.false_eq_true, ↓reduceIte] at hw
+      refine wrp_transport (P := wrp (ofStateRel (JRel M)) p (k ()) Q (AddrRel r₀ ra₀)) PartialOrder.rel_refl Qa Ea _ ?_
+      simp only [meet_apply, meet_prop_eq_and, ofStateRel_pred]
+      exact ⟨hfall h, _, hJ', hw⟩
+  have h₁ : wp (Directive.instr (.regular asz₁ .W64
+        (.sub (.reg (.low rd .W64)) (.regOrMem (.reg (.low rs .W64))))))
+      (fun _ => wp (Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p)
+        ((ofStateRel (JRel M)).post Q Qa) (EPostsConcretization.ePosts (ofStateRel (JRel M)) (AddrRel r₀ ra₀) Ea))
+      (EPostsConcretization.ePosts (ofStateRel (JRel M)) (AddrRel r₀ ra₀) Ea) s :=
+    (Spec.sub_reg_reg asz₁ rd rs).le_wp s (Program.wp_cons hN h₂)
+  exact Program.wp_cons (by rw [Program.labels_cons_instr]; exact hN) h₁
+
 @[ascend default + 1] theorem wrp_subJcc {r₀ : BitVec 64} {ra₀ : Int64} (asz₁ asz₂ osz : Width) (rd rs : Reg64) (cc : CondCode)
     (l : Label) (p : Program) (k : Unit → BlockM MachineData Unit)
     (hN : Program.labels (Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p) = []) :
@@ -838,40 +994,77 @@ values before the write, which the abstract program reads with `peek`. -/
           (peek (fun st => cc.cmp (st.regs.get64 rd) (st.regs.get64 rs)) >>= fun c =>
             modifyIf (fun _ => True) (setReg64 rd fun st => st.regs.get64 rd - st.regs.get64 rs) >>= fun _ =>
             branch (stayIn (r₀)) (fun _ => c) (label l) >>= k) Q (AddrRel r₀ ra₀) := by
-  refine wrp_intro fun Qa Ea => ?_
-  intro s hs
-  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, WPMonadExact.wp_bind_eq, wp_peek,
-    wp_modifyIf, wp_branch, abs_regs] at hs
-  obtain ⟨⟨hjmp, hfall⟩, -, hw⟩ := hs
-  have habs : setReg64 rd (fun st => st.regs.get64 rd - st.regs.get64 rs) (abs s)
-      = abs { s with regs := s.regs.set64 rd (s.regs.get64 rd - s.regs.get64 rs), status := StatusFlags.ofSub (s.regs.get64 rd) (s.regs.get64 rs) } := rfl
-  rw [habs] at hw
-  have h₂ : wp (Directive.instr (.regular asz₂ osz (.jcc cc l)))
-      (fun _ => wp p ((ofStateRepr abs).post Q Qa) (EPostsConcretization.ePosts (ofStateRepr abs) (AddrRel r₀ ra₀) Ea))
-      (EPostsConcretization.ePosts (ofStateRepr abs) (AddrRel r₀ ra₀) Ea)
-      { s with regs := s.regs.set64 rd (s.regs.get64 rd - s.regs.get64 rs), status := StatusFlags.ofSub (s.regs.get64 rd) (s.regs.get64 rs) } := by
-    refine (Program.WP.Spec.jcc_label asz₂ osz cc l).le_wp _ ⟨fun h => ?_, fun h => ?_⟩
-    · rw [CondCode.interp_ofSub] at h
-      simp only [h, ↓reduceIte] at hw
-      show (ofStateRepr abs).post (AddrRel r₀ ra₀) Ea.1 (label l) _
-      simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
-        meet_prop_eq_and, ofStateRepr_pred]
-      exact ⟨label l, hjmp h, hw.2⟩
-    · rw [CondCode.interp_ofSub] at h
-      simp only [h, Bool.false_eq_true, ↓reduceIte] at hw
-      refine wrp_transport (P := wrp (ofStateRepr abs) p (k ()) Q (AddrRel r₀ ra₀)) PartialOrder.rel_refl Qa Ea _ ?_
-      simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred]
-      exact ⟨hfall h, hw⟩
-  have h₁ : wp (Directive.instr (.regular asz₁ .W64
-        (.sub (.reg (.low rd .W64)) (.regOrMem (.reg (.low rs .W64))))))
-      (fun _ => wp (Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p)
-        ((ofStateRepr abs).post Q Qa) (EPostsConcretization.ePosts (ofStateRepr abs) (AddrRel r₀ ra₀) Ea))
-      (EPostsConcretization.ePosts (ofStateRepr abs) (AddrRel r₀ ra₀) Ea) s :=
-    (Spec.sub_reg_reg asz₁ rd rs).le_wp s (Program.wp_cons hN h₂)
-  exact Program.wp_cons (by rw [Program.labels_cons_instr]; exact hN) h₁
+  rw [ofStateRepr_abs_eq]
+  exact wrp_subJcc_rel asz₁ asz₂ osz rd rs cc l p k hN
 
 /-- `cmp ra, rb; jcc c₁, l₁; jcc c₂, l₂` branches twice on one comparison: the flags survive the
 first jump when it is not taken. -/
+@[ascend default + 2] theorem wrp_cmpJccJcc_rel {M : DataMem → DataMem → Prop} {r₀ : BitVec 64} {ra₀ : Int64} (asz₁ asz₂ asz₃ osz₂ osz₃ : Width) (ra rb : Reg64)
+    (c₁ c₂ : CondCode) (l₁ l₂ : Label) (p : Program) (k : Unit → BlockM MachineData Unit)
+    (hN₂ : Program.labels (Directive.instr (.regular asz₂ osz₂ (.jcc c₁ l₁))
+      :: Directive.instr (.regular asz₃ osz₃ (.jcc c₂ l₂)) :: p) = [])
+    (hN₃ : Program.labels (Directive.instr (.regular asz₃ osz₃ (.jcc c₂ l₂)) :: p) = []) :
+    (fun s =>
+      let s' := { s with status := StatusFlags.ofSub (s.regs.get64 ra) (s.regs.get64 rb) }
+      (c₁.cmp (s.regs.get64 ra) (s.regs.get64 rb) = true → (AddrRel r₀ ra₀) (label l₁) (label l₁) s')
+        ∧ (c₁.cmp (s.regs.get64 ra) (s.regs.get64 rb) = false →
+          (c₂.cmp (s.regs.get64 ra) (s.regs.get64 rb) = true → (AddrRel r₀ ra₀) (label l₂) (label l₂) s')
+            ∧ (c₂.cmp (s.regs.get64 ra) (s.regs.get64 rb) = false →
+              wrp (ofStateRel (JRel M)) p (k ()) Q (AddrRel r₀ ra₀) s')))
+      ⊑ wrp (ofStateRel (JRel M))
+          (Directive.instr (.regular asz₁ .W64
+              (.cmp (.reg (.low ra .W64)) (.regOrMem (.reg (.low rb .W64)))))
+            :: Directive.instr (.regular asz₂ osz₂ (.jcc c₁ l₁))
+            :: Directive.instr (.regular asz₃ osz₃ (.jcc c₂ l₂)) :: p)
+          (branch (stayIn (r₀)) (fun st => c₁.cmp (st.regs.get64 ra) (st.regs.get64 rb)) (label l₁) >>= fun _ =>
+            branch (stayIn (r₀)) (fun st => c₂.cmp (st.regs.get64 ra) (st.regs.get64 rb)) (label l₂) >>= k) Q (AddrRel r₀ ra₀) := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro s hs
+  simp only [meet_apply, meet_prop_eq_and, ofStateRel_pred, WPMonadExact.wp_bind_eq,
+    wp_branch] at hs
+  obtain ⟨⟨hjmp₁, hfall₁⟩, a, hJ, hw⟩ := hs
+  rw [JRel.regs hJ] at hw
+  let s' := { s with status := StatusFlags.ofSub (s.regs.get64 ra) (s.regs.get64 rb) }
+  have hpost : ∀ (l : Label) (cl : Int64), (AddrRel r₀ ra₀) (label l) cl s' → Ea.1 cl a →
+      (ofStateRel (JRel M)).post (AddrRel r₀ ra₀) Ea.1 (label l) s' := by
+    intro l cl he hea
+    simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
+      meet_prop_eq_and, ofStateRel_pred]
+    exact ⟨cl, he, a, hJ, hea⟩
+  have h₃ : wp (Directive.instr (.regular asz₃ osz₃ (.jcc c₂ l₂)))
+      (fun _ => wp p ((ofStateRel (JRel M)).post Q Qa) (EPostsConcretization.ePosts (ofStateRel (JRel M)) (AddrRel r₀ ra₀) Ea))
+      (EPostsConcretization.ePosts (ofStateRel (JRel M)) (AddrRel r₀ ra₀) Ea) s' →
+      wp (Directive.instr (.regular asz₃ osz₃ (.jcc c₂ l₂)) :: p) ((ofStateRel (JRel M)).post Q Qa)
+        (EPostsConcretization.ePosts (ofStateRel (JRel M)) (AddrRel r₀ ra₀) Ea) s' := Program.wp_cons hN₃
+  have h₂ : wp (Directive.instr (.regular asz₂ osz₂ (.jcc c₁ l₁)))
+      (fun _ => wp (Directive.instr (.regular asz₃ osz₃ (.jcc c₂ l₂)) :: p)
+        ((ofStateRel (JRel M)).post Q Qa) (EPostsConcretization.ePosts (ofStateRel (JRel M)) (AddrRel r₀ ra₀) Ea))
+      (EPostsConcretization.ePosts (ofStateRel (JRel M)) (AddrRel r₀ ra₀) Ea) s' := by
+    refine (Program.WP.Spec.jcc_label asz₂ osz₂ c₁ l₁).le_wp _ ⟨fun h => ?_, fun h => ?_⟩
+    · rw [CondCode.interp_ofSub] at h
+      simp only [h, ↓reduceIte] at hw
+      exact hpost l₁ _ (hjmp₁ h) hw.2
+    · rw [CondCode.interp_ofSub] at h
+      simp only [h, Bool.false_eq_true, ↓reduceIte] at hw
+      obtain ⟨hjmp₂, hfall₂⟩ := hfall₁ h
+      refine h₃ ((Program.WP.Spec.jcc_label asz₃ osz₃ c₂ l₂).le_wp _ ⟨fun h' => ?_, fun h' => ?_⟩)
+      · rw [CondCode.interp_ofSub] at h'
+        simp only [h', ↓reduceIte] at hw
+        exact hpost l₂ _ (hjmp₂ h') hw.2
+      · rw [CondCode.interp_ofSub] at h'
+        simp only [h', Bool.false_eq_true, ↓reduceIte] at hw
+        refine wrp_transport (P := wrp (ofStateRel (JRel M)) p (k ()) Q (AddrRel r₀ ra₀)) PartialOrder.rel_refl Qa Ea _ ?_
+        simp only [meet_apply, meet_prop_eq_and, ofStateRel_pred]
+        exact ⟨hfall₂ h', a, hJ, hw⟩
+  have h₁ : wp (Directive.instr (.regular asz₁ .W64
+        (.cmp (.reg (.low ra .W64)) (.regOrMem (.reg (.low rb .W64))))))
+      (fun _ => wp (Directive.instr (.regular asz₂ osz₂ (.jcc c₁ l₁))
+          :: Directive.instr (.regular asz₃ osz₃ (.jcc c₂ l₂)) :: p)
+        ((ofStateRel (JRel M)).post Q Qa) (EPostsConcretization.ePosts (ofStateRel (JRel M)) (AddrRel r₀ ra₀) Ea))
+      (EPostsConcretization.ePosts (ofStateRel (JRel M)) (AddrRel r₀ ra₀) Ea) s :=
+    (Program.WP.Spec.cmp_reg_reg asz₁ ra rb).le_wp s (Program.wp_cons hN₂ h₂)
+  exact Program.wp_cons (by rw [Program.labels_cons_instr]; exact hN₂) h₁
+
 @[ascend default + 2] theorem wrp_cmpJccJcc {r₀ : BitVec 64} {ra₀ : Int64} (asz₁ asz₂ asz₃ osz₂ osz₃ : Width) (ra rb : Reg64)
     (c₁ c₂ : CondCode) (l₁ l₂ : Label) (p : Program) (k : Unit → BlockM MachineData Unit)
     (hN₂ : Program.labels (Directive.instr (.regular asz₂ osz₂ (.jcc c₁ l₁))
@@ -891,53 +1084,59 @@ first jump when it is not taken. -/
             :: Directive.instr (.regular asz₃ osz₃ (.jcc c₂ l₂)) :: p)
           (branch (stayIn (r₀)) (fun st => c₁.cmp (st.regs.get64 ra) (st.regs.get64 rb)) (label l₁) >>= fun _ =>
             branch (stayIn (r₀)) (fun st => c₂.cmp (st.regs.get64 ra) (st.regs.get64 rb)) (label l₂) >>= k) Q (AddrRel r₀ ra₀) := by
-  refine wrp_intro fun Qa Ea => ?_
-  intro s hs
-  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, WPMonadExact.wp_bind_eq,
-    wp_branch, abs_regs] at hs
-  obtain ⟨⟨hjmp₁, hfall₁⟩, hw⟩ := hs
-  let s' := { s with status := StatusFlags.ofSub (s.regs.get64 ra) (s.regs.get64 rb) }
-  have hpost : ∀ (l : Label) (cl : Int64), (AddrRel r₀ ra₀) (label l) cl s' → Ea.1 cl (abs s) →
-      (ofStateRepr abs).post (AddrRel r₀ ra₀) Ea.1 (label l) s' := by
-    intro l cl he hea
-    simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
-      meet_prop_eq_and, ofStateRepr_pred]
-    exact ⟨cl, he, hea⟩
-  have h₃ : wp (Directive.instr (.regular asz₃ osz₃ (.jcc c₂ l₂)))
-      (fun _ => wp p ((ofStateRepr abs).post Q Qa) (EPostsConcretization.ePosts (ofStateRepr abs) (AddrRel r₀ ra₀) Ea))
-      (EPostsConcretization.ePosts (ofStateRepr abs) (AddrRel r₀ ra₀) Ea) s' →
-      wp (Directive.instr (.regular asz₃ osz₃ (.jcc c₂ l₂)) :: p) ((ofStateRepr abs).post Q Qa)
-        (EPostsConcretization.ePosts (ofStateRepr abs) (AddrRel r₀ ra₀) Ea) s' := Program.wp_cons hN₃
-  have h₂ : wp (Directive.instr (.regular asz₂ osz₂ (.jcc c₁ l₁)))
-      (fun _ => wp (Directive.instr (.regular asz₃ osz₃ (.jcc c₂ l₂)) :: p)
-        ((ofStateRepr abs).post Q Qa) (EPostsConcretization.ePosts (ofStateRepr abs) (AddrRel r₀ ra₀) Ea))
-      (EPostsConcretization.ePosts (ofStateRepr abs) (AddrRel r₀ ra₀) Ea) s' := by
-    refine (Program.WP.Spec.jcc_label asz₂ osz₂ c₁ l₁).le_wp _ ⟨fun h => ?_, fun h => ?_⟩
-    · rw [CondCode.interp_ofSub] at h
-      simp only [h, ↓reduceIte] at hw
-      exact hpost l₁ _ (hjmp₁ h) hw.2
-    · rw [CondCode.interp_ofSub] at h
-      simp only [h, Bool.false_eq_true, ↓reduceIte] at hw
-      obtain ⟨hjmp₂, hfall₂⟩ := hfall₁ h
-      refine h₃ ((Program.WP.Spec.jcc_label asz₃ osz₃ c₂ l₂).le_wp _ ⟨fun h' => ?_, fun h' => ?_⟩)
-      · rw [CondCode.interp_ofSub] at h'
-        simp only [h', ↓reduceIte] at hw
-        exact hpost l₂ _ (hjmp₂ h') hw.2
-      · rw [CondCode.interp_ofSub] at h'
-        simp only [h', Bool.false_eq_true, ↓reduceIte] at hw
-        refine wrp_transport (P := wrp (ofStateRepr abs) p (k ()) Q (AddrRel r₀ ra₀)) PartialOrder.rel_refl Qa Ea _ ?_
-        simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred]
-        exact ⟨hfall₂ h', hw⟩
-  have h₁ : wp (Directive.instr (.regular asz₁ .W64
-        (.cmp (.reg (.low ra .W64)) (.regOrMem (.reg (.low rb .W64))))))
-      (fun _ => wp (Directive.instr (.regular asz₂ osz₂ (.jcc c₁ l₁))
-          :: Directive.instr (.regular asz₃ osz₃ (.jcc c₂ l₂)) :: p)
-        ((ofStateRepr abs).post Q Qa) (EPostsConcretization.ePosts (ofStateRepr abs) (AddrRel r₀ ra₀) Ea))
-      (EPostsConcretization.ePosts (ofStateRepr abs) (AddrRel r₀ ra₀) Ea) s :=
-    (Program.WP.Spec.cmp_reg_reg asz₁ ra rb).le_wp s (Program.wp_cons hN₂ h₂)
-  exact Program.wp_cons (by rw [Program.labels_cons_instr]; exact hN₂) h₁
+  rw [ofStateRepr_abs_eq]
+  exact wrp_cmpJccJcc_rel asz₁ asz₂ asz₃ osz₂ osz₃ ra rb c₁ c₂ l₁ l₂ p k hN₂ hN₃
 
 /-- `test ra8, rb8; jcc cc, l` branches on the flags of the byte `ra8 &&& rb8`. -/
+@[ascend default + 1] theorem wrp_testJcc8_rel {M : DataMem → DataMem → Prop} {r₀ : BitVec 64} {ra₀ : Int64} (asz₁ asz₂ osz : Width) (ra rb : Reg64) (cc : CondCode)
+    (l : Label) (p : Program) (k : Unit → BlockM MachineData Unit)
+    (hN : Program.labels (Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p) = []) :
+    (fun s => ∀ af : Bool,
+      let v := (s.regs.get64 ra).take 8 &&& (s.regs.get64 rb).take 8
+      let s' := { s with status := StatusFlags.from_result v { cf := false, af := af, of := false } }
+      (cc.interp (StatusFlags.from_result v { cf := false, af := false, of := false }) = true →
+          (AddrRel r₀ ra₀) (label l) (label l) s')
+        ∧ (cc.interp (StatusFlags.from_result v { cf := false, af := false, of := false }) = false →
+          wrp (ofStateRel (JRel M)) p (k ()) Q (AddrRel r₀ ra₀) s'))
+      ⊑ wrp (ofStateRel (JRel M))
+          (Directive.instr (.regular asz₁ .W8
+              (.test (.reg (.low ra .W8)) (.regOrMem (.reg (.low rb .W8)))))
+            :: Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p)
+          (branch (stayIn (r₀)) (fun st => cc.interp (StatusFlags.from_result
+              ((st.regs.get64 ra).take 8 &&& (st.regs.get64 rb).take 8)
+              { cf := false, af := false, of := false })) (label l) >>= k) Q (AddrRel r₀ ra₀) := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro s hs
+  simp only [meet_apply, meet_prop_eq_and, ofStateRel_pred, WPMonadExact.wp_bind_eq,
+    wp_branch] at hs
+  obtain ⟨hpre, a, hJ, hw⟩ := hs
+  rw [JRel.regs hJ] at hw
+  have h₂ : ∀ af : Bool, wp (Directive.instr (.regular asz₂ osz (.jcc cc l)))
+      (fun _ => wp p ((ofStateRel (JRel M)).post Q Qa) (EPostsConcretization.ePosts (ofStateRel (JRel M)) (AddrRel r₀ ra₀) Ea))
+      (EPostsConcretization.ePosts (ofStateRel (JRel M)) (AddrRel r₀ ra₀) Ea)
+      { s with status := StatusFlags.from_result ((s.regs.get64 ra).take 8 &&& (s.regs.get64 rb).take 8) { cf := false, af := af, of := false } } := by
+    intro af
+    obtain ⟨hjmp, hfall⟩ := hpre af
+    refine (Program.WP.Spec.jcc_label asz₂ osz cc l).le_wp _ ⟨fun h => ?_, fun h => ?_⟩
+    · rw [CondCode.interp_from_result_af] at h
+      simp only [h, ↓reduceIte] at hw
+      show (ofStateRel (JRel M)).post (AddrRel r₀ ra₀) Ea.1 (label l) _
+      simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
+        meet_prop_eq_and, ofStateRel_pred]
+      exact ⟨label l, hjmp h, a, hJ, hw.2⟩
+    · rw [CondCode.interp_from_result_af] at h
+      simp only [h, Bool.false_eq_true, ↓reduceIte] at hw
+      refine wrp_transport (P := wrp (ofStateRel (JRel M)) p (k ()) Q (AddrRel r₀ ra₀)) PartialOrder.rel_refl Qa Ea _ ?_
+      simp only [meet_apply, meet_prop_eq_and, ofStateRel_pred]
+      exact ⟨hfall h, a, hJ, hw⟩
+  have h₁ : wp (Directive.instr (.regular asz₁ .W8
+        (.test (.reg (.low ra .W8)) (.regOrMem (.reg (.low rb .W8))))))
+      (fun _ => wp (Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p)
+        ((ofStateRel (JRel M)).post Q Qa) (EPostsConcretization.ePosts (ofStateRel (JRel M)) (AddrRel r₀ ra₀) Ea))
+      (EPostsConcretization.ePosts (ofStateRel (JRel M)) (AddrRel r₀ ra₀) Ea) s :=
+    (Spec.test_reg8_reg8 asz₁ ra rb).le_wp s fun af => Program.wp_cons hN (h₂ af)
+  exact Program.wp_cons (by rw [Program.labels_cons_instr]; exact hN) h₁
+
 @[ascend default + 1] theorem wrp_testJcc8 {r₀ : BitVec 64} {ra₀ : Int64} (asz₁ asz₂ osz : Width) (ra rb : Reg64) (cc : CondCode)
     (l : Label) (p : Program) (k : Unit → BlockM MachineData Unit)
     (hN : Program.labels (Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p) = []) :
@@ -955,36 +1154,8 @@ first jump when it is not taken. -/
           (branch (stayIn (r₀)) (fun st => cc.interp (StatusFlags.from_result
               ((st.regs.get64 ra).take 8 &&& (st.regs.get64 rb).take 8)
               { cf := false, af := false, of := false })) (label l) >>= k) Q (AddrRel r₀ ra₀) := by
-  refine wrp_intro fun Qa Ea => ?_
-  intro s hs
-  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, WPMonadExact.wp_bind_eq,
-    wp_branch, abs_regs] at hs
-  obtain ⟨hpre, hw⟩ := hs
-  have h₂ : ∀ af : Bool, wp (Directive.instr (.regular asz₂ osz (.jcc cc l)))
-      (fun _ => wp p ((ofStateRepr abs).post Q Qa) (EPostsConcretization.ePosts (ofStateRepr abs) (AddrRel r₀ ra₀) Ea))
-      (EPostsConcretization.ePosts (ofStateRepr abs) (AddrRel r₀ ra₀) Ea)
-      { s with status := StatusFlags.from_result ((s.regs.get64 ra).take 8 &&& (s.regs.get64 rb).take 8) { cf := false, af := af, of := false } } := by
-    intro af
-    obtain ⟨hjmp, hfall⟩ := hpre af
-    refine (Program.WP.Spec.jcc_label asz₂ osz cc l).le_wp _ ⟨fun h => ?_, fun h => ?_⟩
-    · rw [CondCode.interp_from_result_af] at h
-      simp only [h, ↓reduceIte] at hw
-      show (ofStateRepr abs).post (AddrRel r₀ ra₀) Ea.1 (label l) _
-      simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
-        meet_prop_eq_and, ofStateRepr_pred]
-      exact ⟨label l, hjmp h, hw.2⟩
-    · rw [CondCode.interp_from_result_af] at h
-      simp only [h, Bool.false_eq_true, ↓reduceIte] at hw
-      refine wrp_transport (P := wrp (ofStateRepr abs) p (k ()) Q (AddrRel r₀ ra₀)) PartialOrder.rel_refl Qa Ea _ ?_
-      simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred]
-      exact ⟨hfall h, hw⟩
-  have h₁ : wp (Directive.instr (.regular asz₁ .W8
-        (.test (.reg (.low ra .W8)) (.regOrMem (.reg (.low rb .W8))))))
-      (fun _ => wp (Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p)
-        ((ofStateRepr abs).post Q Qa) (EPostsConcretization.ePosts (ofStateRepr abs) (AddrRel r₀ ra₀) Ea))
-      (EPostsConcretization.ePosts (ofStateRepr abs) (AddrRel r₀ ra₀) Ea) s :=
-    (Spec.test_reg8_reg8 asz₁ ra rb).le_wp s fun af => Program.wp_cons hN (h₂ af)
-  exact Program.wp_cons (by rw [Program.labels_cons_instr]; exact hN) h₁
+  rw [ofStateRepr_abs_eq]
+  exact wrp_testJcc8_rel asz₁ asz₂ osz ra rb cc l p k hN
 
 end
 end Ascent.Kraken.AInstr
