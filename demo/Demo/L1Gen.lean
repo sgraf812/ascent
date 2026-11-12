@@ -318,3 +318,124 @@ variable [Host] [FunDecls] {M : DataMem → DataMem → Prop} [MemRel M]
 end
 
 end Ascent.Kraken.AInstr
+
+/-! ## Address computations, 32-bit immediates, and comparisons that a later branch reads
+
+`lea` writes an address without accessing memory. `mov r32, imm` zero-extends. A comparison that
+a later `jcc` reads binds its two operands with `peek`; the branch reads the condition of the
+flags as the comparison of the bound values (`abs_interp_ofSub`), so instructions that keep the
+flags may run between the two. -/
+
+namespace Ascent.Kraken.AInstr
+
+section
+variable [Host] [FunDecls] {Q : Unit → MachineData → Prop} {E : Int64 → MachineData → Prop}
+
+theorem Spec.lea_reg_sib (rd b i : Reg64) (d : Int64) :
+    ⦃ fun s => Q () { s with regs := s.regs.set64 rd (s.regs.get64 b + s.regs.get64 i * 8 + BitVec.ofInt 64 d.toInt) } ⦄
+      (Directive.instr (.regular .W64 .W64 (.lea (.low rd .W64) ⟨some (.reg b), some ⟨i, .W64⟩, .int64 d⟩)))
+    ⦃ Q; E ⦄ := by
+  refine Triple.intro fun s hpre => ?_
+  refine Program.wp_single fun _ _ _ _ hn _ => ?_
+  simp only [Directive.interp, Instr.interp, Operation.interp, MachineData.setReg, Reg64s.set_low_W64,
+    AddrExpr.zeroExtend_interp_sib, Effects.All]
+  exact hn _ hpre
+
+theorem Spec.lea_reg_base_disp (rd b : Reg64) (d : Int64) :
+    ⦃ fun s => Q () { s with regs := s.regs.set64 rd (s.regs.get64 b + BitVec.ofInt 64 d.toInt) } ⦄
+      (Directive.instr (.regular .W64 .W64 (.lea (.low rd .W64) ⟨some (.reg b), none, .int64 d⟩)))
+    ⦃ Q; E ⦄ := by
+  refine Triple.intro fun s hpre => ?_
+  refine Program.wp_single fun _ _ _ _ hn _ => ?_
+  simp only [Directive.interp, Instr.interp, Operation.interp, MachineData.setReg, Reg64s.set_low_W64,
+    AddrExpr.zeroExtend_interp_base_disp, Effects.All]
+  exact hn _ hpre
+
+theorem Spec.mov_reg32_imm (asz : Width) (r : Reg64) (i : Int64) :
+    ⦃ fun s => Q () { s with regs := s.regs.set64 r ((i.toBitVec.setWidth 32).zeroExtend 64) } ⦄
+      (Directive.instr (.regular asz .W32 (.mov (.reg (.low r .W32)) (.imm (.int64 i)))))
+    ⦃ Q; E ⦄ :=
+  Triple.intro fun _ hq => Program.wp_single fun _ _ _ _ hn _ => by
+    simp only [Directive.interp, Instr.interp, Operation.interp, Operand.interp,
+      RegOrMem.interp, ConstExpr.interp, MachineData.set, MachineData.setReg,
+      Reg64s.set_low_W32, Effects.All]
+    exact hn _ hq
+
+end
+
+section
+variable [Host] [FunDecls] {Q : Unit → Unit → MachineData → Prop}
+  {E : Int64 → Int64 → MachineData → Prop}
+
+@[ascend] theorem wrp_leaSib (rd b i : Reg64) (d : Int64) :
+    (fun s => True → Q () () { s with regs := s.regs.set64 rd (s.regs.get64 b + s.regs.get64 i * 8 + BitVec.ofInt 64 d.toInt) })
+      ⊑ wrp (ofStateRepr abs)
+          (Directive.instr (.regular .W64 .W64 (.lea (.low rd .W64) ⟨some (.reg b), some ⟨i, .W64⟩, .int64 d⟩)))
+          (modifyIf (fun _ => True) (setReg64 rd (sib 8 b i d))) Q E := by
+  refine wrp_modifyIf (pre := fun _ => True) (g := fun _ => True)
+    (fun Q E s _ hq => (Spec.lea_reg_sib (Q := Q) (E := E) rd b i d).le_wp s hq) ?_
+  intro s _
+  exact ⟨trivial, rfl⟩
+
+@[ascend] theorem wrp_leaBaseDisp (rd b : Reg64) (d : Int64) :
+    (fun s => True → Q () () { s with regs := s.regs.set64 rd (s.regs.get64 b + BitVec.ofInt 64 d.toInt) })
+      ⊑ wrp (ofStateRepr abs)
+          (Directive.instr (.regular .W64 .W64 (.lea (.low rd .W64) ⟨some (.reg b), none, .int64 d⟩)))
+          (modifyIf (fun _ => True) (setReg64 rd fun st => st.regs.get64 b + BitVec.ofInt 64 d.toInt)) Q E := by
+  refine wrp_modifyIf (pre := fun _ => True) (g := fun _ => True)
+    (fun Q E s _ hq => (Spec.lea_reg_base_disp (Q := Q) (E := E) rd b d).le_wp s hq) ?_
+  intro s _
+  exact ⟨trivial, rfl⟩
+
+@[ascend] theorem wrp_movReg32Imm (asz : Width) (r : Reg64) (i : Int64) :
+    (fun s => True → Q () () { s with regs := s.regs.set64 r ((i.toBitVec.setWidth 32).zeroExtend 64) })
+      ⊑ wrp (ofStateRepr abs)
+          (Directive.instr (.regular asz .W32 (.mov (.reg (.low r .W32)) (.imm (.int64 i)))))
+          (modifyIf (fun _ => True) (setReg64 r fun _ => (i.toBitVec.setWidth 32).zeroExtend 64)) Q E := by
+  refine wrp_modifyIf (pre := fun _ => True) (g := fun _ => True)
+    (fun Q E s _ hq => (Spec.mov_reg32_imm (Q := Q) (E := E) asz r i).le_wp s hq) ?_
+  intro s _
+  exact ⟨trivial, rfl⟩
+
+@[ascend] theorem wrp_cmpRegReg (asz : Width) (ra rb : Reg64)
+    {Qp : Unit → BitVec 64 × BitVec 64 → MachineData → Prop} :
+    (fun s => ∀ p, PureRefinement (s.regs.get64 ra, s.regs.get64 rb) p True Eq →
+      Qp () p { s with status := StatusFlags.ofSub (s.regs.get64 ra) (s.regs.get64 rb) })
+      ⊑ wrp (ofStateRepr abs)
+          (Directive.instr (.regular asz .W64 (.cmp (.reg (.low ra .W64)) (.regOrMem (.reg (.low rb .W64))))))
+          (peek fun (st : MachineData) => (st.regs.get64 ra, st.regs.get64 rb)) Qp E := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro s hs
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_peek, abs_regs] at hs
+  obtain ⟨hk, hw⟩ := hs
+  refine (Program.WP.Spec.cmp_reg_reg asz ra rb).le_wp s ?_
+  show (ofStateRepr abs).post Qp Qa () _
+  rw [Concretization.post_pi]
+  exact ⟨_, hk _ (PureRefinement.of_rel rfl), hw⟩
+
+@[ascend] theorem wrp_cmpRegImm (asz : Width) (r : Reg64) (i : Int64)
+    {Qp : Unit → BitVec 64 × BitVec 64 → MachineData → Prop} :
+    (fun s => ∀ p, PureRefinement (s.regs.get64 r, BitVec.setWidth 64 i.toBitVec) p True Eq →
+      Qp () p { s with status := StatusFlags.ofSub (s.regs.get64 r) (BitVec.setWidth 64 i.toBitVec) })
+      ⊑ wrp (ofStateRepr abs)
+          (Directive.instr (.regular asz .W64 (.cmp (.reg (.low r .W64)) (.imm (.int64 i)))))
+          (peek fun (st : MachineData) => (st.regs.get64 r, BitVec.setWidth 64 i.toBitVec)) Qp E := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro s hs
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_peek, abs_regs] at hs
+  obtain ⟨hk, hw⟩ := hs
+  refine (Program.WP.Spec.cmp_reg_imm asz r i).le_wp s ?_
+  show (ofStateRepr abs).post Qp Qa () _
+  rw [Concretization.post_pi]
+  exact ⟨_, hk _ (PureRefinement.of_rel rfl), hw⟩
+
+end
+
+@[ascend_pure] theorem abs_interp_ofSub {cc : CondCode} {a b : BitVec 64} {p : BitVec 64 × BitVec 64}
+    {P : Prop} (h : PureRefinement (a, b) p P Eq) :
+    PureRefinement (cc.interp (StatusFlags.ofSub a b)) (cc.cmp p.1 p.2) P Eq :=
+  fun hp => by rw [CondCode.interp_ofSub, ← h hp]
+
+derive_rel_rules wrp_leaSib wrp_leaBaseDisp wrp_movReg32Imm wrp_cmpRegReg wrp_cmpRegImm
+
+end Ascent.Kraken.AInstr
