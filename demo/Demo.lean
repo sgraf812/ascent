@@ -1,6 +1,7 @@
 import Demo.Kraken
 import Demo.Cfg
 import Demo.L1
+import Demo.L1Rel
 import Demo.Zip
 import Demo.CfgRewrite
 import Demo.ZipStruct
