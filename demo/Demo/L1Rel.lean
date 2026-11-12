@@ -1,4 +1,5 @@
 import Demo.L1Gen
+import Demo.WithRa
 
 /-!
 # Calls
@@ -45,66 +46,14 @@ theorem Mem.Sub.erase_left {m m' : DataMem} (h : Mem.Sub m m') (r : BitVec 64) :
 theorem jsub_eraseSlot {t b : MachineData} (h : JRel Mem.Sub t b) (r : BitVec 64) : JRel Mem.Sub t (eraseSlot r b) :=
   ⟨h.1, h.2.1, h.2.2.1, h.2.2.2.erase_left r⟩
 
-/-- The outcome of a call for the return address `ra`, as the caller sees it. -/
-noncomputable def callOutcome (k : BitVec 64 → Int64 → BlockM MachineData Unit) (s : MachineData)
-    (ra : Int64) : UB (Except Int64 Unit × MachineData) :=
-  ((k (s.regs.get64 .rsp - 8#64) ra).run.run (s.push64 ra)).bind fun
-    | (.ok (), _) => none
-    | (.error a, t) => some (if a = ra then .ok () else .error a, eraseSlot (s.regs.get64 .rsp) t)
+/-- The guard of a call: the return slot below the stack pointer is mapped. -/
+def slotOk (s : MachineData) : Prop := (Mem.loadInt s.dmem (s.regs.get64 .rsp - 8#64) 8).isSome = true
 
-open Classical in
-noncomputable def withRaRun (k : BitVec 64 → Int64 → BlockM MachineData Unit) (s : MachineData) :
-    UB (Except Int64 Unit × MachineData) :=
-  if (Mem.loadInt s.dmem (s.regs.get64 .rsp - 8#64) 8).isSome then
-    if h : ∃ o, ∀ ra, callOutcome k s ra = o then Classical.choose h else UB.fail
-  else UB.fail
-
-/-- The call of the abstract function `k`: undefined behaviour unless the return slot is mapped and
-every return address gives the same outcome. -/
+/-- The call of the abstract function `k` at the first layer: `k` runs with the frame `rsp - 8`
+from the state with the return address pushed, and the return erases the return slot. -/
 noncomputable def withRa (k : BitVec 64 → Int64 → BlockM MachineData Unit) : BlockM MachineData Unit :=
-  ExceptT.mk fun s => withRaRun k s
-
-theorem withRa_run (k : BitVec 64 → Int64 → BlockM MachineData Unit) (s : MachineData) :
-    (withRa k).run.run s = withRaRun k s := rfl
-
-theorem withRa_some {k : BitVec 64 → Int64 → BlockM MachineData Unit} {s : MachineData}
-    {r : Except Int64 Unit × MachineData} (h : withRaRun k s = some r) :
-    (Mem.loadInt s.dmem (s.regs.get64 .rsp - 8#64) 8).isSome = true ∧ ∀ ra, callOutcome k s ra = some r := by
-  unfold withRaRun at h
-  by_cases hm : (Mem.loadInt s.dmem (s.regs.get64 .rsp - 8#64) 8).isSome = true
-  · rw [if_pos hm] at h
-    by_cases hex : ∃ o, ∀ ra, callOutcome k s ra = o
-    · rw [dif_pos hex] at h
-      refine ⟨hm, fun ra => ?_⟩
-      rw [Classical.choose_spec hex ra, h]
-    · rw [dif_neg hex] at h
-      exact nomatch (h : (none : Option _) = some r)
-  · rw [if_neg hm] at h
-    exact nomatch (h : (none : Option _) = some r)
-
-theorem withRa_eq_of {k : BitVec 64 → Int64 → BlockM MachineData Unit} {s : MachineData}
-    {o : UB (Except Int64 Unit × MachineData)}
-    (hm : (Mem.loadInt s.dmem (s.regs.get64 .rsp - 8#64) 8).isSome = true)
-    (h : ∀ ra, callOutcome k s ra = o) : withRaRun k s = o := by
-  have hex : ∃ o, ∀ ra, callOutcome k s ra = o := ⟨o, h⟩
-  unfold withRaRun
-  rw [if_pos hm, dif_pos hex, ← Classical.choose_spec hex 0, h]
-
-theorem callOutcome_of_run {k : BitVec 64 → Int64 → BlockM MachineData Unit} {s : MachineData} {ra : Int64}
-    {r : Except Int64 Unit × MachineData} (h : callOutcome k s ra = some r) :
-    ∃ a b, (k (s.regs.get64 .rsp - 8#64) ra).run.run (s.push64 ra) = some (.error a, b) ∧
-      r = (if a = ra then .ok () else .error a, eraseSlot (s.regs.get64 .rsp) b) := by
-  unfold callOutcome at h
-  cases hr : (k (s.regs.get64 .rsp - 8#64) ra).run.run (s.push64 ra) with
-  | none => rw [hr] at h; exact nomatch h
-  | some p =>
-    rw [hr] at h
-    obtain ⟨e, b⟩ := p
-    cases e with
-    | ok u => exact nomatch h
-    | error a =>
-      simp only [Option.bind_some] at h
-      exact ⟨a, b, rfl, (Option.some.inj h).symm⟩
+  withRaOn slotOk (fun s ra => s.push64 ra) (fun s t => eraseSlot (s.regs.get64 .rsp) t)
+    (fun s => k (s.regs.get64 .rsp - 8#64))
 
 section
 variable [Host] [FunDecls]
@@ -124,12 +73,13 @@ every return address `ra`. -/
   intro s hs
   simp only [meet_apply, meet_prop_eq_and, ofStateRel_pred] at hs
   obtain ⟨⟨hQ, hE⟩, a, hJ, hw⟩ := hs
-  rw [wp_BlockM_eq, withRa_run] at hw
-  cases hr : withRaRun k a with
+  rw [wp_BlockM_eq, withRa, withRaOn_run] at hw
+  cases hr : withRaOnRun slotOk (fun s ra => s.push64 ra) (fun s t => eraseSlot (s.regs.get64 .rsp) t)
+      (fun s => k (s.regs.get64 .rsp - 8#64)) a with
   | none => rw [hr] at hw; exact hw.elim
   | some r =>
   rw [hr] at hw
-  obtain ⟨hm, hall⟩ := withRa_some hr
+  obtain ⟨hm, hall⟩ := withRaOn_some hr
   have hrsp : a.regs.get64 .rsp = s.regs.get64 .rsp := by rw [JRel.regs hJ]
   refine (Program.WP.wp_call_iff hg).mpr fun [h : Embeds _] => ?_
   let ra := h.embedding.endAddr
@@ -137,7 +87,7 @@ every return address `ra`. -/
   · have := hJ.2.2.2.loadInt_isSome hm
     rwa [hrsp, abs_dmem] at this
   rw [FunDecls.body_eq hg]
-  obtain ⟨a', b, hrun, hro⟩ := callOutcome_of_run (hall ra)
+  obtain ⟨a', b, hrun, hro⟩ := callOutcomeOn_of_run (hall ra)
   let Qa' : Unit → MachineData → Prop := fun _ _ => False
   let Ea' : (Int64 → MachineData → Prop) × EStack⟨⟩ :=
     (fun l b' => (k (a.regs.get64 .rsp - 8#64) ra).run.run (a.push64 ra) = some (.error l, b'), estack⟨⟩)
@@ -175,50 +125,12 @@ every return address `ra`. -/
 
 end
 
-/-! ## `withRa` never throws
-
-If the common outcome of `withRa k` were an exit to `a`, the return address `ra = a` would turn
-that exit into a return. So `withRa k` returns or is undefined behaviour. -/
-
-theorem withRaRun_ne_error {k : BitVec 64 → Int64 → BlockM MachineData Unit} {s t : MachineData}
-    {a : Int64} : withRaRun k s ≠ some (.error a, t) := fun h => by
-  obtain ⟨-, hall⟩ := withRa_some h
-  obtain ⟨a', b, -, hr⟩ := callOutcome_of_run (hall a)
-  by_cases ha : a' = a
-  · rw [if_pos ha] at hr
-    exact nomatch (Prod.mk.inj hr).1
-  · rw [if_neg ha] at hr
-    injection (Prod.mk.inj hr).1 with h'
-    exact ha h'.symm
-
-theorem wp_withRa {k : BitVec 64 → Int64 → BlockM MachineData Unit} (Q : Unit → MachineData → Prop)
-    (E E' : (Int64 → MachineData → Prop) × EStack⟨⟩) (s : MachineData) :
-    wp (withRa k) Q E s = wp (withRa k) Q E' s := by
-  rw [wp_BlockM_eq, wp_BlockM_eq, withRa_run]
-  cases h : withRaRun k s with
-  | none => rfl
-  | some r =>
-    obtain ⟨e, t⟩ := r
-    cases e with
-    | ok u => rfl
-    | error a => exact absurd h withRaRun_ne_error
-
 theorem ThrowsOnly.withRa {P : Int64 → MachineData → Prop} (k : BitVec 64 → Int64 → BlockM MachineData Unit) :
-    Ascent.ThrowsOnly P (withRa k) = True := eq_true fun Q E s hw => by
-  rw [wp_withRa Q _ E s]
-  exact hw
+    Ascent.ThrowsOnly P (withRa k) = True := ThrowsOnly.withRaOn
 
 theorem tryCatch_withRa_bind {β : Type} (k : BitVec 64 → Int64 → BlockM MachineData Unit)
     (f : Unit → BlockM MachineData β) (h : Int64 → BlockM MachineData β) :
-    tryCatch (withRa k >>= f) h = withRa k >>= fun u => tryCatch (f u) h := by
-  have hmono : ∀ (Q : β → MachineData → Prop) (E : (Int64 → MachineData → Prop) × EStack⟨⟩) u t,
-      wp (f u) Q (fun l => wp (h l) Q E, E.2) t ↔ wp (tryCatch (f u) h) Q E t :=
-    fun Q E u t => by rw [BlockLoop.wp_tryCatch]
-  apply BlockLoop.ext_wp <;> intro Q E s hw <;>
-    simp only [BlockLoop.wp_tryCatch, WPMonadExact.wp_bind_eq] at hw ⊢
-  · rw [wp_withRa _ _ E s] at hw
-    exact WP.wp_monotone_post (x := withRa k) (fun u t h' => (hmono Q E u t).mp h') s hw
-  · rw [wp_withRa _ _ (fun l => wp (h l) Q E, E.2) s]
-    rw [wp_withRa _ _ (fun l => wp (h l) Q E, E.2) s] at hw
-    exact WP.wp_monotone_post (x := withRa k) (fun u t h' => (hmono Q E u t).mpr h') s hw
+    tryCatch (withRa k >>= f) h = withRa k >>= fun u => tryCatch (f u) h :=
+  tryCatch_withRaOn_bind f h
+
 end Ascent.Kraken
