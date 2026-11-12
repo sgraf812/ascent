@@ -39,3 +39,4 @@ import Demo.Tests.StackFrameL
 import Demo.Tests.StackFrameF
 import Demo.Tests.Call
 import Demo.Reverse
+import Demo.ReverseStruct

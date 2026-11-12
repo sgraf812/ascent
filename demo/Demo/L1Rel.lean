@@ -175,4 +175,50 @@ every return address `ra`. -/
 
 end
 
+/-! ## `withRa` never throws
+
+If the common outcome of `withRa k` were an exit to `a`, the return address `ra = a` would turn
+that exit into a return. So `withRa k` returns or is undefined behaviour. -/
+
+theorem withRaRun_ne_error {k : BitVec 64 → Int64 → BlockM MachineData Unit} {s t : MachineData}
+    {a : Int64} : withRaRun k s ≠ some (.error a, t) := fun h => by
+  obtain ⟨-, hall⟩ := withRa_some h
+  obtain ⟨a', b, -, hr⟩ := callOutcome_of_run (hall a)
+  by_cases ha : a' = a
+  · rw [if_pos ha] at hr
+    exact nomatch (Prod.mk.inj hr).1
+  · rw [if_neg ha] at hr
+    injection (Prod.mk.inj hr).1 with h'
+    exact ha h'.symm
+
+theorem wp_withRa {k : BitVec 64 → Int64 → BlockM MachineData Unit} (Q : Unit → MachineData → Prop)
+    (E E' : (Int64 → MachineData → Prop) × EStack⟨⟩) (s : MachineData) :
+    wp (withRa k) Q E s = wp (withRa k) Q E' s := by
+  rw [wp_BlockM_eq, wp_BlockM_eq, withRa_run]
+  cases h : withRaRun k s with
+  | none => rfl
+  | some r =>
+    obtain ⟨e, t⟩ := r
+    cases e with
+    | ok u => rfl
+    | error a => exact absurd h withRaRun_ne_error
+
+theorem ThrowsOnly.withRa {P : Int64 → MachineData → Prop} (k : BitVec 64 → Int64 → BlockM MachineData Unit) :
+    Ascent.ThrowsOnly P (withRa k) = True := eq_true fun Q E s hw => by
+  rw [wp_withRa Q _ E s]
+  exact hw
+
+theorem tryCatch_withRa_bind {β : Type} (k : BitVec 64 → Int64 → BlockM MachineData Unit)
+    (f : Unit → BlockM MachineData β) (h : Int64 → BlockM MachineData β) :
+    tryCatch (withRa k >>= f) h = withRa k >>= fun u => tryCatch (f u) h := by
+  have hmono : ∀ (Q : β → MachineData → Prop) (E : (Int64 → MachineData → Prop) × EStack⟨⟩) u t,
+      wp (f u) Q (fun l => wp (h l) Q E, E.2) t ↔ wp (tryCatch (f u) h) Q E t :=
+    fun Q E u t => by rw [BlockLoop.wp_tryCatch]
+  apply BlockLoop.ext_wp <;> intro Q E s hw <;>
+    simp only [BlockLoop.wp_tryCatch, WPMonadExact.wp_bind_eq] at hw ⊢
+  · rw [wp_withRa _ _ E s] at hw
+    exact WP.wp_monotone_post (x := withRa k) (fun u t h' => (hmono Q E u t).mp h') s hw
+  · rw [wp_withRa _ _ (fun l => wp (h l) Q E, E.2) s]
+    rw [wp_withRa _ _ (fun l => wp (h l) Q E, E.2) s] at hw
+    exact WP.wp_monotone_post (x := withRa k) (fun u t h' => (hmono Q E u t).mpr h') s hw
 end Ascent.Kraken
