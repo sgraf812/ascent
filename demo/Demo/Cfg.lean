@@ -454,6 +454,209 @@ noncomputable instance {Aσ : Type} :
 
 /-! ## The control-flow rule -/
 
+theorem Nat.exists_least {P : Nat → Prop} (h : ∃ n, P n) : ∃ m, P m ∧ ∀ k, P k → m ≤ k := by
+  obtain ⟨n, hn⟩ := h
+  induction n using Nat.strongRecOn with
+  | _ n ih =>
+    by_cases hmin : ∀ k, P k → n ≤ k
+    · exact ⟨n, hn, hmin⟩
+    · simp only [Classical.not_forall, Classical.not_imp, Nat.not_le] at hmin
+      obtain ⟨k, hk, hlt⟩ := hmin
+      exact ih k hlt hk
+
+theorem ofStateRepr_eq_ofStateRel {Cσ Aσ : Type} (f : Cσ → Aσ) :
+    Concretization.ofStateRepr f = Concretization.ofStateRel fun t a => a = f t := by
+  have h : (Concretization.ofStateRepr f).pred = (Concretization.ofStateRel fun t a => a = f t).pred := by
+    funext P t
+    simp only [Concretization.ofStateRepr_pred, Concretization.ofStateRel_pred]
+    exact propext ⟨fun h => ⟨f t, rfl, h⟩, fun ⟨_, ha, h⟩ => ha ▸ h⟩
+  cases h' : Concretization.ofStateRepr f
+  cases h'' : Concretization.ofStateRel fun t a => a = f t
+  simp only [h', h''] at h
+  subst h
+  rfl
+
+section
+variable [Host] [FunDecls] (J : MachineData → MachineData → Prop)
+  (hJ : ∀ t a, J t a → a.regs = t.regs)
+include hJ
+
+open Classical in
+theorem wrp_cfg_le_rel {p : Program} [Embeds p] (hs : Program.Separated p = true)
+    {cell : Option Label → BlockM MachineData Unit} {s₀ : MachineData} {ra : Int64}
+    (h : ∀ blk ∈ Program.blocks p, ∀ t,
+      ⦃(· = t)⦄ blk.body ⪯[Concretization.ofStateRel J] (cell blk.label)
+        ⦃fun _ _ _ => True; AddrRel (s₀.regs.get64 .rsp) ra⦄) :
+    (fun t => t = s₀) ⊑ wrp (Concretization.ofStateRel J) p
+      (Program.loop p (s₀.regs.get64 .rsp) cell) (fun _ _ => ⊤) (AddrRel (s₀.regs.get64 .rsp) ra) := by
+  have hstay : ∀ t a, J t a → (stayIn (s₀.regs.get64 .rsp) a = true ↔ t.StackAtOrBelow s₀) := by
+    intro t a hta
+    rw [stayIn_iff]
+    simp only [MachineData.StackAtOrBelow, MachineData.StackBelow, hJ t a hta]
+  refine wrp_intro fun Qa Ea => ?_
+  intro t ht
+  simp only [meet_apply, meet_prop_eq_and, Concretization.ofStateRel_pred] at ht
+  obtain ⟨rfl, a₀, hJ₀, hpre⟩ := ht
+  let r₀ := t.regs.get64 .rsp
+  let st := stayIn r₀
+  let T := Program.table p r₀ cell
+  let H : (Int64 → MachineData → Prop) × EStack⟨⟩ := (fun a => wp (cfgLoop st T a) Qa Ea, Ea.2)
+  let Inv : Label → MachineData → MachineData → Prop := fun l u a =>
+    J u a ∧ st a = true ∧ wp (cfgLoop st T (label l)) Qa Ea a
+  let I : Program.CfgInvariant := fun {_} l u => ∃ a, Inv l u a
+  let Q : Unit → MachineData → Prop := fun _ u =>
+    (Concretization.ofStateRel J).post (fun _ _ => ⊤) Qa () u
+  let var : Program.CfgVariant := fun l u =>
+    if h : ∃ k, ∃ a, Inv l u a ∧ steps st T (label l) a = k then
+      Classical.choose (Nat.exists_least h) else 0
+  have hvar_le : ∀ l u a, Inv l u a → var l u ≤ steps st T (label l) a := fun l u a hI => by
+    have h : ∃ k, ∃ a, Inv l u a ∧ steps st T (label l) a = k := ⟨_, a, hI, rfl⟩
+    simp only [var, h, ↓reduceDIte]
+    exact (Classical.choose_spec (Nat.exists_least h)).2 _ ⟨a, hI, rfl⟩
+  have hvar_mem : ∀ l u a, Inv l u a → ∃ a', Inv l u a' ∧ steps st T (label l) a' = var l u :=
+    fun l u a hI => by
+      have h : ∃ k, ∃ a, Inv l u a ∧ steps st T (label l) a = k := ⟨_, a, hI, rfl⟩
+      simp only [var, h, ↓reduceDIte]
+      exact (Classical.choose_spec (Nat.exists_least h)).1
+  have hentry : (Program.blocks p).head? = some ⟨none, 0, Program.straight (Program.view p).1,
+      Program.entryNext p⟩ := by
+    unfold Program.blocks Program.entryNext
+    cases (Program.view p).2 <;> rfl
+  refine Program.WP.cfg (p := p) (Q := Q)
+    (E := EPostsConcretization.ePosts (Concretization.ofStateRel J) (AddrRel (t.regs.get64 .rsp) ra) Ea)
+    (s₀ := t) @I var ?_
+  intro blk hmem u hI
+  have hrun : ∃ a, J u a ∧ wp (cell blk.label >>= fun _ => jumpTo st blk.next) Qa H a
+      ∧ ∀ l, blk.label = some l → st a = true ∧
+        T.get? (label l) = some (cell blk.label >>= fun _ => jumpTo st blk.next) ∧
+        (∃ r, cfgFix st T (label l) a = some r) ∧ steps st T (label l) a = var l u := by
+    cases hl : blk.label with
+    | none =>
+      rw [hl] at hI
+      change u = t at hI
+      subst hI
+      have hblk : blk = ⟨none, 0, Program.straight (Program.view p).1, Program.entryNext p⟩ := by
+        refine Program.block_unique Program.labels_nodup_of_embeds hmem ?_ hl
+        exact List.mem_of_mem_head? hentry
+      rw [hblk]
+      refine ⟨a₀, hJ₀, ?_, fun _ h => nomatch h⟩
+      simpa only [Program.loop, BlockLoop.wp_tryCatch] using hpre
+    | some l =>
+      rw [hl] at hI
+      obtain ⟨a₁, ha₁⟩ := hI
+      obtain ⟨a, ⟨hJa, hst, hw⟩, hk⟩ := hvar_mem l u a₁ ha₁
+      have hTb := Program.table_get?_label (r₀ := r₀) (cell := cell) hs hmem hl
+      have hfix : ∃ r, cfgFix st T (label l) a = some r := by
+        rw [wp_BlockM_eq, cfgLoop_run] at hw
+        revert hw
+        cases cfgFix st T (label l) a <;> intro hw
+        · exact hw.elim
+        · exact ⟨_, rfl⟩
+      rw [wp_cfgLoop_some st T Qa Ea hTb hst] at hw
+      rw [hl] at hTb hw
+      refine ⟨a, hJa, hw, fun l' hl' => ?_⟩
+      cases hl'
+      exact ⟨hst, hTb, hfix, hk⟩
+  obtain ⟨a, hJa, hw, hblk⟩ := hrun
+  let c := cell blk.label
+  have hdec : ∀ a' v, (c >>= fun _ => jumpTo st blk.next).run.run a = some (.error a', v) →
+      ∀ l, blk.label = some l → steps st T a' v < var l u := by
+    intro a' v hr l hl
+    obtain ⟨hst, hTb, ⟨r, hfix⟩, hk⟩ := hblk l hl
+    rw [← hk]
+    exact steps_lt st T hTb hst hr hfix
+  rw [WPMonadExact.wp_bind_eq, wp_BlockM_eq] at hw
+  let Qa' : Unit → MachineData → Prop := fun _ st' =>
+    wp (jumpTo st blk.next : BlockM MachineData Unit) Qa H st' ∧ c.run.run a = some (.ok (), st')
+  let Ea' : (Int64 → MachineData → Prop) × EStack⟨⟩ :=
+    (fun a' st' => wp (cfgLoop st T a') Qa Ea st' ∧ c.run.run a = some (.error a', st'), Ea.2)
+  have hpre' : wp c Qa' Ea' a := by
+    rw [wp_BlockM_eq]
+    revert hw
+    rcases hc : c.run.run a with _ | ⟨a' | _, st'⟩ <;> intro hw
+    · exact hw.elim
+    · exact ⟨hw, hc⟩
+    · exact ⟨hw, hc⟩
+  have hb := wrp_transport (h blk hmem u).le_wrp Qa' Ea'
+  have hmeet : ((fun t' => t' = u) ⊓ (Concretization.ofStateRel J).pred (wp c Qa' Ea')) u := by
+    simp only [meet_apply, meet_prop_eq_and, Concretization.ofStateRel_pred]
+    exact ⟨trivial, a, hJa, hpre'⟩
+  have hwp := hb u hmeet
+  have hjump : ∀ v b a', J v b → wp (cfgLoop st T a') Qa Ea b →
+      (∀ l, blk.label = some l → steps st T a' b < var l u) →
+      Program.Intercept (Program.labels p) t
+        (fun l j s' => I (s₀ := t) l s' ∧ Program.Decreases var blk.label blk.idx u l j s')
+        (EPostsConcretization.ePosts (Concretization.ofStateRel J) (AddrRel (t.regs.get64 .rsp) ra) Ea) a' v := by
+    intro v b a' hJv hE hd
+    cases hsv : st b with
+    | false =>
+      rw [wp_cfgLoop_leave st T Qa Ea hsv] at hE
+      refine Program.Intercept.intro (Or.inr ⟨?_, fun _ _ _ => ?_⟩)
+      · show (Concretization.ofStateRel J).post (AddrRel (t.regs.get64 .rsp) ra) Ea.1 a' v
+        simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
+          meet_prop_eq_and, Concretization.ofStateRel_pred, AddrRel]
+        exact ⟨a', rfl, b, hJv, hE⟩
+      · have h1 : ¬ v.StackAtOrBelow t := fun h2 => by
+          have := (hstay v b hJv).mpr h2
+          simp only [st, r₀] at hsv
+          rw [hsv] at this
+          exact nomatch this
+        simpa only [MachineData.StackAtOrBelow, Classical.not_not] using h1
+    | true =>
+    cases hT : T.get? a' with
+    | none =>
+      rw [wp_cfgLoop_none st T Qa Ea hT] at hE
+      refine Program.Intercept.intro (Or.inr ⟨?_, fun l hl ha => ?_⟩)
+      · show (Concretization.ofStateRel J).post (AddrRel (t.regs.get64 .rsp) ra) Ea.1 a' v
+        simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
+          meet_prop_eq_and, Concretization.ofStateRel_pred, AddrRel]
+        exact ⟨a', rfl, b, hJv, hE⟩
+      · exact absurd ha (Program.table_get?_none hT hl)
+    | some bb =>
+      obtain ⟨blk', hblk', l, hl, ha, -⟩ := Program.table_get?_some hT
+      subst ha
+      refine Program.Intercept.intro (Or.inl ⟨(hstay v b hJv).mp hsv, l, rfl,
+        Program.label_mem_labels hblk' hl, ⟨⟨b, hJv, hsv, hE⟩, ?_⟩⟩)
+      cases hbl : blk.label with
+      | none => trivial
+      | some l₀ => exact Or.inl (Nat.lt_of_le_of_lt (hvar_le l v b ⟨hJv, hsv, hE⟩) (hd l₀ hbl))
+  refine Program.wp_mono (fun u' hu => ?_) (fun u' hu => ?_) hwp
+  · change (Concretization.ofStateRel J).post (fun _ _ _ => True) Qa' () u'.data at hu
+    simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
+      meet_prop_eq_and, Concretization.ofStateRel_pred] at hu
+    obtain ⟨-, -, b, hJb, hQ, hc⟩ := hu
+    show Program.Next @I t Q (Program.Decreases var blk.label blk.idx u) blk.next (blk.idx + 1) u'.data
+    cases hn : blk.next with
+    | none =>
+      rw [hn, jumpTo_none, WPMonadExact.wp_pure_eq] at hQ
+      simp only [Program.Next, Q, Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
+        meet_prop_eq_and, top_apply, top_prop_eq, Concretization.ofStateRel_pred]
+      exact ⟨(), trivial, b, hJb, hQ⟩
+    | some l' =>
+      rw [hn, jumpTo_some, AInstr.wp_branch] at hQ
+      simp only [↓reduceIte] at hQ
+      obtain ⟨hsu, hQ⟩ := hQ
+      refine ⟨⟨b, hJb, hsu, hQ⟩, ?_⟩
+      cases hbl : blk.label with
+      | none => trivial
+      | some l₀ =>
+        refine Or.inl (Nat.lt_of_le_of_lt (hvar_le l' u'.data b ⟨hJb, hsu, hQ⟩)
+          (hdec (label l') b ?_ l₀ hbl))
+        rw [BlockM.run_bind, hc, hn]
+        show (AInstr.branch st (fun _ => true) (label l')).run.run b = _
+        rw [AInstr.branch_run]
+        simp only [AInstr.branch, ↓reduceIte, UB.assume_bind_of_pos hsu]
+        rfl
+  · change (Concretization.ofStateRel J).post (AddrRel (t.regs.get64 .rsp) ra) Ea'.1 u'.pc u'.data at hu
+    simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
+      meet_prop_eq_and, Concretization.ofStateRel_pred, AddrRel] at hu
+    obtain ⟨a', rfl, b, hJb, hE, hc⟩ := hu
+    refine hjump u'.data b u'.pc hJb hE fun l hl => hdec u'.pc b ?_ l hl
+    rw [BlockM.run_bind, hc]
+    rfl
+
+end
+
 section
 variable [Host] [FunDecls] (abs : MachineData → MachineData)
   (habs : ∀ s, (abs s).regs = s.regs)
@@ -466,156 +669,8 @@ theorem wrp_cfg_le {p : Program} [Embeds p] (hs : Program.Separated p = true)
         ⦃fun _ _ _ => True; AddrRel (s₀.regs.get64 .rsp) ra⦄) :
     (fun t => t = s₀) ⊑ wrp (Concretization.ofStateRepr abs) p
       (Program.loop p (s₀.regs.get64 .rsp) cell) (fun _ _ => ⊤) (AddrRel (s₀.regs.get64 .rsp) ra) := by
-  have hstay : ∀ t, stayIn (s₀.regs.get64 .rsp) (abs t) = true ↔ t.StackAtOrBelow s₀ := by
-    intro t
-    rw [stayIn_iff]
-    simp only [MachineData.StackAtOrBelow, MachineData.StackBelow, habs]
-  refine wrp_intro fun Qa Ea => ?_
-  intro t ht
-  simp only [meet_apply, meet_prop_eq_and, Concretization.ofStateRepr_pred] at ht
-  obtain ⟨rfl, hpre⟩ := ht
-  let r₀ := t.regs.get64 .rsp
-  let st := stayIn r₀
-  let T := Program.table p r₀ cell
-  let H : (Int64 → MachineData → Prop) × EStack⟨⟩ := (fun a => wp (cfgLoop st T a) Qa Ea, Ea.2)
-  let I : Program.CfgInvariant := fun {_} l u =>
-    st (abs u) = true ∧ wp (cfgLoop st T (label l)) Qa Ea (abs u)
-  let Q : Unit → MachineData → Prop := fun _ u =>
-    (Concretization.ofStateRepr abs).post (fun _ _ => ⊤) Qa () u
-  let var : Program.CfgVariant := fun l u => steps st T (label l) (abs u)
-  have hentry : (Program.blocks p).head? = some ⟨none, 0, Program.straight (Program.view p).1,
-      Program.entryNext p⟩ := by
-    unfold Program.blocks Program.entryNext
-    cases (Program.view p).2 <;> rfl
-  refine Program.WP.cfg (p := p) (Q := Q)
-    (E := EPostsConcretization.ePosts (Concretization.ofStateRepr abs) (AddrRel (t.regs.get64 .rsp) ra) Ea)
-    (s₀ := t) @I var ?_
-  intro blk hmem u hI
-  have hrun : wp (cell blk.label >>= fun _ => jumpTo st blk.next) Qa H (abs u)
-      ∧ ∀ l, blk.label = some l → st (abs u) = true ∧
-        T.get? (label l) = some (cell blk.label >>= fun _ => jumpTo st blk.next) ∧
-        ∃ r, cfgFix st T (label l) (abs u) = some r := by
-    cases hl : blk.label with
-    | none =>
-      rw [hl] at hI
-      change u = t at hI
-      subst hI
-      have hblk : blk = ⟨none, 0, Program.straight (Program.view p).1, Program.entryNext p⟩ := by
-        refine Program.block_unique Program.labels_nodup_of_embeds hmem ?_ hl
-        exact List.mem_of_mem_head? hentry
-      rw [hblk]
-      refine ⟨?_, fun _ h => nomatch h⟩
-      simpa only [Program.loop, BlockLoop.wp_tryCatch] using hpre
-    | some l =>
-      rw [hl] at hI
-      obtain ⟨hst, hw⟩ := hI
-      have hTb := Program.table_get?_label (r₀ := r₀) (cell := cell) hs hmem hl
-      have hfix : ∃ r, cfgFix st T (label l) (abs u) = some r := by
-        rw [wp_BlockM_eq, cfgLoop_run] at hw
-        revert hw
-        cases cfgFix st T (label l) (abs u) <;> intro hw
-        · exact hw.elim
-        · exact ⟨_, rfl⟩
-      rw [wp_cfgLoop_some st T Qa Ea hTb hst] at hw
-      rw [hl] at hTb hw
-      refine ⟨hw, fun l' hl' => ?_⟩
-      cases hl'
-      exact ⟨hst, hTb, hfix⟩
-  obtain ⟨hw, hblk⟩ := hrun
-  let c := cell blk.label
-  have hdec : ∀ a v, (c >>= fun _ => jumpTo st blk.next).run.run (abs u) = some (.error a, abs v) →
-      ∀ l, blk.label = some l → steps st T a (abs v) < steps st T (label l) (abs u) := by
-    intro a v hr l hl
-    obtain ⟨hst, hTb, r, hfix⟩ := hblk l hl
-    exact steps_lt st T hTb hst hr hfix
-  rw [WPMonadExact.wp_bind_eq, wp_BlockM_eq] at hw
-  let Qa' : Unit → MachineData → Prop := fun _ st' =>
-    wp (jumpTo st blk.next : BlockM MachineData Unit) Qa H st' ∧ c.run.run (abs u) = some (.ok (), st')
-  let Ea' : (Int64 → MachineData → Prop) × EStack⟨⟩ :=
-    (fun a st' => wp (cfgLoop st T a) Qa Ea st' ∧ c.run.run (abs u) = some (.error a, st'), Ea.2)
-  have hpre' : wp c Qa' Ea' (abs u) := by
-    rw [wp_BlockM_eq]
-    revert hw
-    rcases hc : c.run.run (abs u) with _ | ⟨a | _, st'⟩ <;> intro hw
-    · exact hw.elim
-    · exact ⟨hw, hc⟩
-    · exact ⟨hw, hc⟩
-  have hb := wrp_transport (h blk hmem u).le_wrp Qa' Ea'
-  have hmeet : ((fun t' => t' = u) ⊓ (Concretization.ofStateRepr abs).pred (wp c Qa' Ea')) u := by
-    simp only [meet_apply, meet_prop_eq_and, Concretization.ofStateRepr_pred]
-    exact ⟨trivial, hpre'⟩
-  have hwp := hb u hmeet
-  have hjump : ∀ v a, wp (cfgLoop st T a) Qa Ea (abs v) →
-      (∀ l, blk.label = some l → steps st T a (abs v) < steps st T (label l) (abs u)) →
-      Program.Intercept (Program.labels p) t
-        (fun l j s' => I (s₀ := t) l s' ∧ Program.Decreases var blk.label blk.idx u l j s')
-        (EPostsConcretization.ePosts (Concretization.ofStateRepr abs) (AddrRel (t.regs.get64 .rsp) ra) Ea) a v := by
-    intro v a hE hd
-    cases hsv : st (abs v) with
-    | false =>
-      rw [wp_cfgLoop_leave st T Qa Ea hsv] at hE
-      refine Program.Intercept.intro (Or.inr ⟨?_, fun _ _ _ => ?_⟩)
-      · show (Concretization.ofStateRepr abs).post (AddrRel (t.regs.get64 .rsp) ra) Ea.1 a v
-        simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
-          meet_prop_eq_and, Concretization.ofStateRepr_pred, AddrRel]
-        exact ⟨a, rfl, hE⟩
-      · have h1 : ¬ v.StackAtOrBelow t := fun h2 => by
-          have := (hstay v).mpr h2
-          simp only [st, r₀] at hsv
-          rw [hsv] at this
-          exact nomatch this
-        simpa only [MachineData.StackAtOrBelow, Classical.not_not] using h1
-    | true =>
-    cases hT : T.get? a with
-    | none =>
-      rw [wp_cfgLoop_none st T Qa Ea hT] at hE
-      refine Program.Intercept.intro (Or.inr ⟨?_, fun l hl ha => ?_⟩)
-      · show (Concretization.ofStateRepr abs).post (AddrRel (t.regs.get64 .rsp) ra) Ea.1 a v
-        simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
-          meet_prop_eq_and, Concretization.ofStateRepr_pred, AddrRel]
-        exact ⟨a, rfl, hE⟩
-      · exact absurd ha (Program.table_get?_none hT hl)
-    | some b =>
-      obtain ⟨blk', hblk', l, hl, ha, -⟩ := Program.table_get?_some hT
-      subst ha
-      refine Program.Intercept.intro (Or.inl ⟨(hstay v).mp hsv, l, rfl,
-        Program.label_mem_labels hblk' hl, ⟨⟨hsv, hE⟩, ?_⟩⟩)
-      cases hbl : blk.label with
-      | none => trivial
-      | some l₀ => exact Or.inl (hd l₀ hbl)
-  refine Program.wp_mono (fun u' hu => ?_) (fun u' hu => ?_) hwp
-  · change (Concretization.ofStateRepr abs).post (fun _ _ _ => True) Qa' () u'.data at hu
-    simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
-      meet_prop_eq_and, Concretization.ofStateRepr_pred] at hu
-    obtain ⟨-, -, hQ, hc⟩ := hu
-    show Program.Next @I t Q (Program.Decreases var blk.label blk.idx u) blk.next (blk.idx + 1) u'.data
-    cases hn : blk.next with
-    | none =>
-      rw [hn, jumpTo_none, WPMonadExact.wp_pure_eq] at hQ
-      simp only [Program.Next, Q, Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
-        meet_prop_eq_and, top_apply, top_prop_eq, Concretization.ofStateRepr_pred]
-      exact ⟨(), trivial, hQ⟩
-    | some l' =>
-      rw [hn, jumpTo_some, AInstr.wp_branch] at hQ
-      simp only [↓reduceIte] at hQ
-      obtain ⟨hsu, hQ⟩ := hQ
-      refine ⟨⟨hsu, hQ⟩, ?_⟩
-      cases hbl : blk.label with
-      | none => trivial
-      | some l₀ =>
-        refine Or.inl (hdec (label l') u'.data ?_ l₀ hbl)
-        rw [BlockM.run_bind, hc, hn]
-        show (AInstr.branch st (fun _ => true) (label l')).run.run (abs u'.data) = _
-        rw [AInstr.branch_run]
-        simp only [AInstr.branch, ↓reduceIte, UB.assume_bind_of_pos hsu]
-        rfl
-  · change (Concretization.ofStateRepr abs).post (AddrRel (t.regs.get64 .rsp) ra) Ea'.1 u'.pc u'.data at hu
-    simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
-      meet_prop_eq_and, Concretization.ofStateRepr_pred, AddrRel] at hu
-    obtain ⟨a', rfl, hE, hc⟩ := hu
-    refine hjump u'.data u'.pc hE fun l hl => hdec u'.pc u'.data ?_ l hl
-    rw [BlockM.run_bind, hc]
-    rfl
+  rw [ofStateRepr_eq_ofStateRel] at h ⊢
+  exact wrp_cfg_le_rel _ (fun t a hta => by subst hta; exact habs t) hs h
 
 /-- The control-flow rule as a spec: the abstract program is the block loop over the table of the
 text, whose cells `ascend` fills block by block. -/
@@ -629,6 +684,23 @@ theorem refines_cfg {p : Program} [Embeds p] {r₀ : BitVec 64} {ra : Int64}
   ⟨fun t ⟨hrt, _⟩ => by
     subst hrt
     exact wrp_cfg_le abs habs hs (s₀ := t) h t rfl⟩
+
+end
+
+section
+variable [Host] [FunDecls]
+
+theorem refines_cfg_rel (J : MachineData → MachineData → Prop) (hJ : ∀ t a, J t a → a.regs = t.regs)
+    {p : Program} [Embeds p] {r₀ : BitVec 64} {ra : Int64}
+    (tbl : Table (Option Label) (BlockM MachineData Unit)) (hs : Program.Separated p = true := by decide +kernel)
+    (h : ∀ blk ∈ Program.blocks p, ∀ t,
+      ⦃(· = t)⦄ blk.body ⪯[Concretization.ofStateRel J] (Table.get tbl blk.label)
+        ⦃fun _ _ _ => True; AddrRel r₀ ra⦄) :
+    ⦃fun s => s.regs.get64 .rsp = r₀ ∧ s.retAddr = some ra⦄ p ⪯[Concretization.ofStateRel J]
+      (Program.loop p r₀ (Table.get tbl)) ⦃fun _ _ => ⊤; AddrRel r₀ ra⦄ :=
+  ⟨fun t ⟨hrt, _⟩ => by
+    subst hrt
+    exact wrp_cfg_le_rel J hJ hs (s₀ := t) h t rfl⟩
 
 end
 
