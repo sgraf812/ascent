@@ -198,8 +198,10 @@ def isPureRefinementGoal (goal : MVarId) : SymM Bool := do
 /-- Close the goal `PureRefinement cv ?av P_goal Q`. The precondition and the abstract value are
 simplified with the `simp` methods of the run. The solution's precondition `P` meets `P_goal` by
 the consequence rule `PureRefinement.weaken_pre`: when `P_goal` is not `P`, the premise
-`hpre : P_goal → P` is returned as a new goal. Throws if no rule abstracts a subterm of `cv`. -/
-def solvePureRefinement (goal : MVarId) : VCGenM (Option MVarId) := do
+`hpre : P_goal → P` is a new goal. When a given abstract value `av'` does not unify with the
+computed `av`, the solution meets it by `PureRefinement.of_val_eq`, with the new goal `av = av'`.
+Throws if no rule abstracts a subterm of `cv`. -/
+def solvePureRefinement (goal : MVarId) : VCGenM (List MVarId) := do
   let goal ← elimTopPre goal
   goal.withContext do
     let type ← instantiateMVarsS (← goal.getType)
@@ -214,8 +216,6 @@ def solvePureRefinement (goal : MVarId) : VCGenM (Option MVarId) := do
     let P₀ ← instantiateMVarsS P₀
     let (av, eav?) ← simpRun av₀
     let (P, eP?) ← simpRun P₀
-    unless ← isDefEqS args[3]! av do
-      throwError "ascend: the abstract value does not fit{indentExpr type}"
     let us := head.constLevels!
     let mut prf := aux
     if let some eP := eP? then
@@ -224,15 +224,23 @@ def solvePureRefinement (goal : MVarId) : VCGenM (Option MVarId) := do
     if let some eav := eav? then
       prf ← mkAppNS (← mkConstS ``Ascent.PureRefinement.of_val_eq us)
         #[args[0]!, args[1]!, args[2]!, av₀, P, args[5]!, av, prf, eav]
+    let mut newGoals := []
+    unless ← isDefEqS args[3]! av do
+      let av' ← instantiateMVarsS args[3]!
+      let eqType ← mkAppNS (← mkConstS ``Eq [.succ us[1]!]) #[args[1]!, av, av']
+      let e ← shareCommon (← mkFreshExprSyntheticOpaqueMVar eqType (tag := `hval))
+      prf ← mkAppNS (← mkConstS ``Ascent.PureRefinement.of_val_eq us)
+        #[args[0]!, args[1]!, args[2]!, av, P, args[5]!, av', prf, e]
+      newGoals := [e.mvarId!]
     if ← isDefEqS args[4]! P then
       goal.assign prf
-      return none
+      return newGoals
     let Pgoal ← instantiateMVarsS args[4]!
     let hpreType ← mkForallS `h .default Pgoal P
     let hpre ← shareCommon (← mkFreshExprSyntheticOpaqueMVar hpreType (tag := `hpre))
     goal.assign (← mkAppNS (← mkConstS ``Ascent.PureRefinement.weaken_pre us)
       #[args[0]!, args[1]!, args[2]!, av, P, Pgoal, args[5]!, prf, hpre])
-    return some hpre.mvarId!
+    return hpre.mvarId! :: newGoals
 
 /-- Close a verification condition `Q c x` with the rule `PureRefinement.rel hx` of an environment
 entry `hx`. -/
