@@ -20,10 +20,11 @@ ascend_def reverseL₀ [Host] [Embeds swap] (rdi rsi rax rsp rbx rbp r12 r13 r14
     (.r14, r14), (.r15, r15)]⦄
   (reverseT (fun r L => swapST r L) r₀ L) ⪯[ofStateRepr MachineData.dmem] reverseL₀
   ⦃fun _ _ _ => False; (fun l l' t => l = l' ∧ t.regs.get64 .rsp = r₀ + 8#64, estack⟨⟩)⦄
-  ascend [reverseT, wrp_forIn_lockstep_unit (ab := (_, _, _, _))
-    (R := fun t (v : BitVec 64 × BitVec 64 × BitVec 64 × BitVec 64) => match v with
+  ascend [reverseT, wrp_forIn_lockstep_unit (R := _) (ab := (_, _, _, _))]
+  invariants
+  · fun _ t (v : BitVec 64 × BitVec 64 × BitVec 64 × BitVec 64) => match v with
       | (a14, a15, b, c) => RegsRel [(.r14, a14), (.r15, a15), (.rbx, b), (.r12, c),
-          (.rsp, rsp - 8#64 - 8#64 - 8#64 - 8#64 - 8#64), (.rbp, rbp), (.r13, r13)] t)]
+          (.rsp, rsp - 8#64 - 8#64 - 8#64 - 8#64 - 8#64), (.rbp, rbp), (.r13, r13)] t
   with finish
 
 sym_simp_def reverseL [Host] [Embeds swap] (rdi rsi rax rbx r12 r14 r15 rsp : BitVec 64) (L : Int64) :

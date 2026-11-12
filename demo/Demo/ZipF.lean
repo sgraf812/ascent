@@ -19,8 +19,9 @@ ascend_def zipWithAddF₀ (rdi rsi rdx rcx rsp sp : BitVec 64) (ra : Int64) : Bl
   ⦃fun m => rsp ≐ₛ sp ∧ retAddrAt m rsp = some ra⦄
   (zipWithAddL₀ rdi rsi rdx rcx rsp rsp ra) ⪯[ofStateRepr (FState.split (Fr rsp 0 0))] zipWithAddF₀
   ⦃fun _ _ _ => True; (fun l l' _ => l = l', estack⟨⟩)⦄
-  ascend [zipWithAddL₀, wrp_forIn_lockstep_bind_unit
-    (R := fun (v : BitVec 64) m (v' : BitVec 64) => v ≐ v' ∧ retAddrAt m rsp = some ra)]
+  ascend [zipWithAddL₀, wrp_forIn_lockstep_bind_unit (R := _)]
+  invariants
+  · fun (v : BitVec 64) m (v' : BitVec 64) => v ≐ v' ∧ retAddrAt m rsp = some ra
   with finish
 
 sym_simp_def zipWithAddF (rdi rsi rdx rcx rsp : BitVec 64) (ra : Int64) : BlockM FState Unit from

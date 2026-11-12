@@ -22,11 +22,16 @@ ascend_def memmoveArr₀ (O S : BitVec 64) (r₀ : BitVec 64) (ra : Int64) (n : 
   ⦃fun m => CondCode.nc.cmp O S ≐ back ∧ S ≐ₐ a ∧ a.size = n ∧ ArrayLayout 1 8 [(S, a)] O n [(r₀, ra)] m⦄
   (memmoveL₀ O S (BitVec.ofNat 64 n) (r₀) r₀ ra) ⪯[ofStateRepr (outView 1 8 O n)] memmoveArr₀
   ⦃fun _ _ _ => True; (fun l l' _ => l = l', estack⟨⟩)⦄
-  ascend [memmoveL₀, wrp_forIn_lockstep_bind_unit
-    (fun (v : BitVec 64 × BitVec 64) m (ik : Nat × Nat) => match v, ik with
+  ascend [memmoveL₀, wrp_forIn_lockstep_bind_unit _ _ (_, _)]
+    invariants
+    · fun (v : BitVec 64 × BitVec 64) m (ik : Nat × Nat) => match v, ik with
       | (c, d), (i, k) => c ≐ₙ i ∧ d ≐ₙ k ∧ (back = false → i < n ∧ k = n) ∧
           (back = true → 0 < i ∧ i ≤ n ∧ k = i) ∧
-          a.size = n ∧ ArrayLayout 1 8 [(S, a)] O n [(r₀, ra)] m) _ (_, _)]
+          a.size = n ∧ ArrayLayout 1 8 [(S, a)] O n [(r₀, ra)] m
+    · fun (v : BitVec 64 × BitVec 64) m (ik : Nat × Nat) => match v, ik with
+      | (c, d), (i, k) => c ≐ₙ i ∧ d ≐ₙ k ∧ (back = false → i < n ∧ k = n) ∧
+          (back = true → 0 < i ∧ i ≤ n ∧ k = i) ∧
+          a.size = n ∧ ArrayLayout 1 8 [(S, a)] O n [(r₀, ra)] m
     with finish
 
 sym_simp_def memmoveArr (ra : Int64) (n : Nat) (a : Array (BitVec 8)) (back : Bool) :

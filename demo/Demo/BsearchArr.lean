@@ -22,13 +22,14 @@ ascend_def bsearchArr₀ (A key rax : BitVec 64) (r₀ : BitVec 64) (ra : Int64)
     Mem.Mapped [(A, 8 * a.size)] m ∧ retAddrAt m (r₀) = some ra⦄
   (bsearchL₀ A (BitVec.ofNat 64 n) key rax (r₀) r₀ ra) ⪯[ofStateRepr (fun _ : DataMem => ())] bsearchArr₀
   ⦃fun v o _ => PureRefinement v o True IdxWord; (fun l l' _ => l = l', estack⟨⟩)⦄
-  ascend [bsearchL₀, wrp_forIn_lockstep_bind
-    (fun (v : BitVec 64 × BitVec 64 × BitVec 64) m (iko : Nat × Nat × Option Nat) => match v, iko with
+  ascend [bsearchL₀, wrp_forIn_lockstep_bind _ _ _ (_, _, none)]
+    invariants
+    · fun (v : BitVec 64 × BitVec 64 × BitVec 64) m (iko : Nat × Nat × Option Nat) => match v, iko with
       | (c, d, res), (i, k, o) => c ≐ₙ i ∧ d ≐ₙ k ∧ PureRefinement res o True Unrelated ∧ i ≤ k ∧ k ≤ n ∧ a.size = n ∧
           n < 2 ^ 61 ∧ words 8 64 m A a.size = a.toList ∧ Mem.Mapped [(A, 8 * a.size)] m ∧
-          retAddrAt m (r₀) = some ra)
-    (fun (v : BitVec 64 × BitVec 64 × BitVec 64) _ (iko : Nat × Nat × Option Nat) => match v, iko with
-      | (c, d, res), (i, k, o) => c ≐ₙ i ∧ d ≐ₙ k ∧ PureRefinement res o True IdxWord) _ (_, _, none)]
+          retAddrAt m (r₀) = some ra
+    · fun (v : BitVec 64 × BitVec 64 × BitVec 64) _ (iko : Nat × Nat × Option Nat) => match v, iko with
+      | (c, d, res), (i, k, o) => c ≐ₙ i ∧ d ≐ₙ k ∧ PureRefinement res o True IdxWord
     with finish
 
 sym_simp_def bsearchArr (key : BitVec 64) (n : Nat) (a : Array (BitVec 64)) : BlockM Unit (Option Nat) from

@@ -397,7 +397,7 @@ end
 section
 variable {σc σa : Type} {view : σc → σa} {E : (Int64 → Int64 → σc → Prop) × EStack⟨⟩}
 
-theorem wrp_forIn_lockstep_bind_unit {βc βa : Type} (R : βc → σc → βa → Prop) (cinit : βc)
+theorem wrp_forIn_lockstep_bind_unit {βc βa : Type} (R : LockstepInvariant βc σc βa) (cinit : βc)
     (ainit : βa) {fc : Unit → βc → BlockM σc (ForInStep βc)}
     {fa : βa → BlockM σa (ForInStep βa)} {Q : Unit → Unit → σc → Prop}
     (hbody : ∀ c i, (fun t => R c t i) ⊑ wrp (ofStateRepr view) (fc () c) (fa i)
@@ -473,22 +473,22 @@ section
 variable {AV : Type} {Qu : Unit → AV → MachineData → Prop}
   {E : (Int64 → Int64 → MachineData → Prop) × EStack⟨⟩}
 
-theorem wrp_forIn_lockstep_unit {βa : Type} (R : MachineData → βa → Prop) (ab : βa)
+theorem wrp_forIn_lockstep_unit {βa : Type} (R : LockstepInvariant PUnit MachineData βa) (ab : βa)
     {fc : Unit → PUnit → BlockM MachineData (ForInStep PUnit)}
     {fa : βa → BlockM DataMem (ForInStep βa)}
     {Q : PUnit → Unit → MachineData → Prop}
-    (hbody : ∀ v, (fun t => R t v) ⊑ wrp (ofStateRepr MachineData.dmem) (fc () PUnit.unit) (fa v)
+    (hbody : ∀ v, (fun t => R () t v) ⊑ wrp (ofStateRepr MachineData.dmem) (fc () PUnit.unit) (fa v)
       (fun rc ra t => match rc with
-        | .yield _ => ∃ a', R t a' ∧ ra = .yield a'
+        | .yield _ => ∃ a', R () t a' ∧ ra = .yield a'
         | .done u => ∃ a', Q u () t ∧ ra = .done a') E) :
-    (fun t => R t ab) ⊑ wrp (ofStateRepr MachineData.dmem) (FixLoop.mk.forIn PUnit.unit fc)
+    (fun t => R () t ab) ⊑ wrp (ofStateRepr MachineData.dmem) (FixLoop.mk.forIn PUnit.unit fc)
       (FixLoop.mk.forIn ab (fun _ v => fa v) >>= fun _ => pure ()) Q E := by
   refine wrp_intro fun Qa Ea => ?_
   intro t ht
   simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, WPMonadExact.wp_bind_eq,
     WPMonadExact.wp_pure_eq] at ht
   have h := wrp_transport
-    (wrp_forIn_lockstep (fun _ t a => R t a) PUnit.unit ab (fa := fa)
+    (wrp_forIn_lockstep R PUnit.unit ab (fa := fa)
       (Q := fun u _ t => Q u () t) fun _ v => PartialOrder.rel_trans (hbody v)
         (wrp_mono_post fun rc ra t h => by cases rc <;> exact h))
       (fun _ => Qa ()) Ea t

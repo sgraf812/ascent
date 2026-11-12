@@ -33,10 +33,11 @@ ascend_def zipWithAddArr₀ (A B O : BitVec 64) (r₀ : BitVec 64) (ra : Int64) 
   (zipWithAddF A B O (BitVec.ofNat 64 n) r₀ ra) ⪯[ofStateRepr fun s : FState => outView 8 64 O n s.dmem]
     zipWithAddArr₀
   ⦃fun _ _ _ => True; (fun l l' _ => l = l', estack⟨⟩)⦄
-  ascend [zipWithAddF, wrp_forIn_lockstep_bind_unit
-    (R := fun (v : BitVec 64) (s : FState) (i : Nat) =>
+  ascend [zipWithAddF, wrp_forIn_lockstep_bind_unit (R := _)]
+    invariants
+    · fun (v : BitVec 64) (s : FState) (i : Nat) =>
       v ≐ₙ i ∧ i < n ∧ a.size = n ∧ b.size = n ∧ ArrayLayout 8 64 [(A, a), (B, b)] O n [] s.dmem ∧
-        ZipApart (Fr r₀ 0 0) A B O n)]
+        ZipApart (Fr r₀ 0 0) A B O n
     with finish
 
 sym_simp_def zipWithAddArr (ra : Int64) (n : Nat) (a b : Array (BitVec 64)) :

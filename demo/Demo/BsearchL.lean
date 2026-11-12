@@ -21,12 +21,13 @@ ascend_def bsearchL₀ (rdi rsi rdx rax rsp : BitVec 64) (r₀ : BitVec 64) (ra 
   (bsearchR r₀ ra) ⪯[ofStateRepr MachineData.dmem] bsearchL₀
   ⦃fun _ v t => t.regs.get64 .rax ≐ v ∧ t.regs.get64 .rsp = r₀ + 8;
     (fun l l' _ => l = l', estack⟨⟩)⦄
-  ascend [bsearchR, wrp_forIn_lockstep_pure
-    (fun _ t (v : BitVec 64 × BitVec 64 × BitVec 64) => match v with
-      | (lo, hi, res) => RegsRel [(.rdi, rdi), (.rdx, rdx), (.rsp, rsp), (.rcx, lo), (.rsi, hi), (.rax, res)] t)
-    (fun _ t (v : BitVec 64 × BitVec 64 × BitVec 64) => match v with
+  ascend [bsearchR, wrp_forIn_lockstep_pure _ _ _ (_, _, _)]
+  invariants
+  · fun _ t (v : BitVec 64 × BitVec 64 × BitVec 64) => match v with
+      | (lo, hi, res) => RegsRel [(.rdi, rdi), (.rdx, rdx), (.rsp, rsp), (.rcx, lo), (.rsi, hi), (.rax, res)] t
+  · fun _ t (v : BitVec 64 × BitVec 64 × BitVec 64) => match v with
       | (lo, hi, res) => RegsRel [(.rcx, lo), (.rsi, hi), (.rax, res)] t ∧
-          t.regs.get64 .rsp = r₀ + 8) _ (_, _, _)]
+          t.regs.get64 .rsp = r₀ + 8
   with finish
 
 sym_simp_def bsearchL (rdi rsi rdx rax : BitVec 64) (rsp : BitVec 64) (ra : Int64) : BlockM DataMem (BitVec 64) from

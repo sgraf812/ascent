@@ -23,7 +23,8 @@ namespace Lean.Elab.Tactic.VCGen.Ascend
 
 syntax (name := ascendDefCmd)
   "ascend_def " ident bracketedBinder* " : " term " from " term
-    (&" ascend " "[" term,* "]")? (" with " vcgenDischarge)? : command
+    (&" ascend " "[" term,* "]")? (ppSpace Lean.Parser.Tactic.invariantAlts)?
+    (" with " vcgenDischarge)? : command
 
 /-- The binders among `xs` that `es` mention, together with the binders that their types mention,
 in the order of `xs`. -/
@@ -41,7 +42,8 @@ refinement statement `stmt`, in which `f` stands for `f xs`, and proves `f.refin
 The run unfolds the head of the concrete program and takes the specs of the `ascend` clause; the
 `grind` step `tac` closes every verification condition. -/
 elab_rules : command
-  | `(ascend_def $name $binders* : $type from $stmt $[ascend [$specs,*]]? $[with $tac?]?) =>
+  | `(ascend_def $name $binders* : $type from $stmt $[ascend [$specs,*]]? $[$invs?:invariantAlts]?
+      $[with $tac?]?) =>
     liftTermElabM <| Term.elabBinders binders fun xs => do
     let (declName, _) ← mkDeclName (← getCurrNamespace) {} name.getId
     let T ← elabType type
@@ -56,9 +58,11 @@ elab_rules : command
       throwError "ascend_def: the statement is not a refinement:{indentExpr goalType}"
     let proof ← mkFreshExprSyntheticOpaqueMVar goalType
     let specs := (specs.map (·.getElems)).getD #[]
-    let ascendStx ← match tac? with
-      | some tac => `(tactic| ascend [$specs,*] with $tac)
-      | none => `(tactic| ascend [$specs,*])
+    let ascendStx ← match tac?, invs? with
+      | some tac, some invs => `(tactic| ascend [$specs,*] $invs:invariantAlts with $tac)
+      | some tac, none => `(tactic| ascend [$specs,*] with $tac)
+      | none, some invs => `(tactic| ascend [$specs,*] $invs:invariantAlts)
+      | none, none => `(tactic| ascend [$specs,*])
     let (vcs, _) ← Lean.Elab.runTactic proof.mvarId! ascendStx
     if let vc :: _ := vcs then
       throwError "ascend_def: unsolved verification condition:{indentExpr (← vc.getType)}\n\

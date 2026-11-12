@@ -22,9 +22,10 @@ ascend_def zipWithAddL₀ (rdi rsi rdx rcx rsp : BitVec 64) (r₀ : BitVec 64) (
   ⦃RegsRel [(.rdi, rdi), (.rsi, rsi), (.rdx, rdx), (.rcx, rcx), (.rsp, rsp)]⦄
   (zipWithAddT r₀ ra) ⪯[ofStateRepr MachineData.dmem] zipWithAddL₀
   ⦃fun _ _ _ => True; (fun l l' t => l = l' ∧ t.regs.get64 .rsp = r₀ + 8, estack⟨⟩)⦄
-  ascend [zipWithAddT, wrp_forIn_lockstep_unit (R := fun t rax =>
-    RegsRel [(.rdi, rdi), (.rsi, rsi), (.rdx, rdx), (.rcx, rcx), (.rsp, rsp),
-      (.rax, rax)] t)]
+  ascend [zipWithAddT, wrp_forIn_lockstep_unit (R := _)]
+  invariants
+  · fun _ t rax => RegsRel [(.rdi, rdi), (.rsi, rsi), (.rdx, rdx), (.rcx, rcx), (.rsp, rsp),
+      (.rax, rax)] t
 
 
 sym_simp_def zipWithAddL (rdi rsi rdx rcx : BitVec 64) (rsp : BitVec 64) (ra : Int64) :

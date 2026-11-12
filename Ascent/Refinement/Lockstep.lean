@@ -33,6 +33,9 @@ theorem admissible_wp_imp {ε σ α : Type} (Q : α → σ → Prop) (E : (ε �
   obtain ⟨⟨u, hu⟩, hwu⟩ := this
   exact hall u hu hwu
 
+@[spec_invariant_type, simp, grind =]
+def LockstepInvariant (βc σ βa : Type) := βc → σ → βa → Prop
+
 theorem stepRel_iff {βc βa σ : Type} (R : βc → σ → βa → Prop) (Q : βc → βa → σ → Prop)
     (rc : ForInStep βc) (ra : ForInStep βa) (t : σ) :
     (match rc with
@@ -47,7 +50,7 @@ theorem stepRel_iff {βc βa σ : Type} (R : βc → σ → βa → Prop) (Q : �
 section
 variable {εc εa σc σa : Type} {view : σc → σa} {E : (εc → εa → σc → Prop) × EStack⟨⟩}
 
-theorem wrp_forIn_lockstep {βc βa : Type} (R : βc → σc → βa → Prop) (cinit : βc) (ainit : βa)
+theorem wrp_forIn_lockstep {βc βa : Type} (R : LockstepInvariant βc σc βa) (cinit : βc) (ainit : βa)
     {fc : Unit → βc → ExceptT εc (StateT σc UB) (ForInStep βc)}
     {fa : βa → ExceptT εa (StateT σa UB) (ForInStep βa)}
     {Q : βc → βa → σc → Prop}
@@ -94,7 +97,7 @@ theorem wrp_forIn_lockstep {βc βa : Type} (R : βc → σc → βa → Prop) (
     obtain ⟨a', hrel, rfl⟩ := hrel
     exact ih _ _ t' hrel hq
 
-theorem wrp_forIn_lockstep_bind {βc βa γc γa : Type} (R D : βc → σc → βa → Prop) (cinit : βc)
+theorem wrp_forIn_lockstep_bind {βc βa γc γa : Type} (R D : LockstepInvariant βc σc βa) (cinit : βc)
     (ainit : βa) {fc : Unit → βc → ExceptT εc (StateT σc UB) (ForInStep βc)}
     {fa : βa → ExceptT εa (StateT σa UB) (ForInStep βa)} {kc : βc → ExceptT εc (StateT σc UB) γc}
     {ka : βa → ExceptT εa (StateT σa UB) γa} {Q : γc → γa → σc → Prop}
@@ -108,7 +111,7 @@ theorem wrp_forIn_lockstep_bind {βc βa γc γa : Type} (R D : βc → σc → 
   have h := wrp_forIn_lockstep (view := view) (Q := fun c a t => D c t a) R cinit ainit hbody
   exact PartialOrder.rel_trans (PartialOrder.rel_trans h (wrp_mono_post (fun c a => hk c a))) wrp_bind
 
-theorem wrp_forIn_lockstep_pure {βc βa γa : Type} (R D : βc → σc → βa → Prop) (cinit : βc)
+theorem wrp_forIn_lockstep_pure {βc βa γa : Type} (R D : LockstepInvariant βc σc βa) (cinit : βc)
     (ainit : βa) {fc : Unit → βc → ExceptT εc (StateT σc UB) (ForInStep βc)}
     {fa : βa → ExceptT εa (StateT σa UB) (ForInStep βa)} {ka : βa → ExceptT εa (StateT σa UB) γa}
     {Q : βc → γa → σc → Prop}

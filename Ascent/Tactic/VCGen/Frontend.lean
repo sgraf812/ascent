@@ -23,7 +23,8 @@ register_option ascend.maxExponent : Nat := {
     of literals"
 }
 
-syntax (name := ascendTac) "ascend" (" [" term,* "]")? (" with " vcgenDischarge)? : tactic
+syntax (name := ascendTac) "ascend" (" [" term,* "]")? (ppSpace Lean.Parser.Tactic.invariantAlts)?
+  (" with " vcgenDischarge)? : tactic
 
 /-- Unseal the abstract program hole of a `Refinement` goal, so that rule application can assign
 it. Returns the hole. -/
@@ -111,6 +112,53 @@ def addUnfoldSpecs (specs : SpecTheorems) (declNames : Array Name) : MetaM SpecT
     simpThms ← simpThms.addDeclToUnfold declName
   addSimpSpecs specs simpThms
 
+open Lean.Parser.Tactic in
+def parseInvariantMap (stx : Syntax) :
+    TermElabM (Option (Std.HashMap Nat Syntax)) := do
+  let some altsStx := stx.getOptional? | return none
+  let stx' : TSyntax ``invariantAlts := ⟨altsStx⟩
+  match stx' with
+  | `(invariantAlts| $_invariantsKW $alts*) =>
+    if alts.isEmpty then return some {}
+    let mut map : Std.HashMap Nat Syntax := {}
+    let mut dotOrCase := LBool.undef
+    for h : i in 0...alts.size do
+      let alt := alts[i]
+      match alt with
+      | `(invariantDotAlt| · $_rhs) =>
+        if dotOrCase matches .false then
+          throwErrorAt alt "Alternation between labelled and bulleted invariants is not supported."
+        dotOrCase := .true
+        map := map.insert (i + 1) alt
+      | `(invariantCaseAlt| | $tag $_args* => $_rhs) =>
+        if dotOrCase matches .true then
+          throwErrorAt alt "Alternation between labelled and bulleted invariants is not supported."
+        dotOrCase := .false
+        let n? : Option Nat := do
+          let `(binderIdent| $tag:ident) := tag | some (i + 1) -- positional fallback
+          let .str .anonymous s := tag.getId | none
+          s.dropPrefix? "inv" >>= String.Slice.toNat?
+        let some n := n? | throwErrorAt tag s!"Could not parse invariant label; expected `inv<n>`."
+        if map.contains n then
+          throwErrorAt tag s!"Duplicate invariant alternative for `inv{n}`."
+        map := map.insert n alt
+      | _ => throwErrorAt alt "Expected `invariantDotAlt` or `invariantCaseAlt`."
+    return some map
+  | _ => return none
+
+def elabRemainingInvariants (alts : Std.HashMap Nat Syntax)
+    (invariants : Array MVarId) (inlineHandled : Std.HashSet Nat) : SymM Unit := do
+  let mut handled := inlineHandled
+  for h : i in 0...invariants.size do
+    let n := i + 1
+    if handled.contains n then continue
+    let some alt := alts[n]? | continue
+    handled := handled.insert n
+    discard <| elabInvariant alts n invariants[i]
+  for (n, alt) in alts.toArray do
+    unless handled.contains n do
+      logWarningAt alt s!"Invariant alternative `inv{n}` does not match any invariant goal."
+
 @[tactic ascendTac]
 def elabAscend : Tactic := fun stx => withMainContext do
   -- An identifier of a definition is unfolded; any other term is a spec of this invocation.
@@ -133,13 +181,15 @@ def elabAscend : Tactic := fun stx => withMainContext do
         thms.rewrite }
   -- The `with` clause is a `grind` step, as for `vcgen`.
   let mut step? : Option (TSyntax `grind) := none
-  if stx[2].getNumArgs == 2 then
-    let w := stx[2][1]
+  let invariantAlts? ← parseInvariantMap stx[2]
+  if stx[3].getNumArgs == 2 then
+    let w := stx[3][1]
     if w.getKind == ``Lean.Parser.Tactic.vcgenDischargeGrind then step? := some ⟨w[0]⟩
     else throwErrorAt w "`ascend … with` expects a `grind`-mode discharging step, not a general tactic"
   -- Hypotheses are internalized only for a `with` step that reads the E-graph, as for `vcgen`.
   let ctx : Context :=
-    { backwardRules := ← mkBackwardRules, rintros := ← getRIntros, simpMethods, internalize := step?.isSome }
+    { backwardRules := ← mkBackwardRules, rintros := ← getRIntros, simpMethods, internalize := step?.isSome,
+      invariantAlts := invariantAlts?.getD {} }
   let mut specs ← addUnfoldSpecs (← getAscendSpecTheorems) declNames
   for term in termSpecs do
     specs := specs.insert (← mkSpecTheoremFromTerm term)
@@ -152,8 +202,13 @@ def elabAscend : Tactic := fun stx => withMainContext do
       if let some decl := holeDecl? then
         pureEnvExt.modifyState fun env =>
           { env with outer := decl.lctx.foldl (fun xs d => xs.insert d.fvarId) {} }
-      run g ctx scope coreScope
-    Lean.Elab.Tactic.Grind.replaceMainGoal result.vcs.toList
+      let result ← run g ctx scope coreScope
+      if let some alts := invariantAlts? then
+        elabRemainingInvariants alts result.invariants result.inlineHandledInvariants
+      return result
+    let invariants ← result.invariants.filterM (not <$> ·.isAssigned)
+    let invGoals ← Lean.Elab.Tactic.Grind.liftGrindM <| invariants.toList.mapM Grind.mkGoalCore
+    Lean.Elab.Tactic.Grind.replaceMainGoal (invGoals ++ result.vcs.toList)
     -- The step runs on every verification condition, as `vcgen … <;> g` does.
     if let some step := step? then
       let mut rest := []
