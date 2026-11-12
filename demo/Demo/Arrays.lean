@@ -45,20 +45,6 @@ def Scaled (w : Nat) (x : BitVec 64) (j : Nat) : Prop := x = BitVec.ofNat 64 j *
     (h : PureRefinement x j P WordNat) : PureRefinement (x * BitVec.ofNat 64 w) j P (Scaled w) :=
   fun hp => by rw [Scaled, h hp]
 
-theorem setWidth_ofInt {b : Nat} (hb : b ≤ 64) (x : Int) :
-    (BitVec.ofInt b x).setWidth 64 = BitVec.ofInt 64 (x % 2 ^ b) := by
-  apply BitVec.eq_of_toNat_eq
-  have hposN : 0 < 2 ^ b := Nat.two_pow_pos b
-  have hleN : 2 ^ b ≤ 2 ^ 64 := Nat.pow_le_pow_right (by omega) hb
-  have hpos : (0 : Int) < 2 ^ b := by exact_mod_cast hposN
-  have hle : (2 : Int) ^ b ≤ 2 ^ 64 := by exact_mod_cast hleN
-  have h0 : 0 ≤ x % 2 ^ b := Int.emod_nonneg _ (by omega)
-  have hlt : x % 2 ^ b < 2 ^ b := Int.emod_lt_of_pos _ hpos
-  simp only [BitVec.toNat_setWidth, BitVec.toNat_ofInt]
-  rw [Int.emod_eq_of_lt h0 (by omega)]
-  have : (x % 2 ^ b).toNat < 2 ^ 64 := by omega
-  exact Nat.mod_eq_of_lt this
-
 /-! ## Words -/
 
 section

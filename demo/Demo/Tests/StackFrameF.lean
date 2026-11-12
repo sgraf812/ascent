@@ -110,3 +110,81 @@ fun rdi rax sp ra => do
 #print redZoneF₀
 
 end Ascent.Kraken.Tests.StackFrame
+
+/-! ## Forwarding
+
+Each `xF` is `xF₀` with every load after a store at the same address replaced by the stored
+value. -/
+
+namespace Ascent.Kraken.Tests.StackFrame
+
+sym_simp_def pushPopF [Host] [Embeds pushPop] (rbx r12 sp : BitVec 64) (ra : Int64) : BlockM FState Unit from
+    pushPopF₀ rbx r12 sp ra
+  using pre [] post [pushPopF₀, store_load_self, store_load_comm, BitVec.setWidth_eq]
+
+/--
+info: def Ascent.Kraken.Tests.StackFrame.pushPopF : BitVec 64 → BitVec 64 → BitVec 64 → Int64 → BlockM FState Unit :=
+fun rbx r12 sp ra => do
+  zoom Region.frame (store 8 (sp - 8#64) rbx)
+  zoom Region.frame (store 8 (sp - 8#64 - 8#64) r12)
+  throw ra
+-/
+#guard_msgs in
+#print pushPopF
+
+sym_simp_def localsF [Host] [Embeds locals] (rdi rsi sp : BitVec 64) (ra : Int64) : BlockM FState Unit from
+    localsF₀ rdi rsi sp ra
+  using pre [] post [localsF₀, store_load_self, store_load_comm, BitVec.setWidth_eq]
+
+/--
+info: def Ascent.Kraken.Tests.StackFrame.localsF : BitVec 64 → BitVec 64 → BitVec 64 → Int64 → BlockM FState Unit :=
+fun rdi rsi sp ra => do
+  zoom Region.frame (store 8 (sp - 16#64 + 8#64) rdi)
+  zoom Region.frame (store 8 (sp - 16#64) rsi)
+  throw ra
+-/
+#guard_msgs in
+#print localsF
+
+sym_simp_def bytesF [Host] [Embeds bytes] (rax sp : BitVec 64) (ra : Int64) : BlockM FState Unit from
+    bytesF₀ rax sp ra
+  using pre [] post [bytesF₀, store_load_self, store_load_comm, BitVec.setWidth_eq]
+
+/--
+info: def Ascent.Kraken.Tests.StackFrame.bytesF : BitVec 64 → BitVec 64 → Int64 → BlockM FState Unit :=
+fun rax sp ra => do
+  zoom Region.frame (store 1 (sp - 16#64 + 3#64) rax)
+  throw ra
+-/
+#guard_msgs in
+#print bytesF
+
+sym_simp_def halvesF [Host] [Embeds halves] (rax sp : BitVec 64) (ra : Int64) : BlockM FState Unit from
+    halvesF₀ rax sp ra
+  using pre [] post [halvesF₀, store_load_self, store_load_comm, BitVec.setWidth_eq]
+
+/--
+info: def Ascent.Kraken.Tests.StackFrame.halvesF : BitVec 64 → BitVec 64 → Int64 → BlockM FState Unit :=
+fun rax sp ra => do
+  zoom Region.frame (store 2 (sp - 8#64 - 2#64) rax)
+  zoom Region.frame (store 2 (sp - 8#64 + 5#64) rax)
+  throw ra
+-/
+#guard_msgs in
+#print halvesF
+
+sym_simp_def redZoneF [Host] [Embeds redZone] (rdi rax sp : BitVec 64) (ra : Int64) : BlockM FState Unit from
+    redZoneF₀ rdi rax sp ra
+  using pre [] post [redZoneF₀, store_load_self, store_load_comm, BitVec.setWidth_eq]
+
+/--
+info: def Ascent.Kraken.Tests.StackFrame.redZoneF : BitVec 64 → BitVec 64 → BitVec 64 → Int64 → BlockM FState Unit :=
+fun rdi rax sp ra => do
+  zoom Region.frame (store 8 (sp - 8#64) rdi)
+  zoom Region.frame (store 1 (sp - 11#64) rax)
+  throw ra
+-/
+#guard_msgs in
+#print redZoneF
+
+end Ascent.Kraken.Tests.StackFrame

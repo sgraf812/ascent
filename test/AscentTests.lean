@@ -29,3 +29,4 @@ import AscentTests.Regress.BlockLoop
 import AscentTests.Regress.CatchExit
 import AscentTests.Regress.IdentityEntry
 import AscentTests.Regress.OuterKeys
+import AscentTests.Regress.SimpGrind

@@ -95,9 +95,20 @@ def symSimpTheorems (ids : Array Ident) : MetaM Sym.Simp.Theorems := do
       thms := thms.insert thm
   return thms
 
+/-- Discharge a side condition by `Sym.simp`, and else by `grind`. -/
+def dischargeSimpSelfOrGrind (params : Grind.Params) : Sym.Simp.Discharger := fun e => do
+  match ← Sym.Simp.dischargeSimpSelf e with
+  | r@(.solved ..) => return r
+  | _ =>
+    let g ← mkFreshExprMVar e
+    let r ← Grind.main g.mvarId! params
+    if r.failure?.isNone then return .solved (← instantiateMVars g) true
+    return .failed true
+
 /-- `sym_simp_def f xs : T from c using pre [ps] post [qs]` defines `f : ∀ xs, T` as `c` simplified by
 `Sym.simp`, rewriting with `ps` before and with `qs` and the `vcgen_simp` set after visiting the
-subterms of a term, and proves `f.eq : ∀ xs, c = f xs`. -/
+subterms of a term, and proves `f.eq : ∀ xs, c = f xs`. A side condition of a rule of `ps` or `qs`
+is discharged by `Sym.simp` or by `grind`. -/
 elab_rules : command
   | `(sym_simp_def $name $binders* : $type from $c using pre [$pres,*] post [$posts,*]) =>
     liftTermElabM <| Term.elabBinders binders fun xs => do
@@ -109,13 +120,14 @@ elab_rules : command
     let preThms ← symSimpTheorems pres.getElems
     let postThms ← symSimpTheorems posts.getElems
     let vcThms ← vcgenSimpExt.getTheorems
+    let params ← Grind.mkDefaultParams {}
     let (value, proof) ← Sym.SymM.run do
       let c ← Sym.shareCommon c
       let methods : Sym.Simp.Methods :=
         { pre := Sym.Simp.beta >> Sym.Simp.reduceProj >> Sym.Simp.reduceMatcher >>
-            Sym.Simp.reduceControl >> preThms.rewrite Sym.Simp.dischargeSimpSelf
+            Sym.Simp.reduceControl >> preThms.rewrite (dischargeSimpSelfOrGrind params)
           post := Sym.Simp.evalGround >> Grind.NormSym.reduceCtorEq >> vcThms.rewrite >>
-            postThms.rewrite Sym.Simp.dischargeSimpSelf }
+            postThms.rewrite (dischargeSimpSelfOrGrind params) }
       let (r, _) ← Sym.Simp.SimpM.run (Sym.Simp.simp c) methods { maxDischargeDepth := 16 }
       match r with
       | .rfl .. => return (c, ← mkEqRefl c)

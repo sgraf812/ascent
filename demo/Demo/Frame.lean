@@ -47,6 +47,24 @@ def set : FState → Region → DataMem → FState
 def split (bs : List (BitVec 64 × Nat)) (m : DataMem) : FState :=
   ⟨m.filter fun b _ => !decide (Mem.Blocks.Inside b 1 bs), m.restrict bs⟩
 
+@[simp] theorem get_set (s : FState) (r : Region) (m : DataMem) : (s.set r m).get r = m := by
+  cases r <;> rfl
+
+@[simp] theorem set_set (s : FState) (r : Region) (m m' : DataMem) :
+    (s.set r m).set r m' = s.set r m' := by
+  cases r <;> rfl
+
+@[simp] theorem set_get (s : FState) (r : Region) : s.set r (s.get r) = s := by
+  cases r <;> rfl
+
+theorem get_set_of_ne (s : FState) {r r' : Region} (h : r ≠ r') (m : DataMem) :
+    (s.set r m).get r' = s.get r' := by
+  cases r <;> cases r' <;> first | rfl | exact absurd rfl h
+
+theorem set_comm (s : FState) {r r' : Region} (h : r ≠ r') (m m' : DataMem) :
+    (s.set r m).set r' m' = (s.set r' m').set r m := by
+  cases r <;> cases r' <;> first | rfl | exact absurd rfl h
+
 end FState
 
 /-- The frame of a function with the stack pointer `r₀` at entry: `k` reserved words, the return
@@ -229,5 +247,59 @@ variable {bs : List (BitVec 64 × Nat)} {E : (Int64 → Int64 → DataMem → Pr
   exact hqa
 
 end
+
+/-! ## Forwarding
+
+A load after a store at the same address of the same region takes the stored value, and a load moves
+before a store that it does not overlap. -/
+
+/-- The region `r` and the access of `n` bytes at `a` are apart from the region `r'` and the access of
+`n'` bytes at `b`. -/
+def Apart (r : Region) (a : BitVec 64) (n : Nat) (r' : Region) (b : BitVec 64) (n' : Nat) : Prop :=
+  r ≠ r' ∨ Mem.Blocks.Disjoint [(b, n')] [(a, n)]
+
+theorem Apart.of_sub {r : Region} {a b : BitVec 64} {n n' : Nat} (h₁ : n ≤ (b - a).toNat)
+    (h₂ : n' ≤ (a - b).toNat) : Apart r a n r b n' :=
+  Or.inr (Mem.Blocks.Disjoint.of_sub h₁ h₂)
+
+@[grind .] theorem Apart.of_ne {r r' : Region} (h : r ≠ r') (a b : BitVec 64) (n n' : Nat) :
+    Apart r a n r' b n' :=
+  Or.inl h
+
+grind_pattern Apart.of_sub => Apart r a n r b n'
+
+theorem wp_bind_eq_of {σ α β : Type} {x x' : BlockM σ α} {k : α → BlockM σ β}
+    {y : BlockM σ β} (h : ∀ Q E s, wp (x >>= k) Q E s = wp y Q E s) : (x >>= k) = y :=
+  BlockLoop.ext_wp (fun Q E s hx => h Q E s ▸ hx) (fun Q E s hy => (h Q E s).symm ▸ hy)
+
+theorem store_load_self {β : Type} (r : Region) (n : Nat) (a v : BitVec 64) (k : BitVec 64 → BlockM FState β)
+    (hn : n ≤ 8) :
+    (zoom r (store n a v) >>= fun _ => zoom r (load n a) >>= k)
+      = (zoom r (store n a v) >>= fun _ => k ((v.setWidth (8 * n)).setWidth 64)) := by
+  apply wp_bind_eq_of (x' := zoom r (store n a v))
+  intro Q E s
+  have hw : n ≤ 2 ^ 64 := by omega
+  have hb : 8 * n ≤ 64 := by omega
+  simp only [WPMonadExact.wp_bind_eq, wp_zoom, wp_store, wp_load, FState.get_set, FState.set_set,
+    Mem.loadInt_storeInt _ _ _ _ hw, Option.isSome_some, Option.get!_some, ofBytes_toBytes,
+    Int.take, ofInt_emod_two_pow, true_and, ← setWidth_ofInt hb,
+    ← BitVec.signExtend_eq_setWidth_of_le v hb, BitVec.signExtend]
+
+theorem store_load_comm {β : Type} (r r' : Region) (n n' : Nat) (a v b : BitVec 64)
+    (k : BitVec 64 → BlockM FState β) (h : Apart r a n r' b n') :
+    (zoom r (store n a v) >>= fun _ => zoom r' (load n' b) >>= k)
+      = (zoom r' (load n' b) >>= fun x => zoom r (store n a v) >>= fun _ => k x) := by
+  apply wp_bind_eq_of (x' := zoom r (store n a v))
+  intro Q E s
+  simp only [WPMonadExact.wp_bind_eq, wp_zoom, wp_store, wp_load, FState.set_get]
+  rcases h with hr | hd
+  · simp only [FState.get_set_of_ne _ hr, FState.get_set_of_ne _ (Ne.symm hr), FState.set_comm _ hr]
+    exact propext ⟨fun ⟨h₁, h₂, h₃⟩ => ⟨h₂, h₁, h₃⟩, fun ⟨h₁, h₂, h₃⟩ => ⟨h₂, h₁, h₃⟩⟩
+  · cases r <;> cases r' <;>
+      simp only [FState.get_set, FState.set_set, FState.get, FState.set,
+        Mem.loadInt_storeInt_of_disjoint hd] <;>
+      first
+        | exact propext ⟨fun ⟨h₁, h₂, h₃⟩ => ⟨h₂, h₁, h₃⟩, fun ⟨h₁, h₂, h₃⟩ => ⟨h₂, h₁, h₃⟩⟩
+        | rfl
 
 end Ascent.Kraken
