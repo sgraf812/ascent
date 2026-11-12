@@ -102,21 +102,4 @@ fun rdi rsi rsp r₀ L => do
 #guard_msgs in
 #print swapSL₀
 
-/-- The call of `swap` with its registers lifted: `rdi` and `rsi` hold the pointers `p` and `q`, and
-the call keeps the callee-saved registers. -/
-@[ascend] theorem wrp_call_swap {Q : Unit → Unit → MachineData → Prop}
-    {E : (Int64 → Int64 → MachineData → Prop) × EStack⟨⟩} [Host] [Embeds swap]
-    (p q rbx rbp r12 r13 r14 r15 r : BitVec 64) :
-    (fun t => t.regs.get64 .rsp ≐ r ∧
-      RegsRel [(.rdi, p), (.rsi, q), (.rsp, r - 8#64), (.rbx, rbx), (.rbp, rbp), (.r12, r12),
-        (.r13, r13), (.r14, r14), (.r15, r15)] (hidePush r t) ∧
-      ∀ t', t'.regs.get64 .rsp ≐ r → RegsRel [(.rbx, rbx), (.rbp, rbp), (.r12, r12), (.r13, r13),
-        (.r14, r14), (.r15, r15)] t' → Q () () t')
-      ⊑ wrp (ofStateRepr MachineData.dmem) (callA fun r₀ => swapST r₀ 0)
-          (callL r fun r₀ => swapSL₀ p q r₀ r₀ 0) Q E :=
-  wrp_callA_callL (Post := fun _ t => RegsRel [(.rbx, rbx), (.rbp, rbp), (.r12, r12), (.r13, r13),
-      (.r14, r14), (.r15, r15)] t)
-    (fun r₀ => Refinement.mono_exit_dmem (swapSL₀.refines p q r₀ rbx rbp r12 r13 r14 r15 r₀ 0)
-      fun _ _ _ h => h.2) r
-
 end Ascent.Kraken

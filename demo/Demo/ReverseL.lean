@@ -20,7 +20,7 @@ ascend_def reverseL₀ [Host] [Embeds swap] (rdi rsi rax rsp rbx rbp r12 r13 r14
     (.r14, r14), (.r15, r15)]⦄
   (reverseT (fun r L => swapST r L) r₀ L) ⪯[ofStateRepr MachineData.dmem] reverseL₀
   ⦃fun _ _ _ => False; (fun l l' t => l = l' ∧ t.regs.get64 .rsp = r₀ + 8#64, estack⟨⟩)⦄
-  ascend [reverseT, wrp_forIn_lockstep_unit (R := _) (ab := (_, _, _, _))]
+  ascend [reverseT, wrp_callA_callL, swapSL₀.refines, wrp_forIn_lockstep_unit (R := _) (ab := (_, _, _, _))]
   invariants
   · fun _ t (v : BitVec 64 × BitVec 64 × BitVec 64 × BitVec 64) => match v with
       | (a14, a15, b, c) => RegsRel [(.r14, a14), (.r15, a15), (.rbx, b), (.r12, c),
@@ -46,7 +46,9 @@ fun rdi rsi rax rbx r12 r14 r15 rsp L =>
     StateT.assume fun x => stayAt rsp (rsp - 8#64 - 8#64 - 8#64 - 8#64 - 8#64) = true
     let _ ←
       { }.forIn (rdi, rdi + rsi * 8#64 + 18446744073709551608#64, rsi - 1#64, 1#64) fun x a => do
-          callL (rsp - 8#64 - 8#64 - 8#64 - 8#64 - 8#64) fun r₀ => swapSL₀ a.fst a.snd.fst r₀ r₀ 0
+          callL (rsp - 8#64 - 8#64 - 8#64 - 8#64 - 8#64)
+              (swapSL₀ a.fst a.snd.fst (rsp - 8#64 - 8#64 - 8#64 - 8#64 - 8#64 - 8#64)
+                (rsp - 8#64 - 8#64 - 8#64 - 8#64 - 8#64 - 8#64) 0)
           condState (fun x => CondCode.c.cmp a.snd.snd.snd (a.snd.snd.fst - 1#64))
               (do
                 StateT.assume fun x => stayAt rsp (rsp - 8#64 - 8#64 - 8#64 - 8#64 - 8#64) = true

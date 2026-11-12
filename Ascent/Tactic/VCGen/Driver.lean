@@ -154,7 +154,9 @@ def work (scope coreScope : Scope) (goal : Grind.Goal) : VCGenM Unit := do
       -- A `PureRefinement` subgoal is solved at once, so that the continuation sees the abstract
       -- value and the precondition.
       let subgoals ← subgoals.flatMapM fun mv => do
-        if ← isPureRefinementGoal mv then solvePureRefinement mv else return [mv]
+        if ← isPureRefinementGoal mv then solvePureRefinement mv
+        else if ← isRefinementGoal mv then return (← solveRefinement mv).getD [mv]
+        else return [mv]
       -- Handle invariant subgoals eagerly here, so that VC subgoals popped
       -- from the worklist later see the invariant MVar already assigned.
       -- Non-invariant subgoals go to the worklist as usual and will eventually go through `emitVC`.

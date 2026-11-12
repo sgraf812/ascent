@@ -32,3 +32,4 @@ import AscentTests.Regress.OuterKeys
 import AscentTests.Regress.SimpGrind
 import AscentTests.Regress.Invariants
 import AscentTests.Regress.ValEq
+import AscentTests.Regress.RefinementPremise

@@ -89,6 +89,9 @@ structure PureEnv where
 
 initialize pureEnvExt : SymExtension PureEnv ← registerSymExtension (pure {})
 
+/-- The `Refinement` specs of the invocation, as backward rules for `Refinement` premises. -/
+initialize refinementSpecsExt : SymExtension (Array BackwardRule) ← registerSymExtension (pure #[])
+
 /-- Simplify `e` with the `simp` methods of the run. Returns the result and a proof of
 `e = result`, or `none` if `simp` makes no progress. -/
 def simpRun (e : Expr) : VCGenM (Expr × Option Expr) := do
@@ -241,6 +244,17 @@ def solvePureRefinement (goal : MVarId) : VCGenM (List MVarId) := do
     goal.assign (← mkAppNS (← mkConstS ``Ascent.PureRefinement.weaken_pre us)
       #[args[0]!, args[1]!, args[2]!, av, P, Pgoal, args[5]!, prf, hpre])
     return hpre.mvarId! :: newGoals
+
+/-- Close the premise `goal : ⦃P⦄ c ⪯[ρ] a ⦃Q; E⦄` of a rule with the first `Refinement` spec of the
+invocation that unifies with it. Returns the premises of that spec. -/
+def solveRefinement (goal : MVarId) : VCGenM (Option (List MVarId)) := do
+  for rule in ← refinementSpecsExt.getState do
+    if let .goals gs ← rule.apply goal then return some gs
+  return none
+
+/-- `true` iff `goal` is a `Refinement` goal. -/
+def isRefinementGoal (goal : MVarId) : SymM Bool := do
+  return (← instantiateMVarsIfMVarAppS (← goal.getType)).isAppOf ``Ascent.Refinement
 
 /-- Close a verification condition `Q c x` with the rule `PureRefinement.rel hx` of an environment
 entry `hx`. -/

@@ -88,22 +88,35 @@ def closeTables (hole : MVarId) : MetaM Unit := do
       mv.assign (mkApp (mkConst ``List.nil [0]) ty.appArg!)
 
 /-- A spec passed at the invocation, `ascend [t]`: the proof `t` with its metavariables abstracted,
-in `pre ⊑ wrp …` form, at the priority of core's explicit specs, above the unfold equations. -/
-def mkSpecTheoremFromTerm (term : Syntax) : TacticM SpecTheorem := withRef term do
+in `pre ⊑ wrp …` form, at the priority of core's explicit specs, above the unfold equations. For a
+`Refinement` theorem `t`, also the backward rule of `t` itself, for `Refinement` premises. -/
+def mkSpecTheoremFromTerm (term : Syntax) : TacticM (SpecTheorem × Option BackwardRule) := withRef term do
   let e ← Tactic.elabTerm term none (mayPostpone := true)
   Term.synthesizeSyntheticMVars (postpone := .no) (ignoreStuckTC := true)
   let e ← instantiateMVars e
-  let e ← forallTelescope (← inferType e) fun xs body => do
-    if (← whnfR body).isAppOf ``Ascent.Refinement then
-      mkLambdaFVars xs (← mkAppM ``Ascent.Refinement.le_wrp #[mkAppN e xs])
+  let isRefinement ← forallTelescope (← inferType e) fun _ body => do
+    return (← whnfR body).isAppOf ``Ascent.Refinement
+  let rule? ← if isRefinement then
+      let r ← abstractMVars e
+      pure (some (← Sym.mkBackwardRuleFromExpr r.expr r.paramNames.toList))
+    else pure none
+  let e ← if isRefinement then
+      forallTelescope (← inferType e) fun xs _ => do
+        mkLambdaFVars xs (← mkAppM ``Ascent.Refinement.le_wrp #[mkAppN e xs])
     else pure e
   let r ← abstractMVars e
   let (pattern, _) ← Sym.mkPatternFromExprWithKey r.expr r.paramNames.toList fun type => do
     let some prog ← selectProg (← whnfR type)
       | throwError "ascend: the conclusion of {term} is not `pre ⊑ wrp …`:{indentExpr type}"
     return (prog, ())
-  return { pattern := eraseUnusedVarsFromPattern pattern, proof := .stx (← mkFreshId) term r.expr,
-           kind := .triple, conjunctivePre := true, priority := explicitSpecPrio }
+  let id ← mkFreshId
+  let spec : SpecTheorem :=
+    { pattern := eraseUnusedVarsFromPattern pattern
+      proof := .stx id term r.expr
+      kind := .triple
+      conjunctivePre := true
+      priority := explicitSpecPrio }
+  return (spec, rule?)
 
 /-- The unfold equations of the definitions `declNames`, added to the spec database `specs`. -/
 def addUnfoldSpecs (specs : SpecTheorems) (declNames : Array Name) : MetaM SpecTheorems := do
@@ -191,8 +204,11 @@ def elabAscend : Tactic := fun stx => withMainContext do
     { backwardRules := ← mkBackwardRules, rintros := ← getRIntros, simpMethods, internalize := step?.isSome,
       invariantAlts := invariantAlts?.getD {} }
   let mut specs ← addUnfoldSpecs (← getAscendSpecTheorems) declNames
+  let mut refinementRules := #[]
   for term in termSpecs do
-    specs := specs.insert (← mkSpecTheoremFromTerm term)
+    let (spec, rule?) ← mkSpecTheoremFromTerm term
+    specs := specs.insert spec
+    if let some rule := rule? then refinementRules := refinementRules.push rule
   let scope : Scope := { specs }
   let coreScope : Scope := { specs := ← addUnfoldSpecs (← getSpecTheorems) declNames }
   let params ← Grind.mkDefaultParams { clean := false }
@@ -202,6 +218,7 @@ def elabAscend : Tactic := fun stx => withMainContext do
       if let some decl := holeDecl? then
         pureEnvExt.modifyState fun env =>
           { env with outer := decl.lctx.foldl (fun xs d => xs.insert d.fvarId) {} }
+      refinementSpecsExt.modifyState fun _ => refinementRules
       let result ← run g ctx scope coreScope
       if let some alts := invariantAlts? then
         elabRemainingInvariants alts result.invariants result.inlineHandledInvariants
