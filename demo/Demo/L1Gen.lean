@@ -196,12 +196,12 @@ theorem monoF_loadReg [MemRel M] {n : Nat} {r : Reg64} {p : MachineData → BitV
       simp only [word, ← hp.eq hab, (MemRel.sub hab.mem).loadInt_get! hl]
     exact ⟨by simp only [loadReg_regs, hab.regs, hw, (he _).eq hab], hab.2.1, hab.2.2.1, hab.2.2.2⟩
 
-theorem monoF_storeWord [MemRel M] {g : MachineData → Prop} {n : Nat} {p v : MachineData → BitVec 64}
+theorem monoF_storeWord [MemRel M] {n : Nat} {p v : MachineData → BitVec 64}
     (hp : RegFn p) (hv : RegFn v) :
-    ∀ a b, StRel M a b → g a → StRel M (storeWord n p v a) (storeWord n p v b) := fun a b hab _ => by
+    ∀ a b, StRel M a b → storeOk n p a → StRel M (storeWord n p v a) (storeWord n p v b) := fun a b hab hs => by
   refine ⟨hab.1, hab.2.1, hab.2.2.1, ?_⟩
-  simp only [storeWord_dmem, hp.eq hab, hv.eq hab]
-  exact MemRel.store hab.mem _ _ _
+  simp only [storeWord_dmem, ← hp.eq hab, hv.eq hab]
+  exact MemRel.store hab.mem _ _ _ hs
 
 theorem monoG_retOk [MemRel M] (r₀ : BitVec 64) (ra : Int64) :
     ∀ a b, StRel M a b → retOk r₀ ra a → retOk r₀ ra b := fun a b hab ⟨hr, hra⟩ => by
@@ -437,5 +437,316 @@ end
   fun hp => by rw [CondCode.interp_ofSub, ← h hp]
 
 derive_rel_rules wrp_leaSib wrp_leaBaseDisp wrp_movReg32Imm wrp_cmpRegReg wrp_cmpRegImm
+
+end Ascent.Kraken.AInstr
+
+
+/-! ## Jumps under the block exit relation
+
+The jump rules for `BlockExit p r₀ E`: a jump that stays in the frame goes to a label of `p`. -/
+
+namespace Ascent.Kraken.AInstr
+
+theorem stayIn_jrel {M : DataMem → DataMem → Prop} {r₀ : BitVec 64} {s a : MachineData} (h : JRel M s a) :
+    stayIn r₀ a = stayIn r₀ s := by
+  simp only [stayIn, JRel.regs h]
+
+theorem blockExit_jump [Host] {M : DataMem → DataMem → Prop} {p : Program} {r₀ : BitVec 64}
+    {E : Int64 → Int64 → MachineData → Prop} {s a : MachineData} {l : Label} (hJ : JRel M s a)
+    (hst : stayIn r₀ a = true) (hl : l ∈ Program.labels p) : BlockExit p r₀ E (label l) (label l) s :=
+  Or.inl ⟨by rw [← stayIn_jrel hJ]; exact hst, rfl, l, hl, rfl⟩
+
+section
+variable [Host] [FunDecls] {Q : Unit → Unit → MachineData → Prop}
+
+@[ascend] theorem wrp_jmp_blk {M : DataMem → DataMem → Prop} {p : Program} {r₀ : BitVec 64} {E : Int64 → Int64 → MachineData → Prop} (asz osz : Width) (l : Label) :
+    (fun s => l ∈ Program.labels p)
+      ⊑ wrp (ofStateRel (JRel M))
+          (Directive.instr (.regular asz osz (.jmp (.rel (.sub (.label l) .after_current_instruction)))))
+          (branch (stayIn (r₀)) (fun _ => true) (label l)) Q (BlockExit p r₀ E) := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro s hs
+  simp only [meet_apply, meet_prop_eq_and, ofStateRel_pred, wp_branch, ↓reduceIte] at hs
+  obtain ⟨hmem, a, hJ, hw⟩ := hs
+  refine (Program.WP.Spec.jmp_label asz osz l).le_wp s ?_
+  show (ofStateRel (JRel M)).post (BlockExit p r₀ E) Ea.1 (label l) s
+  simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply, meet_prop_eq_and,
+    ofStateRel_pred]
+  exact ⟨label l, blockExit_jump hJ hw.1 hmem, a, hJ, hw.2⟩
+
+@[ascend] theorem wrp_jcc_blk {M : DataMem → DataMem → Prop} {p : Program} {r₀ : BitVec 64} {E : Int64 → Int64 → MachineData → Prop} (asz osz : Width) (cc : CondCode) (l : Label) (b : Bool) :
+    (fun s => PureRefinement (cc.interp s.status) b True Eq ∧
+      (b = true → l ∈ Program.labels p) ∧ (b = false → Q () () s))
+      ⊑ wrp (ofStateRel (JRel M)) (Directive.instr (.regular asz osz (.jcc cc l)))
+          (branch (stayIn (r₀)) (fun _ => b) (label l)) Q (BlockExit p r₀ E) := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro s hs
+  simp only [meet_apply, meet_prop_eq_and, ofStateRel_pred, wp_branch] at hs
+  obtain ⟨⟨hb, hjmp, hfall⟩, a, hJ, hw⟩ := hs
+  have hc : cc.interp s.status = b := hb trivial
+  refine (Program.WP.Spec.jcc_label asz osz cc l).le_wp s ⟨fun h => ?_, fun h => ?_⟩
+  · rw [hc] at h
+    simp only [h, ↓reduceIte] at hw
+    show (ofStateRel (JRel M)).post (BlockExit p r₀ E) Ea.1 (label l) s
+    simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply, meet_prop_eq_and,
+      ofStateRel_pred]
+    exact ⟨label l, blockExit_jump hJ hw.1 (hjmp h), a, hJ, hw.2⟩
+  · rw [hc] at h
+    simp only [h, Bool.false_eq_true, ↓reduceIte] at hw
+    show (ofStateRel (JRel M)).post Q Qa () s
+    simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply, meet_prop_eq_and,
+      ofStateRel_pred]
+    exact ⟨(), hfall h, a, hJ, hw⟩
+
+@[ascend default + 1] theorem wrp_cmpJcc_blk {M : DataMem → DataMem → Prop} {p : Program} {r₀ : BitVec 64} {E : Int64 → Int64 → MachineData → Prop} (asz₁ asz₂ osz : Width) (ra rb : Reg64) (cc : CondCode)
+    (l : Label) (p : Program) (k : Unit → BlockM MachineData Unit)
+    (hN : Program.labels (Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p) = []) :
+    (fun s =>
+      let s' := { s with status := StatusFlags.ofSub (s.regs.get64 ra) (s.regs.get64 rb) }
+      (cc.cmp (s.regs.get64 ra) (s.regs.get64 rb) = true → l ∈ Program.labels p)
+        ∧ (cc.cmp (s.regs.get64 ra) (s.regs.get64 rb) = false → wrp (ofStateRel (JRel M)) p (k ()) Q (BlockExit p r₀ E) s'))
+      ⊑ wrp (ofStateRel (JRel M))
+          (Directive.instr (.regular asz₁ .W64
+              (.cmp (.reg (.low ra .W64)) (.regOrMem (.reg (.low rb .W64)))))
+            :: Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p)
+          (branch (stayIn (r₀)) (fun st => cc.cmp (st.regs.get64 ra) (st.regs.get64 rb)) (label l) >>= k) Q (BlockExit p r₀ E) := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro s hs
+  simp only [meet_apply, meet_prop_eq_and, ofStateRel_pred, WPMonadExact.wp_bind_eq,
+    wp_branch] at hs
+  obtain ⟨⟨hjmp, hfall⟩, a, hJ, hw⟩ := hs
+  rw [JRel.regs hJ] at hw
+  have h₂ : wp (Directive.instr (.regular asz₂ osz (.jcc cc l)))
+      (fun _ => wp p ((ofStateRel (JRel M)).post Q Qa) (EPostsConcretization.ePosts (ofStateRel (JRel M)) (BlockExit p r₀ E) Ea))
+      (EPostsConcretization.ePosts (ofStateRel (JRel M)) (BlockExit p r₀ E) Ea)
+      { s with status := StatusFlags.ofSub (s.regs.get64 ra) (s.regs.get64 rb) } := by
+    refine (Program.WP.Spec.jcc_label asz₂ osz cc l).le_wp _ ⟨fun h => ?_, fun h => ?_⟩
+    · rw [CondCode.interp_ofSub] at h
+      simp only [h, ↓reduceIte] at hw
+      show (ofStateRel (JRel M)).post (BlockExit p r₀ E) Ea.1 (label l) _
+      simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
+        meet_prop_eq_and, ofStateRel_pred]
+      exact ⟨label l, blockExit_jump hJ hw.1 (hjmp h), a, hJ, hw.2⟩
+    · rw [CondCode.interp_ofSub] at h
+      simp only [h, Bool.false_eq_true, ↓reduceIte] at hw
+      refine wrp_transport (P := wrp (ofStateRel (JRel M)) p (k ()) Q (BlockExit p r₀ E)) PartialOrder.rel_refl Qa Ea _ ?_
+      simp only [meet_apply, meet_prop_eq_and, ofStateRel_pred]
+      exact ⟨hfall h, a, hJ, hw⟩
+  have h₁ : wp (Directive.instr (.regular asz₁ .W64
+        (.cmp (.reg (.low ra .W64)) (.regOrMem (.reg (.low rb .W64))))))
+      (fun _ => wp (Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p)
+        ((ofStateRel (JRel M)).post Q Qa) (EPostsConcretization.ePosts (ofStateRel (JRel M)) (BlockExit p r₀ E) Ea))
+      (EPostsConcretization.ePosts (ofStateRel (JRel M)) (BlockExit p r₀ E) Ea) s :=
+    (Program.WP.Spec.cmp_reg_reg asz₁ ra rb).le_wp s (Program.wp_cons hN h₂)
+  exact Program.wp_cons (by rw [Program.labels_cons_instr]; exact hN) h₁
+
+@[ascend default + 1] theorem wrp_testJcc_blk {M : DataMem → DataMem → Prop} {p : Program} {r₀ : BitVec 64} {E : Int64 → Int64 → MachineData → Prop} (asz₁ asz₂ osz : Width) (ra rb : Reg64) (cc : CondCode)
+    (l : Label) (p : Program) (k : Unit → BlockM MachineData Unit)
+    (hN : Program.labels (Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p) = []) :
+    (fun s => ∀ af : Bool,
+      let s' := { s with status := StatusFlags.ofLogic (s.regs.get64 ra &&& s.regs.get64 rb) af }
+      (cc.cmp (s.regs.get64 ra &&& s.regs.get64 rb) 0 = true → l ∈ Program.labels p)
+        ∧ (cc.cmp (s.regs.get64 ra &&& s.regs.get64 rb) 0 = false →
+            wrp (ofStateRel (JRel M)) p (k ()) Q (BlockExit p r₀ E) s'))
+      ⊑ wrp (ofStateRel (JRel M))
+          (Directive.instr (.regular asz₁ .W64
+              (.test (.reg (.low ra .W64)) (.regOrMem (.reg (.low rb .W64)))))
+            :: Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p)
+          (branch (stayIn (r₀)) (fun st => cc.cmp (st.regs.get64 ra &&& st.regs.get64 rb) 0) (label l) >>= k) Q (BlockExit p r₀ E) := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro s hs
+  simp only [meet_apply, meet_prop_eq_and, ofStateRel_pred, WPMonadExact.wp_bind_eq,
+    wp_branch] at hs
+  obtain ⟨hpre, a, hJ, hw⟩ := hs
+  rw [JRel.regs hJ] at hw
+  have h₂ : ∀ af : Bool, wp (Directive.instr (.regular asz₂ osz (.jcc cc l)))
+      (fun _ => wp p ((ofStateRel (JRel M)).post Q Qa) (EPostsConcretization.ePosts (ofStateRel (JRel M)) (BlockExit p r₀ E) Ea))
+      (EPostsConcretization.ePosts (ofStateRel (JRel M)) (BlockExit p r₀ E) Ea)
+      { s with status := StatusFlags.ofLogic (s.regs.get64 ra &&& s.regs.get64 rb) af } := by
+    intro af
+    obtain ⟨hjmp, hfall⟩ := hpre af
+    refine (Program.WP.Spec.jcc_label asz₂ osz cc l).le_wp _ ⟨fun h => ?_, fun h => ?_⟩
+    · rw [CondCode.interp_ofLogic] at h
+      simp only [h, ↓reduceIte] at hw
+      show (ofStateRel (JRel M)).post (BlockExit p r₀ E) Ea.1 (label l) _
+      simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
+        meet_prop_eq_and, ofStateRel_pred]
+      exact ⟨label l, blockExit_jump hJ hw.1 (hjmp h), a, hJ, hw.2⟩
+    · rw [CondCode.interp_ofLogic] at h
+      simp only [h, Bool.false_eq_true, ↓reduceIte] at hw
+      refine wrp_transport (P := wrp (ofStateRel (JRel M)) p (k ()) Q (BlockExit p r₀ E)) PartialOrder.rel_refl Qa Ea _ ?_
+      simp only [meet_apply, meet_prop_eq_and, ofStateRel_pred]
+      exact ⟨hfall h, a, hJ, hw⟩
+  have h₁ : wp (Directive.instr (.regular asz₁ .W64
+        (.test (.reg (.low ra .W64)) (.regOrMem (.reg (.low rb .W64))))))
+      (fun _ => wp (Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p)
+        ((ofStateRel (JRel M)).post Q Qa) (EPostsConcretization.ePosts (ofStateRel (JRel M)) (BlockExit p r₀ E) Ea))
+      (EPostsConcretization.ePosts (ofStateRel (JRel M)) (BlockExit p r₀ E) Ea) s :=
+    (Program.WP.Spec.test_reg_reg asz₁ ra rb).le_wp s fun af => Program.wp_cons hN (h₂ af)
+  exact Program.wp_cons (by rw [Program.labels_cons_instr]; exact hN) h₁
+
+@[ascend default + 1] theorem wrp_subJcc_blk {M : DataMem → DataMem → Prop} {p : Program} {r₀ : BitVec 64} {E : Int64 → Int64 → MachineData → Prop} (asz₁ asz₂ osz : Width) (rd rs : Reg64) (cc : CondCode)
+    (l : Label) (p : Program) (k : Unit → BlockM MachineData Unit)
+    (hN : Program.labels (Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p) = []) :
+    (fun s =>
+      let s' := { s with regs := s.regs.set64 rd (s.regs.get64 rd - s.regs.get64 rs), status := StatusFlags.ofSub (s.regs.get64 rd) (s.regs.get64 rs) }
+      (cc.cmp (s.regs.get64 rd) (s.regs.get64 rs) = true → l ∈ Program.labels p)
+        ∧ (cc.cmp (s.regs.get64 rd) (s.regs.get64 rs) = false → wrp (ofStateRel (JRel M)) p (k ()) Q (BlockExit p r₀ E) s'))
+      ⊑ wrp (ofStateRel (JRel M))
+          (Directive.instr (.regular asz₁ .W64
+              (.sub (.reg (.low rd .W64)) (.regOrMem (.reg (.low rs .W64)))))
+            :: Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p)
+          (peek (fun st => cc.cmp (st.regs.get64 rd) (st.regs.get64 rs)) >>= fun c =>
+            modifyIf (fun _ => True) (setReg64 rd fun st => st.regs.get64 rd - st.regs.get64 rs) >>= fun _ =>
+            branch (stayIn (r₀)) (fun _ => c) (label l) >>= k) Q (BlockExit p r₀ E) := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro s hs
+  simp only [meet_apply, meet_prop_eq_and, ofStateRel_pred, WPMonadExact.wp_bind_eq, wp_peek,
+    wp_modifyIf, wp_branch] at hs
+  obtain ⟨⟨hjmp, hfall⟩, a, hJ, -, hw⟩ := hs
+  rw [JRel.regs hJ] at hw
+  have hJ' : JRel M { s with regs := s.regs.set64 rd (s.regs.get64 rd - s.regs.get64 rs), status := StatusFlags.ofSub (s.regs.get64 rd) (s.regs.get64 rs) }
+      (setReg64 rd (fun st => st.regs.get64 rd - st.regs.get64 rs) a) :=
+    ⟨by simp only [setReg64_regs, abs_regs, JRel.regs hJ], hJ.2.1, hJ.2.2.1, hJ.2.2.2⟩
+  have h₂ : wp (Directive.instr (.regular asz₂ osz (.jcc cc l)))
+      (fun _ => wp p ((ofStateRel (JRel M)).post Q Qa) (EPostsConcretization.ePosts (ofStateRel (JRel M)) (BlockExit p r₀ E) Ea))
+      (EPostsConcretization.ePosts (ofStateRel (JRel M)) (BlockExit p r₀ E) Ea)
+      { s with regs := s.regs.set64 rd (s.regs.get64 rd - s.regs.get64 rs), status := StatusFlags.ofSub (s.regs.get64 rd) (s.regs.get64 rs) } := by
+    refine (Program.WP.Spec.jcc_label asz₂ osz cc l).le_wp _ ⟨fun h => ?_, fun h => ?_⟩
+    · rw [CondCode.interp_ofSub] at h
+      simp only [h, ↓reduceIte] at hw
+      show (ofStateRel (JRel M)).post (BlockExit p r₀ E) Ea.1 (label l) _
+      simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
+        meet_prop_eq_and, ofStateRel_pred]
+      exact ⟨label l, blockExit_jump hJ' hw.1 (hjmp h), _, hJ', hw.2⟩
+    · rw [CondCode.interp_ofSub] at h
+      simp only [h, Bool.false_eq_true, ↓reduceIte] at hw
+      refine wrp_transport (P := wrp (ofStateRel (JRel M)) p (k ()) Q (BlockExit p r₀ E)) PartialOrder.rel_refl Qa Ea _ ?_
+      simp only [meet_apply, meet_prop_eq_and, ofStateRel_pred]
+      exact ⟨hfall h, _, hJ', hw⟩
+  have h₁ : wp (Directive.instr (.regular asz₁ .W64
+        (.sub (.reg (.low rd .W64)) (.regOrMem (.reg (.low rs .W64))))))
+      (fun _ => wp (Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p)
+        ((ofStateRel (JRel M)).post Q Qa) (EPostsConcretization.ePosts (ofStateRel (JRel M)) (BlockExit p r₀ E) Ea))
+      (EPostsConcretization.ePosts (ofStateRel (JRel M)) (BlockExit p r₀ E) Ea) s :=
+    (Spec.sub_reg_reg asz₁ rd rs).le_wp s (Program.wp_cons hN h₂)
+  exact Program.wp_cons (by rw [Program.labels_cons_instr]; exact hN) h₁
+
+@[ascend default + 2] theorem wrp_cmpJccJcc_blk {M : DataMem → DataMem → Prop} {p : Program} {r₀ : BitVec 64} {E : Int64 → Int64 → MachineData → Prop} (asz₁ asz₂ asz₃ osz₂ osz₃ : Width) (ra rb : Reg64)
+    (c₁ c₂ : CondCode) (l₁ l₂ : Label) (p : Program) (k : Unit → BlockM MachineData Unit)
+    (hN₂ : Program.labels (Directive.instr (.regular asz₂ osz₂ (.jcc c₁ l₁))
+      :: Directive.instr (.regular asz₃ osz₃ (.jcc c₂ l₂)) :: p) = [])
+    (hN₃ : Program.labels (Directive.instr (.regular asz₃ osz₃ (.jcc c₂ l₂)) :: p) = []) :
+    (fun s =>
+      let s' := { s with status := StatusFlags.ofSub (s.regs.get64 ra) (s.regs.get64 rb) }
+      (c₁.cmp (s.regs.get64 ra) (s.regs.get64 rb) = true → l₁ ∈ Program.labels p)
+        ∧ (c₁.cmp (s.regs.get64 ra) (s.regs.get64 rb) = false →
+          (c₂.cmp (s.regs.get64 ra) (s.regs.get64 rb) = true → l₂ ∈ Program.labels p)
+            ∧ (c₂.cmp (s.regs.get64 ra) (s.regs.get64 rb) = false →
+              wrp (ofStateRel (JRel M)) p (k ()) Q (BlockExit p r₀ E) s')))
+      ⊑ wrp (ofStateRel (JRel M))
+          (Directive.instr (.regular asz₁ .W64
+              (.cmp (.reg (.low ra .W64)) (.regOrMem (.reg (.low rb .W64)))))
+            :: Directive.instr (.regular asz₂ osz₂ (.jcc c₁ l₁))
+            :: Directive.instr (.regular asz₃ osz₃ (.jcc c₂ l₂)) :: p)
+          (branch (stayIn (r₀)) (fun st => c₁.cmp (st.regs.get64 ra) (st.regs.get64 rb)) (label l₁) >>= fun _ =>
+            branch (stayIn (r₀)) (fun st => c₂.cmp (st.regs.get64 ra) (st.regs.get64 rb)) (label l₂) >>= k) Q (BlockExit p r₀ E) := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro s hs
+  simp only [meet_apply, meet_prop_eq_and, ofStateRel_pred, WPMonadExact.wp_bind_eq,
+    wp_branch] at hs
+  obtain ⟨⟨hjmp₁, hfall₁⟩, a, hJ, hw⟩ := hs
+  rw [JRel.regs hJ] at hw
+  let s' := { s with status := StatusFlags.ofSub (s.regs.get64 ra) (s.regs.get64 rb) }
+  have hpost : ∀ (l : Label) (cl : Int64), (BlockExit p r₀ E) (label l) cl s' → Ea.1 cl a →
+      (ofStateRel (JRel M)).post (BlockExit p r₀ E) Ea.1 (label l) s' := by
+    intro l cl he hea
+    simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
+      meet_prop_eq_and, ofStateRel_pred]
+    exact ⟨cl, he, a, hJ, hea⟩
+  have h₃ : wp (Directive.instr (.regular asz₃ osz₃ (.jcc c₂ l₂)))
+      (fun _ => wp p ((ofStateRel (JRel M)).post Q Qa) (EPostsConcretization.ePosts (ofStateRel (JRel M)) (BlockExit p r₀ E) Ea))
+      (EPostsConcretization.ePosts (ofStateRel (JRel M)) (BlockExit p r₀ E) Ea) s' →
+      wp (Directive.instr (.regular asz₃ osz₃ (.jcc c₂ l₂)) :: p) ((ofStateRel (JRel M)).post Q Qa)
+        (EPostsConcretization.ePosts (ofStateRel (JRel M)) (BlockExit p r₀ E) Ea) s' := Program.wp_cons hN₃
+  have h₂ : wp (Directive.instr (.regular asz₂ osz₂ (.jcc c₁ l₁)))
+      (fun _ => wp (Directive.instr (.regular asz₃ osz₃ (.jcc c₂ l₂)) :: p)
+        ((ofStateRel (JRel M)).post Q Qa) (EPostsConcretization.ePosts (ofStateRel (JRel M)) (BlockExit p r₀ E) Ea))
+      (EPostsConcretization.ePosts (ofStateRel (JRel M)) (BlockExit p r₀ E) Ea) s' := by
+    refine (Program.WP.Spec.jcc_label asz₂ osz₂ c₁ l₁).le_wp _ ⟨fun h => ?_, fun h => ?_⟩
+    · rw [CondCode.interp_ofSub] at h
+      simp only [h, ↓reduceIte] at hw
+      exact hpost l₁ _ (blockExit_jump hJ hw.1 (hjmp₁ h)) hw.2
+    · rw [CondCode.interp_ofSub] at h
+      simp only [h, Bool.false_eq_true, ↓reduceIte] at hw
+      obtain ⟨hjmp₂, hfall₂⟩ := hfall₁ h
+      refine h₃ ((Program.WP.Spec.jcc_label asz₃ osz₃ c₂ l₂).le_wp _ ⟨fun h' => ?_, fun h' => ?_⟩)
+      · rw [CondCode.interp_ofSub] at h'
+        simp only [h', ↓reduceIte] at hw
+        exact hpost l₂ _ (blockExit_jump hJ hw.1 (hjmp₂ h')) hw.2
+      · rw [CondCode.interp_ofSub] at h'
+        simp only [h', Bool.false_eq_true, ↓reduceIte] at hw
+        refine wrp_transport (P := wrp (ofStateRel (JRel M)) p (k ()) Q (BlockExit p r₀ E)) PartialOrder.rel_refl Qa Ea _ ?_
+        simp only [meet_apply, meet_prop_eq_and, ofStateRel_pred]
+        exact ⟨hfall₂ h', a, hJ, hw⟩
+  have h₁ : wp (Directive.instr (.regular asz₁ .W64
+        (.cmp (.reg (.low ra .W64)) (.regOrMem (.reg (.low rb .W64))))))
+      (fun _ => wp (Directive.instr (.regular asz₂ osz₂ (.jcc c₁ l₁))
+          :: Directive.instr (.regular asz₃ osz₃ (.jcc c₂ l₂)) :: p)
+        ((ofStateRel (JRel M)).post Q Qa) (EPostsConcretization.ePosts (ofStateRel (JRel M)) (BlockExit p r₀ E) Ea))
+      (EPostsConcretization.ePosts (ofStateRel (JRel M)) (BlockExit p r₀ E) Ea) s :=
+    (Program.WP.Spec.cmp_reg_reg asz₁ ra rb).le_wp s (Program.wp_cons hN₂ h₂)
+  exact Program.wp_cons (by rw [Program.labels_cons_instr]; exact hN₂) h₁
+
+@[ascend default + 1] theorem wrp_testJcc8_blk {M : DataMem → DataMem → Prop} {p : Program} {r₀ : BitVec 64} {E : Int64 → Int64 → MachineData → Prop} (asz₁ asz₂ osz : Width) (ra rb : Reg64) (cc : CondCode)
+    (l : Label) (p : Program) (k : Unit → BlockM MachineData Unit)
+    (hN : Program.labels (Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p) = []) :
+    (fun s => ∀ af : Bool,
+      let v := (s.regs.get64 ra).take 8 &&& (s.regs.get64 rb).take 8
+      let s' := { s with status := StatusFlags.from_result v { cf := false, af := af, of := false } }
+      (cc.interp (StatusFlags.from_result v { cf := false, af := false, of := false }) = true →
+          l ∈ Program.labels p)
+        ∧ (cc.interp (StatusFlags.from_result v { cf := false, af := false, of := false }) = false →
+          wrp (ofStateRel (JRel M)) p (k ()) Q (BlockExit p r₀ E) s'))
+      ⊑ wrp (ofStateRel (JRel M))
+          (Directive.instr (.regular asz₁ .W8
+              (.test (.reg (.low ra .W8)) (.regOrMem (.reg (.low rb .W8)))))
+            :: Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p)
+          (branch (stayIn (r₀)) (fun st => cc.interp (StatusFlags.from_result
+              ((st.regs.get64 ra).take 8 &&& (st.regs.get64 rb).take 8)
+              { cf := false, af := false, of := false })) (label l) >>= k) Q (BlockExit p r₀ E) := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro s hs
+  simp only [meet_apply, meet_prop_eq_and, ofStateRel_pred, WPMonadExact.wp_bind_eq,
+    wp_branch] at hs
+  obtain ⟨hpre, a, hJ, hw⟩ := hs
+  rw [JRel.regs hJ] at hw
+  have h₂ : ∀ af : Bool, wp (Directive.instr (.regular asz₂ osz (.jcc cc l)))
+      (fun _ => wp p ((ofStateRel (JRel M)).post Q Qa) (EPostsConcretization.ePosts (ofStateRel (JRel M)) (BlockExit p r₀ E) Ea))
+      (EPostsConcretization.ePosts (ofStateRel (JRel M)) (BlockExit p r₀ E) Ea)
+      { s with status := StatusFlags.from_result ((s.regs.get64 ra).take 8 &&& (s.regs.get64 rb).take 8) { cf := false, af := af, of := false } } := by
+    intro af
+    obtain ⟨hjmp, hfall⟩ := hpre af
+    refine (Program.WP.Spec.jcc_label asz₂ osz cc l).le_wp _ ⟨fun h => ?_, fun h => ?_⟩
+    · rw [CondCode.interp_from_result_af] at h
+      simp only [h, ↓reduceIte] at hw
+      show (ofStateRel (JRel M)).post (BlockExit p r₀ E) Ea.1 (label l) _
+      simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
+        meet_prop_eq_and, ofStateRel_pred]
+      exact ⟨label l, blockExit_jump hJ hw.1 (hjmp h), a, hJ, hw.2⟩
+    · rw [CondCode.interp_from_result_af] at h
+      simp only [h, Bool.false_eq_true, ↓reduceIte] at hw
+      refine wrp_transport (P := wrp (ofStateRel (JRel M)) p (k ()) Q (BlockExit p r₀ E)) PartialOrder.rel_refl Qa Ea _ ?_
+      simp only [meet_apply, meet_prop_eq_and, ofStateRel_pred]
+      exact ⟨hfall h, a, hJ, hw⟩
+  have h₁ : wp (Directive.instr (.regular asz₁ .W8
+        (.test (.reg (.low ra .W8)) (.regOrMem (.reg (.low rb .W8))))))
+      (fun _ => wp (Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p)
+        ((ofStateRel (JRel M)).post Q Qa) (EPostsConcretization.ePosts (ofStateRel (JRel M)) (BlockExit p r₀ E) Ea))
+      (EPostsConcretization.ePosts (ofStateRel (JRel M)) (BlockExit p r₀ E) Ea) s :=
+    (Spec.test_reg8_reg8 asz₁ ra rb).le_wp s fun af => Program.wp_cons hN (h₂ af)
+  exact Program.wp_cons (by rw [Program.labels_cons_instr]; exact hN) h₁
+
+end
 
 end Ascent.Kraken.AInstr

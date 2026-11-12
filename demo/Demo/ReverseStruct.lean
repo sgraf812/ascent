@@ -5,7 +5,7 @@ import Demo.Reverse
 # The structured program of `reverse_`
 
 `reverseT` is the block loop `reverseA` rewritten by the equations of `Demo.CfgRewrite`. The call
-`withRa k` never throws, so the handlers of the block loop pass it.
+`callA k` never throws, so the handlers of the block loop pass it.
 -/
 
 open Std.WP Lean.Order Ascent Ascent.Kraken.AInstr
@@ -38,16 +38,16 @@ theorem reverse.label_ne_6 [Host] [Embeds reverse] :
     (label "LBB1_4" = label "LBB1_2") = False :=
   Program.label_eq_false (p := reverse) (by decide +kernel) (by decide +kernel) (by decide +kernel) (by decide +kernel)
 
-sym_simp_def reverseT [Host] [Embeds reverse] (k : BitVec 64 → Int64 → BlockM MachineData Unit) (r₀ : BitVec 64) (ra : Int64) :
-    BlockM MachineData Unit from reverseA k r₀ ra
-  using pre [tryCatch_bind_assoc, tryCatch_withRa_bind, BlockLoop.tryCatch_pure, BlockLoop.tryCatch_throw,
+sym_simp_def reverseT [Host] [Embeds reverse] (k : BitVec 64 → Int64 → BlockM MachineData Unit) (r₀ : BitVec 64) (L : Int64) :
+    BlockM MachineData Unit from reverseA k r₀ L
+  using pre [tryCatch_bind_assoc, tryCatch_callA_bind, BlockLoop.tryCatch_pure, BlockLoop.tryCatch_throw,
     tryCatch_modifyIf_bind, tryCatch_branch_bind, tryCatch_branch, tryCatch_peek_bind,
     tryCatch_exitIf_handler, tryCatch_exitIf_cfgLoop, tryCatch_condState_bind, tryCatch_condState,
     tryCatch_map_bind, tryCatch_map_condState, tryCatch_map_throw, tryCatch_map_pure,
     tryCatch_map_modifyIf, BlockLoop.tryCatch_tryCatch, tryCatch_forIn_bind, tryCatch_map_forIn,
     tryCatch_forIn, tryCatch_forIn_bind_header, tryCatch_map_forIn_header, tryCatch_forIn_header,
     modifyIf_stay_bind_condState]
-  post [tryCatch_forIn_bind_header, tryCatch_map_forIn_header, tryCatch_forIn_header, reverseA, reverse, ThrowsOnly.withRa, reverse.label_ne_1, reverse.label_ne_2, reverse.label_ne_3, reverse.label_ne_4, reverse.label_ne_5, reverse.label_ne_6, Program.loop, Program.entryNext, Program.firstLabel, Table.get_cons,
+  post [tryCatch_forIn_bind_header, tryCatch_map_forIn_header, tryCatch_forIn_header, reverseA, reverse, ThrowsOnly.callA, reverse.label_ne_1, reverse.label_ne_2, reverse.label_ne_3, reverse.label_ne_4, reverse.label_ne_5, reverse.label_ne_6, Program.loop, Program.entryNext, Program.firstLabel, Table.get_cons,
     Program.table, List.filterMap_cons, List.filterMap_nil, Option.map_some, Option.map_none,
     List.reverse_cons, List.reverse_nil, List.nil_append, List.cons_append, Option.some.injEq,
     reduceCtorEq,
@@ -65,23 +65,26 @@ sym_simp_def reverseT [Host] [Embeds reverse] (k : BitVec 64 → Int64 → Block
 
 theorem reverseT.refines [Host] [FunDecls] [Embeds reverse] (g : Fragment)
     (hg : FunDecls.at (label "_swap") = some g) (k : BitVec 64 → Int64 → BlockM MachineData Unit)
-    (hk : ∀ r₀ ra, ⦃fun s => s.regs.get64 .rsp = r₀ ∧ s.retAddr = some ra⦄ g.prog
-      ⪯[ofStateRel (JRel Mem.Sub)] (k r₀ ra) ⦃fun _ _ => ⊤; AddrRel r₀ ra⦄)
-    (r₀ : BitVec 64) (ra : Int64) :
-    ⦃fun s => s.regs.get64 .rsp = r₀ ∧ s.retAddr = some ra⦄ reverse ⪯[ofStateRel (JRel Mem.Sub)]
-      (reverseT k r₀ ra) ⦃fun _ _ => ⊤; AddrRel r₀ ra⦄ :=
-  reverseT.eq k r₀ ra ▸ reverseA.refines g hg k hk r₀ ra
+    (hk : ∀ (P' : DataMem) (r₀ : BitVec 64) (ra : Int64),
+      (P'.loadInt r₀ 8).map (fun i => Int64.ofBitVec (BitVec.ofInt 64 i)) = some ra →
+      ⦃fun s => s.regs.get64 .rsp = r₀⦄ g.prog ⪯[ofStateRel (JRel (Mem.SubSlots P'))] (k r₀ 0)
+        ⦃fun _ _ => ⊤; RetExit r₀ ra 0⦄)
+    (P : DataMem) (r₀ : BitVec 64) (ra L : Int64)
+    (hP : (P.loadInt r₀ 8).map (fun i => Int64.ofBitVec (BitVec.ofInt 64 i)) = some ra) :
+    ⦃fun s => s.regs.get64 .rsp = r₀⦄ reverse ⪯[ofStateRel (JRel (Mem.SubSlots P))]
+      (reverseT k r₀ L) ⦃fun _ _ => ⊤; RetExit r₀ ra L⦄ :=
+  reverseT.eq k r₀ L ▸ reverseA.refines g hg k hk P r₀ ra L hP
 
 /--
 info: def Ascent.Kraken.reverseT : (BitVec 64 → Int64 → BlockM MachineData Unit) →
   BitVec 64 → Int64 → BlockM MachineData Unit :=
-fun k r₀ ra => do
+fun k r₀ L => do
   modifyIf (fun s => stayIn r₀ s = true) id
   let z ← peek fun st => (st.regs.rsi.toBitVec, 2#64)
   condState (fun x => CondCode.c.cmp z.fst z.snd)
       (do
         modifyIf (fun s => stayIn r₀ s = true) id
-        exitIf (retOk r₀ ra) (setReg64 Reg64.rsp fun x => r₀ + 8#64) ra)
+        exitIf (fun s => s.regs.rsp.toBitVec = r₀) (setReg64 Reg64.rsp fun x => r₀ + 8#64) L)
       do
       modifyIf (storeOk 8 fun st => st.regs.rsp.toBitVec - 8#64)
           (storeWord 8 (fun st => st.regs.rsp.toBitVec - 8#64) fun st => st.regs.r15.toBitVec)
@@ -109,7 +112,7 @@ fun k r₀ ra => do
       { }.forIn PUnit.unit fun x x_1 => do
           modifyIf (fun x => True) (setReg64 Reg64.rdi fun st => st.regs.r14.toBitVec)
           modifyIf (fun x => True) (setReg64 Reg64.rsi fun st => st.regs.r15.toBitVec)
-          withRa k
+          callA fun r => k r 0
           let _ ← peek fun st => st.regs.rbx.toBitVec - 1#64 == 0#64
           modifyIf (fun x => True) (setReg64 Reg64.rbx fun st => st.regs.rbx.toBitVec - 1#64)
           modifyIf (fun x => True) (setReg64 Reg64.r15 fun st => st.regs.r15.toBitVec + 18446744073709551608#64)
@@ -135,7 +138,7 @@ fun k r₀ ra => do
               modifyIf (loadOk 8 fun st => st.regs.rsp.toBitVec - 8#64)
                   (loadReg 8 Reg64.r15 (fun st => st.regs.rsp.toBitVec - 8#64) fun w x => w)
               modifyIf (fun s => stayIn r₀ s = true) id
-              exitIf (retOk r₀ ra) (setReg64 Reg64.rsp fun x => r₀ + 8#64) ra
+              exitIf (fun s => s.regs.rsp.toBitVec = r₀) (setReg64 Reg64.rsp fun x => r₀ + 8#64) L
 -/
 #guard_msgs in
 #print reverseT

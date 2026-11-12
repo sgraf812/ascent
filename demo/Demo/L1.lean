@@ -165,15 +165,45 @@ theorem Mem.Sub.loadInt_get! {m m' : DataMem} (h : Mem.Sub m m') {a : BitVec 64}
 keep it. -/
 class MemRel (M : DataMem → DataMem → Prop) : Prop where
   sub : ∀ {m m'}, M m m' → Mem.Sub m m'
-  store : ∀ {m m'}, M m m' → ∀ a n v, M (m.storeInt a n v) (m'.storeInt a n v)
+  store : ∀ {m m'}, M m m' → ∀ a n v, (m.loadInt a n).isSome = true → M (m.storeInt a n v) (m'.storeInt a n v)
 
 instance : MemRel (Eq : DataMem → DataMem → Prop) where
   sub h := h ▸ Mem.Sub.refl _
-  store h _ _ _ := h ▸ rfl
+  store h _ _ _ _ := h ▸ rfl
 
 instance : MemRel Mem.Sub where
   sub h := h
-  store h a n v := h.storeInt a n v
+  store h a n v _ := h.storeInt a n v
+
+/-- `m` is a sub-map of `m'` that lacks the cells of `P`, the return slots of the active frames, and
+`m'` holds the values of `P` in them. -/
+def Mem.SubSlots (P m m' : DataMem) : Prop :=
+  Mem.Sub m m' ∧ ∀ p v, P.get? p = some v → m'.get? p = some v ∧ m.get? p = none
+
+theorem Mem.get?_isSome_of_loadInt {m : DataMem} {a : BitVec 64} {n : Nat} (h : (m.loadInt a n).isSome = true)
+    {i : Nat} (hi : i < n) : (m.get? (a + BitVec.ofNat 64 i)).isSome = true := by
+  obtain ⟨v, hv⟩ := Option.isSome_iff_exists.mp h
+  simp only [Mem.loadInt, Option.map_eq_some_iff] at hv
+  obtain ⟨bs, hbs, -⟩ := hv
+  obtain ⟨hl, hb⟩ := Mem.loadBytes_eq_some_iff.mp hbs
+  rw [hb i (by omega)]
+  rfl
+
+instance {P : DataMem} : MemRel (Mem.SubSlots P) where
+  sub h := h.1
+  store h a n v hm := by
+    refine ⟨h.1.storeInt a n v, fun p x hp => ?_⟩
+    obtain ⟨h₁, h₂⟩ := h.2 p x hp
+    have hn : ((Int.toBytes n v).At a)[p]? = none := by
+      apply Std.ExtHashMap.getElem?_eq_none
+      intro hmem
+      obtain ⟨i, hi, rfl⟩ := (mem_At_iff _ _ _).mp hmem
+      rw [Int.toBytes_length] at hi
+      have := Mem.get?_isSome_of_loadInt hm hi
+      rw [h₂] at this
+      exact nomatch this
+    rw [Mem.get?_storeInt, Mem.get?_storeInt, hn]
+    exact ⟨h₁, h₂⟩
 
 /-- The abstract states `a` and `b` agree on the registers and the flags, and their memories are
 related by `M`. -/
