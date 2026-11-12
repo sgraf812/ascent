@@ -43,11 +43,12 @@ theorem zipWithAddBinary_refines_P (h : Binary.Assembles zipWithAdd zipWithAddBi
     (hrdx : (s.push64 ra).regs.get64 .rdx = O) (hrcx : (s.push64 ra).regs.get64 .rcx = BitVec.ofNat 64 n)
     (hmem : ZipArrays (s.push64 ra).dmem A B O ((s.push64 ra).regs.get64 .rsp) n) :
     ⦃(· = s.push64 ra)⦄ zipWithAddBinary
-      ⪯[(ofStateRepr id).comp (machineToArray O n)]
+      ⪯[(ofStateRepr id).comp (machineToArray ((s.push64 ra).regs.get64 .rsp) O n)]
       (zipWithAddP (words 8 64 (s.push64 ra).dmem A n).toArray (words 8 64 (s.push64 ra).dmem B n).toArray)
       ⦃fun _ _ _ => False; fun a t => a = ra ∧ t.regs.get64 .rsp = s.regs.get64 .rsp ∧
-        outView 8 64 O n t.dmem = Id.run (zipWithAddP (words 8 64 (s.push64 ra).dmem A n).toArray
-          (words 8 64 (s.push64 ra).dmem B n).toArray)⦄ :=
+        outView 8 64 O n (FState.split (Fr ((s.push64 ra).regs.get64 .rsp) 0 0) t.dmem).dmem
+          = Id.run (zipWithAddP (words 8 64 (s.push64 ra).dmem A n).toArray
+            (words 8 64 (s.push64 ra).dmem B n).toArray)⦄ :=
   let _ : Embeds zipWithAdd := h.embeds
   Refinement.comp_le (by grind) (by grind) (by grind)
     (zipWithAdd_refines_P s ra hrdi hrsi hrdx hrcx hmem) (zipWithAddBinary_refines_zipWithAdd h _)
@@ -65,7 +66,9 @@ theorem zipWithAddBinary_correct (hasm : Binary.Assembles zipWithAdd zipWithAddB
     (Pa := True) (Qa := fun _ => True) (Ea := estack⟨⟩) ⟨fun _ => trivial⟩
   refine ⟨fun t ht => WP.wp_monotone (x := zipWithAddBinary) (fun _ _ _ => trivial) ?_ t (h.le_wp t (by grind))⟩
   intro a t hE
-  grind
+  have hO := hmem.apart.2.2
+  have hn := hmem.len
+  grind [outView_split]
 
 end
 

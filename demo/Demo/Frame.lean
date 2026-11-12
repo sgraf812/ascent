@@ -57,6 +57,12 @@ def split (bs : List (BitVec 64 × Nat)) (m : DataMem) : FState :=
 @[simp] theorem set_get (s : FState) (r : Region) : s.set r (s.get r) = s := by
   cases r <;> rfl
 
+@[simp] theorem set_dmem_self (s : FState) : s.set .dmem s.dmem = s := rfl
+
+@[simp, grind =] theorem dmem_set_dmem (s : FState) (m : DataMem) : (s.set .dmem m).dmem = m := rfl
+
+@[simp, grind =] theorem frame_set_dmem (s : FState) (m : DataMem) : (s.set .dmem m).frame = s.frame := rfl
+
 theorem get_set_of_ne (s : FState) {r r' : Region} (h : r ≠ r') (m : DataMem) :
     (s.set r m).get r' = s.get r' := by
   cases r <;> cases r' <;> first | rfl | exact absurd rfl h
@@ -66,6 +72,8 @@ theorem set_comm (s : FState) {r r' : Region} (h : r ≠ r') (m m' : DataMem) :
   cases r <;> cases r' <;> first | rfl | exact absurd rfl h
 
 end FState
+
+attribute [vcgen_simp] FState.dmem_set_dmem FState.frame_set_dmem
 
 /-- The frame of a function with the stack pointer `r₀` at entry: `k` reserved words, the return
 slot and `n` words of stack arguments. -/
@@ -83,6 +91,14 @@ theorem loadInt_storeInt_of_sub {m : DataMem} {a x : BitVec 64} {n k : Nat} (v :
   Mem.loadInt_storeInt_of_disjoint (Mem.Blocks.Disjoint.of_sub h₁ h₂) v
 
 grind_pattern loadInt_storeInt_of_sub => (Mem.storeInt m a n v).loadInt x k
+
+theorem loadInt_storeInt_of_disjoint_inside {m : DataMem} {a x : BitVec 64} {n k : Nat}
+    {bs : List (BitVec 64 × Nat)} (v : Int) (hd : Mem.Blocks.Disjoint [(a, n)] bs)
+    (hx : Mem.Blocks.Inside x k bs) : (m.storeInt a n v).loadInt x k = m.loadInt x k :=
+  Mem.loadInt_storeInt_of_disjoint (hd.of_inside' hx (Mem.Blocks.Inside.base (Nat.le_refl n))) v
+
+grind_pattern loadInt_storeInt_of_disjoint_inside =>
+  (Mem.storeInt m a n v).loadInt x k, Mem.Blocks.Disjoint [(a, n)] bs
 
 /-! ## The split -/
 
@@ -176,10 +192,59 @@ def StackAddr (a x : BitVec 64) : Prop := a = x
 /-- `a ≐ₛ x`: the concrete stack address `a` is the abstract value `x`. -/
 scoped notation:50 c:51 " ≐ₛ " x:51 => PureRefinement c x True StackAddr
 
+/-- The access of `n` bytes at `a` is inside the frame if it goes to `frame`. -/
+def FrameOk (bs : List (BitVec 64 × Nat)) (a : BitVec 64) (n : Nat) : Region → Prop
+  | .frame => Mem.Blocks.Inside a n bs
+  | .dmem => True
+
+/-- The access of `n` bytes at `a` is apart from the frame if it goes to `dmem`. -/
+def DmemOk (bs : List (BitVec 64 × Nat)) (a : BitVec 64) (n : Nat) : Region → Prop
+  | .frame => True
+  | .dmem => Mem.Blocks.Disjoint [(a, n)] bs
+
+@[simp, grind =] theorem dmemOk_frame {bs : List (BitVec 64 × Nat)} {a : BitVec 64} {n : Nat} :
+    DmemOk bs a n .frame = True := rfl
+
+@[simp, grind =] theorem dmemOk_dmem {bs : List (BitVec 64 × Nat)} {a : BitVec 64} {n : Nat} :
+    DmemOk bs a n .dmem = Mem.Blocks.Disjoint [(a, n)] bs := rfl
+
+theorem InRegion.of_ok {bs : List (BitVec 64 × Nat)} {a : BitVec 64} {n : Nat} {r : Region}
+    (hf : FrameOk bs a n r) (hd : DmemOk bs a n r) : InRegion bs a n r := by
+  cases r
+  · exact hd
+  · exact hf
+
 /-- The access of `n` bytes at the concrete address `a` goes to the region `p.1` at the abstract
 address `p.2`. -/
 def Located (bs : List (BitVec 64 × Nat)) (n : Nat) (a : BitVec 64) (p : Region × BitVec 64) : Prop :=
-  a = p.2 ∧ InRegion bs a n p.1
+  a = p.2 ∧ FrameOk bs a n p.1
+
+/-- Load from the region `r`, undefined behaviour if the access goes to `dmem` and overlaps the
+frame `bs`. -/
+noncomputable def loadIn (bs : List (BitVec 64 × Nat)) (r : Region) (n : Nat) (a : BitVec 64) :
+    BlockM FState (BitVec 64) := do
+  StateT.assume fun (_ : FState) => DmemOk bs a n r
+  zoom r (load n a)
+
+/-- Store into the region `r`, undefined behaviour if the access goes to `dmem` and overlaps the
+frame `bs`. -/
+noncomputable def storeIn (bs : List (BitVec 64 × Nat)) (r : Region) (n : Nat) (a v : BitVec 64) :
+    BlockM FState Unit := do
+  StateT.assume fun (_ : FState) => DmemOk bs a n r
+  zoom r (store n a v)
+
+theorem loadIn_frame {bs : List (BitVec 64 × Nat)} {n : Nat} {a : BitVec 64} :
+    loadIn bs .frame n a = zoom .frame (load n a) := by
+  rw [loadIn, dmemOk_frame, assume_true_bind]
+
+theorem storeIn_frame {bs : List (BitVec 64 × Nat)} {n : Nat} {a v : BitVec 64} :
+    storeIn bs .frame n a v = zoom .frame (store n a v) := by
+  rw [storeIn, dmemOk_frame, assume_true_bind]
+
+theorem wp_assume_bind {σ α : Type} (g : σ → Prop) (x : BlockM σ α) (Q : α → σ → Prop)
+    (E : (Int64 → σ → Prop) × EStack⟨⟩) (s : σ) :
+    wp (do StateT.assume g; x : BlockM σ α) Q E s = (g s ∧ wp x Q E s) := by
+  rw [WPMonadExact.wp_bind_eq, ExceptT.wp_monadLift_StateT_UB, StateT.wp_assume_eq]
 
 section
 variable {a b x y : BitVec 64} {P₁ P₂ : Prop} {bs : List (BitVec 64 × Nat)} {n : Nat}
@@ -201,8 +266,8 @@ variable {a b x y : BitVec 64} {P₁ P₂ : Prop} {bs : List (BitVec 64 × Nat)}
   fun ⟨hp, hi⟩ => ⟨h hp, hi⟩
 
 @[ascend_pure low] theorem loc_dmem (h : PureRefinement a x P₁ Eq) :
-    PureRefinement a (Region.dmem, x) (P₁ ∧ Mem.Blocks.Disjoint [(a, n)] bs) (Located bs n) :=
-  fun ⟨hp, hd⟩ => ⟨h hp, hd⟩
+    PureRefinement a (Region.dmem, x) P₁ (Located bs n) :=
+  fun hp => ⟨h hp, trivial⟩
 
 end
 
@@ -211,42 +276,72 @@ end
 section
 variable {bs : List (BitVec 64 × Nat)} {E : (Int64 → Int64 → DataMem → Prop) × EStack⟨⟩}
 
-@[ascend] theorem wrp_load_zoom {Q : BitVec 64 → BitVec 64 → DataMem → Prop} (n : Nat)
+@[ascend] theorem wrp_load_loadIn {Q : BitVec 64 → BitVec 64 → DataMem → Prop} (n : Nat)
     (a : BitVec 64) (r : Region) (x : BitVec 64) (P : Prop) :
     (fun m => PureRefinement a (r, x) P (Located bs n) ∧ P ∧
-      ∀ y, BitVec.ofInt 64 ((Mem.loadInt m a n).get! % 2 ^ (8 * n)) ≐ y →
-        Q (BitVec.ofInt 64 ((Mem.loadInt m a n).get! % 2 ^ (8 * n))) y m)
-      ⊑ wrp (ofStateRepr (FState.split bs)) (load n a) (zoom r (load n x)) Q E := by
+      (DmemOk bs a n r → ∀ y, BitVec.ofInt 64 ((Mem.loadInt m a n).get! % 2 ^ (8 * n)) ≐ y →
+        Q (BitVec.ofInt 64 ((Mem.loadInt m a n).get! % 2 ^ (8 * n))) y m))
+      ⊑ wrp (ofStateRepr (FState.split bs)) (load n a) (loadIn bs r n x) Q E := by
   refine wrp_intro fun Qa Ea => ?_
   intro m hm
-  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_zoom, wp_load] at hm
-  obtain ⟨⟨hl, hP, hq⟩, hs, hqa⟩ := hm
-  obtain ⟨rfl, hr⟩ := hl hP
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, loadIn, wp_assume_bind, wp_zoom,
+    wp_load] at hm
+  obtain ⟨⟨hl, hP, hq⟩, hd, hs, hqa⟩ := hm
+  obtain ⟨rfl, hf⟩ := hl hP
+  have hr := InRegion.of_ok hf hd
   rw [hr.loadInt] at hs hqa
   rw [wp_load, Concretization.post_pi]
-  refine ⟨hs, _, hq _ (PureRefinement.of_rel rfl), ?_⟩
+  refine ⟨hs, _, hq hd _ (PureRefinement.of_rel rfl), ?_⟩
   simp only [ofStateRepr_pred]
   cases r <;> exact hqa
 
-@[ascend] theorem wrp_store_zoom {Q : Unit → Unit → DataMem → Prop} (n : Nat) (a v : BitVec 64)
+@[ascend] theorem wrp_store_storeIn {Q : Unit → Unit → DataMem → Prop} (n : Nat) (a v : BitVec 64)
     (r : Region) (x v' : BitVec 64) (P : Prop) :
     (fun m => PureRefinement a (r, x) P (Located bs n) ∧ v ≐ v' ∧ P ∧
-      Q () () (Mem.storeInt m a n v.toInt))
-      ⊑ wrp (ofStateRepr (FState.split bs)) (store n a v) (zoom r (store n x v')) Q E := by
+      (DmemOk bs a n r → Q () () (Mem.storeInt m a n v.toInt)))
+      ⊑ wrp (ofStateRepr (FState.split bs)) (store n a v) (storeIn bs r n x v') Q E := by
   refine wrp_intro fun Qa Ea => ?_
   intro m hm
-  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_zoom, wp_store] at hm
-  obtain ⟨⟨hl, hv, hP, hq⟩, hs, hqa⟩ := hm
-  obtain ⟨rfl, hr⟩ := hl hP
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, storeIn, wp_assume_bind, wp_zoom,
+    wp_store] at hm
+  obtain ⟨⟨hl, hv, hP, hq⟩, hd, hs, hqa⟩ := hm
+  obtain ⟨rfl, hf⟩ := hl hP
+  have hr := InRegion.of_ok hf hd
   have hv : v = v' := hv trivial
   subst hv
   rw [hr.loadInt] at hs
   rw [wp_store, Concretization.post_pi]
-  refine ⟨hs, (), hq, ?_⟩
+  refine ⟨hs, (), hq hd, ?_⟩
   simp only [ofStateRepr_pred, hr.split_storeInt]
   exact hqa
 
 end
+
+/-! ## Programs over `dmem` under a view of `dmem`
+
+A concretization that reads `dmem` alone lifts each refinement of a program over the data memory
+to the program run on `dmem` with `zoom`. -/
+
+theorem wrp_zoom_dmem {σa CV AV : Type} {view : DataMem → σa} {x : BlockM DataMem CV}
+    {a : BlockM σa AV} {Q : CV → AV → FState → Prop} {E : (Int64 → Int64 → FState → Prop) × EStack⟨⟩}
+    (P : FState → DataMem → Prop)
+    (h : ∀ s, P s ⊑ wrp (ofStateRepr view) x a (fun v w m => Q v w (s.set .dmem m))
+      (fun l l' m => E.1 l l' (s.set .dmem m), estack⟨⟩)) :
+    (fun s => P s s.dmem) ⊑ wrp (ofStateRepr fun s : FState => view s.dmem) (zoom .dmem x) a Q E := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro s hs
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred] at hs
+  have h' := wrp_transport (h s) Qa Ea s.dmem
+    (by simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred]; exact hs)
+  rw [wp_zoom]
+  have hpost : ∀ {V W : Type} (R : V → W → DataMem → Prop) (Ra : W → σa → Prop),
+      (ofStateRepr view).post R Ra = fun v m => ∃ av, R v av m ∧ Ra av (view m) := fun R Ra => by
+    funext v m
+    simp only [Concretization.post_pi, ofStateRepr_pred]
+  simp only [EPostsConcretization.ePosts_cons, EPostsConcretization.ePosts_nil, hpost] at h'
+  simp only [EPostsConcretization.ePosts_cons, EPostsConcretization.ePosts_nil,
+    Concretization.post_pi, ofStateRepr_pred, FState.get, FState.set] at h' ⊢
+  exact h'
 
 /-! ## Forwarding
 

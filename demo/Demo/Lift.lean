@@ -155,6 +155,15 @@ variable {w : Nat} {a b x y : BitVec w} {P₁ P₂ : Prop}
     PureRefinement (!c) (!d) P₁ Eq := fun hp => by
   rw [h hp]
 
+@[ascend_pure] theorem abs_eqProp {α : Type} {a b x y : α}
+    (h₁ : PureRefinement a x P₁ Eq) (h₂ : PureRefinement b y P₂ Eq) :
+    PureRefinement (a = b) (x = y) (P₁ ∧ P₂) Eq := fun ⟨hp₁, hp₂⟩ => by
+  rw [h₁ hp₁, h₂ hp₂]
+
+@[ascend_pure] theorem abs_notProp {p q : Prop} (h : PureRefinement p q P₁ Eq) :
+    PureRefinement (¬p) (¬q) P₁ Eq := fun hp => by
+  rw [h hp]
+
 @[ascend_pure low] theorem abs_refl {α : Type} {c : α} : PureRefinement c c True Eq :=
   PureRefinement.of_rel rfl
 
@@ -418,6 +427,17 @@ theorem wrp_forIn_lockstep_bind_unit {βc βa : Type} (R : βc → σc → βa �
   rw [Concretization.post_pi]
   exact ⟨(), hq, hw⟩
 
+@[ascend] theorem wrp_throw_throw {CV AV : Type} {Q : CV → AV → σc → Prop} (l : Int64) :
+    (fun t => E.1 l l t)
+      ⊑ wrp (ofStateRepr view) (throw l : BlockM σc CV) (throw l : BlockM σa AV) Q E := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro t ht
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_throw_block] at ht ⊢
+  obtain ⟨he, hw⟩ := ht
+  simp only [EPostsConcretization.ePosts_cons]
+  rw [Concretization.post_pi]
+  exact ⟨l, he, hw⟩
+
 @[ascend] theorem wrp_pure_unit_post {γ : Type} {Q : PUnit → γ → σc → Prop} (c : PUnit) (b : γ) :
     (fun t => Q c b t) ⊑ wrp (ofStateRepr view) (pure c : BlockM σc PUnit) (pure b : BlockM σa γ) Q E :=
   wrp_pure (Q := Q) c b
@@ -556,14 +576,14 @@ def retAddrAt (m : DataMem) (p : BitVec 64) : Option Int64 :=
   simp only [ofStateRepr_pred, hf]
   exact he
 
-theorem assume_true_bind {α : Type} (k : PUnit → BlockM DataMem α) :
-    ((do StateT.assume (fun (_ : DataMem) => True) : BlockM DataMem PUnit) >>= k) = k PUnit.unit := by
+theorem assume_true_bind {σ α : Type} (k : PUnit → BlockM σ α) :
+    ((do StateT.assume (fun (_ : σ) => True) : BlockM σ PUnit) >>= k) = k PUnit.unit := by
   apply BlockLoop.ext_wp <;> intro Q E m <;>
     simp only [WPMonadExact.wp_bind_eq, ExceptT.wp_monadLift_StateT_UB, StateT.wp_assume_eq, true_and] <;>
     exact id
 
-theorem assume_true :
-    (do StateT.assume (fun (_ : DataMem) => True) : BlockM DataMem PUnit) = pure PUnit.unit := by
+theorem assume_true {σ : Type} :
+    (do StateT.assume (fun (_ : σ) => True) : BlockM σ PUnit) = pure PUnit.unit := by
   apply BlockLoop.ext_wp <;> intro Q E m <;>
     simp only [WPMonadExact.wp_pure_eq, ExceptT.wp_monadLift_StateT_UB, StateT.wp_assume_eq, true_and] <;>
     exact id

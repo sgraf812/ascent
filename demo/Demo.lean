@@ -6,6 +6,8 @@ import Demo.CfgRewrite
 import Demo.ZipStruct
 import Demo.Lift
 import Demo.Frame
+import Demo.ArraysF
+import Demo.ZipF
 import Demo.Words
 import Demo.ZipL
 import Demo.Arrays

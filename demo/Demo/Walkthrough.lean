@@ -196,22 +196,59 @@ fun rdi rsi rdx rcx rsp ra =>
 #guard_msgs in
 #print zipWithAddL
 
-/-! ## 5. Arrays, synthesized by `ascend_def`
+/-! ## 5. The stack frame, synthesized by `ascend_def`
+
+The state splits the memory at the frame of the function into `frame` and `dmem`. The frame of
+`zipWithAdd` is `Fr rsp 0 0`, the return slot alone. An address computed from the stack pointer goes
+to `frame`; every other address goes to `dmem` and assumes that it misses the frame. The precondition
+states the return address in the return slot, and the frame layer keeps that slot, so the return
+needs no guard: -/
+
+/--
+info: zipWithAddF.refines : ∀ (rdi rsi rdx rcx rsp sp : BitVec 64) (ra : Int64),
+  ⦃ fun m => rsp ≐ₛ sp ∧ retAddrAt m rsp = some ra ⦄
+    (zipWithAddL₀ rdi rsi rdx rcx rsp rsp ra) ⪯[ofStateRepr (FState.split (Fr rsp 0 0))]
+    (zipWithAddF rdi rsi rdx rcx rsp ra) ⦃ fun x x_1 x_2 => True; estack⟨fun l l' x => l = l'⟩ ⦄
+-/
+#guard_msgs in
+#check @zipWithAddF.refines
+
+/--
+info: def Ascent.Kraken.zipWithAddF : BitVec 64 →
+  BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → Int64 → BlockM FState Unit :=
+fun rdi rsi rdx rcx rsp ra =>
+  condState (fun x => CondCode.le.cmp (rcx &&& rcx) 0#64) (throw ra) do
+    let _ ←
+      { }.forIn 0#64 fun x i => do
+          let x ← loadIn (Fr rsp 0 0) Region.dmem 8 (rsi + i * 8#64)
+          let x_1 ← loadIn (Fr rsp 0 0) Region.dmem 8 (rdi + i * 8#64)
+          storeIn (Fr rsp 0 0) Region.dmem 8 (rdx + i * 8#64) (x_1 + x)
+          condState (fun x => CondCode.nz.cmp rcx (i + 1#64)) (pure (ForInStep.yield (i + 1#64))) (throw ra)
+    pure PUnit.unit
+-/
+#guard_msgs in
+#print zipWithAddF
+
+/-! ## 6. Arrays, synthesized by `ascend_def`
 
 The state is the output array. The input arrays are parameters, named by their base addresses, and
 the loads and the store become array reads and an array update. The words that count become
 numbers: the loop counter `v` of `zipWithAddL` holds the number `i` (`v ≐ₙ i`), the length `rcx`
 holds `n`, and the comparisons of the words become comparisons of the numbers. The relation of the
-loop, the hint of the run, states `v ≐ₙ i`, the bound `i < n`, and the layout
-`ArrayLayout 8 64 [(A, a), (B, b)] O n [rsp]` of the memory: the input arrays, the written array, and the
-return slot. `ascend_def` synthesized `zipWithAddArr₀`, and `sym_simp_def` puts the array reads in
-place and states the conditions as propositions in `zipWithAddArr`: -/
+loop, the hint of the run, states `v ≐ₙ i`, the bound `i < n`, the layout
+`ArrayLayout 8 64 [(A, a), (B, b)] O n []` of `dmem`, and `ZipApart`: each array misses the frame,
+which discharges the assumption of each access. `ascend_def` synthesized `zipWithAddArr₀`, and
+`sym_simp_def` puts the array reads in place and states the conditions as propositions in
+`zipWithAddArr`: -/
 
 /--
 info: zipWithAddArr.refines : ∀ (A B O r₀ : BitVec 64) (ra : Int64) (n : Nat) (a b : Array (BitVec 64)),
-  ⦃ fun m => A ≐ₐ a ∧ B ≐ₐ b ∧ a.size = n ∧ b.size = n ∧ ArrayLayout 8 64 [(A, a), (B, b)] O n [(r₀, ra)] m ⦄
-    (zipWithAddL A B O (BitVec.ofNat 64 n) r₀ ra) ⪯[ofStateRepr (outView 8 64 O n)] (zipWithAddArr ra n a b) ⦃
-    fun x x_1 x_2 => True; estack⟨fun l l' x => l = l'⟩ ⦄
+  ⦃ fun s =>
+    A ≐ₐ a ∧
+      B ≐ₐ b ∧
+        a.size = n ∧ b.size = n ∧ ArrayLayout 8 64 [(A, a), (B, b)] O n [] s.dmem ∧ ZipApart (Fr r₀ 0 0) A B O n ⦄
+    (zipWithAddF A B O (BitVec.ofNat 64 n) r₀ ra) ⪯[ofStateRepr fun s => outView 8 64 O n s.dmem]
+    (zipWithAddArr ra n a b) ⦃ fun x x_1 x_2 => True; estack⟨fun l l' x => l = l'⟩ ⦄
 -/
 #guard_msgs in
 #check @zipWithAddArr.refines
@@ -233,7 +270,7 @@ fun ra n a b =>
 #guard_msgs in
 #print zipWithAddArr
 
-/-! ## 6. The pure program
+/-! ## 7. The pure program
 
 `vcgen` proves that the array program exits with `Array.zipWith (· + ·)` of its inputs, from a loop
 invariant and a measure. `ascend_def` takes this result as the premise of `wrp_purify_throw` and
@@ -256,7 +293,7 @@ fun a b => pure (Array.zipWith HAdd.hAdd a b)
 #guard_msgs in
 #print zipWithAddP
 
-/-! ## 7. Back to the machine code
+/-! ## 8. Back to the machine code
 
 `Refinement.comp_le` composes the refinements of the layers into one refinement from the x64 text to
 the pure program: -/
@@ -285,7 +322,7 @@ info: @zipWithAdd_correct : ∀ [inst : Host] [inst_1 : FunDecls] [Embeds zipWit
 #check @zipWithAdd_correct
 #print axioms zipWithAdd_correct
 
-/-! ## 8. Bonus: the bytes
+/-! ## 9. Bonus: the bytes
 
 `zipWithAddBinary` is a plain `ByteArray`: the 28 bytes of machine code that the assembler emits for
 the text. The loader maps every binary at `Binary.base`. The semantics of a binary fetches and
