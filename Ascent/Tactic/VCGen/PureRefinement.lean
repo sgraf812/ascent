@@ -201,8 +201,9 @@ def isPureRefinementGoal (goal : MVarId) : SymM Bool := do
 /-- Close the goal `PureRefinement cv ?av P_goal Q`. The precondition and the abstract value are
 simplified with the `simp` methods of the run. The solution's precondition `P` meets `P_goal` by
 the consequence rule `PureRefinement.weaken_pre`: when `P_goal` is not `P`, the premise
-`hpre : P_goal → P` is a new goal. When a given abstract value `av'` does not unify with the
-computed `av`, the solution meets it by `PureRefinement.of_val_eq`, with the new goal `av = av'`.
+`hpre : P_goal → P` is a new goal. The solution meets the abstract value `av'` of the goal by
+`PureRefinement.of_val_eq`, with the new goal `av = av'`. `cleanupVC` closes that goal by `rfl`
+and assigns a hole in `av'`.
 Throws if no rule abstracts a subterm of `cv`. -/
 def solvePureRefinement (goal : MVarId) : VCGenM (List MVarId) := do
   let goal ← elimTopPre goal
@@ -227,14 +228,12 @@ def solvePureRefinement (goal : MVarId) : VCGenM (List MVarId) := do
     if let some eav := eav? then
       prf ← mkAppNS (← mkConstS ``Ascent.PureRefinement.of_val_eq us)
         #[args[0]!, args[1]!, args[2]!, av₀, P, args[5]!, av, prf, eav]
-    let mut newGoals := []
-    unless ← isDefEqS args[3]! av do
-      let av' ← instantiateMVarsS args[3]!
-      let eqType ← mkAppNS (← mkConstS ``Eq [.succ us[1]!]) #[args[1]!, av, av']
-      let e ← shareCommon (← mkFreshExprSyntheticOpaqueMVar eqType (tag := `hval))
-      prf ← mkAppNS (← mkConstS ``Ascent.PureRefinement.of_val_eq us)
-        #[args[0]!, args[1]!, args[2]!, av, P, args[5]!, av', prf, e]
-      newGoals := [e.mvarId!]
+    let av' ← instantiateMVarsS args[3]!
+    let eqType ← mkAppNS (← mkConstS ``Eq [.succ us[1]!]) #[args[1]!, av, av']
+    let hval ← shareCommon (← mkFreshExprSyntheticOpaqueMVar eqType (tag := `hval))
+    prf ← mkAppNS (← mkConstS ``Ascent.PureRefinement.of_val_eq us)
+      #[args[0]!, args[1]!, args[2]!, av, P, args[5]!, av', prf, hval]
+    let newGoals := [hval.mvarId!]
     if ← isDefEqS args[4]! P then
       goal.assign prf
       return newGoals

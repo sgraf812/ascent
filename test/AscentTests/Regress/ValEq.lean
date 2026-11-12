@@ -4,9 +4,9 @@ import Ascent.Refinement.Lockstep
 /-!
 # A given abstract value that differs from the computed one
 
-The loop starts at the abstract value `v + 0`. The solver computes `v` for the register, which does
-not unify with `v + 0`. The solution meets `v + 0` by `PureRefinement.of_val_eq`, and the
-verification condition `v = v + 0` goes to `grind`.
+The loop starts at the abstract value `v + 0`. The solver computes `v` for the register. The
+solution meets `v + 0` by `PureRefinement.of_val_eq`, and the verification condition `v = v + 0`
+goes to `grind`.
 -/
 
 open Std.WP Lean.Order Ascent Ascent.Blocks
