@@ -110,4 +110,20 @@ example [Host] [FunDecls] [Embeds swap] :
         ⪯[ofStateRel (JRel (Mem.SubSlots P'))] (swapS r₀ 0) ⦃fun _ _ => ⊤; RetExit r₀ ra 0⦄ :=
   fun P' r₀ ra hP => swapS.refines P' r₀ ra 0 hP
 
+/-! ## Two calls in sequence
+
+On return, `callA` leaves an unknown word in the return slot. The slot is then mapped again, and a
+second call at the same stack pointer is defined. -/
+
+noncomputable def retK (r₀ : BitVec 64) : BlockM MachineData Unit := do
+  modifyIf (fun _ => True) (setReg64 .rsp fun _ => r₀ + 8#64)
+  throw 0
+
+example (s : MachineData) (h : (Mem.loadInt s.dmem (s.regs.get64 .rsp - 8#64) 8).isSome = true) :
+    wp (callA retK >>= fun _ => callA retK) (fun _ _ => True) (fun _ _ => True, estack⟨⟩) s := by
+  simp only [callA, retK, WPMonadExact.wp_bind_eq, wp_peek, BlockLoop.wp_tryCatch, wp_modifyIf_fun,
+    wp_havocSlotA_fun, wp_throw_block]
+  refine ⟨h, trivial, ?_, fun v => ⟨?_, trivial, ?_, fun _ => trivial⟩⟩ <;>
+    simp [setReg64, hidePush, BitVec.sub_add_cancel, Mem.loadInt_storeInt_64]
+
 end Ascent.Kraken.Tests.Call

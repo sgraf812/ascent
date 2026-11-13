@@ -91,11 +91,22 @@ def hidePush (r : BitVec 64) (s : MachineData) : MachineData :=
 @[simp, vcgen_simp] theorem hidePush_dmem (r : BitVec 64) (s : MachineData) :
     (hidePush r s).dmem = hideSlot (r - 8#64) s.dmem := rfl
 
+/-- An unknown 8-byte word in the slot at `q`. -/
+def havocSlotA (q : BitVec 64) : BlockM MachineData Unit :=
+  ExceptT.mk fun s => (Demonic.havoc : Demonic (BitVec 64)) >>= fun v =>
+    pure (.ok (), { s with dmem := s.dmem.storeInt q 8 v.toInt })
+
+theorem wp_havocSlotA_fun (q : BitVec 64) (Q : Unit → MachineData → Prop)
+    (E : (Int64 → MachineData → Prop) × EStack⟨⟩) :
+    wp (havocSlotA q) Q E = fun s => ∀ v : BitVec 64, Q () { s with dmem := s.dmem.storeInt q 8 v.toInt } :=
+  funext fun _ => propext ⟨fun h v => h v trivial, fun h v _ => h v⟩
+
 noncomputable def callA (k : BitVec 64 → BlockM MachineData Unit) : BlockM MachineData Unit := do
   let r ← peek fun s => s.regs.get64 .rsp
   modifyIf (fun s => (Mem.loadInt s.dmem (r - 8#64) 8).isSome = true) (hidePush r)
-  tryCatch (do k (r - 8#64); modifyIf (fun _ => False) id) fun _ =>
+  tryCatch (do k (r - 8#64); modifyIf (fun _ => False) id) fun _ => do
     modifyIf (fun s => s.regs.get64 .rsp = r) id
+    havocSlotA (r - 8#64)
 
 theorem wp_modifyIf_fun {σ : Type} (g : σ → Prop) (f : σ → σ) (Q : Unit → σ → Prop)
     (E : (Int64 → σ → Prop) × EStack⟨⟩) : wp (modifyIf g f) Q E = fun s => g s ∧ Q () (f s) :=
@@ -108,7 +119,7 @@ theorem wp_tryCatch_fun {σ α : Type} (x : BlockM σ α) (h : Int64 → BlockM 
 theorem ThrowsOnly.callA {P : Int64 → MachineData → Prop} (k : BitVec 64 → BlockM MachineData Unit) :
     Ascent.ThrowsOnly P (callA k) = True := eq_true fun Q E s hw => by
   simp only [Kraken.callA, WPMonadExact.wp_bind_eq, wp_peek, wp_modifyIf, BlockLoop.wp_tryCatch,
-    wp_modifyIf_fun] at hw ⊢
+    wp_modifyIf_fun, wp_havocSlotA_fun] at hw ⊢
   exact hw
 
 theorem tryCatch_callA_bind {β : Type} (k : BitVec 64 → BlockM MachineData Unit)
@@ -116,7 +127,7 @@ theorem tryCatch_callA_bind {β : Type} (k : BitVec 64 → BlockM MachineData Un
     tryCatch (callA k >>= f) h = callA k >>= fun u => tryCatch (f u) h := by
   apply BlockLoop.ext_wp <;> intro Q E s hw <;>
     simp only [Kraken.callA, WPMonadExact.wp_bind_eq, wp_peek, wp_modifyIf, BlockLoop.wp_tryCatch,
-      wp_modifyIf_fun, wp_tryCatch_fun] at hw ⊢ <;>
+      wp_modifyIf_fun, wp_tryCatch_fun, wp_havocSlotA_fun] at hw ⊢ <;>
     exact hw
 
 theorem jrel_hidePush {P : DataMem} {s a : MachineData} (h : JRel (Mem.SubSlots P) s a) (ra : Int64)
@@ -194,6 +205,33 @@ theorem subSlots_of_storeInt {P m m' : DataMem} {q : BitVec 64} {x : Int}
     exact nomatch hp
   exact h.2 p v (by rw [Mem.get?_storeInt, hn]; exact hp)
 
+theorem subSlots_restore {P m m' : DataMem} {q : BitVec 64} {x : Int}
+    (h : Mem.SubSlots (P.storeInt q 8 x) m m') (hq : ∀ i < 8, P.get? (q + BitVec.ofNat 64 i) = none) :
+    Mem.SubSlots P (m.storeInt q 8 x) m' := by
+  have hnot : ∀ p v, P.get? p = some v → ((Int.toBytes 8 x).At q)[p]? = none := fun p v hp => by
+    apply Std.ExtHashMap.getElem?_eq_none
+    intro hmem
+    obtain ⟨i, hi, rfl⟩ := (mem_At_iff _ _ _).mp hmem
+    rw [Int.toBytes_length] at hi
+    rw [hq i hi] at hp
+    exact nomatch hp
+  refine ⟨fun p v hp => ?_, fun p v hp => ?_⟩
+  · rw [Mem.get?_storeInt] at hp
+    cases hb : ((Int.toBytes 8 x).At q)[p]? with
+    | some y =>
+      rw [hb] at hp
+      have hy : y = v := by simpa using hp
+      subst hy
+      exact (h.2 p y (by rw [Mem.get?_storeInt, hb]; rfl)).1
+    | none =>
+      rw [hb] at hp
+      exact h.1 p v hp
+  · have hn := hnot p v hp
+    have h2 := h.2 p v (by rw [Mem.get?_storeInt, hn]; exact hp)
+    refine ⟨h2.1, ?_⟩
+    rw [Mem.get?_storeInt, hn]
+    exact h2.2
+
 section
 variable [Host] [FunDecls]
 
@@ -214,8 +252,8 @@ every set of hidden slots `P'`, every frame `r₀` and every return address `ra`
   intro s hs
   simp only [meet_apply, meet_prop_eq_and, ofStateRel_pred] at hs
   obtain ⟨hQ, a, hJ, hw⟩ := hs
-  simp only [callA, WPMonadExact.wp_bind_eq, wp_peek, wp_modifyIf, BlockLoop.wp_tryCatch,
-    wp_modifyIf_fun] at hw
+  simp only [callA, WPMonadExact.wp_bind_eq, wp_peek, BlockLoop.wp_tryCatch, wp_modifyIf_fun,
+    wp_havocSlotA_fun] at hw
   obtain ⟨hm, hw⟩ := hw
   have hr : a.regs = s.regs := JRel.regs hJ
   have hrsp : a.regs.get64 .rsp = s.regs.get64 .rsp := by rw [hr]
@@ -239,7 +277,8 @@ every set of hidden slots `P'`, every frame `r₀` and every return address `ra`
       exact nomatch h3
   let Qa' : Unit → MachineData → Prop := fun _ _ => False
   let Ea' : (Int64 → MachineData → Prop) × EStack⟨⟩ :=
-    (fun _ b => b.regs.get64 .rsp = s.regs.get64 .rsp ∧ Qa () b, estack⟨⟩)
+    (fun _ b => b.regs.get64 .rsp = s.regs.get64 .rsp ∧ ∀ v : BitVec 64,
+      Qa () { b with dmem := b.dmem.storeInt (s.regs.get64 .rsp - 8#64) 8 v.toInt }, estack⟨⟩)
   have hwk : wp (k (s.regs.get64 .rsp - 8#64) L) Qa' Ea' (hidePush (a.regs.get64 .rsp) a) := by
     rw [← hrsp]
     refine WP.wp_monotone (x := k (a.regs.get64 .rsp - 8#64) L) ?_ ?_ _ hw
@@ -247,7 +286,8 @@ every set of hidden slots `P'`, every frame `r₀` and every return address `ra`
       exact ht.1
     · refine Prod.mk_le _ _ _ ?_ PartialOrder.rel_refl
       intro l t ht
-      exact ⟨by rw [hrsp] at ht; exact ht.1, ht.2⟩
+      rw [hrsp] at ht
+      exact ht
   have hc := wrp_transport (hk P' (s.regs.get64 .rsp - 8#64) ra hP').le_wrp Qa' Ea' (s.push64 ra)
     (by
       simp only [meet_apply, meet_prop_eq_and, ofStateRel_pred]
@@ -259,7 +299,8 @@ every set of hidden slots `P'`, every frame `r₀` and every return address `ra`
     obtain ⟨l, ⟨-, hpc⟩, b, hJb, hrb, hqa⟩ := hu
     rw [if_pos hpc]
     simp only [Concretization.post_pi, ofStateRel_pred]
-    exact ⟨(), hQ _, b, ⟨hJb.1, hJb.2.1, hJb.2.2.1, subSlots_of_storeInt hJb.2.2.2 hslot⟩, hqa⟩
+    exact ⟨(), hQ _, { b with dmem := b.dmem.storeInt (s.regs.get64 .rsp - 8#64) 8 ra.toBitVec.toInt },
+      ⟨hJb.1, hJb.2.1, hJb.2.2.1, subSlots_restore hJb.2.2.2 hslot⟩, hqa ra.toBitVec⟩
 
 end
 

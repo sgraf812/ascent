@@ -18,14 +18,23 @@ open Ascent.Concretization (ofStateRepr ofStateRepr_pred)
 
 namespace Ascent.Kraken
 
+/-- An unknown 8-byte word in the slot at `q`. -/
+def havocSlot (q : BitVec 64) : BlockM DataMem Unit :=
+  ExceptT.mk fun m => (Demonic.havoc : Demonic (BitVec 64)) >>= fun v => pure (.ok (), m.storeInt q 8 v.toInt)
+
+theorem wp_havocSlot_fun (q : BitVec 64) (Q : Unit → DataMem → Prop)
+    (E : (Int64 → DataMem → Prop) × EStack⟨⟩) :
+    wp (havocSlot q) Q E = fun m => ∀ v : BitVec 64, Q () (m.storeInt q 8 v.toInt) :=
+  funext fun _ => propext ⟨fun h v => h v trivial, fun h v _ => h v⟩
+
 noncomputable def callL (r : BitVec 64) (k : BlockM DataMem Unit) : BlockM DataMem Unit := do
   modifyIf (fun m => (Mem.loadInt m (r - 8#64) 8).isSome = true) (hideSlot (r - 8#64))
-  tryCatch (do k; modifyIf (fun _ => False) id) fun _ => pure ()
+  tryCatch (do k; modifyIf (fun _ => False) id) fun _ => havocSlot (r - 8#64)
 
 theorem ThrowsOnly.callL {P : Int64 → DataMem → Prop} (r : BitVec 64) (k : BlockM DataMem Unit) :
     Ascent.ThrowsOnly P (callL r k) = True := eq_true fun Q E s hw => by
   simp only [Kraken.callL, WPMonadExact.wp_bind_eq, wp_modifyIf, BlockLoop.wp_tryCatch, wp_modifyIf_fun,
-    WPMonadExact.wp_pure_eq] at hw ⊢
+    wp_havocSlot_fun] at hw ⊢
   exact hw
 
 theorem tryCatch_callL_bind {β : Type} (r : BitVec 64) (k : BlockM DataMem Unit)
@@ -33,7 +42,7 @@ theorem tryCatch_callL_bind {β : Type} (r : BitVec 64) (k : BlockM DataMem Unit
     tryCatch (callL r k >>= f) h = callL r k >>= fun u => tryCatch (f u) h := by
   apply BlockLoop.ext_wp <;> intro Q E s hw <;>
     simp only [Kraken.callL, WPMonadExact.wp_bind_eq, wp_modifyIf, BlockLoop.wp_tryCatch,
-      wp_modifyIf_fun, wp_tryCatch_fun, WPMonadExact.wp_pure_eq] at hw ⊢ <;>
+      wp_modifyIf_fun, wp_tryCatch_fun, wp_havocSlot_fun] at hw ⊢ <;>
     exact hw
 
 section
@@ -45,7 +54,8 @@ theorem wrp_callA_callL {kT : BitVec 64 → BlockM MachineData Unit} {kL : Block
       ⦃fun _ _ _ => False; (Ec, estack⟨⟩)⦄)
     (hrsp : ∀ l l' t, Ec l l' t → t.regs.get64 .rsp = r) :
     (fun t => t.regs.get64 .rsp ≐ r ∧ Pre (hidePush r t) ∧
-      ∀ t', t'.regs.get64 .rsp ≐ r → ∀ l l', Ec l l' t' → Q () () t')
+      ∀ t', t'.regs.get64 .rsp ≐ r → ∀ l l', Ec l l' t' → ∀ v : BitVec 64,
+        Q () () { t' with dmem := t'.dmem.storeInt (r - 8#64) 8 v.toInt })
       ⊑ wrp (ofStateRepr MachineData.dmem) (callA kT) (callL r kL) Q E := by
   refine wrp_intro fun Qa Ea => ?_
   intro t ht
@@ -53,13 +63,15 @@ theorem wrp_callA_callL {kT : BitVec 64 → BlockM MachineData Unit} {kL : Block
   obtain ⟨⟨hr, hpre, hQ⟩, hw⟩ := ht
   have hr : t.regs.get64 .rsp = r := hr trivial
   simp only [callL, WPMonadExact.wp_bind_eq, wp_modifyIf, BlockLoop.wp_tryCatch, wp_modifyIf_fun,
-    WPMonadExact.wp_pure_eq] at hw
+    wp_havocSlot_fun] at hw
   obtain ⟨hm, hw⟩ := hw
-  simp only [callA, WPMonadExact.wp_bind_eq, wp_peek, wp_modifyIf, BlockLoop.wp_tryCatch, wp_modifyIf_fun]
+  simp only [callA, WPMonadExact.wp_bind_eq, wp_peek, wp_modifyIf, BlockLoop.wp_tryCatch, wp_modifyIf_fun,
+    wp_havocSlotA_fun]
   rw [hr]
   refine ⟨hm, ?_⟩
   let Qa' : Unit → DataMem → Prop := fun _ _ => False
-  let Ea' : (Int64 → DataMem → Prop) × EStack⟨⟩ := (fun _ m => Qa () m, Ea.2)
+  let Ea' : (Int64 → DataMem → Prop) × EStack⟨⟩ :=
+    (fun _ m => ∀ v : BitVec 64, Qa () (m.storeInt (r - 8#64) 8 v.toInt), Ea.2)
   have hc := wrp_transport hk.le_wrp Qa' Ea' (hidePush r t)
     (by
       simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, hidePush_dmem]
@@ -75,10 +87,9 @@ theorem wrp_callA_callL {kT : BitVec 64 → BlockM MachineData Unit} {kL : Block
     simp only [Concretization.post_pi, ofStateRepr_pred] at ht'
     obtain ⟨l', hE, hqa⟩ := ht'
     have hrs := hrsp _ _ _ hE
-    show t'.regs.get64 .rsp = r ∧ (ofStateRepr MachineData.dmem).post Q Qa () t'
-    refine ⟨hrs, ?_⟩
+    refine ⟨hrs, fun v => ?_⟩
     rw [Concretization.post_pi]
-    exact ⟨(), hQ t' (PureRefinement.of_rel hrs) _ _ hE, hqa⟩
+    exact ⟨(), hQ t' (PureRefinement.of_rel hrs) _ _ hE v, hqa v⟩
 
 theorem Refinement.mono_exit_dmem {CV AV : Type} {c : BlockM MachineData CV} {a : BlockM DataMem AV}
     {P : MachineData → Prop} {Q : CV → AV → MachineData → Prop}
