@@ -4,7 +4,7 @@ import Ascent.Tactic.VCGen.Command
 /-!
 # Value abstraction through `@[ascend_pure]` rules
 
-A chain of `UInt64` additions in `UB` abstracts to a guarded `Nat` chain, related by
+A chain of `UInt64` additions in `Demonic` abstracts to a guarded `Nat` chain, related by
 `FunRel UInt64.toNat`. One rule decomposes an addition, one rule abstracts a closed word, and the
 hypothesis of each bind abstracts the bound concrete variable.
 -/
@@ -28,9 +28,9 @@ namespace PureRefinementTest
 
 attribute [local ascend] wrp_bind Refinement.pure_rel
 
-def prog : UB UInt64 := do let a ← pure (7 : UInt64); let b ← pure (a + 7); pure (b + 7)
+def prog : Demonic UInt64 := do let a ← pure (7 : UInt64); let b ← pure (a + 7); pure (b + 7)
 
-ascend_def progN : UB Nat from
+ascend_def progN : Demonic Nat from
   ⦃(⊤ : Prop)⦄ prog ⪯[Concretization.id Prop] progN ⦃(⌜FunRel UInt64.toNat · ·⌝)⦄
   ascend [prog]
 
@@ -40,30 +40,30 @@ example : ⦃(⊤ : Prop)⦄ prog ⪯[Concretization.id Prop] progN ⦃(⌜FunRe
 -- The precondition and the value of each step are simplified. A power of literals with an exponent
 -- above `ascend.maxExponent` stays a power.
 /--
-info: def PureRefinementTest.progN : UB Nat :=
+info: def PureRefinementTest.progN : Demonic Nat :=
 do
   let x ←
     do
-      UB.assume True
+      Demonic.assume True
       pure 7
   let x ←
     do
-      UB.assume (x + 7 < 2 ^ 64)
+      Demonic.assume (x + 7 < 2 ^ 64)
       pure (x + 7)
-  UB.assume (x + 7 < 2 ^ 64)
+  Demonic.assume (x + 7 < 2 ^ 64)
   pure (x + 7)
 -/
 #guard_msgs in
 #print progN
 
-def progMul : UB UInt64 := do let a ← pure (7 : UInt64); pure (a * 3)
+def progMul : Demonic UInt64 := do let a ← pure (7 : UInt64); pure (a * 3)
 
 /--
 error: ascend: no `@[ascend_pure]` rule abstracts
   x✝³ * 3
 -/
 #guard_msgs in
-ascend_def progMulN : UB Nat from
+ascend_def progMulN : Demonic Nat from
   ⦃(⊤ : Prop)⦄ progMul ⪯[Concretization.id Prop] progMulN ⦃(⌜FunRel UInt64.toNat · ·⌝)⦄
   ascend [progMul]
 

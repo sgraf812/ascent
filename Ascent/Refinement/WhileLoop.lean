@@ -1,5 +1,5 @@
-import Ascent.UB.WhileLoop
-import Ascent.UB.StateT
+import Ascent.Demonic.WhileLoop
+import Ascent.Demonic.StateT
 
 /-!
 # Refinement of `while` loops
@@ -20,22 +20,22 @@ open Std.WP Lean.Order Ascent
 theorem Refinement.whileLoop {Cσ Aσ : Type} {γ : Concretization (Cσ → Prop) (Aσ → Prop)}
     (hγ : ∀ (ι : Type) (X : ι → Aσ → Prop), γ.pred (iSup X) ⊑ iSup fun i => γ.pred (X i))
     {P : Cσ → Prop} {Q : Unit → Unit → Cσ → Prop}
-    {ccond : Cσ → Bool} {cbody : StateT Cσ UB Unit} {acond : Aσ → Bool} {abody : StateT Aσ UB Unit}
-    (h : ∀ f : StateT Aσ UB Unit, ⦃P⦄ (_root_.whileLoop ccond cbody) ⪯[γ] f ⦃Q⦄ →
+    {ccond : Cσ → Bool} {cbody : StateT Cσ Demonic Unit} {acond : Aσ → Bool} {abody : StateT Aσ Demonic Unit}
+    (h : ∀ f : StateT Aσ Demonic Unit, ⦃P⦄ (_root_.whileLoop ccond cbody) ⪯[γ] f ⦃Q⦄ →
       ⦃P⦄ (get >>= fun cs =>
           if ccond cs then cbody >>= fun _ => _root_.whileLoop ccond cbody else pure ())
         ⪯[γ] (get >>= fun as => if acond as then abody >>= fun _ => f else pure ()) ⦃Q⦄) :
     ⦃P⦄ (_root_.whileLoop ccond cbody) ⪯[γ] (_root_.whileLoop acond abody) ⦃Q⦄ := by
   refine loopFix.fixpoint_induct acond abody
-    (fun f => ⦃P⦄ (_root_.whileLoop ccond cbody) ⪯[γ] (show StateT Aσ UB Unit from f) ⦃Q⦄)
-    (Refinement.admissible (AProg := StateT Aσ UB Unit) hγ P _ Q ⊥) fun f hf => ?_
+    (fun f => ⦃P⦄ (_root_.whileLoop ccond cbody) ⪯[γ] (show StateT Aσ Demonic Unit from f) ⦃Q⦄)
+    (Refinement.admissible (AProg := StateT Aσ Demonic Unit) hγ P _ Q ⊥) fun f hf => ?_
   have := h f hf
   rw [← whileLoop_unfold, ← loopStep_eq] at this
   exact this
 
 theorem refines_whileLoop {Aσ Cσ : Type} (J : Cσ → Aσ → Prop)
-    (ccond : Cσ → Bool) (cbody : StateT Cσ UB Unit)
-    (acond : Aσ → Bool) (abody : StateT Aσ UB Unit)
+    (ccond : Cσ → Bool) (cbody : StateT Cσ Demonic Unit)
+    (acond : Aσ → Bool) (abody : StateT Aσ Demonic Unit)
     (hcond : ∀ cs as, J cs as → ccond cs = acond as)
     (hbody : ⦃(⊤ : Cσ → Prop)⦄ cbody ⪯[Concretization.ofStateRel J] abody ⦃fun _ _ => ⊤⦄) :
     ⦃(⊤ : Cσ → Prop)⦄ (whileLoop ccond cbody) ⪯[Concretization.ofStateRel J] (whileLoop acond abody)
@@ -62,7 +62,7 @@ theorem refines_whileLoop {Aσ Cσ : Type} (J : Cσ → Aσ → Prop)
     simp only [Concretization.ofStateRel_post_top]
     exact ⟨(), as, hJ, hwp⟩
 
-theorem refines_relEq_self {σ α} (P : σ → Prop) (a : StateT σ UB α) :
+theorem refines_relEq_self {σ α} (P : σ → Prop) (a : StateT σ Demonic α) :
     ⦃P⦄ a ⪯[Concretization.ofStateRel (Eq : σ → σ → Prop)] a ⦃fun cv av => ⌜cv = av⌝⦄ := by
   refine ⟨wrp_intro fun Q E => ?_⟩
   intro cs hcs

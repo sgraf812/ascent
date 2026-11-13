@@ -2,8 +2,9 @@ import Demo.Kraken
 import Ascent.Table
 import Ascent.BlockLoop
 import Kraken.StateCfg
-import Ascent.UB.StateT
-import Ascent.UB.WhileLoop
+import Demo.CfgGhost
+import Ascent.Demonic.StateT
+import Ascent.Demonic.WhileLoop
 import Ascent.Refinement.Lockstep
 
 /-!
@@ -33,7 +34,7 @@ attribute [vcgen_simp] Program.straight_nil Program.straight_cons_instr Program.
 
 namespace Ascent.Kraken
 
-abbrev BlockM (σ : Type) := ExceptT Int64 (StateT σ UB)
+abbrev BlockM (σ : Type) := ExceptT Int64 (StateT σ Demonic)
 
 /-! ## The step shapes of a block program -/
 
@@ -43,13 +44,13 @@ section
 variable {σ : Type}
 
 noncomputable def modifyIf (g : σ → Prop) (f : σ → σ) : BlockM σ Unit :=
-  fun st => UB.assume (g st) >>= fun _ => pure (.ok (), f st)
+  fun st => Demonic.assume (g st) >>= fun _ => pure (.ok (), f st)
 
 noncomputable def exitIf {α : Type} (g : σ → Prop) (f : σ → σ) (l : Int64) : BlockM σ α :=
-  fun st => UB.assume (g st) >>= fun _ => pure (.error l, f st)
+  fun st => Demonic.assume (g st) >>= fun _ => pure (.error l, f st)
 
 noncomputable def branch (s c : σ → Bool) (l : Int64) : BlockM σ Unit :=
-  fun st => if c st then UB.assume (s st = true) >>= fun _ => pure (.error l, st) else pure (.ok (), st)
+  fun st => if c st then Demonic.assume (s st = true) >>= fun _ => pure (.error l, st) else pure (.ok (), st)
 
 def peek {β : Type} (c : σ → β) : BlockM σ β :=
   fun st => pure (.ok (c st), st)
@@ -69,22 +70,22 @@ theorem wp_modifyIf (g f) :
   rw [ExceptT.wp_apply_eq, StateT.wp_apply_eq, modifyIf_run]
   unfold modifyIf
   by_cases h : g st
-  · rw [UB.assume_bind_of_pos h]
-    simp only [UB.wp_pure_eq, h, true_and]
+  · rw [Demonic.assume_bind_of_pos h]
+    simp only [Demonic.wp_pure_eq, h, true_and]
     rfl
-  · rw [UB.assume_bind_of_neg h]
-    simp only [UB.wp_fail_eq, bot_prop_eq, h, false_and]
+  · rw [Demonic.assume_bind_of_neg h]
+    simp only [Demonic.wp_fail_eq, bot_prop_eq, h, false_and]
 
 theorem wp_exitIf {α : Type} {Qa : α → σ → Prop} (g f l) :
     wp (exitIf g f l : BlockM σ α) Qa Ea st = (g st ∧ Ea.1 l (f st)) := by
   rw [ExceptT.wp_apply_eq, StateT.wp_apply_eq, exitIf_run]
   unfold exitIf
   by_cases h : g st
-  · rw [UB.assume_bind_of_pos h]
-    simp only [UB.wp_pure_eq, h, true_and]
+  · rw [Demonic.assume_bind_of_pos h]
+    simp only [Demonic.wp_pure_eq, h, true_and]
     rfl
-  · rw [UB.assume_bind_of_neg h]
-    simp only [UB.wp_fail_eq, bot_prop_eq, h, false_and]
+  · rw [Demonic.assume_bind_of_neg h]
+    simp only [Demonic.wp_fail_eq, bot_prop_eq, h, false_and]
 
 theorem exitIf_bind {σ α β : Type} (g : σ → Prop) (f : σ → σ) (l : Int64)
     (k : α → BlockM σ β) : (exitIf g f l >>= k) = exitIf g f l := by
@@ -94,15 +95,15 @@ theorem exitIf_bind {σ α β : Type} (g : σ → Prop) (f : σ → σ) (l : Int
   rw [ExceptT.run_bind, StateT.run_bind, exitIf_run, exitIf_run]
   unfold exitIf
   by_cases h : g st
-  · rw [UB.assume_bind_of_pos h, UB.assume_bind_of_pos h]
+  · rw [Demonic.assume_bind_of_pos h, Demonic.assume_bind_of_pos h]
     rfl
-  · rw [UB.assume_bind_of_neg h, UB.assume_bind_of_neg h]
+  · rw [Demonic.assume_bind_of_neg h, Demonic.assume_bind_of_neg h]
     rfl
 
 theorem wp_peek {β : Type} {Qb : β → σ → Prop} (c : σ → β) :
     wp (peek c) Qb Ea st = Qb (c st) st := by
   rw [ExceptT.wp_apply_eq, StateT.wp_apply_eq, peek_run]
-  simp only [peek, UB.wp_pure_eq]
+  simp only [peek, Demonic.wp_pure_eq]
   rfl
 
 theorem wp_branch (s c l) :
@@ -111,12 +112,12 @@ theorem wp_branch (s c l) :
   unfold branch
   split
   · by_cases h : s st = true
-    · rw [UB.assume_bind_of_pos h]
-      simp only [UB.wp_pure_eq, h, true_and]
+    · rw [Demonic.assume_bind_of_pos h]
+      simp only [Demonic.wp_pure_eq, h, true_and]
       rfl
-    · rw [UB.assume_bind_of_neg h]
-      simp [UB.wp_fail_eq, bot_prop_eq, h]
-  · simp only [UB.wp_pure_eq, *]
+    · rw [Demonic.assume_bind_of_neg h]
+      simp [Demonic.wp_fail_eq, bot_prop_eq, h]
+  · simp only [Demonic.wp_pure_eq, *]
     rfl
 
 end
@@ -385,15 +386,8 @@ end
 
 theorem wp_BlockM_eq {σ α : Type} (x : BlockM σ α) (Qa : α → σ → Prop)
     (Ea : (Int64 → σ → Prop) × EStack⟨⟩) (st : σ) :
-    wp x Qa Ea st = match x.run.run st with
-      | none => False
-      | some (.ok a, st') => Qa a st'
-      | some (.error e, st') => Ea.1 e st' := by
-  rw [ExceptT.wp_apply_eq, StateT.wp_apply_eq]
-  rcases x.run.run st with _ | ⟨l' | a, st'⟩
-  · exact bot_prop_eq
-  · rfl
-  · rfl
+    wp x Qa Ea st = (x.run.run st).wpD (BlockLoop.runPost Qa Ea) :=
+  BlockLoop.wp_run_eq x Qa Ea st
 
 theorem BlockM.run_bind {σ α β : Type} (x : BlockM σ α) (k : α → BlockM σ β) (st : σ) :
     (x >>= k).run.run st = (x.run.run st >>= fun p =>
@@ -404,16 +398,6 @@ theorem BlockM.run_bind {σ α β : Type} (x : BlockM σ α) (k : α → BlockM 
   congr 1
   funext p
   rcases p with ⟨_ | _, _⟩ <;> rfl
-
-theorem UB.some_bind {α β : Type} (a : α) (f : α → UB β) : (Bind.bind (m := UB) (some a) f) = f a := rfl
-theorem UB.map_some {α β : Type} (g : α → β) (a : α) :
-    (Functor.map (f := UB) g (some a)) = some (g a) := rfl
-theorem UB.pure_eq {α : Type} (a : α) : (pure a : UB α) = some a := rfl
-theorem UB.fail_eq {α : Type} : (UB.fail : UB α) = none := rfl
-theorem UB.bind_eq_some {α β : Type} (x : UB α) (f : α → UB β) (b : β) :
-    (x >>= f) = some b ↔ ∃ a, x = some a ∧ f a = some b := Option.bind_eq_some_iff
-theorem UB.map_eq_some {α β : Type} (g : α → β) (x : UB α) (b : β) :
-    (g <$> x) = some b ↔ ∃ a, x = some a ∧ g a = b := Option.map_eq_some_iff
 
 theorem wp_throw_block {σ α : Type} (l : Int64) (Q : α → σ → Prop) (E : (Int64 → σ → Prop) × EStack⟨⟩)
     (s : σ) : wp (throw l : BlockM σ α) Q E s = E.1 l s :=
@@ -484,15 +468,25 @@ theorem Refinement.mono_exit {CProg AV CV : Type} [WP CProg CV (MachineData → 
 
 /-! ## The control-flow rule -/
 
-theorem Nat.exists_least {P : Nat → Prop} (h : ∃ n, P n) : ∃ m, P m ∧ ∀ k, P k → m ≤ k := by
-  obtain ⟨n, hn⟩ := h
-  induction n using Nat.strongRecOn with
-  | _ n ih =>
-    by_cases hmin : ∀ k, P k → n ≤ k
-    · exact ⟨n, hn, hmin⟩
-    · simp only [Classical.not_forall, Classical.not_imp, Nat.not_le] at hmin
-      obtain ⟨k, hk, hlt⟩ := hmin
-      exact ih k hlt hk
+theorem wellFounded_accRestrict {α : Type} (S : α → α → Prop) :
+    WellFounded fun y x => Acc S x ∧ S y x := by
+  refine ⟨fun x => ?_⟩
+  by_cases h : Acc S x
+  · induction h with
+    | intro x _ ih => exact Acc.intro _ fun y ⟨_, hs⟩ => ih y hs
+  · exact Acc.intro _ fun _ ⟨ha, _⟩ => absurd ha h
+
+theorem wp_BlockM_outs {σ α : Type} (x : BlockM σ α) {Qa : α → σ → Prop}
+    {Ea : (Int64 → σ → Prop) × EStack⟨⟩} {st : σ} (h : wp x Qa Ea st) :
+    wp x (fun a st' => Qa a st' ∧ (x.run.run st).outs (.ok a, st'))
+      (fun e st' => Ea.1 e st' ∧ (x.run.run st).outs (.error e, st'), Ea.2) st := by
+  rw [wp_BlockM_eq] at h ⊢
+  have ht := (x.run.run st).mono (fun _ _ => trivial) h
+  rw [Demonic.wpD_iff ht] at h ⊢
+  intro p hp
+  rcases p with ⟨_ | _, _⟩
+  · exact ⟨h _ hp, hp⟩
+  · exact ⟨h _ hp, hp⟩
 
 theorem ofStateRepr_eq_ofStateRel {Cσ Aσ : Type} (f : Cσ → Aσ) :
     Concretization.ofStateRepr f = Concretization.ofStateRel fun t a => a = f t := by
@@ -535,89 +529,64 @@ theorem wrp_cfg_le_exit {p : Program} [Embeds p] (hs : Program.Separated p = tru
   let H : (Int64 → MachineData → Prop) × EStack⟨⟩ := (fun a => wp (cfgLoop st T a) Qa Ea, Ea.2)
   let Inv : Label → MachineData → MachineData → Prop := fun l u a =>
     J u a ∧ st a = true ∧ wp (cfgLoop st T (label l)) Qa Ea a
-  let I : Program.CfgInvariant := fun {_} l u => ∃ a, Inv l u a
   let Q : Unit → MachineData → Prop := fun _ u =>
     (Concretization.ofStateRel J).post (fun _ _ => ⊤) Qa () u
-  let var : Program.CfgVariant := fun l u =>
-    if h : ∃ k, ∃ a, Inv l u a ∧ steps st T (label l) a = k then
-      Classical.choose (Nat.exists_least h) else 0
-  have hvar_le : ∀ l u a, Inv l u a → var l u ≤ steps st T (label l) a := fun l u a hI => by
-    have h : ∃ k, ∃ a, Inv l u a ∧ steps st T (label l) a = k := ⟨_, a, hI, rfl⟩
-    simp only [var, h, ↓reduceDIte]
-    exact (Classical.choose_spec (Nat.exists_least h)).2 _ ⟨a, hI, rfl⟩
-  have hvar_mem : ∀ l u a, Inv l u a → ∃ a', Inv l u a' ∧ steps st T (label l) a' = var l u :=
-    fun l u a hI => by
-      have h : ∃ k, ∃ a, Inv l u a ∧ steps st T (label l) a = k := ⟨_, a, hI, rfl⟩
-      simp only [var, h, ↓reduceDIte]
-      exact (Classical.choose_spec (Nat.exists_least h)).1
+  let Succ : Label × MachineData → Label × MachineData → Prop :=
+    InvImage (CfgSucc st T) fun x => (label x.1, x.2)
+  let R : Label × MachineData → Label × MachineData → Prop := fun y x => Acc Succ x ∧ Succ y x
   have hentry : (Program.blocks p).head? = some ⟨none, 0, Program.straight (Program.view p).1,
       Program.entryNext p⟩ := by
     unfold Program.blocks Program.entryNext
     cases (Program.view p).2 <;> rfl
-  refine Program.WP.cfg (p := p) (Q := Q)
+  refine Program.WP.cfg_ghost (p := p) (Q := Q)
     (E := EPostsConcretization.ePosts (Concretization.ofStateRel J) E Ea)
-    (s₀ := t) @I var ?_
-  intro blk hmem u hI
-  have hrun : ∃ a, J u a ∧ wp (cell blk.label >>= fun _ => jumpTo st blk.next) Qa H a
-      ∧ ∀ l, blk.label = some l → st a = true ∧
-        T.get? (label l) = some (cell blk.label >>= fun _ => jumpTo st blk.next) ∧
-        (∃ r, cfgFix st T (label l) a = some r) ∧ steps st T (label l) a = var l u := by
+    (s₀ := t) (g₀ := a₀) Inv R (wellFounded_accRestrict Succ) ?_
+  intro blk hmem u g hI
+  have hrun : J u g ∧ wp (cell blk.label >>= fun _ => jumpTo st blk.next) Qa H g
+      ∧ ∀ l, blk.label = some l → st g = true ∧
+        T.get? (label l) = some (cell blk.label >>= fun _ => jumpTo st blk.next) ∧ Acc Succ (l, g) := by
     cases hl : blk.label with
     | none =>
       rw [hl] at hI
-      change u = t at hI
-      subst hI
+      obtain ⟨hu, hg⟩ := hI
+      subst hu hg
       have hblk : blk = ⟨none, 0, Program.straight (Program.view p).1, Program.entryNext p⟩ := by
         refine Program.block_unique Program.labels_nodup_of_embeds hmem ?_ hl
         exact List.mem_of_mem_head? hentry
       rw [hblk]
-      refine ⟨a₀, hJ₀, ?_, fun _ h => nomatch h⟩
+      refine ⟨hJ₀, ?_, fun _ h => nomatch h⟩
       simpa only [Program.loop, BlockLoop.wp_tryCatch] using hpre
     | some l =>
       rw [hl] at hI
-      obtain ⟨a₁, ha₁⟩ := hI
-      obtain ⟨a, ⟨hJa, hst, hw⟩, hk⟩ := hvar_mem l u a₁ ha₁
+      obtain ⟨hJa, hst, hw⟩ := hI
       have hTb := Program.table_get?_label (r₀ := r₀) (cell := cell) hs hmem hl
-      have hfix : ∃ r, cfgFix st T (label l) a = some r := by
-        rw [wp_BlockM_eq, cfgLoop_run] at hw
-        revert hw
-        cases cfgFix st T (label l) a <;> intro hw
-        · exact hw.elim
-        · exact ⟨_, rfl⟩
+      have hacc : Acc Succ (l, g) := InvImage.accessible _ (acc_of_wp_cfgLoop st T hw)
       rw [wp_cfgLoop_some st T Qa Ea hTb hst] at hw
       rw [hl] at hTb hw
-      refine ⟨a, hJa, hw, fun l' hl' => ?_⟩
-      cases hl'
-      exact ⟨hst, hTb, hfix, hk⟩
-  obtain ⟨a, hJa, hw, hblk⟩ := hrun
+      exact ⟨hJa, hw, fun l' hl' => by cases hl'; exact ⟨hst, hTb, hacc⟩⟩
+  obtain ⟨hJa, hw, hblk⟩ := hrun
   let c := cell blk.label
-  have hdec : ∀ a' v, (c >>= fun _ => jumpTo st blk.next).run.run a = some (.error a', v) →
-      ∀ l, blk.label = some l → steps st T a' v < var l u := by
-    intro a' v hr l hl
-    obtain ⟨hst, hTb, ⟨r, hfix⟩, hk⟩ := hblk l hl
-    rw [← hk]
-    exact steps_lt st T hTb hst hr hfix
-  rw [WPMonadExact.wp_bind_eq, wp_BlockM_eq] at hw
+  have hdec : ∀ a' v, ((c >>= fun _ => jumpTo st blk.next).run.run g).outs (.error a', v) →
+      ∀ l, blk.label = some l → ∀ l', a' = label l' → R (l', v) (l, g) := by
+    intro a' v hr l hl l' hl'
+    obtain ⟨hst, hTb, hacc⟩ := hblk l hl
+    subst hl'
+    exact ⟨hacc, hst, _, hTb, hr⟩
+  rw [WPMonadExact.wp_bind_eq] at hw
   let Qa' : Unit → MachineData → Prop := fun _ st' =>
-    wp (jumpTo st blk.next : BlockM MachineData Unit) Qa H st' ∧ c.run.run a = some (.ok (), st')
+    wp (jumpTo st blk.next : BlockM MachineData Unit) Qa H st' ∧ (c.run.run g).outs (.ok (), st')
   let Ea' : (Int64 → MachineData → Prop) × EStack⟨⟩ :=
-    (fun a' st' => wp (cfgLoop st T a') Qa Ea st' ∧ c.run.run a = some (.error a', st'), Ea.2)
-  have hpre' : wp c Qa' Ea' a := by
-    rw [wp_BlockM_eq]
-    revert hw
-    rcases hc : c.run.run a with _ | ⟨a' | _, st'⟩ <;> intro hw
-    · exact hw.elim
-    · exact ⟨hw, hc⟩
-    · exact ⟨hw, hc⟩
+    (fun a' st' => wp (cfgLoop st T a') Qa Ea st' ∧ (c.run.run g).outs (.error a', st'), Ea.2)
+  have hpre' : wp c Qa' Ea' g := wp_BlockM_outs c hw
   have hb := wrp_transport (h blk hmem u).le_wrp Qa' Ea'
   have hmeet : ((fun t' => t' = u) ⊓ (Concretization.ofStateRel J).pred (wp c Qa' Ea')) u := by
     simp only [meet_apply, meet_prop_eq_and, Concretization.ofStateRel_pred]
-    exact ⟨trivial, a, hJa, hpre'⟩
+    exact ⟨trivial, g, hJa, hpre'⟩
   have hwp := hb u hmeet
   have hjump : ∀ v b c a', J v b → BlockExit p r₀ E c a' v → wp (cfgLoop st T a') Qa Ea b →
-      (∀ l, blk.label = some l → steps st T a' b < var l u) →
+      (∀ l, blk.label = some l → ∀ l', a' = label l' → R (l', b) (l, g)) →
       Program.Intercept (Program.labels p) t
-        (fun l j s' => I (s₀ := t) l s' ∧ Program.Decreases var blk.label blk.idx u l j s')
+        (fun l _ s' => ∃ g', Inv l s' g' ∧ Program.GhostDec R blk.label g l g')
         (EPostsConcretization.ePosts (Concretization.ofStateRel J) E Ea) c v := by
     intro v b c a' hJv hrel hE hd
     have hsvb : st b = stayIn r₀ v := by
@@ -663,44 +632,45 @@ theorem wrp_cfg_le_exit {p : Program} [Embeds p] (hs : Program.Separated p = tru
       obtain ⟨blk', hblk', l, hl, ha, -⟩ := Program.table_get?_some hT
       subst ha
       refine Program.Intercept.intro (Or.inl ⟨(hstay v b hJv).mp hsv, l, rfl,
-        Program.label_mem_labels hblk' hl, ⟨⟨b, hJv, hsv, hE⟩, ?_⟩⟩)
+        Program.label_mem_labels hblk' hl, ⟨b, ⟨hJv, hsv, hE⟩, ?_⟩⟩)
       cases hbl : blk.label with
       | none => trivial
-      | some l₀ => exact Or.inl (Nat.lt_of_le_of_lt (hvar_le l v b ⟨hJv, hsv, hE⟩) (hd l₀ hbl))
+      | some l₀ => exact hd l₀ hbl l rfl
   refine Program.wp_mono (fun u' hu => ?_) (fun u' hu => ?_) hwp
   · change (Concretization.ofStateRel J).post (fun _ _ _ => True) Qa' () u'.data at hu
     simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
       meet_prop_eq_and, Concretization.ofStateRel_pred] at hu
     obtain ⟨-, -, b, hJb, hQ, hc⟩ := hu
-    show Program.Next @I t Q (Program.Decreases var blk.label blk.idx u) blk.next (blk.idx + 1) u'.data
+    show Program.GhostNext Inv Q R blk.label g blk.next u'.data
     cases hn : blk.next with
     | none =>
       rw [hn, jumpTo_none, WPMonadExact.wp_pure_eq] at hQ
-      simp only [Program.Next, Q, Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
-        meet_prop_eq_and, top_apply, top_prop_eq, Concretization.ofStateRel_pred]
+      simp only [Program.GhostNext, Q, Concretization.post, iSup_apply, iSup_prop_eq_exists,
+        meet_apply, meet_prop_eq_and, top_apply, top_prop_eq, Concretization.ofStateRel_pred]
       exact ⟨(), trivial, b, hJb, hQ⟩
     | some l' =>
       rw [hn, jumpTo_some, AInstr.wp_branch] at hQ
       simp only [↓reduceIte] at hQ
       obtain ⟨hsu, hQ⟩ := hQ
-      refine ⟨⟨b, hJb, hsu, hQ⟩, ?_⟩
+      refine ⟨b, ⟨hJb, hsu, hQ⟩, ?_⟩
       cases hbl : blk.label with
       | none => trivial
       | some l₀ =>
-        refine Or.inl (Nat.lt_of_le_of_lt (hvar_le l' u'.data b ⟨hJb, hsu, hQ⟩)
-          (hdec (label l') b ?_ l₀ hbl))
-        rw [BlockM.run_bind, hc, hn]
-        show (AInstr.branch st (fun _ => true) (label l')).run.run b = _
+        refine hdec (label l') b ?_ l₀ hbl l' rfl
+        rw [BlockM.run_bind]
+        refine Demonic.outs_bind_of hc ?_
+        rw [hn]
+        show ((AInstr.branch st (fun _ => true) (label l')).run.run b).outs _
         rw [AInstr.branch_run]
-        simp only [AInstr.branch, ↓reduceIte, UB.assume_bind_of_pos hsu]
-        rfl
+        simp only [AInstr.branch, ↓reduceIte, Demonic.assume_bind_of_pos hsu]
+        exact Demonic.outs_pure _
   · change (Concretization.ofStateRel J).post (BlockExit p r₀ E) Ea'.1 u'.pc u'.data at hu
     simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
       meet_prop_eq_and, Concretization.ofStateRel_pred] at hu
     obtain ⟨a', hrel, b, hJb, hE, hc⟩ := hu
-    refine hjump u'.data b u'.pc a' hJb hrel hE fun l hl => hdec a' b ?_ l hl
-    rw [BlockM.run_bind, hc]
-    rfl
+    refine hjump u'.data b u'.pc a' hJb hrel hE fun l hl l' hl' => hdec a' b ?_ l hl l' hl'
+    rw [BlockM.run_bind]
+    exact Demonic.outs_bind_of hc (Demonic.outs_pure _)
 
 theorem wrp_cfg_le_rel {p : Program} [Embeds p] (hs : Program.Separated p = true)
     {cell : Option Label → BlockM MachineData Unit} {s₀ : MachineData} {ra : Int64}

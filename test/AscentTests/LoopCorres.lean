@@ -11,7 +11,7 @@ the concrete countdown.
 open Std.WP Lean.Order Ascent
 
 /-- Counts the state down to `0`. -/
-def countdown : StateT Nat UB Unit :=
+def countdown : StateT Nat Demonic Unit :=
   whileLoop (fun n => decide (0 < n)) (fun n => pure ((), n - 1))
 
 /-- A countdown loop refines itself: the guards agree, and the body refines itself. -/
@@ -37,7 +37,7 @@ theorem countdown_spec : Triple countdown (⊤ : Nat → Prop) (fun _ n => n = 0
   | zero => rw [countdown, wp_whileLoop]; rfl
   | succ n ih =>
     rw [countdown, wp_whileLoop, ite_eq_left (by simp)]
-    simpa [countdown, StateT.wp_apply_eq, StateT.run, UB.wp_pure_eq] using ih
+    simpa [countdown, StateT.wp_apply_eq, StateT.run, Demonic.wp_pure_eq] using ih
 
 /-- The abstract specification transports to the concrete countdown. -/
 example : Triple countdown (⊤ : Nat → Prop) (fun _ n => n = 0) ⊥ := by

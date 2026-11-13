@@ -1,5 +1,5 @@
 import Ascent.Refinement
-import Ascent.UB
+import Ascent.Demonic
 
 /-!
 # Exceptions: the refinement meaning of `throw` and `tryCatch`

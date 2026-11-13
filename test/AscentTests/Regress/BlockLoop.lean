@@ -21,7 +21,7 @@ namespace Ascent.BlockLoopTest
 
 open BlockLoop
 
-abbrev M := ExceptT Nat (StateT Bool UB)
+abbrev M := ExceptT Nat (StateT Bool Demonic)
 
 def loopAB : Table Nat (M Unit) := [(0, throw 1), (1, throw 0)]
 
@@ -88,7 +88,7 @@ sym_simp_def nestedS : M Unit from cfgLoop (fun _ => true) nested 0
 #guard_msgs in
 #print nestedS
 
-abbrev N := ExceptT Nat (StateT Nat UB)
+abbrev N := ExceptT Nat (StateT Nat Demonic)
 
 theorem tryCatch_set_bind {β : Type} (t : Nat) (k : PUnit → N β) (h : Nat → N β) :
     tryCatch (set t >>= k) h = set t >>= fun u => tryCatch (k u) h := rfl

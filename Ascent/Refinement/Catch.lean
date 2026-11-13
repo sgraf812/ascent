@@ -20,13 +20,13 @@ namespace Ascent
 section
 variable {κ σ : Type} [DecidableEq κ]
 
-def catchExit (e : κ) (b : ExceptT κ (StateT σ UB) Unit) : ExceptT κ (StateT σ UB) Unit :=
+def catchExit (e : κ) (b : ExceptT κ (StateT σ Demonic) Unit) : ExceptT κ (StateT σ Demonic) Unit :=
   tryCatch b (fun l => if l = e then pure () else throw l)
 
-theorem wp_catchExit (e : κ) (b : ExceptT κ (StateT σ UB) Unit) (Q : Unit → σ → Prop)
+theorem wp_catchExit (e : κ) (b : ExceptT κ (StateT σ Demonic) Unit) (Q : Unit → σ → Prop)
     (E : (κ → σ → Prop) × EStack⟨⟩) (s : σ) :
     wp (catchExit e b) Q E s = wp b Q (fun l t => if l = e then Q () t else E.1 l t, E.2) s := by
-  have h : (fun l => wp (if l = e then pure () else throw l : ExceptT κ (StateT σ UB) Unit) Q E)
+  have h : (fun l => wp (if l = e then pure () else throw l : ExceptT κ (StateT σ Demonic) Unit) Q E)
       = fun l t => if l = e then Q () t else E.1 l t := by
     funext l t
     by_cases hl : l = e
@@ -43,7 +43,7 @@ variable {κ σ : Type} [DecidableEq κ] {CProg CVal CPred CEPosts : Type _} {ER
   [Heyting CPred]
 
 theorem Refinement.transport_catchExit {e : κ} {γ : Concretization CPred (σ → Prop)}
-    {P : CPred} {Q : CVal → Unit → CPred} {E : ERels} {c : CProg} {b : ExceptT κ (StateT σ UB) Unit}
+    {P : CPred} {Q : CVal → Unit → CPred} {E : ERels} {c : CProg} {b : ExceptT κ (StateT σ Demonic) Unit}
     {Pb : σ → Prop} {Qb : Unit → σ → Prop} {Eb : (κ → σ → Prop) × EStack⟨⟩}
     (h : ⦃P⦄ c ⪯[γ] b ⦃Q; E⦄) (hb : Triple (catchExit e b) Pb Qb Eb) :
     Triple c (P ⊓ γ.pred Pb) (γ.post Q Qb)

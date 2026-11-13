@@ -4,7 +4,7 @@ import Ascent.Tactic.VCGen.Frontend
 /-!
 # Word abstraction through the engine
 
-A chain of `UInt64` additions in `Id` abstracts to a guarded `Int` chain in `UB`, related by
+A chain of `UInt64` additions in `Id` abstracts to a guarded `Int` chain in `Demonic`, related by
 `FunRel wordVal`. `Refinement.pure_rel` abstracts each `pure`, the `@[ascend_pure]` rules below
 abstract the value inside it, and each bind relates the concrete and the abstract variable.
 -/
@@ -37,7 +37,7 @@ attribute [ascend] wrp_bind Refinement.pure_rel
 
 /-- Two dependent additions, nested to the left as unfolding a recursive chain produces them. The
 run leaves no VC. -/
-noncomputable def chain2 : { a : UB Int //
+noncomputable def chain2 : { a : Demonic Int //
     ⦃(⊤ : Prop)⦄ ((pure 7 >>= fun r => pure (r + 7)) >>= fun r => pure (r + 7) : Id UInt64)
       ⪯[γw] a ⦃(⌜FunRel wordVal · ·⌝)⦄ } := by
   apply Subtype.mk
@@ -46,8 +46,8 @@ noncomputable def chain2 : { a : UB Int //
 /-- Each addition acquires its no-overflow guard, at the abstract value of the previous step. -/
 example : chain2.1 = (do
     let a ← (do
-      let b ← (do UB.assume True; pure (wordVal 7))
-      (do UB.assume (b + wordVal 7 < 2 ^ 64); pure (b + wordVal 7)))
-    (do UB.assume (a + wordVal 7 < 2 ^ 64); pure (a + wordVal 7))) := rfl
+      let b ← (do Demonic.assume True; pure (wordVal 7))
+      (do Demonic.assume (b + wordVal 7 < 2 ^ 64); pure (b + wordVal 7)))
+    (do Demonic.assume (a + wordVal 7 < 2 ^ 64); pure (a + wordVal 7))) := rfl
 
 end WordAbsEngine

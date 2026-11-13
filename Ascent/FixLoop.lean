@@ -1,4 +1,4 @@
-import Ascent.UB.WhileLoop
+import Ascent.Demonic.WhileLoop
 import Ascent.WPMonadExact
 import Init.Internal.Order.MonadTail
 import Std.WP.Triple.SpecLemmas
@@ -28,7 +28,9 @@ open Lean.Order Std.WP
 
 namespace Ascent
 
-instance : MonadTail UB := inferInstanceAs (MonadTail Option)
+instance : MonadTail Demonic where
+  instCCPO _ := inferInstance
+  bind_mono_right h := MonoBind.bind_mono_right h
 
 /-- The collection of a loop that runs until its body breaks. -/
 structure FixLoop where

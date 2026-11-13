@@ -22,8 +22,8 @@ namespace Ascent.Kraken
 
 /-- `x` runs on related states to related states with the same result. -/
 def MonoRun (M : DataMem → DataMem → Prop) {α : Type} (x : BlockM MachineData α) : Prop :=
-  ∀ a b, StRel M a b → ∀ r, x.run.run a = some r →
-    ∃ r', x.run.run b = some r' ∧ r.1 = r'.1 ∧ StRel M r.2 r'.2
+  ∀ a b, StRel M a b → ∀ P : Except Int64 α × MachineData → Prop, (x.run.run a).wpD P →
+    (x.run.run b).wpD fun r => ∃ s, StRel M s r.2 ∧ P (r.1, s)
 
 section
 variable {M : DataMem → DataMem → Prop}
@@ -33,20 +33,12 @@ theorem MonoRun.wp {α : Type} {x : BlockM MachineData α} (hx : MonoRun M x) {a
     (h : wp x Q E a) :
     wp x (fun v b' => ∃ a', StRel M a' b' ∧ Q v a') (fun l b' => ∃ a', StRel M a' b' ∧ E.1 l a', E.2) b := by
   rw [wp_BlockM_eq] at h ⊢
-  revert h
-  cases hr : x.run.run a with
-  | none => intro h; exact h.elim
-  | some r =>
-    intro h
-    obtain ⟨r', hr', h1, h2⟩ := hx a b hab r hr
-    rw [hr']
-    obtain ⟨e, s⟩ := r
-    obtain ⟨e', s'⟩ := r'
-    simp only at h1 h2
-    subst h1
-    cases e with
-    | error l => exact ⟨s, h2, h⟩
-    | ok v => exact ⟨s, h2, h⟩
+  refine (x.run.run b).mono (fun r hr => ?_) (hx a b hab _ h)
+  obtain ⟨s, hs, hq⟩ := hr
+  obtain ⟨e, s'⟩ := r
+  cases e with
+  | error l => exact ⟨s, hs, hq⟩
+  | ok v => exact ⟨s, hs, hq⟩
 
 /-- A refinement under `ofStateRepr abs` with a monotone abstract program holds under every
 `JRel M`. -/
@@ -93,83 +85,71 @@ theorem RegFn.eq {β : Type} {f : MachineData → β} (hf : RegFn f) {a b : Mach
     f a = f b := hf a b h.regs h.status
 
 theorem monoRun_pure {α : Type} (v : α) : MonoRun M (pure v : BlockM MachineData α) :=
-  fun a b hab r hr => ⟨(.ok v, b), rfl, by cases hr; rfl, by cases hr; exact hab⟩
+  fun a _ hab _ h => ⟨a, hab, h⟩
 
 theorem monoRun_throw {α : Type} (l : Int64) : MonoRun M (throw l : BlockM MachineData α) :=
-  fun a b hab r hr => ⟨(.error l, b), rfl, by cases hr; rfl, by cases hr; exact hab⟩
+  fun a _ hab _ h => ⟨a, hab, h⟩
 
 theorem monoRun_bind {α β : Type} {x : BlockM MachineData α} {k : α → BlockM MachineData β}
     (hx : MonoRun M x) (hk : ∀ v, MonoRun M (k v)) : MonoRun M (x >>= k) := by
-  intro a b hab r hr
-  rw [BlockM.run_bind] at hr ⊢
-  cases hxa : x.run.run a with
-  | none => rw [hxa] at hr; exact nomatch hr
-  | some p =>
-    rw [hxa] at hr
-    obtain ⟨p', hxb, h1, h2⟩ := hx a b hab p hxa
-    rw [hxb]
-    obtain ⟨e, s⟩ := p
-    obtain ⟨e', s'⟩ := p'
-    simp only at h1 h2
-    subst h1
-    cases e with
-    | ok v => exact hk v s s' h2 r hr
-    | error l =>
-      cases hr
-      exact ⟨_, rfl, rfl, h2⟩
+  intro a b hab P h
+  rw [BlockM.run_bind, Demonic.wpD_bind] at h ⊢
+  refine (x.run.run b).mono (fun r hr => ?_) (hx a b hab _ h)
+  obtain ⟨s, hs, hq⟩ := hr
+  obtain ⟨e, s'⟩ := r
+  cases e with
+  | ok v => exact hk v s s' hs P hq
+  | error l => exact ⟨s, hs, hq⟩
 
 theorem monoRun_modifyIf {g : MachineData → Prop} {f : MachineData → MachineData}
     (hg : ∀ a b, StRel M a b → g a → g b) (hf : ∀ a b, StRel M a b → g a → StRel M (f a) (f b)) :
     MonoRun M (modifyIf g f) := by
-  intro a b hab r hr
-  rw [modifyIf_run] at hr ⊢
-  unfold modifyIf at hr ⊢
+  intro a b hab P h
+  rw [modifyIf_run] at h ⊢
+  unfold modifyIf at h ⊢
   by_cases ha : g a
-  · rw [UB.assume_bind_of_pos ha] at hr
-    rw [UB.assume_bind_of_pos (hg a b hab ha)]
-    cases hr
-    exact ⟨_, rfl, rfl, hf a b hab ha⟩
-  · rw [UB.assume_bind_of_neg ha] at hr
-    exact nomatch hr
+  · rw [Demonic.assume_bind_of_pos ha] at h
+    rw [Demonic.assume_bind_of_pos (hg a b hab ha)]
+    exact ⟨_, hf a b hab ha, h⟩
+  · rw [Demonic.assume_bind_of_neg ha] at h
+    exact (h : False).elim
 
 theorem monoRun_exitIf {α : Type} {g : MachineData → Prop} {f : MachineData → MachineData} (l : Int64)
     (hg : ∀ a b, StRel M a b → g a → g b) (hf : ∀ a b, StRel M a b → g a → StRel M (f a) (f b)) :
     MonoRun M (exitIf g f l : BlockM MachineData α) := by
-  intro a b hab r hr
-  rw [exitIf_run] at hr ⊢
-  unfold exitIf at hr ⊢
+  intro a b hab P h
+  rw [exitIf_run] at h ⊢
+  unfold exitIf at h ⊢
   by_cases ha : g a
-  · rw [UB.assume_bind_of_pos ha] at hr
-    rw [UB.assume_bind_of_pos (hg a b hab ha)]
-    cases hr
-    exact ⟨_, rfl, rfl, hf a b hab ha⟩
-  · rw [UB.assume_bind_of_neg ha] at hr
-    exact nomatch hr
+  · rw [Demonic.assume_bind_of_pos ha] at h
+    rw [Demonic.assume_bind_of_pos (hg a b hab ha)]
+    exact ⟨_, hf a b hab ha, h⟩
+  · rw [Demonic.assume_bind_of_neg ha] at h
+    exact (h : False).elim
 
 theorem monoRun_branch {st c : MachineData → Bool} (l : Int64) (hs : RegFn st) (hc : RegFn c) :
     MonoRun M (branch st c l) := by
-  intro a b hab r hr
+  intro a b hab P hr
   rw [branch_run] at hr ⊢
   unfold branch at hr ⊢
   rw [hc.eq hab, hs.eq hab] at hr
   by_cases hcb : c b = true
   · simp only [hcb, ↓reduceIte] at hr ⊢
     by_cases h : st b = true
-    · rw [UB.assume_bind_of_pos h] at hr ⊢
-      cases hr
-      exact ⟨_, rfl, rfl, hab⟩
-    · rw [UB.assume_bind_of_neg h] at hr
-      exact nomatch hr
+    · rw [Demonic.assume_bind_of_pos h] at hr ⊢
+      exact ⟨_, hab, hr⟩
+    · rw [Demonic.assume_bind_of_neg h] at hr
+      exact (hr : False).elim
   · simp only [hcb, Bool.false_eq_true, ↓reduceIte] at hr ⊢
-    cases hr
-    exact ⟨_, rfl, rfl, hab⟩
+    exact ⟨_, hab, hr⟩
 
 theorem monoRun_peek {β : Type} {c : MachineData → β} (hc : RegFn c) : MonoRun M (peek c) := by
-  intro a b hab r hr
+  intro a b hab P hr
   rw [peek_run] at hr ⊢
   unfold peek at hr ⊢
-  cases hr
-  exact ⟨_, rfl, by rw [hc.eq hab], hab⟩
+  refine ⟨a, hab, ?_⟩
+  rw [← hc.eq hab]
+  exact hr
 
 theorem monoG_true : ∀ a b : MachineData, StRel M a b → (fun _ => True) a → (fun _ => True) b :=
   fun _ _ _ h => h

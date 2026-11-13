@@ -24,16 +24,16 @@ namespace IdentityEntryTest
 
 attribute [local ascend] wrp_bind Refinement.pure_rel
 
-def prog (c : Nat) : UB Nat := pure (c + 1)
+def prog (c : Nat) : Demonic Nat := pure (c + 1)
 
-ascend_def progA (c : Nat) : UB Nat from
+ascend_def progA (c : Nat) : Demonic Nat from
   ⦃(PureRefinement c c True Eq : Prop)⦄ (prog c) ⪯[Concretization.id Prop] progA ⦃(⌜Eq · ·⌝)⦄
   ascend [prog]
 
 /--
-info: def IdentityEntryTest.progA : Nat → UB Nat :=
+info: def IdentityEntryTest.progA : Nat → Demonic Nat :=
 fun c => do
-  UB.assume True
+  Demonic.assume True
   pure (c + 1)
 -/
 #guard_msgs in

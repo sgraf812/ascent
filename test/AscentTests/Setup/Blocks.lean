@@ -1,4 +1,4 @@
-import Ascent.UB.StateT
+import Ascent.Demonic.StateT
 import Ascent.Table
 import Ascent.PureRefinement
 import Ascent.Tactic.VCGen.Command
@@ -28,13 +28,13 @@ inductive Lbl where
   | exit
   deriving DecidableEq, Inhabited
 
-abbrev BlockM (σ : Type) := ExceptT Lbl (StateT σ UB)
+abbrev BlockM (σ : Type) := ExceptT Lbl (StateT σ Demonic)
 
 section
 variable {σ : Type}
 
 noncomputable def modifyIf (g : σ → Prop) (f : σ → σ) : BlockM σ Unit :=
-  fun st => UB.assume (g st) >>= fun _ => pure (.ok (), f st)
+  fun st => Demonic.assume (g st) >>= fun _ => pure (.ok (), f st)
 
 def branch (c : σ → Bool) (l : Lbl) : BlockM σ Unit :=
   fun st => if c st then pure (.error l, st) else pure (.ok (), st)
@@ -48,24 +48,24 @@ theorem wp_modifyIf (g f) : wp (modifyIf g f) Qa Ea st = (g st ∧ Qa () (f st))
   rw [ExceptT.wp_apply_eq, StateT.wp_apply_eq, show (modifyIf g f).run.run st = modifyIf g f st from rfl]
   unfold modifyIf
   by_cases h : g st
-  · rw [UB.assume_bind_of_pos h]
-    simp only [UB.wp_pure_eq, h, true_and]
+  · rw [Demonic.assume_bind_of_pos h]
+    simp only [Demonic.wp_pure_eq, h, true_and]
     rfl
-  · rw [UB.assume_bind_of_neg h]
-    simp only [UB.wp_fail_eq, bot_prop_eq, h, false_and]
+  · rw [Demonic.assume_bind_of_neg h]
+    simp only [Demonic.wp_fail_eq, bot_prop_eq, h, false_and]
 
 theorem wp_branch (c l) : wp (branch c l) Qa Ea st = if c st then Ea.1 l st else Qa () st := by
   rw [ExceptT.wp_apply_eq, StateT.wp_apply_eq, show (branch c l).run.run st = branch c l st from rfl]
   unfold branch
   split
-  · simp only [UB.wp_pure_eq, *]
+  · simp only [Demonic.wp_pure_eq, *]
     rfl
-  · simp only [UB.wp_pure_eq, *]
+  · simp only [Demonic.wp_pure_eq, *]
     rfl
 
 theorem wp_peek {β : Type} {Qb : β → σ → Prop} (c : σ → β) : wp (peek c) Qb Ea st = Qb (c st) st := by
   rw [ExceptT.wp_apply_eq, StateT.wp_apply_eq, show (peek c).run.run st = peek c st from rfl]
-  simp only [peek, UB.wp_pure_eq]
+  simp only [peek, Demonic.wp_pure_eq]
   rfl
 
 end

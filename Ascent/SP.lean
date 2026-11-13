@@ -1,4 +1,4 @@
-import Ascent.UB
+import Ascent.Demonic
 
 /-!
 # Strongest postconditions
@@ -67,19 +67,15 @@ theorem sp_le_iff [WPInfConjunctive Prog Value Pred EPosts] {x : Prog} {P : Pred
 
 end
 
-instance {α : Type} : WPInfConjunctive (UB α) α Prop EStack⟨⟩ where
+instance {α : Type} : WPInfConjunctive (Demonic α) α Prop EStack⟨⟩ where
   iInf_wp_le_wp_iInf := by
     intro ι hne x Q E
-    cases x with
-    | none =>
-      obtain ⟨j⟩ := hne
-      show iInf (fun j => wp (UB.fail : UB α) (Q j) E) ⊑ wp (UB.fail : UB α) (iInf Q) E
-      simp only [UB.wp_fail_eq]
-      exact iInf_le _ j
-    | some a =>
-      show iInf (fun j => wp (pure a : UB α) (Q j) E) ⊑ wp (pure a : UB α) (iInf Q) E
-      simp only [UB.wp_pure_eq, iInf_apply]
-      exact PartialOrder.rel_refl
+    show iInf (fun j => x.wpD (Q j)) ⊑ x.wpD (iInf Q)
+    rw [iInf_prop_eq_forall]
+    intro h
+    have hQ : iInf Q = fun a => ∀ j, Q j a := funext fun a => by rw [iInf_apply, iInf_prop_eq_forall]
+    rw [hQ]
+    exact (x.conj ι Q).mpr h
 
 instance {m : Type u → Type v} {σ : Type u} {Pred : Type w} {EPosts : Type z} {α : Type u}
     [Monad m] [Assertion Pred] [Assertion EPosts] [WPMonad m Pred EPosts]

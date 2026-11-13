@@ -65,7 +65,7 @@ structure State where
   locals : Locals
   heap   : Heap
 
-abbrev M := StateT State UB                    -- state (locals + heap) + UB; no ExceptT
+abbrev M := StateT State Demonic                    -- state (locals + heap) + Demonic; no ExceptT
 
 /-- Memory load (well-defined only after `c_guard`). -/
 def load (p : Addr) : M I := do return (← get).heap.data p
@@ -74,16 +74,16 @@ def load (p : Addr) : M I := do return (← get).heap.data p
 def store (p : Addr) (v : I) : M Unit :=
   modify fun s => { s with heap.data := fun a => if a = p then v else s.heap.data a }
 
-/-- The parser's `c_guard`: UB unless `p` is a valid pointer. -/
-def cguard (p : Addr) : M Unit := do if (← get).heap.valid p then pure () else UB.fail
+/-- The parser's `c_guard`: Demonic unless `p` is a valid pointer. -/
+def cguard (p : Addr) : M Unit := do if (← get).heap.valid p then pure () else Demonic.fail
 
-/-- Read a `size_t` local; UB if missing or wrong type. -/
+/-- Read a `size_t` local; Demonic if missing or wrong type. -/
 def getSize (x : Ident) : M USize := do
-  match (← get).locals x with | some (.size n) => pure n | _ => UB.fail
+  match (← get).locals x with | some (.size n) => pure n | _ => Demonic.fail
 
-/-- Read a pointer local; UB if missing or wrong type. -/
+/-- Read a pointer local; Demonic if missing or wrong type. -/
 def getPtr (x : Ident) : M Addr := do
-  match (← get).locals x with | some (.ptr a) => pure a | _ => UB.fail
+  match (← get).locals x with | some (.ptr a) => pure a | _ => Demonic.fail
 
 /-- Write a `size_t` local. -/
 def setSize (x : Ident) (n : USize) : M Unit :=
@@ -124,11 +124,11 @@ def guardL2 (n : USize) : USize × Heap → Bool := fun p => decide (p.1 < n)
 
 /-- The abstract body: guard the three accesses, write `out[i] = a[i] + b[i]`, increment the
 counter. The heap-only counterpart of `stepL1`. -/
-def stepL2 (a b out : Addr) : StateT (USize × Heap) UB Unit := fun p =>
+def stepL2 (a b out : Addr) : StateT (USize × Heap) Demonic Unit := fun p =>
   let i := p.1; let h := p.2
   if h.valid (a + i.toNat) && h.valid (b + i.toNat) && h.valid (out + i.toNat) then
     pure ((), (i + 1, h.upd (out + i.toNat) (h.data (a + i.toNat) + h.data (b + i.toNat))))
-  else UB.fail
+  else Demonic.fail
 
 /-- The loop invariant: the abstract counter and heap match the concrete `i` local and heap, and the
 pointer/bound locals hold their fixed values. -/
@@ -157,10 +157,10 @@ def guardL3 (n : USize) : USize × Array I → Bool := fun p => decide (p.1 < n)
 
 /-- The out-param loop's body: guard the three accesses against the array bounds, write
 `out[i] = a[i] + b[i]`, increment `i`. -/
-def stepL3 (a b : Array I) : StateT (USize × Array I) UB Unit := fun p =>
+def stepL3 (a b : Array I) : StateT (USize × Array I) Demonic Unit := fun p =>
   if p.1.toNat < a.size ∧ p.1.toNat < b.size ∧ p.1.toNat < p.2.size then
     pure ((), (p.1 + 1, p.2.setIfInBounds p.1.toNat (a.getD p.1.toNat 0 + b.getD p.1.toNat 0)))
-  else UB.fail
+  else Demonic.fail
 
 /-- Closed form: `out` with its first `k` cells overwritten by `a[j] + b[j]`. -/
 def zippedL3 (a b : Array I) (k : Nat) (out : Array I) : Array I :=
@@ -175,7 +175,7 @@ def invL3 (a b out : Addr) (n : USize) (a_arr b_arr : Array I) :
 
 /-- The out-param spec: the out array becomes `Array.zipWith (· + ·)` of the inputs, the return is the
 length. -/
-def zipL4 (a b : Array I) (n : USize) : StateT (Array I) UB USize := do
+def zipL4 (a b : Array I) (n : USize) : StateT (Array I) Demonic USize := do
   set <| Array.zipWith (· + ·) a b
   pure n
 
@@ -192,13 +192,13 @@ and the end-to-end `refines_zip`. -/
 local macro "aomega" : tactic => `(tactic| (unfold Addr at *; omega))
 
 @[spec] theorem getPtr_spec (x : Ident) (post : Addr → State → Prop) :
-    ⦃fun s => wp (Prog := M Addr) (match s.locals x with | some (.ptr a) => pure a | _ => UB.fail)
+    ⦃fun s => wp (Prog := M Addr) (match s.locals x with | some (.ptr a) => pure a | _ => Demonic.fail)
       post ⊥ s⦄ getPtr x ⦃post⦄ := by
   vcgen (stepLimit := 3) [getPtr]
   assumption
 
 @[spec] theorem cguard_spec (p : Addr) (post : Unit → State → Prop) :
-    ⦃fun s => wp (Prog := M Unit) (if s.heap.valid p then pure () else UB.fail) post ⊥ s⦄
+    ⦃fun s => wp (Prog := M Unit) (if s.heap.valid p then pure () else Demonic.fail) post ⊥ s⦄
       cguard p ⦃post⦄ := by
   vcgen (stepLimit := 3) [cguard]
   assumption
@@ -219,11 +219,11 @@ local macro "aomega" : tactic => `(tactic| (unfold Addr at *; omega))
   assumption
 
 /-- `getSize`'s `wp`, as a function of the state: reading a present `size_t` extracts its value,
-UB otherwise. -/
+Demonic otherwise. -/
 theorem wp_getSize (x : Ident) (Q : USize → State → Prop) (E : EStack⟨⟩) (s : State) :
     wp (getSize x) Q E s = match s.locals x with | some (.size n) => Q n s | _ => (⊥ : Prop) := by
   rw [getSize, WPMonadExact.wp_bind_eq]
-  simp only [StateT.wp_apply_eq, StateT.run, get, getThe, MonadStateOf.get, StateT.get, UB.wp_pure_eq]
+  simp only [StateT.wp_apply_eq, StateT.run, get, getThe, MonadStateOf.get, StateT.get, Demonic.wp_pure_eq]
   cases hl : s.locals x with
   | none => simp [StateT.lift, liftM, monadLift, MonadLift.monadLift]
   | some v =>
@@ -240,11 +240,11 @@ theorem wp_getSize (x : Ident) (Q : USize → State → Prop) (E : EStack⟨⟩)
   simpa [hn] using h
 
 /-- `getPtr`'s `wp`, as a function of the state: reading a present pointer extracts its address,
-UB otherwise. -/
+Demonic otherwise. -/
 theorem wp_getPtr (x : Ident) (Q : Addr → State → Prop) (E : EStack⟨⟩) (s : State) :
     wp (getPtr x) Q E s = match s.locals x with | some (.ptr a) => Q a s | _ => (⊥ : Prop) := by
   rw [getPtr, WPMonadExact.wp_bind_eq]
-  simp only [StateT.wp_apply_eq, StateT.run, get, getThe, MonadStateOf.get, StateT.get, UB.wp_pure_eq]
+  simp only [StateT.wp_apply_eq, StateT.run, get, getThe, MonadStateOf.get, StateT.get, Demonic.wp_pure_eq]
   cases hl : s.locals x with
   | none => simp [StateT.lift, liftM, monadLift, MonadLift.monadLift]
   | some v =>
@@ -258,7 +258,7 @@ theorem wp_setSize (x : Ident) (n : USize) (Q : Unit → State → Prop) (E : ES
     wp (setSize x n) Q E s
       = Q () { s with locals := fun y => if y = x then some (.size n) else s.locals y } := by
   simp only [setSize, StateT.wp_apply_eq, StateT.run, modify, modifyGet, MonadStateOf.modifyGet,
-    StateT.modifyGet, UB.wp_pure_eq]
+    StateT.modifyGet, Demonic.wp_pure_eq]
 
 /-- `setSize`'s strongest postcondition: the image of `P` under the local update. -/
 theorem sp_setSize (x : Ident) (n : USize) (P : State → Prop) (E : EStack⟨⟩) :
@@ -302,7 +302,7 @@ theorem wp_stepL2 (a b out : Addr) (Q : Unit → USize × Heap → Prop) (E : ES
       if p.2.valid (a + p.1.toNat) && p.2.valid (b + p.1.toNat) && p.2.valid (out + p.1.toNat) then
         Q () (p.1 + 1, p.2.upd (out + p.1.toNat) (p.2.data (a + p.1.toNat) + p.2.data (b + p.1.toNat)))
       else (⊥ : Prop) := by
-  simp only [stepL2, StateT.wp_apply_eq, StateT.run, wp_ite, UB.wp_pure_eq, UB.wp_fail_eq]
+  simp only [stepL2, StateT.wp_apply_eq, StateT.run, wp_ite, Demonic.wp_pure_eq, Demonic.wp_fail_eq]
 
 /-- The loop body refinement: each concrete local read extracts the related value, the heap
 operations act on the related heap, and the counter update preserves the state relation. -/
@@ -347,12 +347,12 @@ theorem refines_L1L2 (a b out : Addr) (n : USize) :
 /-- `getSize "n"` (the `return n`) reads the related bound, abstracting to `pure n`. -/
 theorem refines_getSizeN (a b out : Addr) (n : USize) :
     ⦃(⊤ : State → Prop)⦄ (getSize "n")
-      ⪯[ofStateRel (invL2 a b out n)] (pure n : StateT (USize × Heap) UB USize) ⦃(⌜· = ·⌝)⦄ := by
+      ⪯[ofStateRel (invL2 a b out n)] (pure n : StateT (USize × Heap) Demonic USize) ⦃(⌜· = ·⌝)⦄ := by
   refine ⟨wrp_intro fun Q E => ?_⟩
   intro cs hpre
   simp only [_root_.top_meet, ofStateRel_pred] at hpre
   obtain ⟨⟨i, h⟩, hJ, habs⟩ := hpre
-  simp only [StateT.wp_apply_eq, StateT.run_pure, UB.wp_pure_eq] at habs
+  simp only [StateT.wp_apply_eq, StateT.run_pure, Demonic.wp_pure_eq] at habs
   obtain ⟨hh, hi, hn, ha, hb, hout⟩ := hJ
   rw [wp_getSize, hn]
   simp only [Concretization.post_eq, ofStateRel_pred]
@@ -380,7 +380,7 @@ theorem wp_stepL3 (a b : Array I) (Q : Unit → USize × Array I → Prop) (E : 
       if p.1.toNat < a.size ∧ p.1.toNat < b.size ∧ p.1.toNat < p.2.size then
         Q () (p.1 + 1, p.2.setIfInBounds p.1.toNat (a.getD p.1.toNat 0 + b.getD p.1.toNat 0))
       else (⊥ : Prop) := by
-  simp only [stepL3, StateT.wp_apply_eq, StateT.run, wp_ite, UB.wp_pure_eq, UB.wp_fail_eq]
+  simp only [stepL3, StateT.wp_apply_eq, StateT.run, wp_ite, Demonic.wp_pure_eq, Demonic.wp_fail_eq]
 
 @[simp] theorem zippedL3_size (a b : Array I) (k : Nat) (out : Array I) :
     (zippedL3 a b k out).size = out.size := by simp [zippedL3]
@@ -594,7 +594,7 @@ theorem refines_L3L4 (a b out : Addr) (n : USize) (a_arr b_arr : Array I)
       (by omega) (by omega) (by simp [slice_size])
       (by rw [zippedL3_full a_arr b_arr n.toNat (slice out n.toNat s.heap) ha hb
           (slice_size out n.toNat s.heap)]; exact hQspec) n.toNat 0 (by simp) (by simp)
-    simp only [StateT.wp_apply_eq, StateT.run_pure, UB.wp_pure_eq]
+    simp only [StateT.wp_apply_eq, StateT.run_pure, Demonic.wp_pure_eq]
     simpa using hsp
   have hcl := wrp_transport (refines_L1L3 a b out n a_arr b_arr hd).le_wrp (fun v p => Q v p.2) E s (by
     simp only [_root_.top_meet, Concretization.comp, Function.comp, ofStateRel_pred]
@@ -610,7 +610,7 @@ theorem refines_L3L4 (a b out : Addr) (n : USize) (a_arr b_arr : Array I)
 strongest postcondition threads the precondition and pins both values. -/
 theorem refines_getSize_st {X : Type} (f : Heap → X) (P : State → Prop) (x : Ident) (v : USize)
     (hpre : ∀ s, P s → s.locals x = some (.size v)) :
-    ⦃P⦄ (getSize x) ⪯[Concretization.ofStateRepr fun s => f s.heap] (pure v : StateT X UB USize)
+    ⦃P⦄ (getSize x) ⪯[Concretization.ofStateRepr fun s => f s.heap] (pure v : StateT X Demonic USize)
       ⦃fun cv av s => P s ∧ av = v ∧ cv = v⦄ := by
   refine ⟨wrp_intro fun Qa Ea => ?_⟩
   intro s hs
@@ -623,7 +623,7 @@ theorem refines_getSize_st {X : Type} (f : Heap → X) (P : State → Prop) (x :
 /-- Writing a `size_t` local: the strongest postcondition is the image of the precondition under
 the local update; the heap-determined abstract state is untouched. -/
 theorem refines_setSize_st {X : Type} (f : Heap → X) (P : State → Prop) (x : Ident) (v : USize) :
-    ⦃P⦄ (setSize x v) ⪯[Concretization.ofStateRepr fun s => f s.heap] (pure () : StateT X UB Unit)
+    ⦃P⦄ (setSize x v) ⪯[Concretization.ofStateRepr fun s => f s.heap] (pure () : StateT X Demonic Unit)
       ⦃fun _ _ s' => ∃ s, P s ∧
         s' = { s with locals := fun y => if y = x then some (.size v) else s.locals y }⦄ := by
   refine ⟨wrp_intro fun Qa Ea => ?_⟩
@@ -647,10 +647,10 @@ The erased head refines `pure ()`; the scaffold collapses by `pure_bind`. -/
 example {X : Type} (f : Heap → X) (P : State → Prop) (v : USize) :
     ⦃P⦄ (setSize "n" v >>= fun _ => getSize "n")
       ⪯[Concretization.ofStateRepr fun s => f s.heap]
-      (pure v : StateT X UB USize) ⦃(⌜· = ·⌝)⦄ := by
+      (pure v : StateT X Demonic USize) ⦃(⌜· = ·⌝)⦄ := by
   have key : ⦃P⦄ (setSize "n" v >>= fun _ => getSize "n")
       ⪯[Concretization.ofStateRepr fun s => f s.heap]
-      ((pure () : StateT X UB Unit) >>= fun _ => pure v) ⦃(⌜· = ·⌝)⦄ := by
+      ((pure () : StateT X Demonic Unit) >>= fun _ => pure v) ⦃(⌜· = ·⌝)⦄ := by
     have hdef : P ⊑ wp (setSize "n" v) ⊤ ⊥ :=
       le_wp_top_of_le_wp (Q := fun _ _ => True) fun s _ => by rw [wp_setSize]; trivial
     refine .bind'
@@ -675,10 +675,10 @@ postcondition. -/
 example {X : Type} (f : Heap → X) (P : State → Prop) (v : USize) :
     ⦃P⦄ (setSize "n" v >>= fun _ => getSize "n")
       ⪯[Concretization.ofStateRepr fun s => f s.heap]
-      (pure v : StateT X UB USize) ⦃(⌜· = ·⌝)⦄ := by
+      (pure v : StateT X Demonic USize) ⦃(⌜· = ·⌝)⦄ := by
   have key : ⦃P⦄ (setSize "n" v >>= fun _ => getSize "n")
       ⪯[Concretization.ofStateRepr fun s => f s.heap]
-      ((pure () : StateT X UB Unit) >>= fun _ => pure v) ⦃(⌜· = ·⌝)⦄ := by
+      ((pure () : StateT X Demonic Unit) >>= fun _ => pure v) ⦃(⌜· = ·⌝)⦄ := by
     refine .bind' ((refines_setSize_st f P "n" v).mono_post fun cv _ => ?_)
       fun cv _ => ⟨PartialOrder.rel_refl⟩
     intro s' hs'
@@ -727,7 +727,7 @@ independently of the initial state. -/
 theorem wp_zipL4 (a_arr b_arr : Array I) (n : USize) (Q : USize → Array I → Prop) (E : EStack⟨⟩)
     (s : Array I) : wp (zipL4 a_arr b_arr n) Q E s = Q n (Array.zipWith (· + ·) a_arr b_arr) := by
   rw [zipL4, wp_bind_StateT]
-  simp [StateT.wp_apply_eq, UB.wp_pure_eq]
+  simp [StateT.wp_apply_eq, Demonic.wp_pure_eq]
 
 /-- **Dropping the state monad.** Under no precondition, `zipL4` (a state computation over the output
 buffer) is abstracted by the pure `zipL5`, which returns the output array as a value. The terminal

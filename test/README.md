@@ -20,7 +20,7 @@ and names the bug or deviation in its module doc.
 
 `AscentTests/Setup/Blocks.lean` is a toy block machine: the concrete state has a register `r` and
 a zero flag `zf`, the abstract state is the register alone, a block program runs in
-`BlockM σ := ExceptT Lbl (StateT σ UB)`, and a table of cells runs through `cells`. Its
+`BlockM σ := ExceptT Lbl (StateT σ Demonic)`, and a table of cells runs through `cells`. Its
 `@[ascend]` rules cover a decrement that writes the flag, a jump on the flag, a register write,
 and the table of cells, so a test reaches value carrying, continuation holes and table slots with a
 few lines.

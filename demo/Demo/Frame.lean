@@ -180,9 +180,11 @@ theorem wp_zoom {α : Type} (r : Region) (x : BlockM DataMem α) (Q : α → FSt
     (E : (Int64 → FState → Prop) × EStack⟨⟩) (s : FState) :
     wp (zoom r x) Q E s
       = wp x (fun v m => Q v (s.set r m)) (fun l m => E.1 l (s.set r m), estack⟨⟩) (s.get r) := by
-  rw [wp_BlockM_eq, wp_BlockM_eq, show (zoom r x).run.run s
-    = ((fun p => (p.1, s.set r p.2)) <$> x.run.run (s.get r) : Option _) from rfl]
-  rcases x.run.run (s.get r) with _ | ⟨_ | _, _⟩ <;> rfl
+  rw [wp_BlockM_eq, wp_BlockM_eq]
+  show ((x.run.run (s.get r)).wpD fun p => BlockLoop.runPost Q E (p.1, s.set r p.2)) = _
+  congr 1
+  funext p
+  rcases p with ⟨_ | _, _⟩ <;> rfl
 
 /-! ## Addresses -/
 
@@ -244,7 +246,7 @@ theorem storeIn_frame {bs : List (BitVec 64 × Nat)} {n : Nat} {a v : BitVec 64}
 theorem wp_assume_bind {σ α : Type} (g : σ → Prop) (x : BlockM σ α) (Q : α → σ → Prop)
     (E : (Int64 → σ → Prop) × EStack⟨⟩) (s : σ) :
     wp (do StateT.assume g; x : BlockM σ α) Q E s = (g s ∧ wp x Q E s) := by
-  rw [WPMonadExact.wp_bind_eq, ExceptT.wp_monadLift_StateT_UB, StateT.wp_assume_eq]
+  rw [WPMonadExact.wp_bind_eq, ExceptT.wp_monadLift_StateT_Demonic, StateT.wp_assume_eq]
 
 section
 variable {a b x y : BitVec 64} {P₁ P₂ : Prop} {bs : List (BitVec 64 × Nat)} {n : Nat}

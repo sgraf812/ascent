@@ -1,5 +1,5 @@
 import Ascent.Refinement
-import Ascent.UB
+import Ascent.Demonic
 
 /-!
 # A heap swap refinement (aliasing)
@@ -7,7 +7,7 @@ import Ascent.UB
 A pointer swap implemented by read-both/write-both abstracts to the atomic swap specification,
 *provided the pointers do not alias*. Aliasing surfaces as the `p ≠ q` guard on the abstract
 spec: without it the two heap transformers differ (writing `q` would clobber the value just
-written to `p`). The guard lives in the `UB` effect, so when `p = q` the spec fails and
+written to `p`). The guard lives in the `Demonic` effect, so when `p = q` the spec fails and
 the refinement is discharged trivially. This is the split-heap picture in miniature: one heap,
 pointer (in)equality carrying the aliasing, no separation logic.
 -/
@@ -32,15 +32,14 @@ theorem swapImpl_eq_spec {p q : Nat} (hpq : p ≠ q) : swapImpl p q = swapSpec p
   simp only [swapImpl, swapSpec, upd]
   by_cases hap : a = p <;> by_cases haq : a = q <;> simp_all
 
-/-- Abstract spec: atomic swap, guarded by non-aliasing. As a `StateT Heap UB` program this is
-the denotation of `do guardS (p ≠ q); modify (swapSpec p q)`; failure (`none`) is
-`UB.fail`. -/
-def swapA (p q : Nat) : StateT Heap UB PUnit :=
-  fun h => if p ≠ q then pure (⟨⟩, swapSpec p q h) else UB.fail
+/-- Abstract spec: atomic swap, guarded by non-aliasing. As a `StateT Heap Demonic` program this is
+the denotation of `do guardS (p ≠ q); modify (swapSpec p q)`, with `Demonic.fail` for aliasing. -/
+def swapA (p q : Nat) : StateT Heap Demonic PUnit :=
+  fun h => if p ≠ q then pure (⟨⟩, swapSpec p q h) else Demonic.fail
 
 /-- Concrete implementation: the denotation of `modify (swapImpl p q)`. -/
-def swapC (p q : Nat) : StateT Heap UB PUnit :=
-  fun h => some (⟨⟩, swapImpl p q h)
+def swapC (p q : Nat) : StateT Heap Demonic PUnit :=
+  fun h => pure (⟨⟩, swapImpl p q h)
 
 theorem wp_swapC (p q : Nat) (Q : PUnit → Heap → Prop) (E : EStack⟨⟩) :
     wp (swapC p q) Q E = fun h => Q ⟨⟩ (swapImpl p q h) := rfl
@@ -48,7 +47,7 @@ theorem wp_swapC (p q : Nat) (Q : PUnit → Heap → Prop) (E : EStack⟨⟩) :
 theorem wp_swapA (p q : Nat) (Q : PUnit → Heap → Prop) (E : EStack⟨⟩) :
     wp (swapA p q) Q E = fun h => if p ≠ q then Q ⟨⟩ (swapSpec p q h) else ⊥ := by
   funext h
-  simp only [swapA, StateT.wp_apply_eq, StateT.run, wp_ite, UB.wp_pure_eq, UB.wp_fail_eq]
+  simp only [swapA, StateT.wp_apply_eq, StateT.run, wp_ite, Demonic.wp_pure_eq, Demonic.wp_fail_eq]
 
 /-- The read-both/write-both swap abstracts to the atomic spec under non-aliasing. -/
 example (p q : Nat) :

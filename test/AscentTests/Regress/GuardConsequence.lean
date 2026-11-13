@@ -36,14 +36,14 @@ abbrev γw : Concretization Prop Prop := Concretization.id Prop
 
 @[ascend high] theorem refines_pure_exact {c : UInt64} {x : Int} {Q : UInt64 → Int → Prop}
     {E : EStack⟨⟩} (_h : PureRefinement c x True (FunRel wordVal)) :
-    ⦃Q c x⦄ (pure c : Id UInt64) ⪯[γw] (pure x : UB Int) ⦃Q; E⦄ :=
+    ⦃Q c x⦄ (pure c : Id UInt64) ⪯[γw] (pure x : Demonic Int) ⦃Q; E⦄ :=
   (Refinement.pure c x).weaken id
 
 attribute [ascend] wrp_bind
 
 attribute [local grind =] funRel_iff
 
-noncomputable def succ (w : UInt64) : { a : UB Int //
+noncomputable def succ (w : UInt64) : { a : Demonic Int //
     ⦃w.toNat < 100⦄ (pure (w + 1) : Id UInt64) ⪯[γw] a ⦃(⌜FunRel wordVal · ·⌝)⦄ } := by
   apply Subtype.mk
   ascend with finish

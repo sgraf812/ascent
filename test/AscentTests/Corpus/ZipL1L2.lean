@@ -30,13 +30,13 @@ namespace Zip.Corpus
 abbrev γh : Concretization (State → Prop) (Heap → Prop) := ofStateRepr State.heap
 
 @[ascend high] theorem setSize_stutter {β AV : Type} (x : Ident) (n : USize) (k : Unit → M β)
-    (a : StateT Heap UB AV) (Q : β → AV → State → Prop) (E : EStack⟨⟩) :
+    (a : StateT Heap Demonic AV) (Q : β → AV → State → Prop) (E : EStack⟨⟩) :
     (fun s => wp (setSize x n) (fun u s' => s'.heap = s.heap ∧ wrp γh (k u) a Q E s') E s)
       ⊑ wrp γh (setSize x n >>= k) a Q E :=
   wrp_stutter State.heap _ k a Q E
 
 @[ascend high] theorem getSize_stutter {β AV : Type} (x : Ident) (k : USize → M β)
-    (a : StateT Heap UB AV) (Q : β → AV → State → Prop) (E : EStack⟨⟩) :
+    (a : StateT Heap Demonic AV) (Q : β → AV → State → Prop) (E : EStack⟨⟩) :
     (fun s => wp (getSize x) (fun v s' => s'.heap = s.heap ∧ wrp γh (k v) a Q E s') E s)
       ⊑ wrp γh (getSize x >>= k) a Q E :=
   wrp_stutter State.heap _ k a Q E
@@ -44,17 +44,17 @@ abbrev γh : Concretization (State → Prop) (Heap → Prop) := ofStateRepr Stat
 @[ascend] theorem getSize_read (x : Ident) (av : USize) (Q : USize → USize → State → Prop)
     (E : EStack⟨⟩) :
     (fun s => wp (getSize x) (fun v s' => s'.heap = s.heap ∧ Q v av s') E s)
-      ⊑ wrp γh (getSize x) (pure av : StateT Heap UB USize) Q E :=
+      ⊑ wrp γh (getSize x) (pure av : StateT Heap Demonic USize) Q E :=
   wrp_read State.heap _ av Q E
 
 @[ascend] theorem getSize_read_rel {Aσ : Type} (J : State → Aσ → Prop) (x : Ident) (av : USize)
     (Q : USize → USize → State → Prop) (E : EStack⟨⟩) :
     (⨅ as, (J · as) ⇨ wp (getSize x) (fun v s' => J s' as ∧ Q v av s') E)
-      ⊑ wrp (ofStateRel J) (getSize x) (pure av : StateT Aσ UB USize) Q E :=
+      ⊑ wrp (ofStateRel J) (getSize x) (pure av : StateT Aσ Demonic USize) Q E :=
   wrp_read_rel J _ av Q E
 
 /-- C1: a write of `"n"` followed by its read. -/
-def c1 (v : USize) : { a : StateT Heap UB USize //
+def c1 (v : USize) : { a : StateT Heap Demonic USize //
     ⦃(⊤ : State → Prop)⦄ (setSize "n" v >>= fun _ => getSize "n") ⪯[γh] a ⦃(⌜· = ·⌝)⦄ } := by
   apply Subtype.mk
   ascend
@@ -62,7 +62,7 @@ def c1 (v : USize) : { a : StateT Heap UB USize //
 example (v : USize) : (c1 v).1 = pure v := rfl
 
 /-- C2: the entry prefix of `zipL1`, with `"len_a"` and `"len_b"` given. -/
-def c2 (la lb : USize) (L : Locals) (h : Heap) : { a : StateT Heap UB USize //
+def c2 (la lb : USize) (L : Locals) (h : Heap) : { a : StateT Heap Demonic USize //
     ⦃fun s => s = { locals := (fun y => if y = "len_a" then some (.size la)
         else if y = "len_b" then some (.size lb) else L y), heap := h }⦄
       (do
@@ -87,7 +87,7 @@ abbrev invL2Eq (a b out : Addr) (n : USize) (L : Locals) : State → USize × He
           heap := p.2 }
 
 /-- C3: `refines_getSizeN`, the `return n` of the loop phase under the loop relation. -/
-def c3 (a b out : Addr) (n : USize) (L : Locals) : { p : StateT (USize × Heap) UB USize //
+def c3 (a b out : Addr) (n : USize) (L : Locals) : { p : StateT (USize × Heap) Demonic USize //
     ⦃(⊤ : State → Prop)⦄ (getSize "n") ⪯[ofStateRel (invL2Eq a b out n L)] p ⦃(⌜· = ·⌝)⦄ } := by
   apply Subtype.mk
   ascend

@@ -1,10 +1,10 @@
 import Ascent.FixLoop
 import Ascent.Refinement
-import Ascent.UB.StateT
+import Ascent.Demonic.StateT
 import Ascent.Tactic.VCGen.Command
 
 /-!
-# Lockstep loops over `ExceptT ε (StateT σ UB)`
+# Lockstep loops over `ExceptT ε (StateT σ Demonic)`
 
 `wrp_forIn_lockstep` refines a `FixLoop` loop to a `FixLoop` loop of the abstract program under a
 state representation `view`: the relation `R c t a` between the concrete loop value `c`, the
@@ -26,9 +26,9 @@ open Ascent.Concretization (ofStateRepr ofStateRepr_pred)
 namespace Ascent
 
 theorem admissible_wp_imp {ε σ α : Type} (Q : α → σ → Prop) (E : (ε → σ → Prop) × EStack⟨⟩)
-    (s : σ) (R : Prop) : admissible fun u : ExceptT ε (StateT σ UB) α => wp u Q E s → R := by
+    (s : σ) (R : Prop) : admissible fun u : ExceptT ε (StateT σ Demonic) α => wp u Q E s → R := by
   intro ch hch hall hw
-  have := WPCont.wp_csup (Prog := ExceptT ε (StateT σ UB) α) hch Q E s hw
+  have := WPCont.wp_csup (Prog := ExceptT ε (StateT σ Demonic) α) hch Q E s hw
   simp only [iSup_apply, iSup_prop_eq_exists] at this
   obtain ⟨⟨u, hu⟩, hwu⟩ := this
   exact hall u hu hwu
@@ -51,8 +51,8 @@ section
 variable {εc εa σc σa : Type} {view : σc → σa} {E : (εc → εa → σc → Prop) × EStack⟨⟩}
 
 theorem wrp_forIn_lockstep {βc βa : Type} (R : LockstepInvariant βc σc βa) (cinit : βc) (ainit : βa)
-    {fc : Unit → βc → ExceptT εc (StateT σc UB) (ForInStep βc)}
-    {fa : βa → ExceptT εa (StateT σa UB) (ForInStep βa)}
+    {fc : Unit → βc → ExceptT εc (StateT σc Demonic) (ForInStep βc)}
+    {fa : βa → ExceptT εa (StateT σa Demonic) (ForInStep βa)}
     {Q : βc → βa → σc → Prop}
     (hbody : ∀ c a, (fun t => R c t a) ⊑
       wrp (ofStateRepr view) (fc () c) (fa a) (fun rc ra t => match rc with
@@ -98,9 +98,9 @@ theorem wrp_forIn_lockstep {βc βa : Type} (R : LockstepInvariant βc σc βa) 
     exact ih _ _ t' hrel hq
 
 theorem wrp_forIn_lockstep_bind {βc βa γc γa : Type} (R D : LockstepInvariant βc σc βa) (cinit : βc)
-    (ainit : βa) {fc : Unit → βc → ExceptT εc (StateT σc UB) (ForInStep βc)}
-    {fa : βa → ExceptT εa (StateT σa UB) (ForInStep βa)} {kc : βc → ExceptT εc (StateT σc UB) γc}
-    {ka : βa → ExceptT εa (StateT σa UB) γa} {Q : γc → γa → σc → Prop}
+    (ainit : βa) {fc : Unit → βc → ExceptT εc (StateT σc Demonic) (ForInStep βc)}
+    {fa : βa → ExceptT εa (StateT σa Demonic) (ForInStep βa)} {kc : βc → ExceptT εc (StateT σc Demonic) γc}
+    {ka : βa → ExceptT εa (StateT σa Demonic) γa} {Q : γc → γa → σc → Prop}
     (hbody : ∀ c a, (fun t => R c t a) ⊑
       wrp (ofStateRepr view) (fc () c) (fa a) (fun rc ra t => match rc with
         | .yield c' => ∃ a', R c' t a' ∧ ra = .yield a'
@@ -112,15 +112,15 @@ theorem wrp_forIn_lockstep_bind {βc βa γc γa : Type} (R D : LockstepInvarian
   exact PartialOrder.rel_trans (PartialOrder.rel_trans h (wrp_mono_post (fun c a => hk c a))) wrp_bind
 
 theorem wrp_forIn_lockstep_pure {βc βa γa : Type} (R D : LockstepInvariant βc σc βa) (cinit : βc)
-    (ainit : βa) {fc : Unit → βc → ExceptT εc (StateT σc UB) (ForInStep βc)}
-    {fa : βa → ExceptT εa (StateT σa UB) (ForInStep βa)} {ka : βa → ExceptT εa (StateT σa UB) γa}
+    (ainit : βa) {fc : Unit → βc → ExceptT εc (StateT σc Demonic) (ForInStep βc)}
+    {fa : βa → ExceptT εa (StateT σa Demonic) (ForInStep βa)} {ka : βa → ExceptT εa (StateT σa Demonic) γa}
     {Q : βc → γa → σc → Prop}
     (hbody : ∀ c a, (fun t => R c t a) ⊑
       wrp (ofStateRepr view) (fc () c) (fa a) (fun rc ra t => match rc with
         | .yield c' => ∃ a', R c' t a' ∧ ra = .yield a'
         | .done c' => ∃ a', D c' t a' ∧ ra = .done a') E)
     (hk : ∀ c a, (fun t => D c t a) ⊑
-      wrp (ofStateRepr view) (pure c : ExceptT εc (StateT σc UB) βc) (ka a) Q E) :
+      wrp (ofStateRepr view) (pure c : ExceptT εc (StateT σc Demonic) βc) (ka a) Q E) :
     (fun t => R cinit t ainit) ⊑ wrp (ofStateRepr view) (FixLoop.mk.forIn cinit fc)
       ((FixLoop.mk.forIn ainit fun _ a => fa a) >>= ka) Q E := by
   simpa only [bind_pure] using wrp_forIn_lockstep_bind (kc := pure) R D cinit ainit hbody hk
@@ -129,8 +129,8 @@ variable {βc βa : Type} {Q : ForInStep βc → ForInStep βa → σc → Prop}
 
 @[ascend] theorem wrp_pure_step (c : ForInStep βc) (a : ForInStep βa) :
     (fun t => Q c a t) ⊑ wrp (ofStateRepr view)
-      (pure c : ExceptT εc (StateT σc UB) (ForInStep βc))
-      (pure a : ExceptT εa (StateT σa UB) (ForInStep βa)) Q E :=
+      (pure c : ExceptT εc (StateT σc Demonic) (ForInStep βc))
+      (pure a : ExceptT εa (StateT σa Demonic) (ForInStep βa)) Q E :=
   wrp_pure (Q := Q) c a
 
 end

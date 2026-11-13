@@ -1,8 +1,8 @@
 import Ascent.Refinement
-import Ascent.UB.StateT
+import Ascent.Demonic.StateT
 
 /-!
-# Stutter and read steps in `StateT σ UB`
+# Stutter and read steps in `StateT σ Demonic`
 
 A concrete step with no abstract counterpart is a stutter step. Under `ofStateRepr f` it is sound
 when it leaves `f` of the state unchanged (`wrp_stutter`). A concrete read in tail position
@@ -17,8 +17,8 @@ namespace Ascent
 
 variable {Cσ Aσ CV CV₂ AV : Type}
 
-theorem wrp_stutter (f : Cσ → Aσ) (c₁ : StateT Cσ UB CV) (c₂ : CV → StateT Cσ UB CV₂)
-    (a : StateT Aσ UB AV) (Q : CV₂ → AV → Cσ → Prop) (E : EStack⟨⟩) :
+theorem wrp_stutter (f : Cσ → Aσ) (c₁ : StateT Cσ Demonic CV) (c₂ : CV → StateT Cσ Demonic CV₂)
+    (a : StateT Aσ Demonic AV) (Q : CV₂ → AV → Cσ → Prop) (E : EStack⟨⟩) :
     (fun s => wp c₁ (fun v s' => f s' = f s ∧ wrp (ofStateRepr f) (c₂ v) a Q E s') E s)
       ⊑ wrp (ofStateRepr f) (c₁ >>= c₂) a Q E := by
   refine wrp_intro fun Qa Ea => ?_
@@ -33,30 +33,30 @@ theorem wrp_stutter (f : Cσ → Aσ) (c₁ : StateT Cσ UB CV) (c₂ : CV → S
   rw [hf]
   exact ⟨hw, ha⟩
 
-theorem wrp_read (f : Cσ → Aσ) (c : StateT Cσ UB CV) (av : AV) (Q : CV → AV → Cσ → Prop)
+theorem wrp_read (f : Cσ → Aσ) (c : StateT Cσ Demonic CV) (av : AV) (Q : CV → AV → Cσ → Prop)
     (E : EStack⟨⟩) :
     (fun s => wp c (fun v s' => f s' = f s ∧ Q v av s') E s)
-      ⊑ wrp (ofStateRepr f) c (pure av : StateT Aσ UB AV) Q E := by
+      ⊑ wrp (ofStateRepr f) c (pure av : StateT Aσ Demonic AV) Q E := by
   refine wrp_intro fun Qa Ea => ?_
   intro s hs
   simp only [meet_apply, meet_prop_eq_and] at hs
   obtain ⟨h, ha⟩ := hs
-  simp only [ofStateRepr_pred, StateT.wp_apply_eq, StateT.run_pure, UB.wp_pure_eq] at ha
+  simp only [ofStateRepr_pred, StateT.wp_apply_eq, StateT.run_pure, Demonic.wp_pure_eq] at ha
   refine WP.wp_monotone_post (x := c) ?_ s h
   rintro v s' ⟨hf, hq⟩
   simp only [post_pi, ofStateRepr_pred]
   exact ⟨av, hq, by rw [hf]; exact ha⟩
 
-theorem wrp_read_rel (J : Cσ → Aσ → Prop) (c : StateT Cσ UB CV) (av : AV)
+theorem wrp_read_rel (J : Cσ → Aσ → Prop) (c : StateT Cσ Demonic CV) (av : AV)
     (Q : CV → AV → Cσ → Prop) (E : EStack⟨⟩) :
     (⨅ as, (J · as) ⇨ wp c (fun v s' => J s' as ∧ Q v av s') E)
-      ⊑ wrp (ofStateRel J) c (pure av : StateT Aσ UB AV) Q E := by
+      ⊑ wrp (ofStateRel J) c (pure av : StateT Aσ Demonic AV) Q E := by
   refine wrp_intro fun Qa Ea => ?_
   intro s hs
   simp only [meet_apply, meet_prop_eq_and, ofStateRel_pred, iInf_apply, himp_apply,
     iInf_prop_eq_forall, himp_prop_eq_imp] at hs
   obtain ⟨h, as, hJ, ha⟩ := hs
-  simp only [StateT.wp_apply_eq, StateT.run_pure, UB.wp_pure_eq] at ha
+  simp only [StateT.wp_apply_eq, StateT.run_pure, Demonic.wp_pure_eq] at ha
   refine WP.wp_monotone_post (x := c) ?_ s (h as hJ)
   rintro v s' ⟨hJ', hq⟩
   simp only [post_pi, ofStateRel_pred]

@@ -18,16 +18,16 @@ namespace OuterKeysTest
 
 attribute [local ascend] wrp_bind Refinement.pure_rel
 
-def prog (c : Nat) : UB Nat := pure c
+def prog (c : Nat) : Demonic Nat := pure c
 
-ascend_def progA (c d : Nat) : UB Nat from
+ascend_def progA (c d : Nat) : Demonic Nat from
   ⦃(PureRefinement (c + c) d True Eq : Prop)⦄ (prog c) ⪯[Concretization.id Prop] progA ⦃(⌜Eq · ·⌝)⦄
   ascend [prog]
 
 /--
-info: def OuterKeysTest.progA : Nat → UB Nat :=
+info: def OuterKeysTest.progA : Nat → Demonic Nat :=
 fun c => do
-  UB.assume True
+  Demonic.assume True
   pure c
 -/
 #guard_msgs in
