@@ -22,6 +22,9 @@ namespace Ascent.Kraken
 def outView (w b : Nat) (p : BitVec 64) (n : Nat) (m : DataMem) : Array (BitVec b) :=
   (words w b m p n).toArray
 
+@[grind =] theorem size_words_toArray (m : DataMem) (p : BitVec 64) (n : Nat) : (words 8 64 m p n).toArray.size = n := by
+  simp [words]
+
 @[grind →] theorem words_eq_of_outView {w b : Nat} {p : BitVec 64} {n : Nat} {m : DataMem}
     {l : List (BitVec b)} (h : outView w b p n m = l.toArray) : words w b m p n = l := by
   simpa only [outView, List.toList_toArray] using congrArg Array.toList h
@@ -44,6 +47,25 @@ def Scaled (w : Nat) (x : BitVec 64) (j : Nat) : Prop := x = BitVec.ofNat 64 j *
 @[ascend_pure] theorem absS_mul {x : BitVec 64} {j w : Nat} {P : Prop}
     (h : PureRefinement x j P WordNat) : PureRefinement (x * BitVec.ofNat 64 w) j P (Scaled w) :=
   fun hp => by rw [Scaled, h hp]
+
+theorem CondCode.cmp_c_eq_true (a b : BitVec 64) : (CondCode.c.cmp a b = true) = (a < b) := by
+  simp [CondCode.cmp, BitVec.ult, BitVec.lt_def]
+
+attribute [grind =] Nat.blt_eq
+
+@[ascend_pure high] theorem absN_cmp_c {a b : BitVec 64} {n m : Nat} {P₁ P₂ : Prop}
+    (h₁ : PureRefinement a n P₁ WordNat) (h₂ : PureRefinement b m P₂ WordNat) :
+    PureRefinement (CondCode.c.cmp a b) (Nat.blt n m) (P₁ ∧ P₂ ∧ n < 2 ^ 64 ∧ m < 2 ^ 64) Eq :=
+  fun ⟨hp₁, hp₂, hn, hm⟩ => by
+    rw [Bool.eq_iff_iff, CondCode.cmp_c_eq_true, h₁ hp₁, h₂ hp₂, Nat.blt_eq, BitVec.lt_def,
+      BitVec.toNat_ofNat, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hn, Nat.mod_eq_of_lt hm]
+
+theorem WordNat.cmp_c_eq {x y : BitVec 64} {i j : Nat} (hx : WordNat x i) (hy : WordNat y j)
+    (hi : i < 2 ^ 64) (hj : j < 2 ^ 64) : (CondCode.c.cmp x y = true) = (i < j) := by
+  rw [absN_cmp_c (PureRefinement.of_rel hx) (PureRefinement.of_rel hy) ⟨trivial, trivial, hi, hj⟩,
+    Nat.blt_eq]
+
+grind_pattern WordNat.cmp_c_eq => WordNat x i, WordNat y j, CondCode.c.cmp x y
 
 /-! ## Words -/
 
@@ -215,8 +237,9 @@ variable {σa : Type} {view : DataMem → σa}
   {E : (Int64 → Int64 → DataMem → Prop) × EStack⟨⟩}
 
 @[ascend] theorem wrp_load_getElem {Q : BitVec 64 → BitVec 64 → DataMem → Prop}
-    (w b : Nat) (p o : BitVec 64) (arr : Array (BitVec b)) (j : Nat) (P : Prop) :
-    (fun m => p ≐ₐ arr ∧ PureRefinement o j P (Scaled w) ∧ P ∧ w ≤ 8 ∧ b = 8 * w ∧
+    (w b : Nat) (p o : BitVec 64) (arr : Array (BitVec b)) (j : Nat) (P : Prop) (_harr : p ≐ₐ arr)
+    (hij : PureRefinement o j P (Scaled w)) :
+    (fun m => P ∧ w ≤ 8 ∧ b = 8 * w ∧
       words w b m p arr.size = arr.toList ∧ Mem.Mapped [(p, w * arr.size)] m ∧ j < arr.size ∧
       arr.size < 2 ^ 61 ∧
       ∀ y, BitVec.ofInt 64 ((Mem.loadInt m (p + o) w).get! % 2 ^ (8 * w)) ≐ y →
@@ -226,7 +249,7 @@ variable {σa : Type} {view : DataMem → σa}
   refine wrp_intro fun Qa Ea => ?_
   intro m hm
   simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, WPMonadExact.wp_pure_eq] at hm
-  obtain ⟨⟨-, hij, hP, hw, hb, hwd, hmap, hj, hn, hk⟩, hq⟩ := hm
+  obtain ⟨⟨hP, hw, hb, hwd, hmap, hj, hn, hk⟩, hq⟩ := hm
   have hcell : p + o = cell w p j := by rw [hij hP]; rfl
   have hval : BitVec.ofInt 64 ((Mem.loadInt m (p + o) w).get! % 2 ^ (8 * w)) = (arr[j]!).setWidth 64 := by
     rw [hcell, ← word_eq_getElem hwd hj, word, setWidth_ofInt (by omega), hb]
@@ -245,9 +268,50 @@ theorem cell_pred {w j : Nat} (p : BitVec 64) (hj : 0 < j) :
   rw [cell, Nat.add_sub_cancel, BitVec.ofNat_add, BitVec.ofInt_neg, BitVec.ofInt_natCast]
   grind
 
+/-- `Index w p c j`: the address `c` is the cell `j` of the array of `w`-byte words at `p`. -/
+def Index (w : Nat) (p : BitVec 64) (c : BitVec 64) (j : Nat) : Prop := c = cell w p j
+
+section
+variable {w : Nat} {p c x : BitVec 64} {j i : Nat} {P P₁ P₂ : Prop}
+
+@[ascend_pure] theorem absI_base : PureRefinement p 0 True (Index w p) :=
+  PureRefinement.of_rel (by simp [Index, cell])
+
+@[ascend_pure] theorem absI_add_w (h : PureRefinement c j P (Index w p)) :
+    PureRefinement (c + BitVec.ofNat 64 w) (j + 1) P (Index w p) := fun hp => by
+  have e : c = cell w p j := h hp
+  rw [Index, e]
+  simp only [cell, BitVec.ofNat_add]
+  grind
+
+@[ascend_pure low] theorem absI_sub {k : Nat} (h : PureRefinement c j P (Index w p)) :
+    PureRefinement (c + BitVec.ofNat 64 k) (j - 1) (P ∧ 0 < j ∧ k + w = 2 ^ 64) (Index w p) :=
+  fun ⟨hp, hj, hk⟩ => by
+    have e : c = cell w p j := h hp
+    obtain ⟨i, rfl⟩ : ∃ i, j = i + 1 := ⟨j - 1, by omega⟩
+    have h2 : BitVec.ofNat 64 k + BitVec.ofNat 64 w = 0#64 := by
+      rw [← BitVec.ofNat_add, hk]
+      decide +kernel
+    rw [Index, e, Nat.add_sub_cancel]
+    simp only [cell, BitVec.ofNat_add]
+    grind
+
+@[ascend_pure] theorem absI_add_scaled (h₁ : PureRefinement c j P₁ (Index w p))
+    (h₂ : PureRefinement x i P₂ WordNat) :
+    PureRefinement (c + x * BitVec.ofNat 64 w) (j + i) (P₁ ∧ P₂) (Index w p) := fun ⟨hp₁, hp₂⟩ => by
+  have e₁ : c = cell w p j := h₁ hp₁
+  have e₂ : x = BitVec.ofNat 64 i := h₂ hp₂
+  rw [Index, e₁, e₂]
+  simp only [cell, BitVec.ofNat_add]
+  grind
+
+end
+
+
 @[ascend default + 1] theorem wrp_load_getElem_pred {Q : BitVec 64 → BitVec 64 → DataMem → Prop}
-    (w b : Nat) (p o : BitVec 64) (d : Int) (arr : Array (BitVec b)) (j : Nat) (P : Prop) :
-    (fun m => p ≐ₐ arr ∧ PureRefinement o j P (Scaled w) ∧ P ∧ 0 < j ∧ d = -(w : Int) ∧ w ≤ 8 ∧
+    (w b : Nat) (p o : BitVec 64) (d : Int) (arr : Array (BitVec b)) (j : Nat) (P : Prop) (_harr : p ≐ₐ arr)
+    (hij : PureRefinement o j P (Scaled w)) :
+    (fun m => P ∧ 0 < j ∧ d = -(w : Int) ∧ w ≤ 8 ∧
       b = 8 * w ∧ words w b m p arr.size = arr.toList ∧ Mem.Mapped [(p, w * arr.size)] m ∧
       j - 1 < arr.size ∧ arr.size < 2 ^ 61 ∧
       ∀ y, BitVec.ofInt 64 ((Mem.loadInt m (p + o + BitVec.ofInt 64 d) w).get! % 2 ^ (8 * w)) ≐ y →
@@ -257,7 +321,7 @@ theorem cell_pred {w j : Nat} (p : BitVec 64) (hj : 0 < j) :
   refine wrp_intro fun Qa Ea => ?_
   intro m hm
   simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, WPMonadExact.wp_pure_eq] at hm
-  obtain ⟨⟨-, hij, hP, hj0, hd, hw, hb, hwd, hmap, hj, hn, hk⟩, hq⟩ := hm
+  obtain ⟨⟨hP, hj0, hd, hw, hb, hwd, hmap, hj, hn, hk⟩, hq⟩ := hm
   have hcell : p + o + BitVec.ofInt 64 d = cell w p (j - 1) := by rw [hij hP, hd, cell_pred p hj0]
   have hval : BitVec.ofInt 64 ((Mem.loadInt m (p + o + BitVec.ofInt 64 d) w).get! % 2 ^ (8 * w)) =
       (arr[j - 1]!).setWidth 64 := by
@@ -270,8 +334,8 @@ theorem cell_pred {w j : Nat} (p : BitVec 64) (hj : 0 < j) :
     exact hq
 
 @[ascend] theorem wrp_store_set {Q : Unit → Unit → DataMem → Prop} (w b : Nat) (p o v v' : BitVec 64)
-    (n j : Nat) (P : Prop) :
-    (fun m => v ≐ v' ∧ PureRefinement o j P (Scaled w) ∧ P ∧ w ≤ 8 ∧ b = 8 * w ∧ j < n ∧ n < 2 ^ 61 ∧
+    (n j : Nat) (P : Prop) (hij : PureRefinement o j P (Scaled w)) :
+    (fun m => v ≐ v' ∧ P ∧ w ≤ 8 ∧ b = 8 * w ∧ j < n ∧ n < 2 ^ 61 ∧
       Mem.Mapped [(p, w * n)] m ∧
       Q () () (Mem.storeInt m (cell w p j) w v.toInt))
       ⊑ wrp (ofStateRepr (outView w b p n)) (store w (p + o) v)
@@ -279,7 +343,7 @@ theorem cell_pred {w j : Nat} (p : BitVec 64) (hj : 0 < j) :
   refine wrp_intro fun Qa Ea => ?_
   intro m hm
   simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_modify] at hm
-  obtain ⟨⟨hv, hij, hP, hw, hb, hj, hn, hmap, hk⟩, hq⟩ := hm
+  obtain ⟨⟨hv, hP, hw, hb, hj, hn, hmap, hk⟩, hq⟩ := hm
   have hv : v = v' := hv trivial
   have hcell : p + o = cell w p j := by rw [hij hP]; rfl
   rw [wp_store, Concretization.post_pi, hcell]
@@ -289,8 +353,8 @@ theorem cell_pred {w j : Nat} (p : BitVec 64) (hj : 0 < j) :
   exact hq
 
 @[ascend default + 1] theorem wrp_store_set_pred {Q : Unit → Unit → DataMem → Prop} (w b : Nat)
-    (p o v v' : BitVec 64) (d : Int) (n j : Nat) (P : Prop) :
-    (fun m => v ≐ v' ∧ PureRefinement o j P (Scaled w) ∧ P ∧ 0 < j ∧ d = -(w : Int) ∧ w ≤ 8 ∧
+    (p o v v' : BitVec 64) (d : Int) (n j : Nat) (P : Prop) (hij : PureRefinement o j P (Scaled w)) :
+    (fun m => v ≐ v' ∧ P ∧ 0 < j ∧ d = -(w : Int) ∧ w ≤ 8 ∧
       b = 8 * w ∧ j - 1 < n ∧ n < 2 ^ 61 ∧ Mem.Mapped [(p, w * n)] m ∧
       Q () () (Mem.storeInt m (cell w p (j - 1)) w v.toInt))
       ⊑ wrp (ofStateRepr (outView w b p n)) (store w (p + o + BitVec.ofInt 64 d) v)
@@ -298,9 +362,56 @@ theorem cell_pred {w j : Nat} (p : BitVec 64) (hj : 0 < j) :
   refine wrp_intro fun Qa Ea => ?_
   intro m hm
   simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_modify] at hm
-  obtain ⟨⟨hv, hij, hP, hj0, hd, hw, hb, hj, hn, hmap, hk⟩, hq⟩ := hm
+  obtain ⟨⟨hv, hP, hj0, hd, hw, hb, hj, hn, hmap, hk⟩, hq⟩ := hm
   have hv : v = v' := hv trivial
   have hcell : p + o + BitVec.ofInt 64 d = cell w p (j - 1) := by rw [hij hP, hd, cell_pred p hj0]
+  rw [wp_store, Concretization.post_pi, hcell]
+  refine ⟨Mem.Mapped.loadInt_isSome hmap (cell_inside hw hj hn), (), hk, ?_⟩
+  simp only [ofStateRepr_pred]
+  rw [outView_storeInt hw hb hj hn, hv]
+  exact hq
+
+@[ascend default - 1] theorem wrp_load_get {Q : BitVec 64 → BitVec 64 → DataMem → Prop} (w b : Nat) (p c : BitVec 64)
+    (n j : Nat) (P : Prop) (hij : PureRefinement c j P (Index w p)) :
+    (fun m => P ∧ w ≤ 8 ∧ b = 8 * w ∧ j < n ∧ n < 2 ^ 61 ∧
+      Mem.Mapped [(p, w * n)] m ∧
+      ∀ y, BitVec.ofInt 64 ((Mem.loadInt m c w).get! % 2 ^ (8 * w)) ≐ y →
+        Q (BitVec.ofInt 64 ((Mem.loadInt m c w).get! % 2 ^ (8 * w))) y m)
+      ⊑ wrp (ofStateRepr (outView w b p n)) (load w c)
+          (get >>= fun arr : Array (BitVec b) => pure ((arr[j]!).setWidth 64) : BlockM (Array (BitVec b)) (BitVec 64))
+          Q E := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro m hm
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_get_bind, WPMonadExact.wp_pure_eq] at hm
+  obtain ⟨⟨hP, hw, hb, hj, hn, hmap, hk⟩, hq⟩ := hm
+  have hcell : c = cell w p j := hij hP
+  have hwd : words w b m p (outView w b p n m).size = (outView w b p n m).toList := by
+    rw [size_outView]
+    simp only [outView, List.toList_toArray]
+  have hval : BitVec.ofInt 64 ((Mem.loadInt m c w).get! % 2 ^ (8 * w))
+      = ((outView w b p n m)[j]!).setWidth 64 := by
+    rw [hcell, ← word_eq_getElem hwd (by simpa only [size_outView] using hj), word,
+      setWidth_ofInt (by omega), hb]
+  rw [wp_load, Concretization.post_pi]
+  refine ⟨?_, _, hk _ (PureRefinement.of_rel hval), ?_⟩
+  · rw [hcell]
+    exact Mem.Mapped.loadInt_isSome hmap (cell_inside hw hj hn)
+  · simp only [ofStateRepr_pred]
+    exact hq
+
+@[ascend default - 1] theorem wrp_store_set_at {Q : Unit → Unit → DataMem → Prop} (w b : Nat) (p c v v' : BitVec 64)
+    (n j : Nat) (P : Prop) (hij : PureRefinement c j P (Index w p)) :
+    (fun m => v ≐ v' ∧ P ∧ w ≤ 8 ∧ b = 8 * w ∧ j < n ∧ n < 2 ^ 61 ∧
+      Mem.Mapped [(p, w * n)] m ∧
+      Q () () (Mem.storeInt m (cell w p j) w v.toInt))
+      ⊑ wrp (ofStateRepr (outView w b p n)) (store w c v)
+          (modify fun o => o.set! j (v'.setWidth b) : BlockM (Array (BitVec b)) Unit) Q E := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro m hm
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_modify] at hm
+  obtain ⟨⟨hv, hP, hw, hb, hj, hn, hmap, hk⟩, hq⟩ := hm
+  have hv : v = v' := hv trivial
+  have hcell : c = cell w p j := hij hP
   rw [wp_store, Concretization.post_pi, hcell]
   refine ⟨Mem.Mapped.loadInt_isSome hmap (cell_inside hw hj hn), (), hk, ?_⟩
   simp only [ofStateRepr_pred]

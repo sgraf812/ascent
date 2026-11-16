@@ -8,6 +8,7 @@ import Ascent.Tactic.VCGen.Shim
 import Lean.Elab.Tactic.VCGen.Context
 import Lean.Elab.Tactic.VCGen.RuleCache
 import Ascent.Tactic.VCGen.RuleCache
+import Ascent.Tactic.VCGen.PureRefinement
 import Lean.Elab.Tactic.VCGen.Entails
 import Lean.Elab.Tactic.VCGen.JoinPoint
 import Ascent.Tactic.VCGen.JoinPoint
@@ -672,19 +673,31 @@ def applySpec (scope : Scope) (goal : MVarId) (info : WRPApp) (thm : SpecTheorem
 
 /--
 Handle a spec-ready program `info.prog`: apply the highest-priority `@[spec]` theorem whose backward
-rule applies to the goal.
+rule applies to the goal and whose `PureRefinement` premises have a solution.
 
 A candidate is passed over when no rule fits the goal's monad or when the rule does not apply, so a
 spec guarded by an instance the call site does not provide gives way to a less general one, as does a
-spurious candidate of the over-approximating discrimination tree.
+spurious candidate of the over-approximating discrimination tree. The `PureRefinement` premises of
+an applied candidate are solved at once: a candidate with a premise that no rule abstracts gives way
+to the next candidate, and the error of the last such premise is raised when no candidate remains.
 -/
 def applySpecs (scope : Scope) (goal : MVarId) (info : WRPApp) :
     VCGenM SolveResult := goal.withContext do
   let candidates ← SpecTheorems.findSpecs scope.specs info.prog
+  let mut premiseFailure? : Option Exception := none
   for thm in candidates do
-    if let some res ← applySpec scope goal info thm then
-      return res
-    trace[Elab.Tactic.Do.vcgen] "Failed to apply spec {thm.proof} for {info.prog}"
+    let saved ← (saveState : MetaM Meta.SavedState)
+    let some (.goals scope goals) ← applySpec scope goal info thm
+      | trace[Elab.Tactic.Do.vcgen] "Failed to apply spec {thm.proof} for {info.prog}"; continue
+    try
+      let goals ← goals.flatMapM fun mv => do
+        if ← Ascend.isPureRefinementGoal mv then Ascend.solvePureRefinement mv else return [mv]
+      return .goals scope goals
+    catch ex =>
+      trace[Elab.Tactic.Do.vcgen] "Premise of spec {thm.proof} for {info.prog} failed: {ex.toMessageData}"
+      premiseFailure? := some ex
+      (saved.restore : MetaM Unit)
+  if let some ex := premiseFailure? then throw ex
   stopOrErrorOnMissingSpec info.prog info.M candidates
 
 /--

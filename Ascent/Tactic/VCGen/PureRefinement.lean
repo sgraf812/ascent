@@ -180,10 +180,15 @@ partial def solveCore (rules : DiscrTree PureRule) (env : PureEnv) (goal : MVarI
   let entries := Sym.getMatch mctx env.entries cv
   let candidates := entries ++ (Sym.getMatch mctx rules cv).qsort (·.priority > ·.priority)
   let mut failure := cv
+  trace[Elab.Tactic.Do.vcgen] "pure goal {type}: {entries.size} entries, {candidates.size} candidates"
   for h : i in [0:candidates.size] do
     let r := candidates[i]
     let saved ← (saveState : MetaM Meta.SavedState)
-    let .goals premises ← r.rule.apply goal | continue
+    let .goals premises ← r.rule.apply goal
+      | trace[Elab.Tactic.Do.vcgen] "pure rule {r.rule.expr} does not apply"
+        (saved.restore : MetaM Unit)
+        continue
+    trace[Elab.Tactic.Do.vcgen] "pure rule {r.rule.expr} applies with {premises.length} premises"
     if entries.size ≤ i && premises.isEmpty &&
         (← instantiateMVarsS (type.getArg! 3)).hasAnyFVar env.keys.contains then
       (saved.restore : MetaM Unit)
@@ -248,7 +253,7 @@ def solvePureRefinement (goal : MVarId) : VCGenM (List MVarId) := do
     let hpreType ← mkForallS `h .default Pgoal P
     let hpre ← shareCommon (← mkFreshExprSyntheticOpaqueMVar hpreType (tag := `hpre))
     goal.assign (← mkAppNS (← mkConstS ``Ascent.PureRefinement.weaken_pre us)
-      #[args[0]!, args[1]!, args[2]!, av, P, Pgoal, args[5]!, prf, hpre])
+      #[args[0]!, args[1]!, args[2]!, av', P, Pgoal, args[5]!, prf, hpre])
     return hpre.mvarId! :: newGoals
 
 /-- The number of leading universal quantifiers of `e`. -/

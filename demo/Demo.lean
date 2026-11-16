@@ -45,3 +45,5 @@ import Demo.Reverse.Regs
 import Demo.FrameCall
 import Demo.Swap.Frame
 import Demo.Reverse.Frame
+import Demo.Reverse.Arrays
+import Demo.Reverse.Pure

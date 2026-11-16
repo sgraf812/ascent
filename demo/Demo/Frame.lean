@@ -63,6 +63,10 @@ def split (bs : List (BitVec 64 × Nat)) (m : DataMem) : FState :=
 
 @[simp, grind =] theorem frame_set_dmem (s : FState) (m : DataMem) : (s.set .dmem m).frame = s.frame := rfl
 
+@[simp, grind =] theorem frame_set_frame (s : FState) (m : DataMem) : (s.set .frame m).frame = m := rfl
+
+@[simp, grind =] theorem dmem_set_frame (s : FState) (m : DataMem) : (s.set .frame m).dmem = s.dmem := rfl
+
 theorem get_set_of_ne (s : FState) {r r' : Region} (h : r ≠ r') (m : DataMem) :
     (s.set r m).get r' = s.get r' := by
   cases r <;> cases r' <;> first | rfl | exact absurd rfl h
@@ -73,7 +77,8 @@ theorem set_comm (s : FState) {r r' : Region} (h : r ≠ r') (m m' : DataMem) :
 
 end FState
 
-attribute [vcgen_simp] FState.dmem_set_dmem FState.frame_set_dmem
+attribute [vcgen_simp] FState.dmem_set_dmem FState.frame_set_dmem FState.frame_set_frame
+  FState.dmem_set_frame
 
 /-- The frame of a function with the stack pointer `r₀` at entry: `k` reserved words, the return
 slot and `n` words of stack arguments. -/
@@ -190,6 +195,8 @@ theorem wp_zoom {α : Type} (r : Region) (x : BlockM DataMem α) (Q : α → FSt
 
 /-- The value is an address computed from the stack pointer. -/
 def StackAddr (a x : BitVec 64) : Prop := a = x
+
+@[grind =] theorem stackAddr_eq {a x : BitVec 64} : StackAddr a x = (a = x) := rfl
 
 /-- `a ≐ₛ x`: the concrete stack address `a` is the abstract value `x`. -/
 scoped notation:50 c:51 " ≐ₛ " x:51 => PureRefinement c x True StackAddr

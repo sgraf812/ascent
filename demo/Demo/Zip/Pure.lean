@@ -38,9 +38,6 @@ structure ZipArrays (m : DataMem) (A B O rsp : BitVec 64) (n : Nat) : Prop where
 
 attribute [grind →] ZipArrays.apart
 
-@[grind =] theorem size_words_toArray (m : DataMem) (p : BitVec 64) (n : Nat) : (words 8 64 m p n).toArray.size = n := by
-  simp [words]
-
 theorem ZipArrays.inputAt {m : DataMem} {O p : BitVec 64} {n : Nat} (hn : n < 2 ^ 61)
     (hmap : Mem.Mapped [(p, 8 * n)] m) (hd : Mem.Blocks.Disjoint [(O, 8 * n)] [(p, 8 * n)]) :
     InputAt 8 64 m O n p (words 8 64 m p n).toArray := by
@@ -88,15 +85,6 @@ ascend_def zipWithAddPure (ra : Int64) (n : Nat) (a b : Array (BitVec 64)) (ha :
 
 attribute [grind =] zipWithAddPure
 
-noncomputable abbrev memToArray (r₀ O : BitVec 64) (n : Nat) :=
-  ((ofStateRepr MachineData.dmem).comp ((ofStateRepr (FState.split (Fr r₀ 0 0))).comp
-    (ofStateRepr fun s : FState => outView 8 64 O n s.dmem))).comp (purify (Array (BitVec 64)))
-
-noncomputable abbrev machineToArray (r₀ O : BitVec 64) (n : Nat) :=
-  (ofStateRepr abs).comp (memToArray r₀ O n)
-
-@[grind =] theorem stackAddr_eq {a x : BitVec 64} : StackAddr a x = (a = x) := rfl
-
 section
 variable [Host] [FunDecls] [Embeds zipWithAdd] (r₀ : BitVec 64) (ra : Int64)
 
@@ -136,7 +124,7 @@ theorem zipWithAddLoops_refines_Pure {A B O : BitVec 64} {n : Nat} {a b : Array 
           ArrayLayout 8 64 [(A, a), (B, b)] O n [] (FState.split (Fr r₀ 0 0) t.dmem).dmem ∧
           ZipApart (Fr r₀ 0 0) A B O n))⦄
       (zipWithAddLoops r₀ ra)
-      ⪯[memToArray r₀ O n]
+      ⪯[memToArray r₀ O 0 n]
       (zipWithAddPure a b)
       ⦃fun _ _ _ => False; (fun l t => l = ra ∧ t.regs.get64 .rsp = r₀ + 8 ∧
         outView 8 64 O n (FState.split (Fr r₀ 0 0) t.dmem).dmem = Id.run (zipWithAddPure a b), estack⟨⟩)⦄ := by
@@ -153,7 +141,7 @@ theorem zipWithAdd_refines_Pure {A B O : BitVec 64} {n : Nat}
     (hrdx : (s.push64 ra).regs.get64 .rdx = O) (hrcx : (s.push64 ra).regs.get64 .rcx = BitVec.ofNat 64 n)
     (hmem : ZipArrays (s.push64 ra).dmem A B O ((s.push64 ra).regs.get64 .rsp) n) :
     ⦃(· = s.push64 ra)⦄ zipWithAdd
-      ⪯[machineToArray ((s.push64 ra).regs.get64 .rsp) O n]
+      ⪯[machineToArray ((s.push64 ra).regs.get64 .rsp) O 0 n]
       (zipWithAddPure (words 8 64 (s.push64 ra).dmem A n).toArray
         (words 8 64 (s.push64 ra).dmem B n).toArray)
       ⦃fun _ _ _ => False; fun a t => a = ra ∧ t.regs.get64 .rsp = s.regs.get64 .rsp ∧

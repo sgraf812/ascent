@@ -202,6 +202,10 @@ variable {w : Nat} {x y : BitVec w} {i j : Nat} {P₁ P₂ : Prop}
 @[ascend_pure] theorem absN_ofNat {n : Nat} : PureRefinement (BitVec.ofNat w n) n True WordNat :=
   PureRefinement.of_rel rfl
 
+theorem WordNat.ofNat {n : Nat} : WordNat (BitVec.ofNat w n) n := rfl
+
+grind_pattern WordNat.ofNat => WordNat (BitVec.ofNat w n) n
+
 @[ascend_pure] theorem absN_add (h₁ : PureRefinement x i P₁ WordNat) (h₂ : PureRefinement y j P₂ WordNat) :
     PureRefinement (x + y) (i + j) (P₁ ∧ P₂) WordNat := fun ⟨hp₁, hp₂⟩ => by
   rw [WordNat, h₁ hp₁, h₂ hp₂, BitVec.ofNat_add]

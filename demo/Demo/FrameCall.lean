@@ -156,6 +156,23 @@ theorem wrp_callRegs_callFrame {bs : List (BitVec 64 × Nat)} {kL : Int64 → Bl
 
 end
 
+theorem wrp_pushUnknownFrame_frame {σa : Type} {view : DataMem → σa} {Q : Int64 → Unit → FState → Prop}
+    {E : (Int64 → Int64 → FState → Prop) × EStack⟨⟩} (bs : List (BitVec 64 × Nat)) (x : BitVec 64) :
+    (fun s => (Mem.loadInt s.frame x 8).isSome = true ∧
+      ∀ v : Int64, Q v () (s.set .frame (Mem.storeInt s.frame x 8 (Int64.toBitVec v).toInt)))
+      ⊑ wrp (ofStateRepr fun s : FState => view s.dmem) (pushUnknownFrame bs (.frame, x))
+          (pure () : BlockM σa Unit) Q E := by
+  refine wrp_intro fun Qa Ea => ?_
+  intro s hs
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, WPMonadExact.wp_pure_eq] at hs
+  obtain ⟨⟨hm, hq⟩, hqa⟩ := hs
+  rw [wp_pushUnknownFrame_fun]
+  refine ⟨⟨trivial, hm⟩, fun v => ?_⟩
+  rw [Concretization.post_pi]
+  exact ⟨(), hq v, hqa⟩
+
+attribute [ascend] wrp_pushUnknownFrame_frame
+
 /-! ## Inlining a callee
 
 A call of a callee that throws only at its return is the callee's body: the handler of the call

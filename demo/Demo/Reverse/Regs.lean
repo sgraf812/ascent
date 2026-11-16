@@ -71,4 +71,13 @@ fun rdi rsi rax rbx r12 r14 r15 rsp ra =>
 #guard_msgs in
 #print reverseRegs
 
+theorem reverseRegs.refines [Host] [Embeds swap] (rdi rsi rax rbx rbp r12 r13 r14 r15 rsp : BitVec 64) (ra : Int64) :
+    ⦃RegsRel [(.rdi, rdi), (.rsi, rsi), (.rax, rax), (.rsp, rsp), (.rbx, rbx), (.rbp, rbp), (.r12, r12), (.r13, r13),
+      (.r14, r14), (.r15, r15)]⦄
+      (reverseLoops (fun r ra => swapLoops r ra) rsp ra) ⪯[ofStateRepr MachineData.dmem]
+      (reverseRegs rdi rsi rax rbx r12 r14 r15 rsp ra)
+      ⦃fun _ _ _ => False; (fun l l' t => l = l' ∧ t.regs.get64 .rsp = rsp + 8#64, estack⟨⟩)⦄ :=
+  reverseRegs.eq rdi rsi rax rbx r12 r14 r15 rsp ra ▸
+    reverseRegs₀.refines rdi rsi rax rsp rbx rbp r12 r13 r14 r15 rsp ra
+
 end Ascent.Kraken
