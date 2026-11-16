@@ -1,4 +1,4 @@
-import Demo.L1
+import Demo.Instr
 
 /-!
 # Arrays of words in the data memory

@@ -1,6 +1,6 @@
-import Demo.ZipBinary
-import Demo.MemmovePure
-import Demo.BsearchPure
+import Demo.Zip.Binary
+import Demo.Memmove.Pure
+import Demo.Bsearch.Pure
 
 /-!
 # From x64 to `Array.zipWith`
@@ -48,20 +48,20 @@ info: def zipWithAdd : Program :=
 
 /-! ## 2. Blocks, synthesized by `ascend_def`
 
-`zipWithAddA` is a loop over the blocks of the text, one guarded step per instruction, with the flags
+`zipWithAddInstr` is a loop over the blocks of the text, one guarded step per instruction, with the flags
 cleared and `cmp; jcc` fused into one branch. Each step is a register write `setReg64`, a load into a
 register `loadReg 8`, or a store `storeWord 8`. `ascend_def` synthesized it and proved: -/
 
 /--
-info: @zipWithAddA.refines : ∀ [inst : Host] [inst_1 : FunDecls] [Embeds zipWithAdd] (r₀ : BitVec 64) (ra : Int64),
-  ⦃ fun s => s.regs.get64 Reg64.rsp = r₀ ∧ s.retAddr = some ra ⦄ zipWithAdd ⪯[ofStateRepr abs] (zipWithAddA r₀ ra) ⦃
+info: @zipWithAddInstr.refines : ∀ [inst : Host] [inst_1 : FunDecls] [Embeds zipWithAdd] (r₀ : BitVec 64) (ra : Int64),
+  ⦃ fun s => s.regs.get64 Reg64.rsp = r₀ ∧ s.retAddr = some ra ⦄ zipWithAdd ⪯[ofStateRepr abs] (zipWithAddInstr r₀ ra) ⦃
     fun x x_1 => ⊤; AddrRel r₀ ra ⦄
 -/
 #guard_msgs in
-#check @zipWithAddA.refines
+#check @zipWithAddInstr.refines
 
 /--
-info: def zipWithAddA : [Host] → BitVec 64 → Int64 → BlockM MachineData Unit :=
+info: def zipWithAddInstr : [Host] → BitVec 64 → Int64 → BlockM MachineData Unit :=
 fun [Host] r₀ ra =>
   Program.loop zipWithAdd r₀
     (Table.get
@@ -108,25 +108,25 @@ fun [Host] r₀ ra =>
           exitIf (retOk r₀ ra) (setReg64 Reg64.rsp fun x => r₀ + 8) ra)])
 -/
 #guard_msgs in
-#print zipWithAddA
+#print zipWithAddInstr
 
 /-! ## 3. A structured loop, by rewriting
 
-`sym_simp_def` rewrites the block loop of `zipWithAddA` into an `if` and a `repeat'` loop over the
+`sym_simp_def` rewrites the block loop of `zipWithAddInstr` into an `if` and a `repeat'` loop over the
 machine state: the jump of the loop block to itself becomes `continue`, and the return ends the
 program in both branches. The command proves
-the equation `zipWithAddT.eq`, so the first refinement carries over to `zipWithAddT`: -/
+the equation `zipWithAddLoops.eq`, so the first refinement carries over to `zipWithAddLoops`: -/
 
 /--
-info: @zipWithAddT.refines : ∀ [inst : Host] [inst_1 : FunDecls] [Embeds zipWithAdd] (r₀ : BitVec 64) (ra : Int64),
-  ⦃ fun s => s.regs.get64 Reg64.rsp = r₀ ∧ s.retAddr = some ra ⦄ zipWithAdd ⪯[ofStateRepr abs] (zipWithAddT r₀ ra) ⦃
+info: @zipWithAddLoops.refines : ∀ [inst : Host] [inst_1 : FunDecls] [Embeds zipWithAdd] (r₀ : BitVec 64) (ra : Int64),
+  ⦃ fun s => s.regs.get64 Reg64.rsp = r₀ ∧ s.retAddr = some ra ⦄ zipWithAdd ⪯[ofStateRepr abs] (zipWithAddLoops r₀ ra) ⦃
     fun x x_1 => ⊤; AddrRel r₀ ra ⦄
 -/
 #guard_msgs in
-#check @zipWithAddT.refines
+#check @zipWithAddLoops.refines
 
 /--
-info: def Ascent.Kraken.zipWithAddT : BitVec 64 → Int64 → BlockM MachineData Unit :=
+info: def Ascent.Kraken.zipWithAddLoops : BitVec 64 → Int64 → BlockM MachineData Unit :=
 fun r₀ ra =>
   condState (fun st => CondCode.le.cmp (st.regs.rcx.toBitVec &&& st.regs.rcx.toBitVec) 0#64)
     (do
@@ -152,30 +152,30 @@ fun r₀ ra =>
             exitIf (retOk r₀ ra) (setReg64 Reg64.rsp fun x => r₀ + 8#64) ra
 -/
 #guard_msgs in
-#print zipWithAddT
+#print zipWithAddLoops
 
 /-! ## 4. Registers as values, synthesized by `ascend_def`
 
 The state is the data memory alone. The lifting relation, the one hint of the run, is
 `RegsRel [(.rdi, rdi), …, (.rax, rax)]`: it names the registers that become values. `rdi`, `rsi`,
 `rdx`, `rcx` and `rsp` are parameters, and `rax` is the value of the loop. The loaded values of
-`r8` become variables. `ascend_def` synthesized `zipWithAddL₀`, and `sym_simp_def` states its
-branch conditions as comparisons of the values in `zipWithAddL`. A jump is an `assert` that the
+`r8` become variables. `ascend_def` synthesized `zipWithAddRegs₀`, and `sym_simp_def` states its
+branch conditions as comparisons of the values in `zipWithAddRegs`. A jump is an `assert` that the
 stack pointer lies in the frame; with `rsp` the stack pointer of the entry, these tests hold and
 vanish. The return is an `assert` that the return slot at `rsp` holds the return address `ra`,
 followed by `throw ra`: -/
 
 /--
-info: zipWithAddL.refines : ∀ (rdi rsi rdx rcx rsp : BitVec 64) (ra : Int64),
+info: zipWithAddRegs.refines : ∀ (rdi rsi rdx rcx rsp : BitVec 64) (ra : Int64),
   ⦃ RegsRel [(Reg64.rdi, rdi), (Reg64.rsi, rsi), (Reg64.rdx, rdx), (Reg64.rcx, rcx), (Reg64.rsp, rsp)] ⦄
-    (zipWithAddT rsp ra) ⪯[ofStateRepr MachineData.dmem] (zipWithAddL rdi rsi rdx rcx rsp ra) ⦃ fun x x_1 x_2 => True;
-    estack⟨fun l l' t => l = l' ∧ t.regs.get64 Reg64.rsp = rsp + 8⟩ ⦄
+    (zipWithAddLoops rsp ra) ⪯[ofStateRepr MachineData.dmem] (zipWithAddRegs rdi rsi rdx rcx rsp ra) ⦃ fun x x_1 x_2 =>
+    True; estack⟨fun l l' t => l = l' ∧ t.regs.get64 Reg64.rsp = rsp + 8⟩ ⦄
 -/
 #guard_msgs in
-#check @zipWithAddL.refines
+#check @zipWithAddRegs.refines
 
 /--
-info: def Ascent.Kraken.zipWithAddL : BitVec 64 →
+info: def Ascent.Kraken.zipWithAddRegs : BitVec 64 →
   BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → Int64 → BlockM DataMem Unit :=
 fun rdi rsi rdx rcx rsp ra =>
   if rcx.toInt ≤ 0 then do
@@ -194,7 +194,7 @@ fun rdi rsi rdx rcx rsp ra =>
         throw ra
 -/
 #guard_msgs in
-#print zipWithAddL
+#print zipWithAddRegs
 
 /-! ## 5. The stack frame, synthesized by `ascend_def`
 
@@ -205,16 +205,16 @@ states the return address in the return slot, and the frame layer keeps that slo
 needs no guard: -/
 
 /--
-info: zipWithAddF.refines : ∀ (rdi rsi rdx rcx rsp sp : BitVec 64) (ra : Int64),
+info: zipWithAddFrame.refines : ∀ (rdi rsi rdx rcx rsp sp : BitVec 64) (ra : Int64),
   ⦃ fun m => rsp ≐ₛ sp ∧ retAddrAt m rsp = some ra ⦄
-    (zipWithAddL₀ rdi rsi rdx rcx rsp rsp ra) ⪯[ofStateRepr (FState.split (Fr rsp 0 0))]
-    (zipWithAddF rdi rsi rdx rcx rsp ra) ⦃ fun x x_1 x_2 => True; estack⟨fun l l' x => l = l'⟩ ⦄
+    (zipWithAddRegs₀ rdi rsi rdx rcx rsp rsp ra) ⪯[ofStateRepr (FState.split (Fr rsp 0 0))]
+    (zipWithAddFrame rdi rsi rdx rcx rsp ra) ⦃ fun x x_1 x_2 => True; estack⟨fun l l' x => l = l'⟩ ⦄
 -/
 #guard_msgs in
-#check @zipWithAddF.refines
+#check @zipWithAddFrame.refines
 
 /--
-info: def Ascent.Kraken.zipWithAddF : BitVec 64 →
+info: def Ascent.Kraken.zipWithAddFrame : BitVec 64 →
   BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → Int64 → BlockM FState Unit :=
 fun rdi rsi rdx rcx rsp ra =>
   condState (fun x => CondCode.le.cmp (rcx &&& rcx) 0#64) (throw ra) do
@@ -227,34 +227,34 @@ fun rdi rsi rdx rcx rsp ra =>
     pure PUnit.unit
 -/
 #guard_msgs in
-#print zipWithAddF
+#print zipWithAddFrame
 
 /-! ## 6. Arrays, synthesized by `ascend_def`
 
 The state is the output array. The input arrays are parameters, named by their base addresses, and
 the loads and the store become array reads and an array update. The words that count become
-numbers: the loop counter `v` of `zipWithAddL` holds the number `i` (`v ≐ₙ i`), the length `rcx`
+numbers: the loop counter `v` of `zipWithAddRegs` holds the number `i` (`v ≐ₙ i`), the length `rcx`
 holds `n`, and the comparisons of the words become comparisons of the numbers. The relation of the
 loop, the hint of the run, states `v ≐ₙ i`, the bound `i < n`, the layout
 `ArrayLayout 8 64 [(A, a), (B, b)] O n []` of `dmem`, and `ZipApart`: each array misses the frame,
-which discharges the assumption of each access. `ascend_def` synthesized `zipWithAddArr₀`, and
+which discharges the assumption of each access. `ascend_def` synthesized `zipWithAddArrays₀`, and
 `sym_simp_def` puts the array reads in place and states the conditions as propositions in
-`zipWithAddArr`: -/
+`zipWithAddArrays`: -/
 
 /--
-info: zipWithAddArr.refines : ∀ (A B O r₀ : BitVec 64) (ra : Int64) (n : Nat) (a b : Array (BitVec 64)),
+info: zipWithAddArrays.refines : ∀ (A B O r₀ : BitVec 64) (ra : Int64) (n : Nat) (a b : Array (BitVec 64)),
   ⦃ fun s =>
     A ≐ₐ a ∧
       B ≐ₐ b ∧
         a.size = n ∧ b.size = n ∧ ArrayLayout 8 64 [(A, a), (B, b)] O n [] s.dmem ∧ ZipApart (Fr r₀ 0 0) A B O n ⦄
-    (zipWithAddF A B O (BitVec.ofNat 64 n) r₀ ra) ⪯[ofStateRepr fun s => outView 8 64 O n s.dmem]
-    (zipWithAddArr ra n a b) ⦃ fun x x_1 x_2 => True; estack⟨fun l l' x => l = l'⟩ ⦄
+    (zipWithAddFrame A B O (BitVec.ofNat 64 n) r₀ ra) ⪯[ofStateRepr fun s => outView 8 64 O n s.dmem]
+    (zipWithAddArrays ra n a b) ⦃ fun x x_1 x_2 => True; estack⟨fun l l' x => l = l'⟩ ⦄
 -/
 #guard_msgs in
-#check @zipWithAddArr.refines
+#check @zipWithAddArrays.refines
 
 /--
-info: def Ascent.Kraken.zipWithAddArr : Int64 →
+info: def Ascent.Kraken.zipWithAddArrays : Int64 →
   Nat → Array (BitVec 64) → Array (BitVec 64) → BlockM (Array (BitVec 64)) Unit :=
 fun ra n a b =>
   if n = 0 then throw ra
@@ -268,7 +268,7 @@ fun ra n a b =>
         throw ra
 -/
 #guard_msgs in
-#print zipWithAddArr
+#print zipWithAddArrays
 
 /-! ## 7. The pure program
 
@@ -277,28 +277,28 @@ invariant and a measure. `ascend_def` takes this result as the premise of `wrp_p
 synthesizes the pure program: -/
 
 /--
-info: @zipWithAddArr_spec : ∀ {ra : Int64} {n : Nat} {a b : Array (BitVec 64)},
+info: @zipWithAddArrays_spec : ∀ {ra : Int64} {n : Nat} {a b : Array (BitVec 64)},
   a.size = n →
     b.size = n →
-      ⦃ fun x => x.size = n ⦄ zipWithAddArr ra n a b ⦃ fun x x_1 => False;
+      ⦃ fun x => x.size = n ⦄ zipWithAddArrays ra n a b ⦃ fun x x_1 => False;
         estack⟨fun l o' => l = ra ∧ o' = Array.zipWith (fun x1 x2 => x1 + x2) a b⟩ ⦄
 -/
 #guard_msgs in
-#check @zipWithAddArr_spec
+#check @zipWithAddArrays_spec
 
 /--
-info: def Ascent.Kraken.zipWithAddP : Array (BitVec 64) → Array (BitVec 64) → Id (Array (BitVec 64)) :=
+info: def Ascent.Kraken.zipWithAddPure : Array (BitVec 64) → Array (BitVec 64) → Id (Array (BitVec 64)) :=
 fun a b => pure (Array.zipWith HAdd.hAdd a b)
 -/
 #guard_msgs in
-#print zipWithAddP
+#print zipWithAddPure
 
 /-! ## 8. Back to the machine code
 
 `Refinement.comp_le` composes the refinements of the layers into one refinement from the x64 text to
 the pure program: -/
 
-#check @zipWithAdd_refines_P
+#check @zipWithAdd_refines_Pure
 
 /-! One `Refinement.transport` of this refinement, and the reading of the output array as memory
 words, give the result on the machine code: -/
@@ -357,7 +357,7 @@ layer assumes that the source and the destination do not overlap, names the dire
 and reads the source as the array `a`: -/
 
 /--
-info: def Ascent.Kraken.memmoveArr : Int64 → Nat → Array (BitVec 8) → Bool → BlockM (Array (BitVec 8)) Unit :=
+info: def Ascent.Kraken.memmoveArrays : Int64 → Nat → Array (BitVec 8) → Bool → BlockM (Array (BitVec 8)) Unit :=
 fun ra n a back =>
   if back = true then
     if n = 0 then throw ra
@@ -381,17 +381,17 @@ fun ra n a back =>
           throw ra
 -/
 #guard_msgs in
-#print memmoveArr
+#print memmoveArrays
 
 /-! `vcgen` proves that both loops leave the destination equal to `a`, and `ascend_def` synthesizes
 the pure program from that result: -/
 
 /--
-info: def Ascent.Kraken.memmoveP : Array (BitVec 8) → Id (Array (BitVec 8)) :=
+info: def Ascent.Kraken.memmovePure : Array (BitVec 8) → Id (Array (BitVec 8)) :=
 fun a => pure a
 -/
 #guard_msgs in
-#print memmoveP
+#print memmovePure
 
 /-! The composition gives the result for the x64 text: -/
 
@@ -409,7 +409,7 @@ machine code becomes a `break` that leaves the loop with `rax` set, and the func
 after the loop: -/
 
 /--
-info: def Ascent.Kraken.bsearchL : BitVec 64 →
+info: def Ascent.Kraken.bsearchRegs : BitVec 64 →
   BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → Int64 → BlockM DataMem (BitVec 64) :=
 fun rdi rsi rdx rax rsp ra => do
   let mut a := (0#64, rsi, rax)
@@ -432,13 +432,13 @@ fun rdi rsi rdx rax rsp ra => do
   pure a.snd.snd
 -/
 #guard_msgs in
-#print bsearchL
+#print bsearchRegs
 
 /-! Over the array of words, the bounds are numbers `lo ≤ hi ≤ n`, and the result is an optional
 index, `none` until the loop leaves: -/
 
 /--
-info: def Ascent.Kraken.bsearchArr : BitVec 64 → Nat → Array (BitVec 64) → BlockM Unit (Option Nat) :=
+info: def Ascent.Kraken.bsearchArrays : BitVec 64 → Nat → Array (BitVec 64) → BlockM Unit (Option Nat) :=
 fun key n a => do
   let mut a_1 := (0, n, none)
   repeat'
@@ -457,19 +457,19 @@ fun key n a => do
   pure a_1.snd.snd
 -/
 #guard_msgs in
-#print bsearchArr
+#print bsearchArrays
 
-/-! `vcgen` proves that the loop returns the result of the recursive search `bsearchF`, and
+/-! `vcgen` proves that the loop returns the result of the recursive search `bsearchFrame`, and
 `ascend_def` synthesizes the pure program: -/
 
 /--
-info: def Ascent.Kraken.bsearchP : BitVec 64 → Nat → Array (BitVec 64) → Id (Option Nat) :=
-fun key n a => pure (bsearchF a key 0 n)
+info: def Ascent.Kraken.bsearchPure : BitVec 64 → Nat → Array (BitVec 64) → Id (Option Nat) :=
+fun key n a => pure (bsearchFrame a key 0 n)
 -/
 #guard_msgs in
-#print bsearchP
+#print bsearchPure
 
-/-! `bsearchF` returns an index of `key`, or `none` when the sorted array does not hold `key`. The
+/-! `bsearchFrame` returns an index of `key`, or `none` when the sorted array does not hold `key`. The
 composition gives the result for the x64 text: -/
 
 #check @bsearch_correct

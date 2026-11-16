@@ -58,24 +58,24 @@ def rev10 : Program := parse("
 
 attribute [local vcgen_simp] rev10
 
-ascend_def rev10A [Host] [FunDecls] [Embeds rev10] (r₀ : BitVec 64) (ra : Int64) :
+ascend_def rev10Instr [Host] [FunDecls] [Embeds rev10] (r₀ : BitVec 64) (ra : Int64) :
     BlockM MachineData Unit from
-  ⦃fun s => s.regs.get64 .rsp = r₀ ∧ s.retAddr = some ra⦄ rev10 ⪯[ofStateRepr abs] rev10A ⦃fun _ _ => ⊤; AddrRel r₀ ra⦄
+  ⦃fun s => s.regs.get64 .rsp = r₀ ∧ s.retAddr = some ra⦄ rev10 ⪯[ofStateRepr abs] rev10Instr ⦃fun _ _ => ⊤; AddrRel r₀ ra⦄
   ascend [refines_cfg (p := rev10) (habs := abs_regs)] with finish
 
-sym_simp_def rev10T [Host] [Embeds rev10] (r₀ : BitVec 64) (ra : Int64) : BlockM MachineData Unit from rev10A r₀ ra
-  using pre [] post [rev10A, rev10, Program.loop, Program.entryNext, Program.firstLabel, Program.table,
+sym_simp_def rev10Loops [Host] [Embeds rev10] (r₀ : BitVec 64) (ra : Int64) : BlockM MachineData Unit from rev10Instr r₀ ra
+  using pre [] post [rev10Instr, rev10, Program.loop, Program.entryNext, Program.firstLabel, Program.table,
     Program.blocks, List.filterMap_cons, List.filterMap_nil, List.reverse_nil, Table.get_cons,
     Option.some.injEq, reduceCtorEq, jumpTo_none, cfgLoop_eq_throw, Table.get?_nil, tryCatch_bind_assoc,
     tryCatch_modifyIf_bind, tryCatch_exitIf_cfgLoop, stayIn_setReg64_rsp, BitVec.reduceSLT, Bool.not_true,
     eq_self_iff_true, implies_true, bind_assoc, AInstr.exitIf_bind, bind_pure_unit, pure_bind]
 
-theorem rev10T.refines [Host] [FunDecls] [Embeds rev10] (r₀ : BitVec 64) (ra : Int64) :
-    ⦃fun s => s.regs.get64 .rsp = r₀ ∧ s.retAddr = some ra⦄ rev10 ⪯[ofStateRepr abs] (rev10T r₀ ra) ⦃fun _ _ => ⊤; AddrRel r₀ ra⦄ :=
-  rev10T.eq r₀ ra ▸ rev10A.refines r₀ ra
+theorem rev10Loops.refines [Host] [FunDecls] [Embeds rev10] (r₀ : BitVec 64) (ra : Int64) :
+    ⦃fun s => s.regs.get64 .rsp = r₀ ∧ s.retAddr = some ra⦄ rev10 ⪯[ofStateRepr abs] (rev10Loops r₀ ra) ⦃fun _ _ => ⊤; AddrRel r₀ ra⦄ :=
+  rev10Loops.eq r₀ ra ▸ rev10Instr.refines r₀ ra
 
 /--
-info: def Ascent.Kraken.rev10T : BitVec 64 → Int64 → BlockM MachineData Unit :=
+info: def Ascent.Kraken.rev10Loops : BitVec 64 → Int64 → BlockM MachineData Unit :=
 fun r₀ ra => do
   modifyIf (storeOk 8 fun st => st.regs.rsp.toBitVec - 8#64)
       (storeWord 8 (fun st => st.regs.rsp.toBitVec - 8#64) fun st => st.regs.r14.toBitVec)
@@ -131,6 +131,6 @@ fun r₀ ra => do
   exitIf (retOk r₀ ra) (setReg64 Reg64.rsp fun x => r₀ + 8#64) ra
 -/
 #guard_msgs in
-#print rev10T
+#print rev10Loops
 
 end Ascent.Kraken

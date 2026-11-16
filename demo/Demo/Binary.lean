@@ -1,4 +1,4 @@
-import Demo.ZipPure
+import Demo.Zip.Pure
 
 /-!
 # Binaries
@@ -34,7 +34,7 @@ that instruction with its label erased (`Instr.eraseLabel`) and with the address
 jump target, and that the targets of the direct jumps of `b` are the labels of `p`.
 `Binary.refines_program` turns it into `⦃P⦄ b ⪯[ofStateRepr id] p ⦃…⦄`.
 
-`Demo.BinaryCheck` proves `Binary.Assembles` by evaluating one check, and `Demo.ZipBinary` applies it
+`Demo.BinaryCheck` proves `Binary.Assembles` by evaluating one check, and `Demo.Zip.Binary` applies it
 to the bytes of `zipWithAdd`.
 -/
 

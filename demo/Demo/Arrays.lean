@@ -1,4 +1,4 @@
-import Demo.Lift
+import Demo.Regs
 import Demo.Words
 
 /-!
