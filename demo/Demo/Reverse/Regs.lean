@@ -31,7 +31,7 @@ ascend_def reverseRegs₀ [Host] [Embeds swap] (rdi rsi rax rsp rbx rbp r12 r13 
 sym_simp_def reverseRegs [Host] [Embeds swap] (rdi rsi rax rbx r12 r14 r15 rsp : BitVec 64) (ra : Int64) :
     BlockM DataMem Unit from reverseRegs₀ rdi rsi rax rsp rbx r12 r14 r15 rsp ra
   using pre [add_ofInt_neg] post [stayAt_self, eq_self_iff_true, true_and, assert_true_bind, assert_true,
-    pure_bind, bind_pure, reverseRegs₀, bind_pure_unit, BitVec.sub_add_cancel, BitVec.ofInt_int64ToInt,
+    pure_bind, bind_pure, reverseRegs₀, swapRegs.eq_fun, bind_pure_unit, BitVec.sub_add_cancel, BitVec.ofInt_int64ToInt,
     Int64.toBitVec_ofNat, Int64.toBitVec_neg, BitVec.ofNat_eq_ofNat, BitVec.add_neg_eq_sub]
 
 /--
@@ -52,8 +52,7 @@ fun rdi rsi rax rbx r12 r14 r15 rsp ra =>
     let _ ←
       { }.forIn (rdi, rdi + rsi * 8#64 + 18446744073709551608#64, rsi - 1#64, 1#64) fun x a => do
           callRegs (rsp - 8#64 - 8#64 - 8#64 - 8#64 - 8#64)
-              (swapRegs₀ a.fst a.snd.fst (rsp - 8#64 - 8#64 - 8#64 - 8#64 - 8#64 - 8#64)
-                (rsp - 8#64 - 8#64 - 8#64 - 8#64 - 8#64 - 8#64))
+              (swapRegs a.fst a.snd.fst (rsp - 8#64 - 8#64 - 8#64 - 8#64 - 8#64 - 8#64))
           condState (fun x => CondCode.c.cmp a.snd.snd.snd (a.snd.snd.fst - 1#64))
               (do
                 StateT.assert fun x => stayAt rsp (rsp - 8#64 - 8#64 - 8#64 - 8#64 - 8#64) = true

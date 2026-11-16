@@ -26,7 +26,7 @@ def pushUnknownRegs (r : BitVec 64) : BlockM DataMem Int64 :=
     let v ← (Demonic.unknown : Demonic Int64)
     pure (.ok v, m.storeInt (r - 8#64) 8 v.toBitVec.toInt)
 
-theorem wp_pushUnknownL_fun (r : BitVec 64) (Q : Int64 → DataMem → Prop)
+theorem wp_pushUnknownRegs_fun (r : BitVec 64) (Q : Int64 → DataMem → Prop)
     (E : (Int64 → DataMem → Prop) × EStack⟨⟩) :
     wp (pushUnknownRegs r) Q E = fun m => (Mem.loadInt m (r - 8#64) 8).isSome = true ∧
       ∀ v, Q v (m.storeInt (r - 8#64) 8 v.toBitVec.toInt) :=
@@ -38,7 +38,7 @@ noncomputable def callRegs (r : BitVec 64) (k : Int64 → BlockM DataMem Unit) :
 
 theorem ThrowsOnly.callRegs {P : Int64 → DataMem → Prop} (r : BitVec 64) (k : Int64 → BlockM DataMem Unit) :
     Ascent.ThrowsOnly P (callRegs r k) = True := eq_true fun Q E s hw => by
-  simp only [Kraken.callRegs, WPMonadExact.wp_bind_eq, wp_pushUnknownL_fun, BlockLoop.wp_tryCatch,
+  simp only [Kraken.callRegs, WPMonadExact.wp_bind_eq, wp_pushUnknownRegs_fun, BlockLoop.wp_tryCatch,
     wp_modifyIf_fun] at hw ⊢
   exact hw
 
@@ -46,7 +46,7 @@ theorem tryCatch_callL_bind {β : Type} (r : BitVec 64) (k : Int64 → BlockM Da
     (f : Unit → BlockM DataMem β) (h : Int64 → BlockM DataMem β) :
     tryCatch (callRegs r k >>= f) h = callRegs r k >>= fun u => tryCatch (f u) h := by
   apply BlockLoop.ext_wp <;> intro Q E s hw <;>
-    simp only [Kraken.callRegs, WPMonadExact.wp_bind_eq, wp_pushUnknownL_fun, BlockLoop.wp_tryCatch,
+    simp only [Kraken.callRegs, WPMonadExact.wp_bind_eq, wp_pushUnknownRegs_fun, BlockLoop.wp_tryCatch,
       wp_modifyIf_fun, wp_tryCatch_fun] at hw ⊢ <;>
     exact hw
 
@@ -67,7 +67,7 @@ theorem wrp_callA_callL {kT : BitVec 64 → Int64 → BlockM MachineData Unit}
   simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred] at ht
   obtain ⟨⟨hr, hpre, hQ⟩, hw⟩ := ht
   have hr : t.regs.get64 .rsp = r := hr trivial
-  simp only [callRegs, WPMonadExact.wp_bind_eq, wp_pushUnknownL_fun, BlockLoop.wp_tryCatch,
+  simp only [callRegs, WPMonadExact.wp_bind_eq, wp_pushUnknownRegs_fun, BlockLoop.wp_tryCatch,
     wp_modifyIf_fun] at hw
   obtain ⟨hm, hw⟩ := hw
   simp only [callInstr, WPMonadExact.wp_bind_eq, wp_peek, wp_pushUnknown_fun, BlockLoop.wp_tryCatch,

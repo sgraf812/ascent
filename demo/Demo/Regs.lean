@@ -394,6 +394,14 @@ variable {σa : Type} {view : DataMem → σa} {E : (Int64 → Int64 → DataMem
 
 end
 
+
+theorem stayAt_of_toNat_le {r p : BitVec 64} (h : (r - p).toNat ≤ 2 ^ 63) : stayAt r p = true := by
+  simp only [stayAt, BitVec.slt, Bool.not_eq_eq_eq_not, Bool.not_true, decide_eq_false_iff_not,
+    BitVec.toInt_eq_toNat_cond]
+  split <;> bv_omega
+
+grind_pattern stayAt_of_toNat_le => stayAt r p
+
 section
 variable {σc σa : Type} {view : σc → σa} {E : (Int64 → Int64 → σc → Prop) × EStack⟨⟩}
 

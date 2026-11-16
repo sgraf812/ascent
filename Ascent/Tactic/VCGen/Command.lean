@@ -64,9 +64,9 @@ elab_rules : command
       | none, some invs => `(tactic| ascend [$specs,*] $invs:invariantAlts)
       | none, none => `(tactic| ascend [$specs,*])
     let (vcs, _) ← Lean.Elab.runTactic proof.mvarId! ascendStx
-    if let vc :: _ := vcs then
-      throwError "ascend_def: unsolved verification condition:{indentExpr (← vc.getType)}\n\
-        provide a `with` clause"
+    unless vcs.isEmpty do
+      let msg := vcs.foldl (fun acc vc => acc ++ m!"\n{vc}") m!""
+      throwError "ascend_def: unsolved verification conditions:{msg}\nprovide a `with` clause"
     let value ← instantiateMVars hole
     if value.hasMVar then
       throwError "ascend_def: the synthesized program has holes:{indentExpr value}"

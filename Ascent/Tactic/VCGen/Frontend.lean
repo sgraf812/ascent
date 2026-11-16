@@ -235,7 +235,10 @@ def elabAscend : Tactic := fun stx => withMainContext do
       let mut rest := []
       for vc in ← Lean.Elab.Tactic.Grind.getUnsolvedGoals do
         Lean.Elab.Tactic.Grind.setGoals [vc]
-        Lean.Elab.Tactic.Grind.evalGrindTactic step
+        try
+          Lean.Elab.Tactic.Grind.evalGrindTactic step
+        catch e =>
+          throwError "{e.toMessageData}\non the verification condition{vc.mvarId}"
         rest := rest ++ (← Lean.Elab.Tactic.Grind.getUnsolvedGoals)
       Lean.Elab.Tactic.Grind.setGoals rest
   if let (some hole, some decl) := (hole?, holeDecl?) then

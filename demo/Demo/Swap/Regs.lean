@@ -28,6 +28,9 @@ sym_simp_def swapRegs (rdi rsi : BitVec 64) (rsp : BitVec 64) (ra : Int64) : Blo
     swapRegs₀ rdi rsi rsp rsp ra
   using pre [] post [stayAt_self, eq_self_iff_true, true_and, assert_true_bind, assert_true, pure_bind, bind_pure, swapRegs₀, bind_pure_unit, pure_bind]
 
+theorem swapRegs.eq_fun (rdi rsi rsp : BitVec 64) : swapRegs₀ rdi rsi rsp rsp = swapRegs rdi rsi rsp :=
+  funext (swapRegs.eq rdi rsi rsp)
+
 
 theorem swapRegs.refines (rdi rsi rbx rbp r12 r13 r14 r15 : BitVec 64) (rsp : BitVec 64) (ra : Int64) :
     ⦃RegsRel [(.rdi, rdi), (.rsi, rsi), (.rsp, rsp), (.rbx, rbx), (.rbp, rbp), (.r12, r12), (.r13, r13),

@@ -42,3 +42,6 @@ import Demo.Reverse.Instr
 import Demo.Reverse.Loops
 import Demo.RegsCall
 import Demo.Reverse.Regs
+import Demo.FrameCall
+import Demo.Swap.Frame
+import Demo.Reverse.Frame
