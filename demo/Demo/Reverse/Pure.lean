@@ -63,13 +63,12 @@ structure ReverseArray (m : DataMem) (A rsp : BitVec 64) (n : Nat) : Prop where
 attribute [grind →] ReverseArray.len ReverseArray.apart
 
 @[grind →] theorem ReverseArray.layout {m : DataMem} {A rsp : BitVec 64} {n : Nat} (h : ReverseArray m A rsp n) :
-    ArrayLayout 8 64 [] A n [] (FState.split (Fr rsp 6 0) m).dmem where
+    ArrayLayout 8 64 [] A n (FState.split (Fr rsp 6 0) m).dmem where
   width := by omega
   bits := rfl
   len := h.len
   mapped := Mapped.split h.mapA h.apart
   inputs := trivial
-  reserved := trivial
 
 @[grind →] theorem ReverseArray.frame_split {m : DataMem} {A rsp : BitVec 64} {n : Nat} (h : ReverseArray m A rsp n) :
     Mem.Mapped (Fr rsp 6 0) (FState.split (Fr rsp 6 0) m).frame :=
@@ -80,7 +79,7 @@ variable [Host] [FunDecls] [Embeds swap] (rsp : BitVec 64) (ra : Int64)
 
 theorem reverseRegs_refines_Arrays {rdi rax rbx r12 r14 r15 : BitVec 64} {n : Nat} :
     ⦃fun m => (rsp ≐ₛ rsp ∧ retAddrAt m rsp = some ra) ∧
-      (BitVec.ofNat 64 n ≐ₙ n ∧ ArrayLayout 8 64 [] rdi n [] (FState.split (Fr rsp 6 0) m).dmem ∧
+      (BitVec.ofNat 64 n ≐ₙ n ∧ ArrayLayout 8 64 [] rdi n (FState.split (Fr rsp 6 0) m).dmem ∧
         Mem.Blocks.Disjoint [(rdi, 8 * n)] (Fr rsp 6 0) ∧ Mem.Mapped (Fr rsp 6 0) (FState.split (Fr rsp 6 0) m).frame)⦄
       (reverseRegs rdi (BitVec.ofNat 64 n) rax rbx r12 r14 r15 rsp ra)
       ⪯[(ofStateRepr (FState.split (Fr rsp 6 0))).comp (ofStateRepr fun s : FState => outView 8 64 rdi n s.dmem)]
@@ -93,7 +92,7 @@ theorem reverseLoops_refines_Arrays {rdi rax rbx rbp r12 r13 r14 r15 : BitVec 64
     ⦃fun t => RegsRel [(.rdi, rdi), (.rsi, BitVec.ofNat 64 n), (.rax, rax), (.rsp, rsp), (.rbx, rbx), (.rbp, rbp),
         (.r12, r12), (.r13, r13), (.r14, r14), (.r15, r15)] t ∧
       ((rsp ≐ₛ rsp ∧ retAddrAt t.dmem rsp = some ra) ∧
-        (BitVec.ofNat 64 n ≐ₙ n ∧ ArrayLayout 8 64 [] rdi n [] (FState.split (Fr rsp 6 0) t.dmem).dmem ∧
+        (BitVec.ofNat 64 n ≐ₙ n ∧ ArrayLayout 8 64 [] rdi n (FState.split (Fr rsp 6 0) t.dmem).dmem ∧
           Mem.Blocks.Disjoint [(rdi, 8 * n)] (Fr rsp 6 0) ∧
           Mem.Mapped (Fr rsp 6 0) (FState.split (Fr rsp 6 0) t.dmem).frame))⦄
       (reverseLoops (fun r ra => swapLoops r ra) rsp ra)
@@ -109,12 +108,12 @@ theorem reverseLoops_refines_Pure {rdi rax rbx rbp r12 r13 r14 r15 : BitVec 64} 
     ⦃fun t => (RegsRel [(.rdi, rdi), (.rsi, BitVec.ofNat 64 n), (.rax, rax), (.rsp, rsp), (.rbx, rbx), (.rbp, rbp),
         (.r12, r12), (.r13, r13), (.r14, r14), (.r15, r15)] t ∧
       ((rsp ≐ₛ rsp ∧ retAddrAt t.dmem rsp = some ra) ∧
-        (BitVec.ofNat 64 n ≐ₙ n ∧ ArrayLayout 8 64 [] rdi n [] (FState.split (Fr rsp 6 0) t.dmem).dmem ∧
+        (BitVec.ofNat 64 n ≐ₙ n ∧ ArrayLayout 8 64 [] rdi n (FState.split (Fr rsp 6 0) t.dmem).dmem ∧
           Mem.Blocks.Disjoint [(rdi, 8 * n)] (Fr rsp 6 0) ∧
           Mem.Mapped (Fr rsp 6 0) (FState.split (Fr rsp 6 0) t.dmem).frame))) ∧
       outView 8 64 rdi n (FState.split (Fr rsp 6 0) t.dmem).dmem = a⦄
       (reverseLoops (fun r ra => swapLoops r ra) rsp ra)
-      ⪯[memToArray rsp rdi 6 n]
+      ⪯[memToArray 8 64 rsp rdi 6 n]
       (reversePure a)
       ⦃fun _ _ _ => False; (fun l t => l = ra ∧ t.regs.get64 .rsp = rsp + 8 ∧
         outView 8 64 rdi n (FState.split (Fr rsp 6 0) t.dmem).dmem = Id.run (reversePure a), estack⟨⟩)⦄ :=
@@ -130,7 +129,7 @@ theorem reverse_refines_Pure (hg : FunDecls.at (label "_swap") = some ⟨swap⟩
     (hrdi : (s.push64 ra).regs.get64 .rdi = A) (hrsi : (s.push64 ra).regs.get64 .rsi = BitVec.ofNat 64 n)
     (hmem : ReverseArray (s.push64 ra).dmem A ((s.push64 ra).regs.get64 .rsp) n) :
     ⦃(· = s.push64 ra)⦄ reverse
-      ⪯[machineToArray ((s.push64 ra).regs.get64 .rsp) A 6 n]
+      ⪯[machineToArray 8 64 ((s.push64 ra).regs.get64 .rsp) A 6 n]
       (reversePure (words 8 64 (s.push64 ra).dmem A n).toArray)
       ⦃fun _ _ _ => False; fun a t => a = ra ∧ t.regs.get64 .rsp = s.regs.get64 .rsp ∧
         outView 8 64 A n (FState.split (Fr ((s.push64 ra).regs.get64 .rsp) 6 0) t.dmem).dmem

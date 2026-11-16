@@ -51,7 +51,7 @@ def Scaled (w : Nat) (x : BitVec 64) (j : Nat) : Prop := x = BitVec.ofNat 64 j *
 theorem CondCode.cmp_c_eq_true (a b : BitVec 64) : (CondCode.c.cmp a b = true) = (a < b) := by
   simp [CondCode.cmp, BitVec.ult, BitVec.lt_def]
 
-attribute [grind =] Nat.blt_eq
+attribute [grind =] Nat.blt_eq Nat.ble_eq
 
 @[ascend_pure high] theorem absN_cmp_c {a b : BitVec 64} {n m : Nat} {P₁ P₂ : Prop}
     (h₁ : PureRefinement a n P₁ WordNat) (h₂ : PureRefinement b m P₂ WordNat) :
@@ -120,20 +120,14 @@ theorem outView_storeInt (hw : w ≤ 8) (hb : b = 8 * w) {k : Nat} (hk : k < n) 
   rw [outView, outView, words_storeInt_self hw hb hk hn, Array.set!_eq_setIfInBounds,
     List.setIfInBounds_toArray]
 
-theorem loadInt_storeInt_cell_of_disjoint (hw : w ≤ 8) {k : Nat} {x : BitVec 64}
-    (hd : Mem.Blocks.Disjoint [(x, 8)] [(q, w * n)]) (hk : k < n) (hn : n < 2 ^ 61) (v : Int) :
-    Mem.loadInt (Mem.storeInt m (cell w q k) w v) x 8 = Mem.loadInt m x 8 :=
-  Mem.loadInt_storeInt_of_disjoint (Mem.Blocks.Disjoint.of_inside_right_pair hd (cell_inside hw hk hn)) v
-
 end
 
 /-! ## Layouts
 
-`ArrayLayout w b ins o n rsv m` states the memory `m` of a program that writes the array of `n`
-words of `w` bytes at `o`, read as `b`-bit vectors: each input `(p, a)` of `ins` holds the array `a`
-at `p`, each reserved word `(p, ra)` of `rsv`, such as a return slot, holds the address `ra`, and
-the written array is mapped and apart from the inputs and from the reserved words. A store into the written array keeps
-the layout. -/
+`ArrayLayout w b ins o n m` states the memory `m` of a program that writes the array of `n` words of
+`w` bytes at `o`, read as `b`-bit vectors: each input `(p, a)` of `ins` holds the array `a` at `p`,
+and the written array is mapped and apart from the inputs. A store into the written array keeps the
+layout. -/
 
 /-- The array `a` lies at `p`, apart from the written array of `n` words at `o`. -/
 structure InputAt (w b : Nat) (m : DataMem) (o : BitVec 64) (n : Nat) (p : BitVec 64)
@@ -143,41 +137,21 @@ structure InputAt (w b : Nat) (m : DataMem) (o : BitVec 64) (n : Nat) (p : BitVe
   mapped : Mem.Mapped [(p, w * a.size)] m
   disj : Mem.Blocks.Disjoint [(o, w * n)] [(p, w * a.size)]
 
-/-- The word at `p` holds the address `ra` and lies apart from the written array of `n` words at
-`o`. -/
-structure ReservedAt (w : Nat) (m : DataMem) (o : BitVec 64) (n : Nat) (p : BitVec 64) (ra : Int64) :
-    Prop where
-  retAddr : retAddrAt m p = some ra
-  disj : Mem.Blocks.Disjoint [(p, 8)] [(o, w * n)]
-
-theorem ReservedAt.loadInt_isSome {w : Nat} {m : DataMem} {o : BitVec 64} {n : Nat} {p : BitVec 64}
-    {ra : Int64} (h : ReservedAt w m o n p ra) : (Mem.loadInt m p 8).isSome = true := by
-  have := h.retAddr
-  simp only [retAddrAt] at this
-  cases hl : Mem.loadInt m p 8 <;> simp_all
-
 def Inputs (w b : Nat) (m : DataMem) (o : BitVec 64) (n : Nat) :
     List (BitVec 64 × Array (BitVec b)) → Prop
   | [] => True
   | (p, a) :: ins => InputAt w b m o n p a ∧ Inputs w b m o n ins
 
-def Reserved (w : Nat) (m : DataMem) (o : BitVec 64) (n : Nat) : List (BitVec 64 × Int64) → Prop
-  | [] => True
-  | (p, ra) :: rsv => ReservedAt w m o n p ra ∧ Reserved w m o n rsv
-
 structure ArrayLayout (w b : Nat) (ins : List (BitVec 64 × Array (BitVec b))) (o : BitVec 64)
-    (n : Nat) (rsv : List (BitVec 64 × Int64)) (m : DataMem) : Prop where
+    (n : Nat) (m : DataMem) : Prop where
   width : w ≤ 8
   bits : b = 8 * w
   len : n < 2 ^ 61
   mapped : Mem.Mapped [(o, w * n)] m
   inputs : Inputs w b m o n ins
-  reserved : Reserved w m o n rsv
 
-attribute [grind →] InputAt.len InputAt.words InputAt.mapped InputAt.disj ReservedAt.retAddr
-  ReservedAt.loadInt_isSome
-  ReservedAt.disj ArrayLayout.width ArrayLayout.bits ArrayLayout.len ArrayLayout.mapped
-  ArrayLayout.inputs ArrayLayout.reserved
+attribute [grind →] InputAt.len InputAt.words InputAt.mapped InputAt.disj ArrayLayout.width
+  ArrayLayout.bits ArrayLayout.len ArrayLayout.mapped ArrayLayout.inputs
 
 section
 variable {w b : Nat} {m : DataMem} {o : BitVec 64} {n : Nat}
@@ -185,9 +159,6 @@ variable {w b : Nat} {m : DataMem} {o : BitVec 64} {n : Nat}
 @[grind =] theorem Inputs.nil : Inputs w b m o n [] = True := rfl
 @[grind =] theorem Inputs.cons (p : BitVec 64) (a : Array (BitVec b)) ins :
     Inputs w b m o n ((p, a) :: ins) = (InputAt w b m o n p a ∧ Inputs w b m o n ins) := rfl
-@[grind =] theorem Reserved.nil : Reserved w m o n [] = True := rfl
-@[grind =] theorem Reserved.cons (p : BitVec 64) (ra : Int64) rsv :
-    Reserved w m o n ((p, ra) :: rsv) = (ReservedAt w m o n p ra ∧ Reserved w m o n rsv) := rfl
 
 variable {k : Nat} (hw : w ≤ 8) (hk : k < n) (hn : n < 2 ^ 61) (x : Int)
 include hw hk hn
@@ -199,30 +170,20 @@ theorem InputAt.storeInt {p : BitVec 64} {a : Array (BitVec b)} (h : InputAt w b
   mapped := Mem.Mapped.storeInt h.mapped _ _ _
   disj := h.disj
 
-theorem ReservedAt.storeInt {p : BitVec 64} {ra : Int64} (h : ReservedAt w m o n p ra) :
-    ReservedAt w (Mem.storeInt m (cell w o k) w x) o n p ra :=
-  ⟨by rw [retAddrAt, loadInt_storeInt_cell_of_disjoint hw h.disj hk hn]; exact h.retAddr, h.disj⟩
-
 theorem Inputs.storeInt : ∀ {ins : List (BitVec 64 × Array (BitVec b))}, Inputs w b m o n ins →
     Inputs w b (Mem.storeInt m (cell w o k) w x) o n ins
   | [], _ => trivial
   | (_, _) :: _, ⟨h, hs⟩ => ⟨h.storeInt hw hk hn x, Inputs.storeInt hs⟩
 
-theorem Reserved.storeInt : ∀ {rsv}, Reserved w m o n rsv →
-    Reserved w (Mem.storeInt m (cell w o k) w x) o n rsv
-  | [], _ => trivial
-  | (_, _) :: _, ⟨h, hs⟩ => ⟨h.storeInt hw hk hn x, Reserved.storeInt hs⟩
-
 end
 
 theorem ArrayLayout.storeInt_cell {w b : Nat} {ins : List (BitVec 64 × Array (BitVec b))}
-    {o : BitVec 64} {n : Nat} {rsv : List (BitVec 64 × Int64)} {m : DataMem} (h : ArrayLayout w b ins o n rsv m)
+    {o : BitVec 64} {n : Nat} {m : DataMem} (h : ArrayLayout w b ins o n m)
     {k : Nat} (hk : k < n) (x : Int) :
-    ArrayLayout w b ins o n rsv (Mem.storeInt m (cell w o k) w x) :=
-  ⟨h.width, h.bits, h.len, Mem.Mapped.storeInt h.mapped _ _ _, h.inputs.storeInt h.width hk h.len x,
-    h.reserved.storeInt h.width hk h.len x⟩
+    ArrayLayout w b ins o n (Mem.storeInt m (cell w o k) w x) :=
+  ⟨h.width, h.bits, h.len, Mem.Mapped.storeInt h.mapped _ _ _, h.inputs.storeInt h.width hk h.len x⟩
 
-grind_pattern ArrayLayout.storeInt_cell => Mem.storeInt m (cell w o k) w x, ArrayLayout w b ins o n rsv m
+grind_pattern ArrayLayout.storeInt_cell => Mem.storeInt m (cell w o k) w x, ArrayLayout w b ins o n m
 
 /-! ## Steps -/
 

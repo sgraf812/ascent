@@ -236,7 +236,7 @@ the loads and the store become array reads and an array update. The words that c
 numbers: the loop counter `v` of `zipWithAddRegs` holds the number `i` (`v ≐ₙ i`), the length `rcx`
 holds `n`, and the comparisons of the words become comparisons of the numbers. The relation of the
 loop, the hint of the run, states `v ≐ₙ i`, the bound `i < n`, the layout
-`ArrayLayout 8 64 [(A, a), (B, b)] O n []` of `dmem`, and `ZipApart`: each array misses the frame,
+`ArrayLayout 8 64 [(A, a), (B, b)] O n` of `dmem`, and `ZipApart`: each array misses the frame,
 which discharges the assumption of each access. `ascend_def` synthesized `zipWithAddArrays₀`, and
 `sym_simp_def` puts the array reads in place and states the conditions as propositions in
 `zipWithAddArrays`: -/
@@ -245,8 +245,7 @@ which discharges the assumption of each access. `ascend_def` synthesized `zipWit
 info: zipWithAddArrays.refines : ∀ (A B O r₀ : BitVec 64) (ra : Int64) (n : Nat) (a b : Array (BitVec 64)),
   ⦃ fun s =>
     A ≐ₐ a ∧
-      B ≐ₐ b ∧
-        a.size = n ∧ b.size = n ∧ ArrayLayout 8 64 [(A, a), (B, b)] O n [] s.dmem ∧ ZipApart (Fr r₀ 0 0) A B O n ⦄
+      B ≐ₐ b ∧ a.size = n ∧ b.size = n ∧ ArrayLayout 8 64 [(A, a), (B, b)] O n s.dmem ∧ ZipApart (Fr r₀ 0 0) A B O n ⦄
     (zipWithAddFrame A B O (BitVec.ofNat 64 n) r₀ ra) ⪯[ofStateRepr fun s => outView 8 64 O n s.dmem]
     (zipWithAddArrays ra n a b) ⦃ fun x x_1 x_2 => True; estack⟨fun l l' x => l = l'⟩ ⦄
 -/
@@ -459,17 +458,17 @@ fun key n a => do
 #guard_msgs in
 #print bsearchArrays
 
-/-! `vcgen` proves that the loop returns the result of the recursive search `bsearchFrame`, and
+/-! `vcgen` proves that the loop returns the result of the recursive search `binarySearch`, and
 `ascend_def` synthesizes the pure program: -/
 
 /--
 info: def Ascent.Kraken.bsearchPure : BitVec 64 → Nat → Array (BitVec 64) → Id (Option Nat) :=
-fun key n a => pure (bsearchFrame a key 0 n)
+fun key n a => pure (binarySearch a key 0 n)
 -/
 #guard_msgs in
 #print bsearchPure
 
-/-! `bsearchFrame` returns an index of `key`, or `none` when the sorted array does not hold `key`. The
+/-! `binarySearch` returns an index of `key`, or `none` when the sorted array does not hold `key`. The
 composition gives the result for the x64 text: -/
 
 #check @bsearch_correct

@@ -48,7 +48,7 @@ theorem ZipArrays.inputAt {m : DataMem} {O p : BitVec 64} {n : Nat} (hn : n < 2 
 
 @[grind →] theorem ZipArrays.layout {m : DataMem} {A B O rsp : BitVec 64} {n : Nat}
     (h : ZipArrays m A B O rsp n) :
-    ArrayLayout 8 64 [(A, (words 8 64 m A n).toArray), (B, (words 8 64 m B n).toArray)] O n []
+    ArrayLayout 8 64 [(A, (words 8 64 m A n).toArray), (B, (words 8 64 m B n).toArray)] O n
       (FState.split (Fr rsp 0 0) m).dmem where
   width := by omega
   bits := rfl
@@ -58,7 +58,6 @@ theorem ZipArrays.inputAt {m : DataMem} {O p : BitVec 64} {n : Nat} (hn : n < 2 
       (by rw [size_words_toArray]; exact h.apart.1),
     (ZipArrays.inputAt h.len h.mapB h.disjB).split (by omega)
       (by rw [size_words_toArray]; exact h.apart.2.1), trivial⟩
-  reserved := trivial
 
 theorem zipWithAddArrays_spec {ra : Int64} {n : Nat} {a b : Array (BitVec 64)} (ha : a.size = n)
     (hb : b.size = n) :
@@ -91,7 +90,7 @@ variable [Host] [FunDecls] [Embeds zipWithAdd] (r₀ : BitVec 64) (ra : Int64)
 theorem zipWithAddRegs₀_refines_Arrays {A B O : BitVec 64} {n : Nat} {a b : Array (BitVec 64)} :
     ⦃fun m => (r₀ ≐ₛ r₀ ∧ retAddrAt m r₀ = some ra) ∧
       (A ≐ₐ a ∧ B ≐ₐ b ∧ a.size = n ∧ b.size = n ∧
-        ArrayLayout 8 64 [(A, a), (B, b)] O n [] (FState.split (Fr r₀ 0 0) m).dmem ∧
+        ArrayLayout 8 64 [(A, a), (B, b)] O n (FState.split (Fr r₀ 0 0) m).dmem ∧
         ZipApart (Fr r₀ 0 0) A B O n)⦄
       (zipWithAddRegs₀ A B O (BitVec.ofNat 64 n) r₀ r₀ ra)
       ⪯[(ofStateRepr (FState.split (Fr r₀ 0 0))).comp (ofStateRepr fun s : FState => outView 8 64 O n s.dmem)]
@@ -105,7 +104,7 @@ theorem zipWithAddLoops_refines_Arrays {A B O : BitVec 64} {n : Nat} {a b : Arra
         (.rsp, r₀)] t ∧
       ((r₀ ≐ₛ r₀ ∧ retAddrAt t.dmem r₀ = some ra) ∧
         (A ≐ₐ a ∧ B ≐ₐ b ∧ a.size = n ∧ b.size = n ∧
-          ArrayLayout 8 64 [(A, a), (B, b)] O n [] (FState.split (Fr r₀ 0 0) t.dmem).dmem ∧
+          ArrayLayout 8 64 [(A, a), (B, b)] O n (FState.split (Fr r₀ 0 0) t.dmem).dmem ∧
           ZipApart (Fr r₀ 0 0) A B O n))⦄
       (zipWithAddLoops r₀ ra)
       ⪯[(ofStateRepr MachineData.dmem).comp ((ofStateRepr (FState.split (Fr r₀ 0 0))).comp
@@ -121,10 +120,10 @@ theorem zipWithAddLoops_refines_Pure {A B O : BitVec 64} {n : Nat} {a b : Array 
         (.rsp, r₀)] t ∧
       ((r₀ ≐ₛ r₀ ∧ retAddrAt t.dmem r₀ = some ra) ∧
         (A ≐ₐ a ∧ B ≐ₐ b ∧ a.size = n ∧ b.size = n ∧
-          ArrayLayout 8 64 [(A, a), (B, b)] O n [] (FState.split (Fr r₀ 0 0) t.dmem).dmem ∧
+          ArrayLayout 8 64 [(A, a), (B, b)] O n (FState.split (Fr r₀ 0 0) t.dmem).dmem ∧
           ZipApart (Fr r₀ 0 0) A B O n))⦄
       (zipWithAddLoops r₀ ra)
-      ⪯[memToArray r₀ O 0 n]
+      ⪯[memToArray 8 64 r₀ O 0 n]
       (zipWithAddPure a b)
       ⦃fun _ _ _ => False; (fun l t => l = ra ∧ t.regs.get64 .rsp = r₀ + 8 ∧
         outView 8 64 O n (FState.split (Fr r₀ 0 0) t.dmem).dmem = Id.run (zipWithAddPure a b), estack⟨⟩)⦄ := by
@@ -141,7 +140,7 @@ theorem zipWithAdd_refines_Pure {A B O : BitVec 64} {n : Nat}
     (hrdx : (s.push64 ra).regs.get64 .rdx = O) (hrcx : (s.push64 ra).regs.get64 .rcx = BitVec.ofNat 64 n)
     (hmem : ZipArrays (s.push64 ra).dmem A B O ((s.push64 ra).regs.get64 .rsp) n) :
     ⦃(· = s.push64 ra)⦄ zipWithAdd
-      ⪯[machineToArray ((s.push64 ra).regs.get64 .rsp) O 0 n]
+      ⪯[machineToArray 8 64 ((s.push64 ra).regs.get64 .rsp) O 0 n]
       (zipWithAddPure (words 8 64 (s.push64 ra).dmem A n).toArray
         (words 8 64 (s.push64 ra).dmem B n).toArray)
       ⦃fun _ _ _ => False; fun a t => a = ra ∧ t.regs.get64 .rsp = s.regs.get64 .rsp ∧

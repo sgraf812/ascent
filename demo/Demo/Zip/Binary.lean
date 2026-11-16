@@ -43,7 +43,7 @@ theorem zipWithAddBinary_refines_Pure (h : Binary.Assembles zipWithAdd zipWithAd
     (hrdx : (s.push64 ra).regs.get64 .rdx = O) (hrcx : (s.push64 ra).regs.get64 .rcx = BitVec.ofNat 64 n)
     (hmem : ZipArrays (s.push64 ra).dmem A B O ((s.push64 ra).regs.get64 .rsp) n) :
     ⦃(· = s.push64 ra)⦄ zipWithAddBinary
-      ⪯[(ofStateRepr id).comp (machineToArray ((s.push64 ra).regs.get64 .rsp) O 0 n)]
+      ⪯[(ofStateRepr id).comp (machineToArray 8 64 ((s.push64 ra).regs.get64 .rsp) O 0 n)]
       (zipWithAddPure (words 8 64 (s.push64 ra).dmem A n).toArray (words 8 64 (s.push64 ra).dmem B n).toArray)
       ⦃fun _ _ _ => False; fun a t => a = ra ∧ t.regs.get64 .rsp = s.regs.get64 .rsp ∧
         outView 8 64 O n (FState.split (Fr ((s.push64 ra).regs.get64 .rsp) 0 0) t.dmem).dmem

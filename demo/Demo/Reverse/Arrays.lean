@@ -8,7 +8,7 @@ import Demo.ArraysFrame
 `reverseArrays` is `reverseArrays₀` with the array reads in place. The array is read and written in
 place: a load reads the abstract state, and the pointers of the loop become indices into it
 (`Index`). The accesses to the frame leave the array unchanged and vanish. The precondition states
-the layout `ArrayLayout 8 64 [] rdi n []` of `dmem`, that the array is apart from the frame, and
+the layout `ArrayLayout 8 64 [] rdi n` of `dmem`, that the array is apart from the frame, and
 that the frame is mapped.
 -/
 
@@ -19,7 +19,7 @@ namespace Ascent.Kraken
 
 ascend_def reverseArrays₀ [Host] [Embeds swap] (rdi rsi rax rbx r12 r14 r15 rsp : BitVec 64) (ra : Int64)
     (n : Nat) : BlockM (Array (BitVec 64)) Unit from
-  ⦃fun s => rsi ≐ₙ n ∧ ArrayLayout 8 64 [] rdi n [] s.dmem ∧
+  ⦃fun s => rsi ≐ₙ n ∧ ArrayLayout 8 64 [] rdi n s.dmem ∧
     Mem.Blocks.Disjoint [(rdi, 8 * n)] (Fr rsp 6 0) ∧ Mem.Mapped (Fr rsp 6 0) s.frame⦄
   (reverseFrame rdi rsi rax rbx r12 r14 r15 rsp ra) ⪯[ofStateRepr fun s : FState => outView 8 64 rdi n s.dmem]
     reverseArrays₀
@@ -31,7 +31,7 @@ ascend_def reverseArrays₀ [Host] [Embeds swap] (rdi rsi rax rbx r12 r14 r15 rs
       | (p, q, k, i), (pi, qi) =>
         PureRefinement p pi True (Index 8 rdi) ∧ PureRefinement q qi True (Index 8 rdi) ∧
         k ≐ₙ qi ∧ i ≐ₙ (pi + 1) ∧ pi + qi + 1 = n ∧ pi < qi ∧
-        ArrayLayout 8 64 [] rdi n [] s.dmem ∧ Mem.Blocks.Disjoint [(rdi, 8 * n)] (Fr rsp 6 0) ∧
+        ArrayLayout 8 64 [] rdi n s.dmem ∧ Mem.Blocks.Disjoint [(rdi, 8 * n)] (Fr rsp 6 0) ∧
         Mem.Mapped (Fr rsp 6 0) s.frame
   with finish
 
@@ -58,7 +58,7 @@ fun ra n =>
 #print reverseArrays
 
 theorem reverseArrays.refines [Host] [Embeds swap] (rdi rsi rax rbx r12 r14 r15 rsp : BitVec 64) (ra : Int64) (n : Nat) :
-    ⦃fun s => rsi ≐ₙ n ∧ ArrayLayout 8 64 [] rdi n [] s.dmem ∧ Mem.Blocks.Disjoint [(rdi, 8 * n)] (Fr rsp 6 0) ∧
+    ⦃fun s => rsi ≐ₙ n ∧ ArrayLayout 8 64 [] rdi n s.dmem ∧ Mem.Blocks.Disjoint [(rdi, 8 * n)] (Fr rsp 6 0) ∧
       Mem.Mapped (Fr rsp 6 0) s.frame⦄
       (reverseFrame rdi rsi rax rbx r12 r14 r15 rsp ra) ⪯[ofStateRepr fun s : FState => outView 8 64 rdi n s.dmem]
       (reverseArrays ra n) ⦃fun _ _ _ => True; (fun l l' _ => l = l', estack⟨⟩)⦄ :=

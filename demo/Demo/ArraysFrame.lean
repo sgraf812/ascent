@@ -54,6 +54,18 @@ theorem disjoint_cell {w n j : Nat} {p : BitVec 64} (hd : Mem.Blocks.Disjoint [(
   exact ⟨hcell ▸ disjoint_cell hd hw hj hn, hP, hw, hb, hwd, hmap, hj, hn,
     fun y hy => by rw [FState.set_dmem_self]; exact hk y hy⟩
 
+@[ascend] theorem wrp_loadIn_getElem_const {c : σa} {Q : BitVec 64 → BitVec 64 → FState → Prop}
+    (w b : Nat) (p o : BitVec 64) (arr : Array (BitVec b)) (j : Nat) (P : Prop) (harr : p ≐ₐ arr)
+    (hij : PureRefinement o j P (Scaled w)) :
+    (fun s => P ∧ w ≤ 8 ∧ b = 8 * w ∧
+      words w b s.dmem p arr.size = arr.toList ∧ Mem.Mapped [(p, w * arr.size)] s.dmem ∧ j < arr.size ∧
+      arr.size < 2 ^ 61 ∧ Mem.Blocks.Disjoint [(p, w * arr.size)] bs ∧
+      ∀ y, BitVec.ofInt 64 ((Mem.loadInt s.dmem (p + o) w).get! % 2 ^ (8 * w)) ≐ y →
+        Q (BitVec.ofInt 64 ((Mem.loadInt s.dmem (p + o) w).get! % 2 ^ (8 * w))) y s)
+      ⊑ wrp (ofStateRepr fun _ : FState => c) (loadIn bs .dmem w (p + o))
+          (pure ((arr[j]!).setWidth 64) : BlockM σa (BitVec 64)) Q E :=
+  wrp_loadIn_getElem (view := fun _ => c) w b p o arr j P harr hij
+
 @[ascend] theorem wrp_storeIn_set {Q : Unit → Unit → FState → Prop} (w b : Nat) (p o v v' : BitVec 64)
     (n j : Nat) (P : Prop) (hij : PureRefinement o j P (Scaled w)) :
     (fun s => v ≐ v' ∧ P ∧ w ≤ 8 ∧ b = 8 * w ∧ j < n ∧ n < 2 ^ 61 ∧
@@ -68,6 +80,40 @@ theorem disjoint_cell {w n j : Nat} {p : BitVec 64} (hd : Mem.Blocks.Disjoint [(
   intro s ⟨hv, hP, hw, hb, hj, hn, hmap, hd, hk⟩
   have hcell : p + o = cell w p j := by rw [hij hP]; rfl
   exact ⟨hcell ▸ disjoint_cell hd hw hj hn, hv, hP, hw, hb, hj, hn, hmap, hk⟩
+
+@[ascend default + 1] theorem wrp_loadIn_getElem_pred {view : DataMem → σa}
+    {Q : BitVec 64 → BitVec 64 → FState → Prop} (w b : Nat) (p o : BitVec 64) (d : Int)
+    (arr : Array (BitVec b)) (j : Nat) (P : Prop) (harr : p ≐ₐ arr) (hij : PureRefinement o j P (Scaled w)) :
+    (fun s => P ∧ 0 < j ∧ d = -(w : Int) ∧ w ≤ 8 ∧ b = 8 * w ∧
+      words w b s.dmem p arr.size = arr.toList ∧ Mem.Mapped [(p, w * arr.size)] s.dmem ∧
+      j - 1 < arr.size ∧ arr.size < 2 ^ 61 ∧ Mem.Blocks.Disjoint [(p, w * arr.size)] bs ∧
+      ∀ y, BitVec.ofInt 64 ((Mem.loadInt s.dmem (p + o + BitVec.ofInt 64 d) w).get! % 2 ^ (8 * w)) ≐ y →
+        Q (BitVec.ofInt 64 ((Mem.loadInt s.dmem (p + o + BitVec.ofInt 64 d) w).get! % 2 ^ (8 * w))) y s)
+      ⊑ wrp (ofStateRepr fun s : FState => view s.dmem) (loadIn bs .dmem w (p + o + BitVec.ofInt 64 d))
+          (pure ((arr[j - 1]!).setWidth 64) : BlockM σa (BitVec 64)) Q E := by
+  have h := wrp_assert_dmemOk (bs := bs) (E := E) (p + o + BitVec.ofInt 64 d) w (wrp_zoom_dmem _ fun s =>
+    wrp_load_getElem_pred (view := view) (Q := fun v y m => Q v y (s.set .dmem m))
+      (E := (fun l l' m => E.1 l l' (s.set .dmem m), estack⟨⟩)) w b p o d arr j P harr hij)
+  refine PartialOrder.rel_trans ?_ h
+  intro s ⟨hP, hj0, hd', hw, hb, hwd, hmap, hj, hn, hd, hk⟩
+  have hcell : p + o + BitVec.ofInt 64 d = cell w p (j - 1) := by rw [hij hP, hd', cell_pred p hj0]
+  exact ⟨hcell ▸ disjoint_cell hd hw hj hn, hP, hj0, hd', hw, hb, hwd, hmap, hj, hn,
+    fun y hy => by rw [FState.set_dmem_self]; exact hk y hy⟩
+
+@[ascend default + 1] theorem wrp_storeIn_set_pred {Q : Unit → Unit → FState → Prop} (w b : Nat)
+    (p o v v' : BitVec 64) (d : Int) (n j : Nat) (P : Prop) (hij : PureRefinement o j P (Scaled w)) :
+    (fun s => v ≐ v' ∧ P ∧ 0 < j ∧ d = -(w : Int) ∧ w ≤ 8 ∧ b = 8 * w ∧ j - 1 < n ∧ n < 2 ^ 61 ∧
+      Mem.Mapped [(p, w * n)] s.dmem ∧ Mem.Blocks.Disjoint [(p, w * n)] bs ∧
+      Q () () (s.set .dmem (Mem.storeInt s.dmem (cell w p (j - 1)) w v.toInt)))
+      ⊑ wrp (ofStateRepr fun s : FState => outView w b p n s.dmem) (storeIn bs .dmem w (p + o + BitVec.ofInt 64 d) v)
+          (modify fun o => o.set! (j - 1) (v'.setWidth b) : BlockM (Array (BitVec b)) Unit) Q E := by
+  have h := wrp_assert_dmemOk (bs := bs) (E := E) (p + o + BitVec.ofInt 64 d) w (wrp_zoom_dmem _ fun s =>
+    wrp_store_set_pred (Q := fun u u' m => Q u u' (s.set .dmem m))
+      (E := (fun l l' m => E.1 l l' (s.set .dmem m), estack⟨⟩)) w b p o v v' d n j P hij)
+  refine PartialOrder.rel_trans ?_ h
+  intro s ⟨hv, hP, hj0, hd', hw, hb, hj, hn, hmap, hd, hk⟩
+  have hcell : p + o + BitVec.ofInt 64 d = cell w p (j - 1) := by rw [hij hP, hd', cell_pred p hj0]
+  exact ⟨hcell ▸ disjoint_cell hd hw (by omega) hn, hv, hP, hj0, hd', hw, hb, hj, hn, hmap, hk⟩
 
 @[ascend default - 1] theorem wrp_loadIn_get_at {Q : BitVec 64 → BitVec 64 → FState → Prop} (w b : Nat) (p c : BitVec 64)
     (n j : Nat) (P : Prop) (hij : PureRefinement c j P (Index w p)) :
@@ -185,14 +231,14 @@ theorem InputAt.split {o q : BitVec 64} {a : Array (BitVec b)} (h : InputAt w b 
 
 end
 
-/-- The concretization from the machine memory to the array of `n` words at `O`, through the frame
-of `k` words at `r₀`. -/
-noncomputable abbrev memToArray (r₀ O : BitVec 64) (k n : Nat) :=
+/-- The concretization from the machine memory to the array of `n` words of `w` bytes at `O`, read as
+`b`-bit vectors, through the frame of `k` words at `r₀`. -/
+noncomputable abbrev memToArray (w b : Nat) (r₀ O : BitVec 64) (k n : Nat) :=
   ((ofStateRepr MachineData.dmem).comp ((ofStateRepr (FState.split (Fr r₀ k 0))).comp
-    (ofStateRepr fun s : FState => outView 8 64 O n s.dmem))).comp (purify (Array (BitVec 64)))
+    (ofStateRepr fun s : FState => outView w b O n s.dmem))).comp (purify (Array (BitVec b)))
 
 /-- `memToArray` from the abstract machine state. -/
-noncomputable abbrev machineToArray (r₀ O : BitVec 64) (k n : Nat) :=
-  (ofStateRepr abs).comp (memToArray r₀ O k n)
+noncomputable abbrev machineToArray (w b : Nat) (r₀ O : BitVec 64) (k n : Nat) :=
+  (ofStateRepr abs).comp (memToArray w b r₀ O k n)
 
 end Ascent.Kraken
