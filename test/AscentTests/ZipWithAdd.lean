@@ -642,7 +642,7 @@ private theorem getSize_rel_eq {P : State → Prop} {v : USize} :
     exact h.2.2.trans h.2.1.symm
 
 /-- Establish/consume through the inferred intermediate return relation: `setSize` establishes
-the `"n"` fact, `sp` threads it, and `getSize` consumes it, abstracting the composite to `pure v`.
+the `"n"` fact, its image threads it, and `getSize` consumes it, abstracting the composite to `pure v`.
 The erased head refines `pure ()`; the scaffold collapses by `pure_bind`. -/
 example {X : Type} (f : Heap → X) (P : State → Prop) (v : USize) :
     ⦃P⦄ (setSize "n" v >>= fun _ => getSize "n")
@@ -651,20 +651,18 @@ example {X : Type} (f : Heap → X) (P : State → Prop) (v : USize) :
   have key : ⦃P⦄ (setSize "n" v >>= fun _ => getSize "n")
       ⪯[Concretization.ofStateRepr fun s => f s.heap]
       ((pure () : StateT X Demonic Unit) >>= fun _ => pure v) ⦃(⌜· = ·⌝)⦄ := by
-    have hdef : P ⊑ wp (setSize "n" v) ⊤ ⊥ :=
-      le_wp_top_of_le_wp (Q := fun _ _ => True) fun s _ => by rw [wp_setSize]; trivial
+    let img : Unit → State → Prop := fun _ s' => ∃ s₀, P s₀ ∧
+        s' = { s₀ with locals := fun y => if y = "n" then some (.size v) else s₀.locals y }
+    have himg : P ⊑ wp (setSize "n" v) img ⊥ := by
+      intro s₀ h₀
+      rw [wp_setSize]
+      exact ⟨s₀, h₀, rfl⟩
     refine .bind'
-      (((refines_setSize_st f P "n" v).mono_post fun _ _ => le_top _).conj_wp (le_wp_sp hdef))
+      (((refines_setSize_st f P "n" v).mono_post fun _ _ => le_top _).conj_wp himg)
       fun cv _ => ?_
     refine ((refines_getSize_st f _ "n" v fun s hs => ?_).mono_post
       getSize_rel_eq).weaken (meet_le_right _ _)
-    have himg : sp (setSize "n" v) P ⊥ ⊑ fun _ s' => ∃ s₀, P s₀ ∧
-        s' = { s₀ with locals := fun y => if y = "n" then some (.size v) else s₀.locals y } :=
-      sp_le (by
-        intro s₀ h₀
-        rw [wp_setSize]
-        exact ⟨s₀, h₀, rfl⟩)
-    obtain ⟨s₀, -, rfl⟩ := himg cv s hs
+    obtain ⟨s₀, -, rfl⟩ := hs
     simp
 
   simpa only [pure_bind] using key

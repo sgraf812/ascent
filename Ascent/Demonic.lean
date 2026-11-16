@@ -3,50 +3,47 @@ import Ascent.Refinement
 /-!
 # The `Demonic` effect
 
-A program in `Demonic α` is a positively conjunctive predicate transformer: `x.wpD Q` holds if
-every run of `x` ends in a value that satisfies `Q`, and `x.wpD` preserves every nonempty
-conjunction of postconditions. Every such transformer is `abort` (undefined behaviour,
-`wp = ⊥`) or `select p` (any value satisfying `p`, `wp Q = ∀ a, p a → Q a`): a singleton `p` is
-determined behaviour, a larger `p` unspecified behaviour, and `p = ∅` is `magic`, a program
-without outcome. A `bind` aborts if its first program aborts or if the continuation aborts at one
-of its values.
+A program in `Demonic α` is a finitely conjunctive predicate transformer: `x.wpD Q` holds if
+every run of `x` ends in a value that satisfies `Q`, `x.wpD` is monotone, and it preserves binary
+conjunctions of postconditions. Every such transformer is `abort` (undefined behaviour,
+`wp = ⊥`) or the filter `{Q | x.wpD Q}` on `α` (`selectFilter`). The principal filter of `p` is
+`select p` (any value satisfying `p`, `wp Q = ∀ a, p a → Q a`): a singleton `p` is determined
+behaviour, a larger `p` unspecified behaviour, and `p = ∅` is `magic`, a program without outcome.
+A `bind` aborts if its first program aborts or if the continuation aborts on a set of values
+whose complement is outside the filter of the first program.
 
 `assert g` continues if `g` holds and aborts otherwise. `assume g` continues if `g` holds and is
 `magic` otherwise. `havoc` returns any value. An abstract program carries the side conditions of
 the concrete program, such as mapped memory, as `assert`s, and it states the values that the
 concrete program leaves unspecified with `havoc` or `select`.
 
-Programs are equal if their `wp`s are (`Demonic.ext`). The outcome sets of `Demonic.Internal` are a
-proof device of this library.
+Programs are equal if their `wp`s are (`Demonic.ext`). A Mathlib `Filter` gives a program through
+`selectFilter`. The values in every set of the filter (`Demonic.Internal.outs`) can be empty, as for
+the filter of large enough numbers, so proofs about runs use `wpD` and `meet`, not outcome sets.
 -/
 
 open Std.WP Lean.Order Ascent
 
-/-- `t` maps every nonempty conjunction of postconditions to the conjunction of its images. -/
-def Conj {α : Type} (t : (α → Prop) → Prop) : Prop :=
-  ∀ (ι : Type) [Nonempty ι] (Q : ι → α → Prop), t (fun a => ∀ i, Q i a) ↔ ∀ i, t (Q i)
-
 @[ext] structure Demonic (α : Type) where private mk ::
   wpD : (α → Prop) → Prop
-  conj : Conj wpD
+  mono : ∀ {Q Q' : α → Prop}, (∀ a, Q a → Q' a) → wpD Q → wpD Q'
+  meet : ∀ {Q Q' : α → Prop}, wpD Q → wpD Q' → wpD fun a => Q a ∧ Q' a
 
 namespace Demonic
 
-theorem mono {α : Type} (x : Demonic α) {Q Q' : α → Prop} (h : ∀ a, Q a → Q' a) (hx : x.wpD Q) :
-    x.wpD Q' := by
-  have hQ : Q = fun a => ∀ i : Bool, (if i then Q' else Q) a :=
-    funext fun a => propext ⟨fun hq i => by cases i <;> simp [hq, h a hq], fun hq => hq false⟩
-  rw [hQ, x.conj] at hx
-  exact hx true
-
 /-- Undefined behaviour. -/
-def abort {α : Type} : Demonic α :=
-  ⟨fun _ => False, fun _ _ _ => ⟨False.elim, fun h => h (Classical.ofNonempty)⟩⟩
+def abort {α : Type} : Demonic α := ⟨fun _ => False, fun _ h => h, fun h _ => h⟩
 
 /-- Any value that satisfies `p`. -/
 def select {α : Type} (p : α → Prop) : Demonic α :=
-  ⟨fun Q => ∀ a, p a → Q a,
-    fun _ _ _ => ⟨fun h i a hs => h a hs i, fun h a hs i => h i a hs⟩⟩
+  ⟨fun Q => ∀ a, p a → Q a, fun h hx a hp => h a (hx a hp),
+    fun h₁ h₂ a hp => ⟨h₁ a hp, h₂ a hp⟩⟩
+
+/-- Any value in a set of the filter `F`. -/
+def selectFilter {α : Type} (F : (α → Prop) → Prop)
+    (mono : ∀ {Q Q' : α → Prop}, (∀ a, Q a → Q' a) → F Q → F Q')
+    (meet : ∀ {Q Q' : α → Prop}, F Q → F Q' → F fun a => Q a ∧ Q' a) : Demonic α :=
+  ⟨F, mono, meet⟩
 
 /-- No outcome. -/
 def magic {α : Type} : Demonic α := select fun _ => False
@@ -56,39 +53,23 @@ def magic {α : Type} : Demonic α := select fun _ => False
 @[simp] theorem wpD_select {α : Type} (p : α → Prop) (Q : α → Prop) :
     (select p).wpD Q = ∀ a, p a → Q a := rfl
 
+@[simp] theorem wpD_selectFilter {α : Type} (F : (α → Prop) → Prop) (h₁ h₂) (Q : α → Prop) :
+    (selectFilter F h₁ h₂).wpD Q = F Q := rfl
+
 @[simp] theorem wpD_magic {α : Type} (Q : α → Prop) : (magic : Demonic α).wpD Q = True :=
   propext ⟨fun _ => trivial, fun _ _ h => h.elim⟩
 
 namespace Internal
 
-/-- The values that `x` may return. -/
+/-- The values that every set of the filter of `x` contains. -/
 def outs {α : Type} (x : Demonic α) (a : α) : Prop := ∀ Q, x.wpD Q → Q a
-
-theorem wpD_iff {α : Type} {x : Demonic α} (ht : x.wpD fun _ => True) (Q : α → Prop) :
-    x.wpD Q ↔ ∀ a, outs x a → Q a := by
-  refine ⟨fun h a ho => ho Q h, fun h => ?_⟩
-  haveI : Nonempty {Q : α → Prop // x.wpD Q} := ⟨⟨_, ht⟩⟩
-  have hall := (x.conj {Q : α → Prop // x.wpD Q} fun i => i.1).mpr fun i => i.2
-  exact x.mono (fun a ha => h a fun Q hQ => ha ⟨Q, hQ⟩) hall
-
-theorem eq_abort {α : Type} {x : Demonic α} (ht : ¬x.wpD fun _ => True) : x = abort :=
-  Demonic.ext (funext fun _ => propext ⟨fun h => ht (x.mono (fun _ _ => trivial) h), False.elim⟩)
-
-theorem cases {α : Type} (x : Demonic α) : x = abort ∨ x = select (outs x) := by
-  by_cases ht : x.wpD fun _ => True
-  · exact Or.inr (Demonic.ext (funext fun Q => propext (wpD_iff ht Q)))
-  · exact Or.inl (eq_abort ht)
 
 end Internal
 
 instance : Monad Demonic where
-  pure a := ⟨fun Q => Q a, fun _ _ _ => Iff.rfl⟩
-  bind x f := ⟨fun Q => x.wpD fun a => (f a).wpD Q, fun ι _ Q => by
-    have h : (fun a => (f a).wpD fun b => ∀ i, Q i b) = fun a => ∀ i, (f a).wpD (Q i) :=
-      funext fun a => propext ((f a).conj ι Q)
-    show (x.wpD fun a => (f a).wpD fun b => ∀ i, Q i b) ↔ ∀ i, x.wpD fun a => (f a).wpD (Q i)
-    rw [h]
-    exact x.conj ι fun i a => (f a).wpD (Q i)⟩
+  pure a := ⟨fun Q => Q a, fun h hq => h _ hq, fun h₁ h₂ => ⟨h₁, h₂⟩⟩
+  bind x f := ⟨fun Q => x.wpD fun a => (f a).wpD Q, fun h => x.mono fun a => (f a).mono h,
+    fun h₁ h₂ => x.mono (fun a h => (f a).meet h.1 h.2) (x.meet h₁ h₂)⟩
 
 @[simp] theorem wpD_pure {α : Type} (a : α) (Q : α → Prop) : (pure a : Demonic α).wpD Q = Q a := rfl
 
@@ -97,12 +78,6 @@ instance : Monad Demonic where
 
 instance : LawfulMonad Demonic := LawfulMonad.mk'
   (id_map := fun _ => rfl) (pure_bind := fun _ _ => rfl) (bind_assoc := fun _ _ _ => rfl)
-
-theorem Internal.outs_pure {α : Type} (a : α) : outs (pure a : Demonic α) a := fun _ h => h
-
-theorem Internal.outs_bind_of {α β : Type} {x : Demonic α} {f : α → Demonic β} {a : α} {b : β}
-    (ha : outs x a) (hb : outs (f a) b) : outs (x >>= f) b :=
-  fun Q h => hb Q (ha _ h)
 
 /-- Undefined behaviour. -/
 def fail {α : Type} : Demonic α := abort
@@ -114,8 +89,7 @@ def havoc {α : Type} : Demonic α := select fun _ => True
 
 /-- Continues if `g` holds. Aborts otherwise. -/
 def assert (g : Prop) : Demonic Unit :=
-  ⟨fun Q => g ∧ Q (), fun _ _ _ =>
-    ⟨fun ⟨hg, h⟩ i => ⟨hg, h i⟩, fun h => ⟨(h Classical.ofNonempty).1, fun i => (h i).2⟩⟩⟩
+  ⟨fun Q => g ∧ Q (), fun h hq => ⟨hq.1, h _ hq.2⟩, fun h₁ h₂ => ⟨h₁.1, h₁.2, h₂.2⟩⟩
 
 theorem assert_of_pos {g : Prop} (h : g) : assert g = pure () :=
   Demonic.ext (funext fun _ => propext ⟨And.right, fun hq => ⟨h, hq⟩⟩)
@@ -203,9 +177,7 @@ theorem wp_bind_le {α β : Type} (x : Demonic α) (f : α → Demonic β) (post
     wp (x >>= f) post epost ⊑ wp x (fun a => wp (f a) post epost) epost := PartialOrder.rel_refl
 
 theorem wp_and {α : Type} (x : Demonic α) (P R : α → Prop) (epost : EStack⟨⟩)
-    (hP : wp x P epost) (hR : wp x R epost) : wp x (fun a => P a ∧ R a) epost := by
-  have := (x.conj Bool fun i => if i then P else R).mpr fun i => by cases i <;> assumption
-  exact x.mono (fun a h => ⟨by simpa using h true, by simpa using h false⟩) this
+    (hP : wp x P epost) (hR : wp x R epost) : wp x (fun a => P a ∧ R a) epost := x.meet hP hR
 
 theorem wp_meet {α : Type} (x : Demonic α) (A B : α → Prop) (E : EStack⟨⟩) :
     wp x A E ⊓ wp x B E ⊑ wp x (fun v => A v ⊓ B v) E := by

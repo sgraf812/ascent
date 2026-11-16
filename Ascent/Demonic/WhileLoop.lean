@@ -29,24 +29,15 @@ theorem Demonic.eq_of_le {α : Type} {x y : Demonic α} (h : x ⊑ y) (hx : x �
   | refl => rfl
 
 theorem Demonic.bind_congr {α β : Type} {x : Demonic α} {f₁ f₂ : α → Demonic β}
-    (h : ∀ a, Demonic.Internal.outs x a → f₁ a = f₂ a) : (x >>= f₁) = (x >>= f₂) := by
-  by_cases ht : x.wpD fun _ => True
-  · refine Demonic.ext (funext fun Q => ?_)
-    show (x.wpD fun a => (f₁ a).wpD Q) = x.wpD fun a => (f₂ a).wpD Q
-    rw [propext (Demonic.Internal.wpD_iff ht _), propext (Demonic.Internal.wpD_iff ht _)]
-    exact propext (forall_congr' fun a => imp_congr_right fun ha => by rw [h a ha])
-  · rw [Demonic.Internal.eq_abort ht]
-    rfl
+    (h : x.wpD fun a => f₁ a = f₂ a) : (x >>= f₁) = (x >>= f₂) :=
+  Demonic.ext (funext fun _ => propext
+    ⟨fun h₁ => x.mono (fun _ ⟨he, hq⟩ => he ▸ hq) (x.meet h h₁),
+     fun h₂ => x.mono (fun _ ⟨he, hq⟩ => he ▸ hq) (x.meet h h₂)⟩)
 
-theorem Demonic.bind_of_abort {α β : Type} {x : Demonic α} {f : α → Demonic β} {a : α}
-    (ha : Demonic.Internal.outs x a) (hf : f a = Demonic.abort) : (x >>= f) = Demonic.abort := by
-  by_cases ht : x.wpD fun _ => True
-  · refine Demonic.ext (funext fun Q => propext ⟨fun hw => ?_, False.elim⟩)
-    have := (Demonic.Internal.wpD_iff ht _).mp hw a ha
-    rw [hf] at this
-    exact this
-  · rw [Demonic.Internal.eq_abort ht]
-    rfl
+theorem Demonic.bind_of_abort {α β : Type} {x : Demonic α} {f : α → Demonic β}
+    (h : ¬x.wpD fun a => f a ≠ Demonic.abort) : (x >>= f) = Demonic.abort :=
+  Demonic.ext (funext fun Q => propext ⟨fun hw =>
+    h (x.mono (fun a ha hf => by rw [hf] at ha; exact ha) hw), False.elim⟩)
 
 instance : MonoBind Demonic where
   bind_mono_left h := by
@@ -55,11 +46,10 @@ instance : MonoBind Demonic where
     · exact FlatOrder.rel.refl
   bind_mono_right {_ _ a f₁ f₂} h := by
     open Classical in
-    by_cases hab : ∃ x, Demonic.Internal.outs a x ∧ f₁ x = Demonic.abort
-    · obtain ⟨x, hx, hf⟩ := hab
-      rw [Demonic.bind_of_abort hx hf]
+    by_cases hab : a.wpD fun x => f₁ x ≠ Demonic.abort
+    · rw [Demonic.bind_congr (a.mono (fun x hx => Demonic.eq_of_le (h x) hx) hab)]
+    · rw [Demonic.bind_of_abort hab]
       exact FlatOrder.rel.bot
-    · rw [Demonic.bind_congr fun x hs => Demonic.eq_of_le (h x) fun ha => hab ⟨x, hs, ha⟩]
 
 instance {α : Type} : WPCont (Demonic α) where
   wp_csup {ch} hch Q E := admissible_flatOrder (b := (Demonic.abort : Demonic α))

@@ -476,18 +476,23 @@ theorem wellFounded_accRestrict {α : Type} (S : α → α → Prop) :
     | intro x _ ih => exact Acc.intro _ fun y ⟨_, hs⟩ => ih y hs
   · exact Acc.intro _ fun _ ⟨ha, _⟩ => absurd ha h
 
-theorem wp_BlockM_outs {σ α : Type} (x : BlockM σ α) {Qa : α → σ → Prop}
-    {Ea : (Int64 → σ → Prop) × EStack⟨⟩} {st : σ} (h : wp x Qa Ea st) :
-    wp x (fun a st' => Qa a st' ∧ Demonic.Internal.outs (x.run.run st) (.ok a, st'))
-      (fun e st' => Ea.1 e st' ∧ Demonic.Internal.outs (x.run.run st) (.error e, st'), Ea.2)
-      st := by
-  rw [wp_BlockM_eq] at h ⊢
-  have ht := (x.run.run st).mono (fun _ _ => trivial) h
-  rw [Demonic.Internal.wpD_iff ht] at h ⊢
-  intro p hp
-  rcases p with ⟨_ | _, _⟩
-  · exact ⟨h _ hp, hp⟩
-  · exact ⟨h _ hp, hp⟩
+/-- `r` on the values of two `some`s. -/
+def OptRel {α : Type} (r : α → α → Prop) : Option α → Option α → Prop
+  | some c, some p => r c p
+  | _, _ => False
+
+theorem wellFounded_optRel {α : Type} {r : α → α → Prop} (h : WellFounded r) :
+    WellFounded (OptRel r) := by
+  have hs : ∀ a, Acc (OptRel r) (some a) := fun a => by
+    induction a using h.induction with
+    | _ a ih =>
+      refine Acc.intro _ fun y hy => ?_
+      match y, hy with
+      | some c, hc => exact ih c hc
+  refine ⟨fun x => ?_⟩
+  match x with
+  | none => exact Acc.intro _ fun y hy => match y, hy with | some _, h => nomatch h
+  | some a => exact hs a
 
 theorem ofStateRepr_eq_ofStateRel {Cσ Aσ : Type} (f : Cσ → Aσ) :
     Concretization.ofStateRepr f = Concretization.ofStateRel fun t a => a = f t := by
@@ -528,24 +533,28 @@ theorem wrp_cfg_le_exit {p : Program} [Embeds p] (hs : Program.Separated p = tru
   let st := stayIn r₀
   let T := Program.table p r₀ cell
   let H : (Int64 → MachineData → Prop) × EStack⟨⟩ := (fun a => wp (cfgLoop st T a) Qa Ea, Ea.2)
-  let Inv : Label → MachineData → MachineData → Prop := fun l u a =>
-    J u a ∧ st a = true ∧ wp (cfgLoop st T (label l)) Qa Ea a
+  let S := (x : Int64 × MachineData) × CfgSafe st T x
+  let Inv : Label → MachineData → MachineData × Option S → Prop := fun l u g =>
+    J u g.1 ∧ st g.1 = true ∧ wp (cfgLoop st T (label l)) Qa Ea g.1 ∧
+      ∃ tr, g.2 = some ⟨(label l, g.1), tr⟩
   let Q : Unit → MachineData → Prop := fun _ u =>
     (Concretization.ofStateRel J).post (fun _ _ => ⊤) Qa () u
-  let Succ : Label × MachineData → Label × MachineData → Prop :=
-    InvImage (CfgSucc st T) fun x => (label x.1, x.2)
-  let R : Label × MachineData → Label × MachineData → Prop := fun y x => Acc Succ x ∧ Succ y x
+  let R : Label × (MachineData × Option S) → Label × (MachineData × Option S) → Prop :=
+    InvImage (OptRel (CfgSafe.Child st T)) fun x => x.2.2
   have hentry : (Program.blocks p).head? = some ⟨none, 0, Program.straight (Program.view p).1,
       Program.entryNext p⟩ := by
     unfold Program.blocks Program.entryNext
     cases (Program.view p).2 <;> rfl
   refine Program.WP.cfg_ghost (p := p) (Q := Q)
     (E := EPostsConcretization.ePosts (Concretization.ofStateRel J) E Ea)
-    (s₀ := t) (g₀ := a₀) Inv R (wellFounded_accRestrict Succ) ?_
+    (s₀ := t) (g₀ := (a₀, none)) Inv R
+    (InvImage.wf _ (wellFounded_optRel (CfgSafe.wellFounded_child st T))) ?_
   intro blk hmem u g hI
-  have hrun : J u g ∧ wp (cell blk.label >>= fun _ => jumpTo st blk.next) Qa H g
-      ∧ ∀ l, blk.label = some l → st g = true ∧
-        T.get? (label l) = some (cell blk.label >>= fun _ => jumpTo st blk.next) ∧ Acc Succ (l, g) := by
+  have hrun : J u g.1 ∧ wp (cell blk.label >>= fun _ => jumpTo st blk.next) Qa H g.1 ∧
+      ∃ Pb : Int64 × MachineData → Prop,
+        wp (cell blk.label >>= fun _ => jumpTo st blk.next) (fun _ _ => True) (fun l s => Pb (l, s), estack⟨⟩) g.1 ∧
+        ∀ a' v, Pb (a', v) → wp (cfgLoop st T a') Qa Ea v → ∃ tr : CfgSafe st T (a', v),
+          ∀ l, blk.label = some l → OptRel (CfgSafe.Child st T) (some ⟨(a', v), tr⟩) g.2 := by
     cases hl : blk.label with
     | none =>
       rw [hl] at hI
@@ -554,45 +563,53 @@ theorem wrp_cfg_le_exit {p : Program} [Embeds p] (hs : Program.Separated p = tru
       have hblk : blk = ⟨none, 0, Program.straight (Program.view p).1, Program.entryNext p⟩ := by
         refine Program.block_unique Program.labels_nodup_of_embeds hmem ?_ hl
         exact List.mem_of_mem_head? hentry
-      rw [hblk]
-      refine ⟨hJ₀, ?_, fun _ h => nomatch h⟩
-      simpa only [Program.loop, BlockLoop.wp_tryCatch] using hpre
+      have hw : wp (cell none >>= fun _ => jumpTo st blk.next) Qa H a₀ := by
+        rw [hblk]
+        simpa only [Program.loop, BlockLoop.wp_tryCatch] using hpre
+      refine ⟨hJ₀, hw, fun _ => True, ?_, fun a' v _ hwv =>
+        ⟨Classical.choice (nonempty_cfgSafe st T hwv), fun _ h => nomatch h⟩⟩
+      rw [wp_BlockM_eq] at hw ⊢
+      refine (Demonic.mono _ (fun r _ => ?_) hw)
+      rcases r with ⟨_ | _, _⟩ <;> trivial
     | some l =>
       rw [hl] at hI
-      obtain ⟨hJa, hst, hw⟩ := hI
+      obtain ⟨hJa, hst, hw, tr, hg⟩ := hI
       have hTb := Program.table_get?_label (r₀ := r₀) (cell := cell) hs hmem hl
-      have hacc : Acc Succ (l, g) := InvImage.accessible _ (acc_of_wp_cfgLoop st T hw)
       rw [wp_cfgLoop_some st T Qa Ea hTb hst] at hw
       rw [hl] at hTb hw
-      exact ⟨hJa, hw, fun l' hl' => by cases hl'; exact ⟨hst, hTb, hacc⟩⟩
-  obtain ⟨hJa, hw, hblk⟩ := hrun
+      cases tr with
+      | intro P hP next =>
+        exact ⟨hJa, hw, P, hP _ hst hTb, fun a' v hy _ =>
+          ⟨next (a', v) hy, fun _ _ => by rw [hg]; exact ⟨hy, rfl⟩⟩⟩
+  obtain ⟨hJa, hw, Pb, hPb, hdec⟩ := hrun
   let c := cell blk.label
-  have hdec : ∀ a' v,
-      Demonic.Internal.outs ((c >>= fun _ => jumpTo st blk.next).run.run g) (.error a', v) →
-      ∀ l, blk.label = some l → ∀ l', a' = label l' → R (l', v) (l, g) := by
-    intro a' v hr l hl l' hl'
-    obtain ⟨hst, hTb, hacc⟩ := hblk l hl
-    subst hl'
-    exact ⟨hacc, hst, _, hTb, hr⟩
-  rw [WPMonadExact.wp_bind_eq] at hw
+  rw [WPMonadExact.wp_bind_eq] at hw hPb
   let Qa' : Unit → MachineData → Prop := fun _ st' =>
     wp (jumpTo st blk.next : BlockM MachineData Unit) Qa H st' ∧
-      Demonic.Internal.outs (c.run.run g) (.ok (), st')
+      wp (jumpTo st blk.next : BlockM MachineData Unit) (fun _ _ => True)
+        (fun l s => Pb (l, s), estack⟨⟩) st'
   let Ea' : (Int64 → MachineData → Prop) × EStack⟨⟩ :=
-    (fun a' st' => wp (cfgLoop st T a') Qa Ea st' ∧
-      Demonic.Internal.outs (c.run.run g) (.error a', st'), Ea.2)
-  have hpre' : wp c Qa' Ea' g := wp_BlockM_outs c hw
+    (fun a' st' => wp (cfgLoop st T a') Qa Ea st' ∧ Pb (a', st'), Ea.2)
+  have hpre' : wp c Qa' Ea' g.1 := BlockLoop.wp_and hw hPb
   have hb := wrp_transport (h blk hmem u).le_wrp Qa' Ea'
   have hmeet : ((fun t' => t' = u) ⊓ (Concretization.ofStateRel J).pred (wp c Qa' Ea')) u := by
     simp only [meet_apply, meet_prop_eq_and, Concretization.ofStateRel_pred]
-    exact ⟨trivial, g, hJa, hpre'⟩
+    exact ⟨trivial, g.1, hJa, hpre'⟩
   have hwp := hb u hmeet
+  have hnext : ∀ l' w b, J w b → st b = true → wp (cfgLoop st T (label l')) Qa Ea b →
+      Pb (label l', b) → ∃ g', Inv l' w g' ∧ Program.GhostDec R blk.label g l' g' := by
+    intro l' w b hJb hsb hE hy
+    obtain ⟨tr, htr⟩ := hdec (label l') b hy hE
+    refine ⟨(b, some ⟨(label l', b), tr⟩), ⟨hJb, hsb, hE, tr, rfl⟩, ?_⟩
+    cases hbl : blk.label with
+    | none => trivial
+    | some l₀ => exact htr l₀ hbl
   have hjump : ∀ v b c a', J v b → BlockExit p r₀ E c a' v → wp (cfgLoop st T a') Qa Ea b →
-      (∀ l, blk.label = some l → ∀ l', a' = label l' → R (l', b) (l, g)) →
+      Pb (a', b) →
       Program.Intercept (Program.labels p) t
         (fun l _ s' => ∃ g', Inv l s' g' ∧ Program.GhostDec R blk.label g l g')
         (EPostsConcretization.ePosts (Concretization.ofStateRel J) E Ea) c v := by
-    intro v b c a' hJv hrel hE hd
+    intro v b c a' hJv hrel hE hy
     have hsvb : st b = stayIn r₀ v := by
       simp only [st, stayIn, hJ v b hJv]
     cases hsv : st b with
@@ -635,11 +652,8 @@ theorem wrp_cfg_le_exit {p : Program} [Embeds p] (hs : Program.Separated p = tru
     | some bb =>
       obtain ⟨blk', hblk', l, hl, ha, -⟩ := Program.table_get?_some hT
       subst ha
-      refine Program.Intercept.intro (Or.inl ⟨(hstay v b hJv).mp hsv, l, rfl,
-        Program.label_mem_labels hblk' hl, ⟨b, ⟨hJv, hsv, hE⟩, ?_⟩⟩)
-      cases hbl : blk.label with
-      | none => trivial
-      | some l₀ => exact hd l₀ hbl l rfl
+      exact Program.Intercept.intro (Or.inl ⟨(hstay v b hJv).mp hsv, l, rfl,
+        Program.label_mem_labels hblk' hl, hnext l v b hJv hsv hE hy⟩)
   refine Program.wp_mono (fun u' hu => ?_) (fun u' hu => ?_) hwp
   · change (Concretization.ofStateRel J).post (fun _ _ _ => True) Qa' () u'.data at hu
     simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
@@ -653,28 +667,15 @@ theorem wrp_cfg_le_exit {p : Program} [Embeds p] (hs : Program.Separated p = tru
         meet_apply, meet_prop_eq_and, top_apply, top_prop_eq, Concretization.ofStateRel_pred]
       exact ⟨(), trivial, b, hJb, hQ⟩
     | some l' =>
-      rw [hn, jumpTo_some, AInstr.wp_branch] at hQ
-      simp only [↓reduceIte] at hQ
+      rw [hn, jumpTo_some, AInstr.wp_branch] at hQ hc
+      simp only [↓reduceIte] at hQ hc
       obtain ⟨hsu, hQ⟩ := hQ
-      refine ⟨b, ⟨hJb, hsu, hQ⟩, ?_⟩
-      cases hbl : blk.label with
-      | none => trivial
-      | some l₀ =>
-        refine hdec (label l') b ?_ l₀ hbl l' rfl
-        rw [BlockM.run_bind]
-        refine Demonic.Internal.outs_bind_of hc ?_
-        rw [hn]
-        show Demonic.Internal.outs ((AInstr.branch st (fun _ => true) (label l')).run.run b) _
-        rw [AInstr.branch_run]
-        simp only [AInstr.branch, ↓reduceIte, Demonic.assert_bind_of_pos hsu]
-        exact Demonic.Internal.outs_pure _
+      exact hnext l' u'.data b hJb hsu hQ hc.2
   · change (Concretization.ofStateRel J).post (BlockExit p r₀ E) Ea'.1 u'.pc u'.data at hu
     simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
       meet_prop_eq_and, Concretization.ofStateRel_pred] at hu
     obtain ⟨a', hrel, b, hJb, hE, hc⟩ := hu
-    refine hjump u'.data b u'.pc a' hJb hrel hE fun l hl l' hl' => hdec a' b ?_ l hl l' hl'
-    rw [BlockM.run_bind]
-    exact Demonic.Internal.outs_bind_of hc (Demonic.Internal.outs_pure _)
+    exact hjump u'.data b u'.pc a' hJb hrel hE hc
 
 theorem wrp_cfg_le_rel {p : Program} [Embeds p] (hs : Program.Separated p = true)
     {cell : Option Label → BlockM MachineData Unit} {s₀ : MachineData} {ra : Int64}

@@ -67,16 +67,6 @@ theorem sp_le_iff [WPInfConjunctive Prog Value Pred EPosts] {x : Prog} {P : Pred
 
 end
 
-instance {α : Type} : WPInfConjunctive (Demonic α) α Prop EStack⟨⟩ where
-  iInf_wp_le_wp_iInf := by
-    intro ι hne x Q E
-    show iInf (fun j => x.wpD (Q j)) ⊑ x.wpD (iInf Q)
-    rw [iInf_prop_eq_forall]
-    intro h
-    have hQ : iInf Q = fun a => ∀ j, Q j a := funext fun a => by rw [iInf_apply, iInf_prop_eq_forall]
-    rw [hQ]
-    exact (x.conj ι Q).mpr h
-
 instance {m : Type u → Type v} {σ : Type u} {Pred : Type w} {EPosts : Type z} {α : Type u}
     [Monad m] [Assertion Pred] [Assertion EPosts] [WPMonad m Pred EPosts]
     [WPInfConjunctive (m (α × σ)) (α × σ) Pred EPosts] :

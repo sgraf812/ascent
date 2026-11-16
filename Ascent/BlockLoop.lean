@@ -47,6 +47,13 @@ theorem wp_run_eq (x : ExceptT κ (StateT σ Demonic) α) (Q : α → σ → Pro
   funext p
   rcases p with ⟨_ | _, _⟩ <;> rfl
 
+theorem wp_and {x : ExceptT κ (StateT σ Demonic) α} {Q₁ Q₂ : α → σ → Prop}
+    {E₁ E₂ : (κ → σ → Prop) × EStack⟨⟩} {s : σ} (h₁ : wp x Q₁ E₁ s) (h₂ : wp x Q₂ E₂ s) :
+    wp x (fun a s' => Q₁ a s' ∧ Q₂ a s') (fun l s' => E₁.1 l s' ∧ E₂.1 l s', E₁.2) s := by
+  rw [wp_run_eq] at h₁ h₂ ⊢
+  refine (x.run.run s).mono (fun r hr => ?_) ((x.run.run s).meet h₁ h₂)
+  rcases r with ⟨_ | _, _⟩ <;> exact hr
+
 theorem wp_throw (l : κ) (Q : α → σ → Prop) (E : (κ → σ → Prop) × EStack⟨⟩) (s : σ) :
     wp (throw l : ExceptT κ (StateT σ Demonic) α) Q E s = E.1 l s := by
   rw [wp_run_eq]
@@ -778,24 +785,46 @@ theorem forIn_throw {β : Type} (b : β) (l : κ) :
 
 /-! ## Termination
 
-A state from which `cfgLoop` has a `wp` is accessible in the successor relation of the blocks: every
-sequence of block runs from it ends. -/
+A state from which `cfgLoop` has a `wp` has a derivation `CfgSafe`: every sequence of block runs
+from it ends. The subtree relation of derivations is well-founded. -/
 
-/-- `y` follows `x`: the block at the label `x.1` runs from the state `x.2` and jumps to the label
-`y.1` in the state `y.2`. -/
-def CfgSucc (y x : κ × σ) : Prop :=
-  stay x.2 = true ∧ ∃ b, T.get? x.1 = some b ∧
-    Demonic.Internal.outs (b.run.run x.2) (.error y.1, y.2)
+/-- A derivation that every sequence of block runs from `x` ends. The block at the label `x.1`
+runs from the state `x.2` and jumps only to pairs that satisfy `P`, and every such pair has a
+derivation. -/
+inductive CfgSafe : κ × σ → Type where
+  | intro {x : κ × σ} (P : κ × σ → Prop)
+      (hP : ∀ b, stay x.2 = true → T.get? x.1 = some b →
+        wp b (fun _ _ => True) (fun l s => P (l, s), estack⟨⟩) x.2)
+      (next : ∀ y, P y → CfgSafe y) : CfgSafe x
 
-theorem acc_of_wp_cfgLoop {l : κ} {Q : Unit → σ → Prop} {E : (κ → σ → Prop) × EStack⟨⟩} {s : σ}
-    (h : wp (cfgLoop stay T l) Q E s) : Acc (CfgSucc stay T) (l, s) := by
-  have key : ∀ l Q E s, wp (cfgLoop stay T l) Q E s → Acc (CfgSucc stay T) (l, s) := by
-    refine cfgLoop_induct stay T _ (admissible_wp_imp_fn fun l _ _ s => Acc (CfgSucc stay T) (l, s)) ?_
+/-- `c` is the derivation of a jump target of the first step of `p`. -/
+def CfgSafe.Child (c p : (x : κ × σ) × CfgSafe stay T x) : Prop :=
+  match p with
+  | ⟨_, .intro P _ next⟩ => ∃ h : P c.1, next c.1 h = c.2
+
+theorem CfgSafe.wellFounded_child : WellFounded (CfgSafe.Child stay T) := by
+  refine ⟨fun ⟨x, t⟩ => ?_⟩
+  induction t with
+  | intro P hP next ih =>
+    refine Acc.intro _ fun ⟨y, t'⟩ ⟨hy, he⟩ => ?_
+    dsimp only at hy he
+    subst he
+    exact ih y hy
+
+theorem nonempty_cfgSafe {l : κ} {Q : Unit → σ → Prop} {E : (κ → σ → Prop) × EStack⟨⟩} {s : σ}
+    (h : wp (cfgLoop stay T l) Q E s) : Nonempty (CfgSafe stay T (l, s)) := by
+  have key : ∀ l Q E s, wp (cfgLoop stay T l) Q E s → Nonempty (CfgSafe stay T (l, s)) := by
+    refine cfgLoop_induct stay T _
+      (admissible_wp_imp_fn fun l _ _ s => Nonempty (CfgSafe stay T (l, s))) ?_
     intro f ih l Q E s hw
-    refine Acc.intro _ fun y ⟨hs, b, hb, hy⟩ => ?_
+    refine ⟨.intro (fun y => wp (f y.1) Q E y.2) (fun b hs hb => ?_)
+      fun y hy => Classical.choice (ih y.1 Q E y.2 hy)⟩
     rw [wp_cfgStep_some stay T (hl := hb) (hs := hs), wp_run_eq] at hw
-    have ht := (b.run.run s).mono (fun _ _ => trivial) hw
-    exact ih y.1 Q E y.2 ((Demonic.Internal.wpD_iff ht _).mp hw _ hy)
+    rw [wp_run_eq]
+    refine (b.run.run s).mono (fun r hr => ?_) hw
+    rcases r with ⟨_ | _, _⟩
+    · exact hr
+    · trivial
   exact key l Q E s h
 
 end

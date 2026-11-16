@@ -34,3 +34,4 @@ import AscentTests.Regress.Invariants
 import AscentTests.Regress.ValEq
 import AscentTests.Regress.RefinementPremise
 import AscentTests.Demonic
+import AscentTests.DemonicFilter
