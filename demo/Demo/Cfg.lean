@@ -443,16 +443,6 @@ def BlockExit [Host] (p : Program) (r₀ : BitVec 64) (E : Int64 → Int64 → M
     Int64 → Int64 → MachineData → Prop :=
   fun c l t => (stayIn r₀ t = true ∧ c = l ∧ ∃ l₀ ∈ Program.labels p, label l₀ = l) ∨ E c l t
 
-/-- The exit relation of a function that leaves its frame `r₀` only by returning to `ra`: the
-concrete exit is `ra`, whatever the abstract exception. The abstract program throws `L` at its
-return. -/
-def RetExit (r₀ : BitVec 64) (ra _L : Int64) : Int64 → Int64 → MachineData → Prop :=
-  fun c _ t => stayIn r₀ t = false ∧ c = ra
-
-@[grind =] theorem RetExit_eq (r₀ : BitVec 64) (ra L c l : Int64) (t : MachineData) :
-    RetExit r₀ ra L c l t = (stayIn r₀ t = false ∧ c = ra) := rfl
-
-
 theorem Refinement.mono_exit {CProg AV CV : Type} [WP CProg CV (MachineData → Prop) (Int64 → MachineData → Prop)]
     {J : MachineData → MachineData → Prop} {c : CProg} {a : BlockM MachineData AV} {P : MachineData → Prop}
     {Q : CV → AV → MachineData → Prop} {E E' : Int64 → Int64 → MachineData → Prop}
@@ -733,11 +723,6 @@ theorem refines_cfg_exit (J : MachineData → MachineData → Prop) (hJ : ∀ t 
   ⟨fun t hrt => by
     subst hrt
     exact wrp_cfg_le_exit J hJ hs E hE (s₀ := t) h t rfl⟩
-
-theorem retExit_stay {r₀ : BitVec 64} {ra L c l : Int64} {v : MachineData} (h : RetExit r₀ ra L c l v)
-    (hs : stayIn r₀ v = true) : c = l := by
-  rw [h.1] at hs
-  exact nomatch hs
 
 end
 

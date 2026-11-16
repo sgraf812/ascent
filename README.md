@@ -29,10 +29,10 @@ forward simulation proof applies, one program construct at a time.
 * `Ascent/WPMonadExact.lean`: monads whose `wp` computes `pure` and `bind` exactly, which the
   abstract side of a refinement needs.
 * `Ascent/Demonic.lean`, `Ascent/Demonic/WhileLoop.lean`, `Ascent/Demonic/StateT.lean`: the effect
-  of abstract programs, conjunctive predicate transformers, where undefined behaviour (`abort`,
-  a failed `assume`) has weakest precondition `⊥` and an unspecified value (`choose`, `havoc`) is
-  a demonic choice; the while loop as a least fixpoint in the flat order, and `wp` lemmas for
-  `StateT σ Demonic`.
+  of abstract programs, monotone and finitely conjunctive predicate transformers, where undefined
+  behaviour (`abort`, a failed `assert`) has weakest precondition `⊥` and an unspecified value
+  (`select`, `unknown`) is a demonic choice; the while loop as a least fixpoint in the flat order,
+  and `wp` lemmas for `StateT σ Demonic`.
 * `Ascent/SP.lean`: strongest postconditions as the lower adjoint of `wp`.
 * `Ascent/Concretization.lean`: `Concretization`, its postcondition reification `post`, the
   state abstractions `ofStateRepr` and `ofStateRel`, purification, identity and composition.

@@ -15,8 +15,9 @@ void reverse_(long *a, unsigned long n) {
 }
 ```
 
-with `-O1 -fno-vectorize -fno-unroll-loops -fno-builtin -fomit-frame-pointer`. Its refinement to the
-abstract machine runs under `JRel (Mem.SubSlots P)`, and the call of `_swap` becomes `callA`.
+with `-O1 -fno-vectorize -fno-unroll-loops -fno-builtin -fomit-frame-pointer`. The call of `_swap`
+becomes `callA` of the abstract callee `k`, given by its refinement for every frame and return
+address.
 -/
 
 open Kraken.X64.Parser Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
@@ -66,18 +67,13 @@ attribute [local vcgen_simp] reverse
 ascend_def reverseA [Host] [FunDecls] [Embeds reverse] (g : Fragment)
     (hg : FunDecls.at (label "_swap") = some g)
     (k : BitVec 64 → Int64 → BlockM MachineData Unit)
-    (hk : ∀ (P' : DataMem) (r₀ : BitVec 64) (ra : Int64),
-      (P'.loadInt r₀ 8).map (fun i => Int64.ofBitVec (BitVec.ofInt 64 i)) = some ra →
-      ⦃fun s => s.regs.get64 .rsp = r₀⦄ g.prog ⪯[ofStateRel (JRel (Mem.SubSlots P'))] (k r₀ 0)
-        ⦃fun _ _ => ⊤; RetExit r₀ ra 0⦄)
-    (P : DataMem) (r₀ : BitVec 64) (ra L : Int64)
-    (hP : (P.loadInt r₀ 8).map (fun i => Int64.ofBitVec (BitVec.ofInt 64 i)) = some ra) :
-    BlockM MachineData Unit from
-  ⦃fun s => s.regs.get64 .rsp = r₀⦄ reverse ⪯[ofStateRel (JRel (Mem.SubSlots P))] reverseA
-    ⦃fun _ _ => ⊤; RetExit r₀ ra L⦄
-  ascend [refines_cfg_exit (JRel (Mem.SubSlots P)) (fun _ _ h => JRel.regs h) (RetExit r₀ ra L)
-    (fun _ _ _ h hs => retExit_stay h hs) (p := reverse), wrp_ret_slots hP, wrp_ret_slots_cons hP,
-    wrp_call_slots hg _ _ 0 hk]
+    (hk : ∀ (r : BitVec 64) (ra : Int64),
+      ⦃fun s => s.regs.get64 .rsp = r ∧ s.retAddr = some ra⦄ g.prog ⪯[ofStateRepr abs] (k r ra)
+        ⦃fun _ _ => ⊤; AddrRel r ra⦄)
+    (r₀ : BitVec 64) (ra : Int64) : BlockM MachineData Unit from
+  ⦃fun s => s.regs.get64 .rsp = r₀ ∧ s.retAddr = some ra⦄ reverse ⪯[ofStateRepr abs] reverseA
+    ⦃fun _ _ => ⊤; AddrRel r₀ ra⦄
+  ascend [refines_cfg (p := reverse) (habs := abs_regs), wrp_call hg _ _ hk]
     with finish
 
 end Ascent.Kraken

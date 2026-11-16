@@ -90,7 +90,7 @@ def closeTables (hole : MVarId) : MetaM Unit := do
 /-- A spec passed at the invocation, `ascend [t]`: the proof `t` with its metavariables abstracted,
 in `pre ⊑ wrp …` form, at the priority of core's explicit specs, above the unfold equations. For a
 `Refinement` theorem `t`, also the backward rule of `t` itself, for `Refinement` premises. -/
-def mkSpecTheoremFromTerm (term : Syntax) : TacticM (SpecTheorem × Option BackwardRule) := withRef term do
+def mkSpecTheoremFromTerm (term : Syntax) : TacticM (SpecTheorem × Option RefinementSpec) := withRef term do
   let e ← Tactic.elabTerm term none (mayPostpone := true)
   Term.synthesizeSyntheticMVars (postpone := .no) (ignoreStuckTC := true)
   let e ← instantiateMVars e
@@ -98,7 +98,11 @@ def mkSpecTheoremFromTerm (term : Syntax) : TacticM (SpecTheorem × Option Backw
     return (← whnfR body).isAppOf ``Ascent.Refinement
   let rule? ← if isRefinement then
       let r ← abstractMVars e
-      pure (some (← Sym.mkBackwardRuleFromExpr r.expr r.paramNames.toList))
+      let spec : RefinementSpec :=
+        { expr := r.expr
+          levelParams := r.paramNames.toList
+          numBinders := numForalls (← inferType r.expr) }
+      pure (some spec)
     else pure none
   let e ← if isRefinement then
       forallTelescope (← inferType e) fun xs _ => do

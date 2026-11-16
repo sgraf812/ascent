@@ -89,8 +89,15 @@ structure PureEnv where
 
 initialize pureEnvExt : SymExtension PureEnv ← registerSymExtension (pure {})
 
-/-- The `Refinement` specs of the invocation, as backward rules for `Refinement` premises. -/
-initialize refinementSpecsExt : SymExtension (Array BackwardRule) ← registerSymExtension (pure #[])
+/-- A `Refinement` spec of the invocation: its proof with the metavariables abstracted, its level
+parameters, and the number of leading binders of its type. -/
+structure RefinementSpec where
+  expr : Expr
+  levelParams : List Name
+  numBinders : Nat
+
+/-- The `Refinement` specs of the invocation, for `Refinement` premises. -/
+initialize refinementSpecsExt : SymExtension (Array RefinementSpec) ← registerSymExtension (pure #[])
 
 /-- Simplify `e` with the `simp` methods of the run. Returns the result and a proof of
 `e = result`, or `none` if `simp` makes no progress. -/
@@ -244,16 +251,32 @@ def solvePureRefinement (goal : MVarId) : VCGenM (List MVarId) := do
       #[args[0]!, args[1]!, args[2]!, av, P, Pgoal, args[5]!, prf, hpre])
     return hpre.mvarId! :: newGoals
 
-/-- Close the premise `goal : ⦃P⦄ c ⪯[ρ] a ⦃Q; E⦄` of a rule with the first `Refinement` spec of the
-invocation that unifies with it. Returns the premises of that spec. -/
+/-- The number of leading universal quantifiers of `e`. -/
+def numForalls : Expr → Nat
+  | .forallE _ _ b _ => numForalls b + 1
+  | _ => 0
+
+/-- Close the premise `goal : ∀ xs, ⦃P⦄ c ⪯[ρ] a ⦃Q; E⦄` of a rule with the first `Refinement` spec
+of the invocation that unifies with it. The spec's backward rule keeps its last binders, one for
+each binder of `xs`, so that the unifier matches the two quantifiers: holes applied to `xs`, such as
+the abstract program, are patterns over binders of the unification. Returns the premises of the
+spec. -/
 def solveRefinement (goal : MVarId) : VCGenM (Option (List MVarId)) := do
-  for rule in ← refinementSpecsExt.getState do
+  let specs ← refinementSpecsExt.getState
+  if specs.isEmpty then return none
+  let k := numForalls (← instantiateMVarsIfMVarAppS (← goal.getType))
+  for spec in specs do
+    unless k ≤ spec.numBinders do continue
+    let rule ← Sym.mkBackwardRuleFromExpr spec.expr spec.levelParams (num? := some (spec.numBinders - k))
     if let .goals gs ← rule.apply goal then return some gs
   return none
 
-/-- `true` iff `goal` is a `Refinement` goal. -/
+/-- `true` iff `goal` is a `Refinement` goal under universal quantifiers. -/
 def isRefinementGoal (goal : MVarId) : SymM Bool := do
-  return (← instantiateMVarsIfMVarAppS (← goal.getType)).isAppOf ``Ascent.Refinement
+  let rec body : Expr → Expr
+    | .forallE _ _ b _ => body b
+    | e => e
+  return body (← instantiateMVarsIfMVarAppS (← goal.getType)) |>.isAppOf ``Ascent.Refinement
 
 /-- Close a verification condition `Q c x` with the rule `PureRefinement.rel hx` of an environment
 entry `hx`. -/
