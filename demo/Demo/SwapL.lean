@@ -26,7 +26,7 @@ ascend_def swapL₀ (rdi rsi rsp rbx rbp r12 r13 r14 r15 : BitVec 64) (r₀ : Bi
 
 sym_simp_def swapL (rdi rsi : BitVec 64) (rsp : BitVec 64) (ra : Int64) : BlockM DataMem Unit from
     swapL₀ rdi rsi rsp rsp ra
-  using pre [] post [stayAt_self, eq_self_iff_true, true_and, assume_true_bind, assume_true, pure_bind, bind_pure, swapL₀, bind_pure_unit, pure_bind]
+  using pre [] post [stayAt_self, eq_self_iff_true, true_and, assert_true_bind, assert_true, pure_bind, bind_pure, swapL₀, bind_pure_unit, pure_bind]
 
 
 theorem swapL.refines (rdi rsi rbx rbp r12 r13 r14 r15 : BitVec 64) (rsp : BitVec 64) (ra : Int64) :
@@ -44,7 +44,7 @@ fun rdi rsi rsp ra => do
   let x_1 ← load 8 rsi
   store 8 rdi x_1
   store 8 rsi x
-  StateT.assume fun m => retAddrAt m rsp = some ra
+  StateT.assert fun m => retAddrAt m rsp = some ra
   throw ra
 -/
 #guard_msgs in

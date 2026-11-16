@@ -13,7 +13,7 @@ register binds the abstract value of the written value to a variable of the abst
 The step rules know no instruction. They match the three writes of `Demo.L1`: a load into a
 register `loadReg n` becomes `load n` and binds the loaded word, a store `storeWord n` becomes
 `store n`, a register write `setReg64` leaves the memory unchanged and adds no abstract step, and an
-exit `exitIf g f l` whose guard `g` reads a mapped word becomes `assume g'; throw l` with the guard
+exit `exitIf g f l` whose guard `g` reads a mapped word becomes `assert g'; throw l` with the guard
 `g'` restated over the data memory.
 -/
 
@@ -27,7 +27,7 @@ namespace Ascent.Kraken
 /-- The `n`-byte word at `a`, zero-extended to 64 bits, undefined behaviour when the cell is not
 mapped. -/
 noncomputable def load (n : Nat) (a : BitVec 64) : BlockM DataMem (BitVec 64) := fun m =>
-  Demonic.assume ((Mem.loadInt m a n).isSome = true) >>= fun _ =>
+  Demonic.assert ((Mem.loadInt m a n).isSome = true) >>= fun _ =>
     pure (.ok (BitVec.ofInt 64 ((Mem.loadInt m a n).get! % 2 ^ (8 * n))), m)
 
 /-- Store the low `n` bytes of `v` at `a`, undefined behaviour unless the cell is mapped. -/
@@ -48,10 +48,10 @@ theorem wp_load (n : Nat) (a : BitVec 64) :
           ∧ Q (BitVec.ofInt 64 ((Mem.loadInt m a n).get! % 2 ^ (8 * n))) m) := by
   rw [wp_BlockM_eq, show (load n a).run.run m = load n a m from rfl, load]
   by_cases h : (Mem.loadInt m a n).isSome = true
-  · rw [Demonic.assume_bind_of_pos h]
+  · rw [Demonic.assert_bind_of_pos h]
     simp only [h, true_and]
     rfl
-  · rw [Demonic.assume_bind_of_neg h]
+  · rw [Demonic.assert_bind_of_neg h]
     simp only [Bool.not_eq_true] at h
     simp [h]
 
@@ -76,9 +76,9 @@ grind_pattern Mem.Mapped.loadInt_isSome_single => Mem.Mapped [(a, n)] m, Mem.loa
       store n a v ⦃Qu; E⦄ :=
   ⟨fun m h => by rw [wp_store]; exact h⟩
 
-theorem wp_assume_throw {α : Type} {Qα : α → DataMem → Prop} (g : DataMem → Prop) (l : Int64) :
-    wp (do StateT.assume g; throw l : BlockM DataMem α) Qα E m = (g m ∧ E.1 l m) := by
-  rw [WPMonadExact.wp_bind_eq, ExceptT.wp_monadLift_StateT_Demonic, StateT.wp_assume_eq, wp_throw_block]
+theorem wp_assert_throw {α : Type} {Qα : α → DataMem → Prop} (g : DataMem → Prop) (l : Int64) :
+    wp (do StateT.assert g; throw l : BlockM DataMem α) Qα E m = (g m ∧ E.1 l m) := by
+  rw [WPMonadExact.wp_bind_eq, ExceptT.wp_monadLift_StateT_Demonic, StateT.wp_assert_eq, wp_throw_block]
 
 end
 
@@ -377,16 +377,16 @@ end
 section
 variable {σa : Type} {view : DataMem → σa} {E : (Int64 → Int64 → DataMem → Prop) × EStack⟨⟩}
 
-@[ascend default + 1] theorem wrp_assume_throw {CV AV : Type} {Q : CV → AV → DataMem → Prop}
+@[ascend default + 1] theorem wrp_assert_throw {CV AV : Type} {Q : CV → AV → DataMem → Prop}
     (g : DataMem → Prop) (l : Int64) :
     (fun m => g m ∧ E.1 l l m)
-      ⊑ wrp (ofStateRepr view) (do StateT.assume g; throw l : BlockM DataMem CV)
+      ⊑ wrp (ofStateRepr view) (do StateT.assert g; throw l : BlockM DataMem CV)
           (throw l : BlockM σa AV) Q E := by
   refine wrp_intro fun Qa Ea => ?_
   intro m hm
   simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_throw_block] at hm
   obtain ⟨⟨hg, he⟩, hw⟩ := hm
-  rw [wp_assume_throw]
+  rw [wp_assert_throw]
   refine ⟨hg, ?_⟩
   simp only [EPostsConcretization.ePosts_cons]
   rw [Concretization.post_pi]
@@ -425,15 +425,15 @@ theorem wrp_forIn_lockstep_bind_unit {βc βa : Type} (R : LockstepInvariant βc
   rw [Concretization.post_pi]
   exact ⟨(), hq, hqa⟩
 
-@[ascend] theorem wrp_assume_skip {Q : PUnit → PUnit → σc → Prop} (g : σc → Prop) :
+@[ascend] theorem wrp_assert_skip {Q : PUnit → PUnit → σc → Prop} (g : σc → Prop) :
     (fun m => g m ∧ Q () () m)
-      ⊑ wrp (ofStateRepr view) (do StateT.assume g : BlockM σc PUnit)
+      ⊑ wrp (ofStateRepr view) (do StateT.assert g : BlockM σc PUnit)
           (pure () : BlockM σa PUnit) Q E := by
   refine wrp_intro fun Qa Ea => ?_
   intro m hm
   simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, WPMonadExact.wp_pure_eq] at hm
   obtain ⟨⟨hg, hq⟩, hw⟩ := hm
-  simp only [ExceptT.wp_monadLift_StateT_Demonic, StateT.wp_assume_eq]
+  simp only [ExceptT.wp_monadLift_StateT_Demonic, StateT.wp_assert_eq]
   refine ⟨hg, ?_⟩
   rw [Concretization.post_pi]
   exact ⟨(), hq, hw⟩
@@ -537,16 +537,16 @@ theorem wrp_forIn_lockstep_unit {βa : Type} (R : LockstepInvariant PUnit Machin
   simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, hf]
   exact ⟨hk, hw⟩
 
-@[ascend] theorem wrp_exitIf_assume {CV AV : Type} {Q : CV → AV → MachineData → Prop}
+@[ascend] theorem wrp_exitIf_assert {CV AV : Type} {Q : CV → AV → MachineData → Prop}
     (a : MachineData → BitVec 64) (f : MachineData → MachineData) (l : Int64) (pa : BitVec 64)
     (hf : ∀ t, (f t).dmem = t.dmem) :
     (fun t => a t ≐ pa ∧ (loadOk 8 a t → E.1 l l (f t)))
       ⊑ wrp (ofStateRepr MachineData.dmem) (exitIf (loadOk 8 a) f l : BlockM MachineData CV)
-          (do StateT.assume (fun m => (Mem.loadInt m pa 8).isSome = true); throw l : BlockM DataMem AV)
+          (do StateT.assert (fun m => (Mem.loadInt m pa 8).isSome = true); throw l : BlockM DataMem AV)
           Q E := by
   refine wrp_intro fun Qa Ea => ?_
   intro t ht
-  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_assume_throw] at ht
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_assert_throw] at ht
   obtain ⟨⟨ha, hk⟩, hl, he⟩ := ht
   have ha : a t = pa := ha trivial
   have hg : loadOk 8 a t := by rw [loadOk, ha]; exact hl
@@ -563,11 +563,11 @@ theorem wrp_forIn_lockstep_unit {βa : Type} (R : LockstepInvariant PUnit Machin
     (hf : ∀ t, (f t).dmem = t.dmem) :
     (fun t => t.regs.get64 .rsp ≐ pa ∧ (t.regs.rsp.toBitVec = r₀ → E.1 l l (f t)))
       ⊑ wrp (ofStateRepr MachineData.dmem) (exitIf (fun s => s.regs.rsp.toBitVec = r₀) f l : BlockM MachineData CV)
-          (do StateT.assume (fun (_ : DataMem) => pa = r₀); throw l : BlockM DataMem AV)
+          (do StateT.assert (fun (_ : DataMem) => pa = r₀); throw l : BlockM DataMem AV)
           Q E := by
   refine wrp_intro fun Qa Ea => ?_
   intro t ht
-  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_assume_throw] at ht
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_assert_throw] at ht
   obtain ⟨⟨ha, hk⟩, hl, he⟩ := ht
   have hg : t.regs.rsp.toBitVec = r₀ := by rw [← Reg64s.get64_rsp]; exact (ha trivial).trans hl
   rw [wp_exitIf]
@@ -590,12 +590,12 @@ def retAddrAt (m : DataMem) (p : BitVec 64) : Option Int64 :=
     (hf : ∀ t, (f t).dmem = t.dmem) :
     (fun t => t.regs.get64 .rsp ≐ pa ∧ (retOk r₀ ra t → E.1 l l (f t)))
       ⊑ wrp (ofStateRepr MachineData.dmem) (exitIf (retOk r₀ ra) f l : BlockM MachineData CV)
-          (do StateT.assume (fun m => pa = r₀ ∧ retAddrAt m pa = some ra)
+          (do StateT.assert (fun m => pa = r₀ ∧ retAddrAt m pa = some ra)
               throw l : BlockM DataMem AV)
           Q E := by
   refine wrp_intro fun Qa Ea => ?_
   intro t ht
-  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_assume_throw] at ht
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, wp_assert_throw] at ht
   obtain ⟨⟨ha, hk⟩, ⟨hr, hl⟩, he⟩ := ht
   have ha : t.regs.get64 .rsp = pa := ha trivial
   have hg : retOk r₀ ra t := ⟨ha.trans hr, by rw [MachineData.retAddr_eq, ha]; exact hl⟩
@@ -607,16 +607,16 @@ def retAddrAt (m : DataMem) (p : BitVec 64) : Option Int64 :=
   simp only [ofStateRepr_pred, hf]
   exact he
 
-theorem assume_true_bind {σ α : Type} (k : PUnit → BlockM σ α) :
-    ((do StateT.assume (fun (_ : σ) => True) : BlockM σ PUnit) >>= k) = k PUnit.unit := by
+theorem assert_true_bind {σ α : Type} (k : PUnit → BlockM σ α) :
+    ((do StateT.assert (fun (_ : σ) => True) : BlockM σ PUnit) >>= k) = k PUnit.unit := by
   apply BlockLoop.ext_wp <;> intro Q E m <;>
-    simp only [WPMonadExact.wp_bind_eq, ExceptT.wp_monadLift_StateT_Demonic, StateT.wp_assume_eq, true_and] <;>
+    simp only [WPMonadExact.wp_bind_eq, ExceptT.wp_monadLift_StateT_Demonic, StateT.wp_assert_eq, true_and] <;>
     exact id
 
-theorem assume_true {σ : Type} :
-    (do StateT.assume (fun (_ : σ) => True) : BlockM σ PUnit) = pure PUnit.unit := by
+theorem assert_true {σ : Type} :
+    (do StateT.assert (fun (_ : σ) => True) : BlockM σ PUnit) = pure PUnit.unit := by
   apply BlockLoop.ext_wp <;> intro Q E m <;>
-    simp only [WPMonadExact.wp_pure_eq, ExceptT.wp_monadLift_StateT_Demonic, StateT.wp_assume_eq, true_and] <;>
+    simp only [WPMonadExact.wp_pure_eq, ExceptT.wp_monadLift_StateT_Demonic, StateT.wp_assert_eq, true_and] <;>
     exact id
 
 @[ascend] theorem wrp_modifyIf_retOk {Q : Unit → PUnit → MachineData → Prop}
@@ -624,13 +624,13 @@ theorem assume_true {σ : Type} :
     (hf : ∀ t, (f t).dmem = t.dmem) :
     (fun t => t.regs.get64 .rsp ≐ pa ∧ (retOk r₀ ra t → Q () () (f t)))
       ⊑ wrp (ofStateRepr MachineData.dmem) (modifyIf (retOk r₀ ra) f : BlockM MachineData Unit)
-          (do StateT.assume (fun m => pa = r₀ ∧ retAddrAt m pa = some ra)
+          (do StateT.assert (fun m => pa = r₀ ∧ retAddrAt m pa = some ra)
             : BlockM DataMem PUnit)
           Q E := by
   refine wrp_intro fun Qa Ea => ?_
   intro t ht
   simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, ExceptT.wp_monadLift_StateT_Demonic,
-    StateT.wp_assume_eq] at ht
+    StateT.wp_assert_eq] at ht
   obtain ⟨⟨ha, hk⟩, ⟨hr, hl⟩, hq⟩ := ht
   have ha : t.regs.get64 .rsp = pa := ha trivial
   have hg : retOk r₀ ra t := ⟨ha.trans hr, by rw [MachineData.retAddr_eq, ha]; exact hl⟩
@@ -645,12 +645,12 @@ theorem assume_true {σ : Type} :
     (fun t => t.regs.get64 .rsp ≐ pa ∧ (stayIn r₀ t = true → Q () () t))
       ⊑ wrp (ofStateRepr MachineData.dmem)
           (modifyIf (fun s => stayIn r₀ s = true) id : BlockM MachineData Unit)
-          (do StateT.assume (fun (_ : DataMem) => stayAt r₀ pa = true) : BlockM DataMem PUnit)
+          (do StateT.assert (fun (_ : DataMem) => stayAt r₀ pa = true) : BlockM DataMem PUnit)
           Q E := by
   refine wrp_intro fun Qa Ea => ?_
   intro t ht
   simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, ExceptT.wp_monadLift_StateT_Demonic,
-    StateT.wp_assume_eq] at ht
+    StateT.wp_assert_eq] at ht
   obtain ⟨⟨ha, hk⟩, hl, hq⟩ := ht
   have ha : t.regs.get64 .rsp = pa := ha trivial
   have hg : stayIn r₀ t = true := by rw [stayIn, ha]; exact hl
@@ -659,17 +659,17 @@ theorem assume_true {σ : Type} :
   rw [Concretization.post_pi]
   exact ⟨(), hk hg, hq⟩
 
-@[ascend] theorem wrp_modifyIf_assume {Q : Unit → PUnit → MachineData → Prop}
+@[ascend] theorem wrp_modifyIf_assert {Q : Unit → PUnit → MachineData → Prop}
     (a : MachineData → BitVec 64) (f : MachineData → MachineData) (pa : BitVec 64)
     (hf : ∀ t, (f t).dmem = t.dmem) :
     (fun t => a t ≐ pa ∧ (loadOk 8 a t → Q () () (f t)))
       ⊑ wrp (ofStateRepr MachineData.dmem) (modifyIf (loadOk 8 a) f : BlockM MachineData Unit)
-          (do StateT.assume (fun m => (Mem.loadInt m pa 8).isSome = true) : BlockM DataMem PUnit)
+          (do StateT.assert (fun m => (Mem.loadInt m pa 8).isSome = true) : BlockM DataMem PUnit)
           Q E := by
   refine wrp_intro fun Qa Ea => ?_
   intro t ht
   simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, ExceptT.wp_monadLift_StateT_Demonic,
-    StateT.wp_assume_eq] at ht
+    StateT.wp_assert_eq] at ht
   obtain ⟨⟨ha, hk⟩, hl, hq⟩ := ht
   have ha : a t = pa := ha trivial
   have hg : loadOk 8 a t := by rw [loadOk, ha]; exact hl

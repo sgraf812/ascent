@@ -29,7 +29,7 @@ ascend_def reverseL₀ [Host] [Embeds swap] (rdi rsi rax rsp rbx rbp r12 r13 r14
 
 sym_simp_def reverseL [Host] [Embeds swap] (rdi rsi rax rbx r12 r14 r15 rsp : BitVec 64) (L : Int64) :
     BlockM DataMem Unit from reverseL₀ rdi rsi rax rsp rbx r12 r14 r15 rsp L
-  using pre [add_ofInt_neg] post [stayAt_self, eq_self_iff_true, true_and, assume_true_bind, assume_true,
+  using pre [add_ofInt_neg] post [stayAt_self, eq_self_iff_true, true_and, assert_true_bind, assert_true,
     pure_bind, bind_pure, reverseL₀, bind_pure_unit, BitVec.sub_add_cancel, BitVec.ofInt_int64ToInt,
     Int64.toBitVec_ofNat, Int64.toBitVec_neg, BitVec.ofNat_eq_ofNat, BitVec.add_neg_eq_sub]
 
@@ -43,7 +43,7 @@ fun rdi rsi rax rbx r12 r14 r15 rsp L =>
     store 8 (rsp - 8#64 - 8#64 - 8#64) r12
     store 8 (rsp - 8#64 - 8#64 - 8#64 - 8#64) rbx
     store 8 (rsp - 8#64 - 8#64 - 8#64 - 8#64 - 8#64) rax
-    StateT.assume fun x => stayAt rsp (rsp - 8#64 - 8#64 - 8#64 - 8#64 - 8#64) = true
+    StateT.assert fun x => stayAt rsp (rsp - 8#64 - 8#64 - 8#64 - 8#64 - 8#64) = true
     let _ ←
       { }.forIn (rdi, rdi + rsi * 8#64 + 18446744073709551608#64, rsi - 1#64, 1#64) fun x a => do
           callL (rsp - 8#64 - 8#64 - 8#64 - 8#64 - 8#64)
@@ -51,7 +51,7 @@ fun rdi rsi rax rbx r12 r14 r15 rsp L =>
                 (rsp - 8#64 - 8#64 - 8#64 - 8#64 - 8#64 - 8#64) 0)
           condState (fun x => CondCode.c.cmp a.snd.snd.snd (a.snd.snd.fst - 1#64))
               (do
-                StateT.assume fun x => stayAt rsp (rsp - 8#64 - 8#64 - 8#64 - 8#64 - 8#64) = true
+                StateT.assert fun x => stayAt rsp (rsp - 8#64 - 8#64 - 8#64 - 8#64 - 8#64) = true
                 pure
                     (ForInStep.yield
                       (a.fst + 8#64, a.snd.fst + 18446744073709551608#64, a.snd.snd.fst - 1#64, a.snd.snd.snd + 1#64)))

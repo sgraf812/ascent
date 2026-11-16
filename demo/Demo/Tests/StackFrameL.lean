@@ -25,7 +25,7 @@ ascend_def pushPopL₀ [Host] [Embeds pushPop] (rdi rsi rbx r12 rsp : BitVec 64)
 sym_simp_def pushPopL [Host] [Embeds pushPop] (rbx r12 rsp : BitVec 64) (ra : Int64) :
     BlockM DataMem Unit from
     pushPopL₀ rbx r12 rsp rsp ra
-  using pre [add_ofInt_neg] post [stayAt_self, eq_self_iff_true, true_and, assume_true_bind, assume_true, pure_bind,
+  using pre [add_ofInt_neg] post [stayAt_self, eq_self_iff_true, true_and, assert_true_bind, assert_true, pure_bind,
     bind_pure, pushPopL₀, bind_pure_unit, BitVec.sub_add_cancel, BitVec.ofInt_int64ToInt,
     Int64.toBitVec_ofNat, Int64.toBitVec_neg, BitVec.ofNat_eq_ofNat, BitVec.add_neg_eq_sub]
 
@@ -36,7 +36,7 @@ fun rbx r12 rsp ra => do
   store 8 (rsp - 8#64 - 8#64) r12
   let _ ← load 8 (rsp - 8#64 - 8#64)
   let _ ← load 8 (rsp - 8#64)
-  StateT.assume fun m => retAddrAt m rsp = some ra
+  StateT.assert fun m => retAddrAt m rsp = some ra
   throw ra
 -/
 #guard_msgs in
@@ -53,7 +53,7 @@ ascend_def localsL₀ [Host] [Embeds locals] (rdi rsi rsp : BitVec 64) (r₀ : B
 sym_simp_def localsL [Host] [Embeds locals] (rdi rsi rsp : BitVec 64) (ra : Int64) :
     BlockM DataMem Unit from
     localsL₀ rdi rsi rsp rsp ra
-  using pre [add_ofInt_neg] post [stayAt_self, eq_self_iff_true, true_and, assume_true_bind, assume_true, pure_bind,
+  using pre [add_ofInt_neg] post [stayAt_self, eq_self_iff_true, true_and, assert_true_bind, assert_true, pure_bind,
     bind_pure, localsL₀, bind_pure_unit, BitVec.sub_add_cancel, BitVec.ofInt_int64ToInt,
     Int64.toBitVec_ofNat, Int64.toBitVec_neg, BitVec.ofNat_eq_ofNat, BitVec.add_neg_eq_sub]
 
@@ -64,7 +64,7 @@ fun rdi rsi rsp ra => do
   store 8 (rsp - 16#64) rsi
   let _ ← load 8 (rsp - 16#64 + 8#64)
   let _ ← load 8 (rsp - 16#64)
-  StateT.assume fun m => retAddrAt m rsp = some ra
+  StateT.assert fun m => retAddrAt m rsp = some ra
   throw ra
 -/
 #guard_msgs in
@@ -81,7 +81,7 @@ ascend_def bytesL₀ [Host] [Embeds bytes] (rax rcx rsp : BitVec 64) (r₀ : Bit
 sym_simp_def bytesL [Host] [Embeds bytes] (rax rsp : BitVec 64) (ra : Int64) :
     BlockM DataMem Unit from
     bytesL₀ rax rsp rsp ra
-  using pre [add_ofInt_neg] post [stayAt_self, eq_self_iff_true, true_and, assume_true_bind, assume_true, pure_bind,
+  using pre [add_ofInt_neg] post [stayAt_self, eq_self_iff_true, true_and, assert_true_bind, assert_true, pure_bind,
     bind_pure, bytesL₀, bind_pure_unit, BitVec.sub_add_cancel, BitVec.ofInt_int64ToInt,
     Int64.toBitVec_ofNat, Int64.toBitVec_neg, BitVec.ofNat_eq_ofNat, BitVec.add_neg_eq_sub]
 
@@ -91,7 +91,7 @@ fun rax rsp ra => do
   store 1 (rsp - 16#64 + 3#64) rax
   let _ ← load 1 (rsp - 16#64 + 3#64)
   let _ ← load 1 (rsp - 16#64 + 3#64)
-  StateT.assume fun m => retAddrAt m rsp = some ra
+  StateT.assert fun m => retAddrAt m rsp = some ra
   throw ra
 -/
 #guard_msgs in
@@ -108,7 +108,7 @@ ascend_def halvesL₀ [Host] [Embeds halves] (rax rcx rdx rsp : BitVec 64) (r₀
 sym_simp_def halvesL [Host] [Embeds halves] (rax rsp : BitVec 64) (ra : Int64) :
     BlockM DataMem Unit from
     halvesL₀ rax rsp rsp ra
-  using pre [add_ofInt_neg] post [stayAt_self, eq_self_iff_true, true_and, assume_true_bind, assume_true, pure_bind,
+  using pre [add_ofInt_neg] post [stayAt_self, eq_self_iff_true, true_and, assert_true_bind, assert_true, pure_bind,
     bind_pure, halvesL₀, bind_pure_unit, BitVec.sub_add_cancel, BitVec.ofInt_int64ToInt,
     Int64.toBitVec_ofNat, Int64.toBitVec_neg, BitVec.ofNat_eq_ofNat, BitVec.add_neg_eq_sub]
 
@@ -119,7 +119,7 @@ fun rax rsp ra => do
   let _ ← load 2 (rsp - 8#64 - 2#64)
   store 2 (rsp - 8#64 + 5#64) rax
   let _ ← load 2 (rsp - 8#64 + 5#64)
-  StateT.assume fun m => retAddrAt m rsp = some ra
+  StateT.assert fun m => retAddrAt m rsp = some ra
   throw ra
 -/
 #guard_msgs in
@@ -136,7 +136,7 @@ ascend_def redZoneL₀ [Host] [Embeds redZone] (rdi rax rsp : BitVec 64) (r₀ :
 sym_simp_def redZoneL [Host] [Embeds redZone] (rdi rax rsp : BitVec 64) (ra : Int64) :
     BlockM DataMem Unit from
     redZoneL₀ rdi rax rsp rsp ra
-  using pre [add_ofInt_neg] post [stayAt_self, eq_self_iff_true, true_and, assume_true_bind, assume_true, pure_bind,
+  using pre [add_ofInt_neg] post [stayAt_self, eq_self_iff_true, true_and, assert_true_bind, assert_true, pure_bind,
     bind_pure, redZoneL₀, bind_pure_unit, BitVec.sub_add_cancel, BitVec.ofInt_int64ToInt,
     Int64.toBitVec_ofNat, Int64.toBitVec_neg, BitVec.ofNat_eq_ofNat, BitVec.add_neg_eq_sub]
 
@@ -147,7 +147,7 @@ fun rdi rax rsp ra => do
   store 1 (rsp - 11#64) rax
   let _ ← load 8 (rsp - 8#64)
   let _ ← load 1 (rsp - 11#64)
-  StateT.assume fun m => retAddrAt m rsp = some ra
+  StateT.assert fun m => retAddrAt m rsp = some ra
   throw ra
 -/
 #guard_msgs in

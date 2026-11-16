@@ -46,8 +46,8 @@ noncomputable def chain2 : { a : Demonic Int //
 /-- Each addition acquires its no-overflow guard, at the abstract value of the previous step. -/
 example : chain2.1 = (do
     let a ← (do
-      let b ← (do Demonic.assume True; pure (wordVal 7))
-      (do Demonic.assume (b + wordVal 7 < 2 ^ 64); pure (b + wordVal 7)))
-    (do Demonic.assume (a + wordVal 7 < 2 ^ 64); pure (a + wordVal 7))) := rfl
+      let b ← (do Demonic.assert True; pure (wordVal 7))
+      (do Demonic.assert (b + wordVal 7 < 2 ^ 64); pure (b + wordVal 7)))
+    (do Demonic.assert (a + wordVal 7 < 2 ^ 64); pure (a + wordVal 7))) := rfl
 
 end WordAbsEngine

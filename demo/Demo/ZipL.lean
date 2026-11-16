@@ -31,7 +31,7 @@ ascend_def zipWithAddL₀ (rdi rsi rdx rcx rsp : BitVec 64) (r₀ : BitVec 64) (
 sym_simp_def zipWithAddL (rdi rsi rdx rcx : BitVec 64) (rsp : BitVec 64) (ra : Int64) :
     BlockM DataMem Unit from
     zipWithAddL₀ rdi rsi rdx rcx rsp rsp ra
-  using pre [] post [stayAt_self, eq_self_iff_true, true_and, assume_true_bind, assume_true, pure_bind, bind_pure, zipWithAddL₀, condState_const, CondCode.cmp_nz_eq_true, CondCode.cmp_le_eq_true, BitVec.and_self,
+  using pre [] post [stayAt_self, eq_self_iff_true, true_and, assert_true_bind, assert_true, pure_bind, bind_pure, zipWithAddL₀, condState_const, CondCode.cmp_nz_eq_true, CondCode.cmp_le_eq_true, BitVec.and_self,
     BitVec.toInt_zero, bind_pure_unit, pure_bind, BitVec.sub_self, BitVec.reduceSLT, Bool.not_false,
     true_and]
 
@@ -47,7 +47,7 @@ info: def Ascent.Kraken.zipWithAddL : BitVec 64 →
   BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → Int64 → BlockM DataMem Unit :=
 fun rdi rsi rdx rcx rsp ra =>
   if rcx.toInt ≤ 0 then do
-    StateT.assume fun m => retAddrAt m rsp = some ra
+    StateT.assert fun m => retAddrAt m rsp = some ra
     throw ra
   else do
     let mut v := 0#64
@@ -58,7 +58,7 @@ fun rdi rsi rdx rcx rsp ra =>
       if ¬rcx = v + 1#64 then 
         v := v + 1#64
       else
-        StateT.assume fun m => retAddrAt m rsp = some ra
+        StateT.assert fun m => retAddrAt m rsp = some ra
         throw ra
 -/
 #guard_msgs in

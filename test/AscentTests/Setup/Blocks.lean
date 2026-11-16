@@ -34,7 +34,7 @@ section
 variable {σ : Type}
 
 noncomputable def modifyIf (g : σ → Prop) (f : σ → σ) : BlockM σ Unit :=
-  fun st => Demonic.assume (g st) >>= fun _ => pure (.ok (), f st)
+  fun st => Demonic.assert (g st) >>= fun _ => pure (.ok (), f st)
 
 def branch (c : σ → Bool) (l : Lbl) : BlockM σ Unit :=
   fun st => if c st then pure (.error l, st) else pure (.ok (), st)
@@ -48,10 +48,10 @@ theorem wp_modifyIf (g f) : wp (modifyIf g f) Qa Ea st = (g st ∧ Qa () (f st))
   rw [ExceptT.wp_apply_eq, StateT.wp_apply_eq, show (modifyIf g f).run.run st = modifyIf g f st from rfl]
   unfold modifyIf
   by_cases h : g st
-  · rw [Demonic.assume_bind_of_pos h]
+  · rw [Demonic.assert_bind_of_pos h]
     simp only [Demonic.wp_pure_eq, h, true_and]
     rfl
-  · rw [Demonic.assume_bind_of_neg h]
+  · rw [Demonic.assert_bind_of_neg h]
     simp only [Demonic.wp_fail_eq, bot_prop_eq, h, false_and]
 
 theorem wp_branch (c l) : wp (branch c l) Qa Ea st = if c st then Ea.1 l st else Qa () st := by

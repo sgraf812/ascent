@@ -9,10 +9,10 @@ def chainC (c : UInt64) : Nat → Id UInt64
   | n+1 => do let r ← chainC c n; pure (r + c)
 
 noncomputable def chainA (c : UInt64) : Nat → Demonic Int
-  | 0 => (do Demonic.assume True; pure (wordVal c))
+  | 0 => (do Demonic.assert True; pure (wordVal c))
   | n+1 => do
     let r ← chainA c n
-    (do Demonic.assume (r + wordVal c < 2 ^ 64); pure (r + wordVal c))
+    (do Demonic.assert (r + wordVal c < 2 ^ 64); pure (r + wordVal c))
 
 /-- `ascend [chainC]` unfolds the recursive concrete program at a literal depth. -/
 noncomputable def chain3 :

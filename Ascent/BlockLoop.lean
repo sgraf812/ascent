@@ -784,7 +784,8 @@ sequence of block runs from it ends. -/
 /-- `y` follows `x`: the block at the label `x.1` runs from the state `x.2` and jumps to the label
 `y.1` in the state `y.2`. -/
 def CfgSucc (y x : κ × σ) : Prop :=
-  stay x.2 = true ∧ ∃ b, T.get? x.1 = some b ∧ (b.run.run x.2).outs (.error y.1, y.2)
+  stay x.2 = true ∧ ∃ b, T.get? x.1 = some b ∧
+    Demonic.Internal.outs (b.run.run x.2) (.error y.1, y.2)
 
 theorem acc_of_wp_cfgLoop {l : κ} {Q : Unit → σ → Prop} {E : (κ → σ → Prop) × EStack⟨⟩} {s : σ}
     (h : wp (cfgLoop stay T l) Q E s) : Acc (CfgSucc stay T) (l, s) := by
@@ -794,7 +795,7 @@ theorem acc_of_wp_cfgLoop {l : κ} {Q : Unit → σ → Prop} {E : (κ → σ �
     refine Acc.intro _ fun y ⟨hs, b, hb, hy⟩ => ?_
     rw [wp_cfgStep_some stay T (hl := hb) (hs := hs), wp_run_eq] at hw
     have ht := (b.run.run s).mono (fun _ _ => trivial) hw
-    exact ih y.1 Q E y.2 ((Demonic.wpD_iff ht _).mp hw _ hy)
+    exact ih y.1 Q E y.2 ((Demonic.Internal.wpD_iff ht _).mp hw _ hy)
   exact key l Q E s h
 
 end

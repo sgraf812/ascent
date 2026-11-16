@@ -33,7 +33,7 @@ ascend_def progA (c : Nat) : Demonic Nat from
 /--
 info: def IdentityEntryTest.progA : Nat → Demonic Nat :=
 fun c => do
-  Demonic.assume True
+  Demonic.assert True
   pure (c + 1)
 -/
 #guard_msgs in

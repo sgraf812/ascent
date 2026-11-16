@@ -29,7 +29,7 @@ ascend_def memmoveL₀ (rdi rsi rdx rsp : BitVec 64) (r₀ : BitVec 64) (ra : In
 
 sym_simp_def memmoveL (rdi rsi rdx : BitVec 64) (rsp : BitVec 64) (ra : Int64) : BlockM DataMem Unit from
     memmoveL₀ rdi rsi rdx rsp rsp ra
-  using pre [] post [stayAt_self, eq_self_iff_true, true_and, assume_true_bind, assume_true, pure_bind, bind_pure, memmoveL₀, condState_const, CondCode.cmp_nz_eq_true, CondCode.cmp_z_eq_true,
+  using pre [] post [stayAt_self, eq_self_iff_true, true_and, assert_true_bind, assert_true, pure_bind, bind_pure, memmoveL₀, condState_const, CondCode.cmp_nz_eq_true, CondCode.cmp_z_eq_true,
     CondCode.cmp_nc_eq_true, BitVec.and_self, BitVec.mul_one, bind_pure_unit, pure_bind, Bool.not_eq_true',
     beq_eq_true_eq, beq_eq_false_iff_ne, add_ofInt_neg_one]
 
@@ -46,7 +46,7 @@ info: def Ascent.Kraken.memmoveL : BitVec 64 → BitVec 64 → BitVec 64 → Bit
 fun rdi rsi rdx rsp ra =>
   if rsi ≤ rdi then
     if rdx = 0#64 then do
-      StateT.assume fun m => retAddrAt m rsp = some ra
+      StateT.assert fun m => retAddrAt m rsp = some ra
       throw ra
     else do
       let mut a := (rdx, rdx)
@@ -56,11 +56,11 @@ fun rdi rsi rdx rsp ra =>
         if ¬a.fst - 1#64 = 0#64 then 
           a := (a.fst - 1#64, a.fst - 1#64)
         else
-          StateT.assume fun m => retAddrAt m rsp = some ra
+          StateT.assert fun m => retAddrAt m rsp = some ra
           throw ra
   else
     if rdx = 0#64 then do
-      StateT.assume fun m => retAddrAt m rsp = some ra
+      StateT.assert fun m => retAddrAt m rsp = some ra
       throw ra
     else do
       let mut a := (0#64, rdx)
@@ -70,7 +70,7 @@ fun rdi rsi rdx rsp ra =>
         if ¬a.snd = a.fst + 1#64 then 
           a := (a.fst + 1#64, a.snd)
         else
-          StateT.assume fun m => retAddrAt m rsp = some ra
+          StateT.assert fun m => retAddrAt m rsp = some ra
           throw ra
 -/
 #guard_msgs in

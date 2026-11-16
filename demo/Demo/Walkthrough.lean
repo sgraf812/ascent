@@ -20,7 +20,7 @@ Each section below is one refinement, from the machine code to the pure program.
 
 open Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
 open Ascent.Concretization (ofStateRepr)
-open StateT (assume)
+open StateT (assert)
 open scoped Program.WP
 
 namespace Ascent.Kraken.Walkthrough
@@ -160,9 +160,9 @@ The state is the data memory alone. The lifting relation, the one hint of the ru
 `RegsRel [(.rdi, rdi), …, (.rax, rax)]`: it names the registers that become values. `rdi`, `rsi`,
 `rdx`, `rcx` and `rsp` are parameters, and `rax` is the value of the loop. The loaded values of
 `r8` become variables. `ascend_def` synthesized `zipWithAddL₀`, and `sym_simp_def` states its
-branch conditions as comparisons of the values in `zipWithAddL`. A jump is an `assume` that the
+branch conditions as comparisons of the values in `zipWithAddL`. A jump is an `assert` that the
 stack pointer lies in the frame; with `rsp` the stack pointer of the entry, these tests hold and
-vanish. The return is an `assume` that the return slot at `rsp` holds the return address `ra`,
+vanish. The return is an `assert` that the return slot at `rsp` holds the return address `ra`,
 followed by `throw ra`: -/
 
 /--
@@ -179,7 +179,7 @@ info: def Ascent.Kraken.zipWithAddL : BitVec 64 →
   BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → Int64 → BlockM DataMem Unit :=
 fun rdi rsi rdx rcx rsp ra =>
   if rcx.toInt ≤ 0 then do
-    assume fun m => retAddrAt m rsp = some ra
+    assert fun m => retAddrAt m rsp = some ra
     throw ra
   else do
     let mut v := 0#64
@@ -190,7 +190,7 @@ fun rdi rsi rdx rcx rsp ra =>
       if ¬rcx = v + 1#64 then 
         v := v + 1#64
       else
-        assume fun m => retAddrAt m rsp = some ra
+        assert fun m => retAddrAt m rsp = some ra
         throw ra
 -/
 #guard_msgs in
@@ -415,7 +415,7 @@ fun rdi rsi rdx rax rsp ra => do
   let mut a := (0#64, rsi, rax)
   repeat'
     if a.snd.fst ≤ a.fst then 
-      assume fun m => retAddrAt m rsp = some ra
+      assert fun m => retAddrAt m rsp = some ra
       a := (a.fst, a.snd.fst, 18446744073709551615#64)
       break
     else
@@ -424,7 +424,7 @@ fun rdi rsi rdx rax rsp ra => do
         a := (a.fst + (a.snd.fst - a.fst).ushiftRight 1 + 1#64, a.snd.fst, a.snd.snd)
       else
         if x.toInt ≤ rdx.toInt then 
-          assume fun m => retAddrAt m rsp = some ra
+          assert fun m => retAddrAt m rsp = some ra
           a := (a.fst, a.snd.fst, a.fst + (a.snd.fst - a.fst).ushiftRight 1)
           break
         else

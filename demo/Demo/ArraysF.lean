@@ -18,16 +18,16 @@ namespace Ascent.Kraken
 section
 variable {σa : Type} {bs : List (BitVec 64 × Nat)} {E : (Int64 → Int64 → FState → Prop) × EStack⟨⟩}
 
-theorem wrp_assume_dmemOk {β AV : Type} {view : FState → σa} {x : BlockM FState β}
+theorem wrp_assert_dmemOk {β AV : Type} {view : FState → σa} {x : BlockM FState β}
     {a : BlockM σa AV} {Q : β → AV → FState → Prop} (p : BitVec 64) (n : Nat) {pre : FState → Prop}
     (h : pre ⊑ wrp (ofStateRepr view) x a Q E) :
     (fun s => Mem.Blocks.Disjoint [(p, n)] bs ∧ pre s)
-      ⊑ wrp (ofStateRepr view) (do StateT.assume fun (_ : FState) => DmemOk bs p n .dmem; x : BlockM FState β) a Q E := by
+      ⊑ wrp (ofStateRepr view) (do StateT.assert fun (_ : FState) => DmemOk bs p n .dmem; x : BlockM FState β) a Q E := by
   refine wrp_intro fun Qa Ea => ?_
   intro s hs
   simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred] at hs
   obtain ⟨⟨hd, hp⟩, ha⟩ := hs
-  rw [wp_assume_bind]
+  rw [wp_assert_bind]
   exact ⟨hd, wrp_transport h Qa Ea s
     (by simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred]; exact ⟨hp, ha⟩)⟩
 
@@ -44,7 +44,7 @@ theorem disjoint_cell {w n j : Nat} {p : BitVec 64} (hd : Mem.Blocks.Disjoint [(
         Q (BitVec.ofInt 64 ((Mem.loadInt s.dmem (p + o) w).get! % 2 ^ (8 * w))) y s)
       ⊑ wrp (ofStateRepr fun s : FState => view s.dmem) (loadIn bs .dmem w (p + o))
           (pure ((arr[j]!).setWidth 64) : BlockM σa (BitVec 64)) Q E := by
-  have h := wrp_assume_dmemOk (bs := bs) (E := E) (p + o) w (wrp_zoom_dmem _ fun s =>
+  have h := wrp_assert_dmemOk (bs := bs) (E := E) (p + o) w (wrp_zoom_dmem _ fun s =>
     wrp_load_getElem (view := view) (Q := fun v y m => Q v y (s.set .dmem m))
       (E := (fun l l' m => E.1 l l' (s.set .dmem m), estack⟨⟩)) w b p o arr j P)
   refine PartialOrder.rel_trans ?_ h
@@ -60,7 +60,7 @@ theorem disjoint_cell {w n j : Nat} {p : BitVec 64} (hd : Mem.Blocks.Disjoint [(
       Q () () (s.set .dmem (Mem.storeInt s.dmem (cell w p j) w v.toInt)))
       ⊑ wrp (ofStateRepr fun s : FState => outView w b p n s.dmem) (storeIn bs .dmem w (p + o) v)
           (modify fun o => o.set! j (v'.setWidth b) : BlockM (Array (BitVec b)) Unit) Q E := by
-  have h := wrp_assume_dmemOk (bs := bs) (E := E) (p + o) w (wrp_zoom_dmem _ fun s =>
+  have h := wrp_assert_dmemOk (bs := bs) (E := E) (p + o) w (wrp_zoom_dmem _ fun s =>
     wrp_store_set (Q := fun u u' m => Q u u' (s.set .dmem m))
       (E := (fun l l' m => E.1 l l' (s.set .dmem m), estack⟨⟩)) w b p o v v' n j P)
   refine PartialOrder.rel_trans ?_ h

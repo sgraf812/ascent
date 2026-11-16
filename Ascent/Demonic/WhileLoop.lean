@@ -29,23 +29,23 @@ theorem Demonic.eq_of_le {α : Type} {x y : Demonic α} (h : x ⊑ y) (hx : x �
   | refl => rfl
 
 theorem Demonic.bind_congr {α β : Type} {x : Demonic α} {f₁ f₂ : α → Demonic β}
-    (h : ∀ a, x.outs a → f₁ a = f₂ a) : (x >>= f₁) = (x >>= f₂) := by
+    (h : ∀ a, Demonic.Internal.outs x a → f₁ a = f₂ a) : (x >>= f₁) = (x >>= f₂) := by
   by_cases ht : x.wpD fun _ => True
   · refine Demonic.ext (funext fun Q => ?_)
     show (x.wpD fun a => (f₁ a).wpD Q) = x.wpD fun a => (f₂ a).wpD Q
-    rw [propext (Demonic.wpD_iff ht _), propext (Demonic.wpD_iff ht _)]
+    rw [propext (Demonic.Internal.wpD_iff ht _), propext (Demonic.Internal.wpD_iff ht _)]
     exact propext (forall_congr' fun a => imp_congr_right fun ha => by rw [h a ha])
-  · rw [Demonic.eq_abort ht]
+  · rw [Demonic.Internal.eq_abort ht]
     rfl
 
 theorem Demonic.bind_of_abort {α β : Type} {x : Demonic α} {f : α → Demonic β} {a : α}
-    (ha : x.outs a) (hf : f a = Demonic.abort) : (x >>= f) = Demonic.abort := by
+    (ha : Demonic.Internal.outs x a) (hf : f a = Demonic.abort) : (x >>= f) = Demonic.abort := by
   by_cases ht : x.wpD fun _ => True
   · refine Demonic.ext (funext fun Q => propext ⟨fun hw => ?_, False.elim⟩)
-    have := (Demonic.wpD_iff ht _).mp hw a ha
+    have := (Demonic.Internal.wpD_iff ht _).mp hw a ha
     rw [hf] at this
     exact this
-  · rw [Demonic.eq_abort ht]
+  · rw [Demonic.Internal.eq_abort ht]
     rfl
 
 instance : MonoBind Demonic where
@@ -55,7 +55,7 @@ instance : MonoBind Demonic where
     · exact FlatOrder.rel.refl
   bind_mono_right {_ _ a f₁ f₂} h := by
     open Classical in
-    by_cases hab : ∃ x, a.outs x ∧ f₁ x = Demonic.abort
+    by_cases hab : ∃ x, Demonic.Internal.outs a x ∧ f₁ x = Demonic.abort
     · obtain ⟨x, hx, hf⟩ := hab
       rw [Demonic.bind_of_abort hx hf]
       exact FlatOrder.rel.bot

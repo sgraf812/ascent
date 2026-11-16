@@ -3,7 +3,7 @@ import Ascent.Demonic
 /-!
 # `wp` lemmas for `StateT σ Demonic`
 
-`bind` pointwise in the state, the conjunction of two postconditions, and `StateT.assume g`, which
+`bind` pointwise in the state, the conjunction of two postconditions, and `StateT.assert g`, which
 continues if the state satisfies `g` and fails otherwise.
 -/
 
@@ -21,17 +21,17 @@ theorem wp_and_StateT {σ α} (x : StateT σ Demonic α) (P R : α → σ → Pr
 
 
 
-noncomputable def StateT.assume {σ : Type} (g : σ → Prop) : StateT σ Demonic PUnit := do
-  Demonic.assume (g (← get))
+noncomputable def StateT.assert {σ : Type} (g : σ → Prop) : StateT σ Demonic PUnit := do
+  Demonic.assert (g (← get))
 
-theorem StateT.wp_assume_eq {σ : Type} (g : σ → Prop) (Q : PUnit → σ → Prop) (E : EStack⟨⟩) (s : σ) :
-    wp (StateT.assume g) Q E s = (g s ∧ Q () s) := by
-  simp only [StateT.assume, StateT.wp_apply_eq, StateT.run_bind, StateT.run_get, liftM, monadLift,
-    MonadLift.monadLift, StateT.run_lift, Demonic.wp_bind_eq, Demonic.wp_pure_eq, Demonic.wp_assume_eq]
+theorem StateT.wp_assert_eq {σ : Type} (g : σ → Prop) (Q : PUnit → σ → Prop) (E : EStack⟨⟩) (s : σ) :
+    wp (StateT.assert g) Q E s = (g s ∧ Q () s) := by
+  simp only [StateT.assert, StateT.wp_apply_eq, StateT.run_bind, StateT.run_get, liftM, monadLift,
+    MonadLift.monadLift, StateT.run_lift, Demonic.wp_bind_eq, Demonic.wp_pure_eq, Demonic.wp_assert_eq]
 
-@[spec] theorem StateT.Spec.assume {σ : Type} (g : σ → Prop) (Q : PUnit → σ → Prop) (E : EStack⟨⟩) :
-    ⦃fun s => g s ∧ Q () s⦄ StateT.assume g ⦃Q; E⦄ :=
-  ⟨fun s h => by rw [StateT.wp_assume_eq]; exact h⟩
+@[spec] theorem StateT.Spec.assert {σ : Type} (g : σ → Prop) (Q : PUnit → σ → Prop) (E : EStack⟨⟩) :
+    ⦃fun s => g s ∧ Q () s⦄ StateT.assert g ⦃Q; E⦄ :=
+  ⟨fun s h => by rw [StateT.wp_assert_eq]; exact h⟩
 
 theorem ExceptT.wp_monadLift_StateT_Demonic {ε σ α : Type} (x : StateT σ Demonic α) (Q : α → σ → Prop)
     (E : (ε → σ → Prop) × EStack⟨⟩) (s : σ) :

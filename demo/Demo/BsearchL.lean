@@ -32,7 +32,7 @@ ascend_def bsearchL₀ (rdi rsi rdx rax rsp : BitVec 64) (r₀ : BitVec 64) (ra 
 
 sym_simp_def bsearchL (rdi rsi rdx rax : BitVec 64) (rsp : BitVec 64) (ra : Int64) : BlockM DataMem (BitVec 64) from
     bsearchL₀ rdi rsi rdx rax rsp rsp ra
-  using pre [] post [stayAt_self, eq_self_iff_true, true_and, assume_true_bind, assume_true, pure_bind, bind_pure, bsearchL₀, condState_const, CondCode.cmp_be_eq_true, CondCode.cmp_l_eq_true,
+  using pre [] post [stayAt_self, eq_self_iff_true, true_and, assert_true_bind, assert_true, pure_bind, bind_pure, bsearchL₀, condState_const, CondCode.cmp_be_eq_true, CondCode.cmp_l_eq_true,
     CondCode.cmp_le_eq_true, bind_pure_unit, pure_bind, Bool.not_eq_true']
 
 
@@ -50,7 +50,7 @@ fun rdi rsi rdx rax rsp ra => do
   let mut a := (0#64, rsi, rax)
   repeat'
     if a.snd.fst ≤ a.fst then 
-      StateT.assume fun m => retAddrAt m rsp = some ra
+      StateT.assert fun m => retAddrAt m rsp = some ra
       a := (a.fst, a.snd.fst, 18446744073709551615#64)
       break
     else
@@ -59,7 +59,7 @@ fun rdi rsi rdx rax rsp ra => do
         a := (a.fst + (a.snd.fst - a.fst).ushiftRight 1 + 1#64, a.snd.fst, a.snd.snd)
       else
         if x.toInt ≤ rdx.toInt then 
-          StateT.assume fun m => retAddrAt m rsp = some ra
+          StateT.assert fun m => retAddrAt m rsp = some ra
           a := (a.fst, a.snd.fst, a.fst + (a.snd.fst - a.fst).ushiftRight 1)
           break
         else

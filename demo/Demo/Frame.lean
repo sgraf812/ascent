@@ -225,28 +225,28 @@ def Located (bs : List (BitVec 64 × Nat)) (n : Nat) (a : BitVec 64) (p : Region
 frame `bs`. -/
 noncomputable def loadIn (bs : List (BitVec 64 × Nat)) (r : Region) (n : Nat) (a : BitVec 64) :
     BlockM FState (BitVec 64) := do
-  StateT.assume fun (_ : FState) => DmemOk bs a n r
+  StateT.assert fun (_ : FState) => DmemOk bs a n r
   zoom r (load n a)
 
 /-- Store into the region `r`, undefined behaviour if the access goes to `dmem` and overlaps the
 frame `bs`. -/
 noncomputable def storeIn (bs : List (BitVec 64 × Nat)) (r : Region) (n : Nat) (a v : BitVec 64) :
     BlockM FState Unit := do
-  StateT.assume fun (_ : FState) => DmemOk bs a n r
+  StateT.assert fun (_ : FState) => DmemOk bs a n r
   zoom r (store n a v)
 
 theorem loadIn_frame {bs : List (BitVec 64 × Nat)} {n : Nat} {a : BitVec 64} :
     loadIn bs .frame n a = zoom .frame (load n a) := by
-  rw [loadIn, dmemOk_frame, assume_true_bind]
+  rw [loadIn, dmemOk_frame, assert_true_bind]
 
 theorem storeIn_frame {bs : List (BitVec 64 × Nat)} {n : Nat} {a v : BitVec 64} :
     storeIn bs .frame n a v = zoom .frame (store n a v) := by
-  rw [storeIn, dmemOk_frame, assume_true_bind]
+  rw [storeIn, dmemOk_frame, assert_true_bind]
 
-theorem wp_assume_bind {σ α : Type} (g : σ → Prop) (x : BlockM σ α) (Q : α → σ → Prop)
+theorem wp_assert_bind {σ α : Type} (g : σ → Prop) (x : BlockM σ α) (Q : α → σ → Prop)
     (E : (Int64 → σ → Prop) × EStack⟨⟩) (s : σ) :
-    wp (do StateT.assume g; x : BlockM σ α) Q E s = (g s ∧ wp x Q E s) := by
-  rw [WPMonadExact.wp_bind_eq, ExceptT.wp_monadLift_StateT_Demonic, StateT.wp_assume_eq]
+    wp (do StateT.assert g; x : BlockM σ α) Q E s = (g s ∧ wp x Q E s) := by
+  rw [WPMonadExact.wp_bind_eq, ExceptT.wp_monadLift_StateT_Demonic, StateT.wp_assert_eq]
 
 section
 variable {a b x y : BitVec 64} {P₁ P₂ : Prop} {bs : List (BitVec 64 × Nat)} {n : Nat}
@@ -286,7 +286,7 @@ variable {bs : List (BitVec 64 × Nat)} {E : (Int64 → Int64 → DataMem → Pr
       ⊑ wrp (ofStateRepr (FState.split bs)) (load n a) (loadIn bs r n x) Q E := by
   refine wrp_intro fun Qa Ea => ?_
   intro m hm
-  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, loadIn, wp_assume_bind, wp_zoom,
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, loadIn, wp_assert_bind, wp_zoom,
     wp_load] at hm
   obtain ⟨⟨hl, hP, hq⟩, hd, hs, hqa⟩ := hm
   obtain ⟨rfl, hf⟩ := hl hP
@@ -304,7 +304,7 @@ variable {bs : List (BitVec 64 × Nat)} {E : (Int64 → Int64 → DataMem → Pr
       ⊑ wrp (ofStateRepr (FState.split bs)) (store n a v) (storeIn bs r n x v') Q E := by
   refine wrp_intro fun Qa Ea => ?_
   intro m hm
-  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, storeIn, wp_assume_bind, wp_zoom,
+  simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, storeIn, wp_assert_bind, wp_zoom,
     wp_store] at hm
   obtain ⟨⟨hl, hv, hP, hq⟩, hd, hs, hqa⟩ := hm
   obtain ⟨rfl, hf⟩ := hl hP

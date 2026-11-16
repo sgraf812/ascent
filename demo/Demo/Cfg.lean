@@ -44,13 +44,13 @@ section
 variable {σ : Type}
 
 noncomputable def modifyIf (g : σ → Prop) (f : σ → σ) : BlockM σ Unit :=
-  fun st => Demonic.assume (g st) >>= fun _ => pure (.ok (), f st)
+  fun st => Demonic.assert (g st) >>= fun _ => pure (.ok (), f st)
 
 noncomputable def exitIf {α : Type} (g : σ → Prop) (f : σ → σ) (l : Int64) : BlockM σ α :=
-  fun st => Demonic.assume (g st) >>= fun _ => pure (.error l, f st)
+  fun st => Demonic.assert (g st) >>= fun _ => pure (.error l, f st)
 
 noncomputable def branch (s c : σ → Bool) (l : Int64) : BlockM σ Unit :=
-  fun st => if c st then Demonic.assume (s st = true) >>= fun _ => pure (.error l, st) else pure (.ok (), st)
+  fun st => if c st then Demonic.assert (s st = true) >>= fun _ => pure (.error l, st) else pure (.ok (), st)
 
 def peek {β : Type} (c : σ → β) : BlockM σ β :=
   fun st => pure (.ok (c st), st)
@@ -70,10 +70,10 @@ theorem wp_modifyIf (g f) :
   rw [ExceptT.wp_apply_eq, StateT.wp_apply_eq, modifyIf_run]
   unfold modifyIf
   by_cases h : g st
-  · rw [Demonic.assume_bind_of_pos h]
+  · rw [Demonic.assert_bind_of_pos h]
     simp only [Demonic.wp_pure_eq, h, true_and]
     rfl
-  · rw [Demonic.assume_bind_of_neg h]
+  · rw [Demonic.assert_bind_of_neg h]
     simp only [Demonic.wp_fail_eq, bot_prop_eq, h, false_and]
 
 theorem wp_exitIf {α : Type} {Qa : α → σ → Prop} (g f l) :
@@ -81,10 +81,10 @@ theorem wp_exitIf {α : Type} {Qa : α → σ → Prop} (g f l) :
   rw [ExceptT.wp_apply_eq, StateT.wp_apply_eq, exitIf_run]
   unfold exitIf
   by_cases h : g st
-  · rw [Demonic.assume_bind_of_pos h]
+  · rw [Demonic.assert_bind_of_pos h]
     simp only [Demonic.wp_pure_eq, h, true_and]
     rfl
-  · rw [Demonic.assume_bind_of_neg h]
+  · rw [Demonic.assert_bind_of_neg h]
     simp only [Demonic.wp_fail_eq, bot_prop_eq, h, false_and]
 
 theorem exitIf_bind {σ α β : Type} (g : σ → Prop) (f : σ → σ) (l : Int64)
@@ -95,9 +95,9 @@ theorem exitIf_bind {σ α β : Type} (g : σ → Prop) (f : σ → σ) (l : Int
   rw [ExceptT.run_bind, StateT.run_bind, exitIf_run, exitIf_run]
   unfold exitIf
   by_cases h : g st
-  · rw [Demonic.assume_bind_of_pos h, Demonic.assume_bind_of_pos h]
+  · rw [Demonic.assert_bind_of_pos h, Demonic.assert_bind_of_pos h]
     rfl
-  · rw [Demonic.assume_bind_of_neg h, Demonic.assume_bind_of_neg h]
+  · rw [Demonic.assert_bind_of_neg h, Demonic.assert_bind_of_neg h]
     rfl
 
 theorem wp_peek {β : Type} {Qb : β → σ → Prop} (c : σ → β) :
@@ -112,10 +112,10 @@ theorem wp_branch (s c l) :
   unfold branch
   split
   · by_cases h : s st = true
-    · rw [Demonic.assume_bind_of_pos h]
+    · rw [Demonic.assert_bind_of_pos h]
       simp only [Demonic.wp_pure_eq, h, true_and]
       rfl
-    · rw [Demonic.assume_bind_of_neg h]
+    · rw [Demonic.assert_bind_of_neg h]
       simp [Demonic.wp_fail_eq, bot_prop_eq, h]
   · simp only [Demonic.wp_pure_eq, *]
     rfl
@@ -478,11 +478,12 @@ theorem wellFounded_accRestrict {α : Type} (S : α → α → Prop) :
 
 theorem wp_BlockM_outs {σ α : Type} (x : BlockM σ α) {Qa : α → σ → Prop}
     {Ea : (Int64 → σ → Prop) × EStack⟨⟩} {st : σ} (h : wp x Qa Ea st) :
-    wp x (fun a st' => Qa a st' ∧ (x.run.run st).outs (.ok a, st'))
-      (fun e st' => Ea.1 e st' ∧ (x.run.run st).outs (.error e, st'), Ea.2) st := by
+    wp x (fun a st' => Qa a st' ∧ Demonic.Internal.outs (x.run.run st) (.ok a, st'))
+      (fun e st' => Ea.1 e st' ∧ Demonic.Internal.outs (x.run.run st) (.error e, st'), Ea.2)
+      st := by
   rw [wp_BlockM_eq] at h ⊢
   have ht := (x.run.run st).mono (fun _ _ => trivial) h
-  rw [Demonic.wpD_iff ht] at h ⊢
+  rw [Demonic.Internal.wpD_iff ht] at h ⊢
   intro p hp
   rcases p with ⟨_ | _, _⟩
   · exact ⟨h _ hp, hp⟩
@@ -566,7 +567,8 @@ theorem wrp_cfg_le_exit {p : Program} [Embeds p] (hs : Program.Separated p = tru
       exact ⟨hJa, hw, fun l' hl' => by cases hl'; exact ⟨hst, hTb, hacc⟩⟩
   obtain ⟨hJa, hw, hblk⟩ := hrun
   let c := cell blk.label
-  have hdec : ∀ a' v, ((c >>= fun _ => jumpTo st blk.next).run.run g).outs (.error a', v) →
+  have hdec : ∀ a' v,
+      Demonic.Internal.outs ((c >>= fun _ => jumpTo st blk.next).run.run g) (.error a', v) →
       ∀ l, blk.label = some l → ∀ l', a' = label l' → R (l', v) (l, g) := by
     intro a' v hr l hl l' hl'
     obtain ⟨hst, hTb, hacc⟩ := hblk l hl
@@ -574,9 +576,11 @@ theorem wrp_cfg_le_exit {p : Program} [Embeds p] (hs : Program.Separated p = tru
     exact ⟨hacc, hst, _, hTb, hr⟩
   rw [WPMonadExact.wp_bind_eq] at hw
   let Qa' : Unit → MachineData → Prop := fun _ st' =>
-    wp (jumpTo st blk.next : BlockM MachineData Unit) Qa H st' ∧ (c.run.run g).outs (.ok (), st')
+    wp (jumpTo st blk.next : BlockM MachineData Unit) Qa H st' ∧
+      Demonic.Internal.outs (c.run.run g) (.ok (), st')
   let Ea' : (Int64 → MachineData → Prop) × EStack⟨⟩ :=
-    (fun a' st' => wp (cfgLoop st T a') Qa Ea st' ∧ (c.run.run g).outs (.error a', st'), Ea.2)
+    (fun a' st' => wp (cfgLoop st T a') Qa Ea st' ∧
+      Demonic.Internal.outs (c.run.run g) (.error a', st'), Ea.2)
   have hpre' : wp c Qa' Ea' g := wp_BlockM_outs c hw
   have hb := wrp_transport (h blk hmem u).le_wrp Qa' Ea'
   have hmeet : ((fun t' => t' = u) ⊓ (Concretization.ofStateRel J).pred (wp c Qa' Ea')) u := by
@@ -658,19 +662,19 @@ theorem wrp_cfg_le_exit {p : Program} [Embeds p] (hs : Program.Separated p = tru
       | some l₀ =>
         refine hdec (label l') b ?_ l₀ hbl l' rfl
         rw [BlockM.run_bind]
-        refine Demonic.outs_bind_of hc ?_
+        refine Demonic.Internal.outs_bind_of hc ?_
         rw [hn]
-        show ((AInstr.branch st (fun _ => true) (label l')).run.run b).outs _
+        show Demonic.Internal.outs ((AInstr.branch st (fun _ => true) (label l')).run.run b) _
         rw [AInstr.branch_run]
-        simp only [AInstr.branch, ↓reduceIte, Demonic.assume_bind_of_pos hsu]
-        exact Demonic.outs_pure _
+        simp only [AInstr.branch, ↓reduceIte, Demonic.assert_bind_of_pos hsu]
+        exact Demonic.Internal.outs_pure _
   · change (Concretization.ofStateRel J).post (BlockExit p r₀ E) Ea'.1 u'.pc u'.data at hu
     simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply,
       meet_prop_eq_and, Concretization.ofStateRel_pred] at hu
     obtain ⟨a', hrel, b, hJb, hE, hc⟩ := hu
     refine hjump u'.data b u'.pc a' hJb hrel hE fun l hl l' hl' => hdec a' b ?_ l hl l' hl'
     rw [BlockM.run_bind]
-    exact Demonic.outs_bind_of hc (Demonic.outs_pure _)
+    exact Demonic.Internal.outs_bind_of hc (Demonic.Internal.outs_pure _)
 
 theorem wrp_cfg_le_rel {p : Program} [Embeds p] (hs : Program.Separated p = true)
     {cell : Option Label → BlockM MachineData Unit} {s₀ : MachineData} {ra : Int64}

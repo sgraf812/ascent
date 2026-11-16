@@ -108,10 +108,10 @@ theorem monoRun_modifyIf {g : MachineData → Prop} {f : MachineData → Machine
   rw [modifyIf_run] at h ⊢
   unfold modifyIf at h ⊢
   by_cases ha : g a
-  · rw [Demonic.assume_bind_of_pos ha] at h
-    rw [Demonic.assume_bind_of_pos (hg a b hab ha)]
+  · rw [Demonic.assert_bind_of_pos ha] at h
+    rw [Demonic.assert_bind_of_pos (hg a b hab ha)]
     exact ⟨_, hf a b hab ha, h⟩
-  · rw [Demonic.assume_bind_of_neg ha] at h
+  · rw [Demonic.assert_bind_of_neg ha] at h
     exact (h : False).elim
 
 theorem monoRun_exitIf {α : Type} {g : MachineData → Prop} {f : MachineData → MachineData} (l : Int64)
@@ -121,10 +121,10 @@ theorem monoRun_exitIf {α : Type} {g : MachineData → Prop} {f : MachineData �
   rw [exitIf_run] at h ⊢
   unfold exitIf at h ⊢
   by_cases ha : g a
-  · rw [Demonic.assume_bind_of_pos ha] at h
-    rw [Demonic.assume_bind_of_pos (hg a b hab ha)]
+  · rw [Demonic.assert_bind_of_pos ha] at h
+    rw [Demonic.assert_bind_of_pos (hg a b hab ha)]
     exact ⟨_, hf a b hab ha, h⟩
-  · rw [Demonic.assume_bind_of_neg ha] at h
+  · rw [Demonic.assert_bind_of_neg ha] at h
     exact (h : False).elim
 
 theorem monoRun_branch {st c : MachineData → Bool} (l : Int64) (hs : RegFn st) (hc : RegFn c) :
@@ -136,9 +136,9 @@ theorem monoRun_branch {st c : MachineData → Bool} (l : Int64) (hs : RegFn st)
   by_cases hcb : c b = true
   · simp only [hcb, ↓reduceIte] at hr ⊢
     by_cases h : st b = true
-    · rw [Demonic.assume_bind_of_pos h] at hr ⊢
+    · rw [Demonic.assert_bind_of_pos h] at hr ⊢
       exact ⟨_, hab, hr⟩
-    · rw [Demonic.assume_bind_of_neg h] at hr
+    · rw [Demonic.assert_bind_of_neg h] at hr
       exact (hr : False).elim
   · simp only [hcb, Bool.false_eq_true, ↓reduceIte] at hr ⊢
     exact ⟨_, hab, hr⟩

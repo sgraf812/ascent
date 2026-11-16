@@ -44,13 +44,13 @@ info: def PureRefinementTest.progN : Demonic Nat :=
 do
   let x ←
     do
-      Demonic.assume True
+      Demonic.assert True
       pure 7
   let x ←
     do
-      Demonic.assume (x + 7 < 2 ^ 64)
+      Demonic.assert (x + 7 < 2 ^ 64)
       pure (x + 7)
-  Demonic.assume (x + 7 < 2 ^ 64)
+  Demonic.assert (x + 7 < 2 ^ 64)
   pure (x + 7)
 -/
 #guard_msgs in

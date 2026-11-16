@@ -27,7 +27,7 @@ ascend_def progA (c d : Nat) : Demonic Nat from
 /--
 info: def OuterKeysTest.progA : Nat → Demonic Nat :=
 fun c => do
-  Demonic.assume True
+  Demonic.assert True
   pure c
 -/
 #guard_msgs in

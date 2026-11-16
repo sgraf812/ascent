@@ -26,9 +26,9 @@ ascend_def progA : Demonic Int from ⦃(⊤ : Prop)⦄ prog ⪯[γw] progA ⦃(�
   ascend [prog]
 
 example : progA = (do
-    let a ← (do Demonic.assume True; pure (wordVal 7))
-    let b ← (do Demonic.assume (a + wordVal 7 < 2 ^ 64); pure (a + wordVal 7))
-    (do Demonic.assume (b + wordVal 7 < 2 ^ 64); pure (b + wordVal 7))) := rfl
+    let a ← (do Demonic.assert True; pure (wordVal 7))
+    let b ← (do Demonic.assert (a + wordVal 7 < 2 ^ 64); pure (a + wordVal 7))
+    (do Demonic.assert (b + wordVal 7 < 2 ^ 64); pure (b + wordVal 7))) := rfl
 
 sym_simp_def progS : Id UInt64 from prog using pre [] post [prog]
 

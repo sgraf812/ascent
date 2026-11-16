@@ -91,12 +91,12 @@ ascend_def swapSL₀ (rdi rsi rsp rbx rbp r12 r13 r14 r15 : BitVec 64) (r₀ : B
 /--
 info: def Ascent.Kraken.swapSL₀ : BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → Int64 → BlockM DataMem Unit :=
 fun rdi rsi rsp r₀ L => do
-  StateT.assume fun x => stayAt r₀ rsp = true
+  StateT.assert fun x => stayAt r₀ rsp = true
   let x ← load 8 rdi
   let x_1 ← load 8 rsi
   store 8 rdi x_1
   store 8 rsi x
-  StateT.assume fun x => rsp = r₀
+  StateT.assert fun x => rsp = r₀
   throw L
 -/
 #guard_msgs in
