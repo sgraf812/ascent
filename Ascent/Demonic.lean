@@ -13,9 +13,9 @@ A `bind` aborts if its first program aborts or if the continuation aborts on a s
 whose complement is outside the filter of the first program.
 
 `assert g` continues if `g` holds and aborts otherwise. `assume g` continues if `g` holds and is
-`magic` otherwise. `havoc` returns any value. An abstract program carries the side conditions of
+`magic` otherwise. `unknown` returns any value. An abstract program carries the side conditions of
 the concrete program, such as mapped memory, as `assert`s, and it states the values that the
-concrete program leaves unspecified with `havoc` or `select`.
+concrete program leaves unspecified with `unknown` or `select`.
 
 Programs are equal if their `wp`s are (`Demonic.ext`). A Mathlib `Filter` gives a program through
 `selectFilter`. The values in every set of the filter (`Demonic.Internal.outs`) can be empty, as for
@@ -85,7 +85,7 @@ def fail {α : Type} : Demonic α := abort
 @[simp] theorem wpD_fail {α : Type} (Q : α → Prop) : (fail : Demonic α).wpD Q = False := rfl
 
 /-- Any value. -/
-def havoc {α : Type} : Demonic α := select fun _ => True
+def unknown {α : Type} : Demonic α := select fun _ => True
 
 /-- Continues if `g` holds. Aborts otherwise. -/
 def assert (g : Prop) : Demonic Unit :=
@@ -137,8 +137,8 @@ theorem wp_eq {α : Type} (x : Demonic α) (Q : α → Prop) (E : EStack⟨⟩) 
 @[simp] theorem wp_pure_eq {α : Type} (a : α) (Q : α → Prop) (E : EStack⟨⟩) :
     wp (pure a : Demonic α) Q E = Q a := rfl
 
-@[simp] theorem wp_havoc_eq {α : Type} (Q : α → Prop) (E : EStack⟨⟩) :
-    wp (havoc : Demonic α) Q E = ∀ a, Q a :=
+@[simp] theorem wp_unknown_eq {α : Type} (Q : α → Prop) (E : EStack⟨⟩) :
+    wp (unknown : Demonic α) Q E = ∀ a, Q a :=
   propext ⟨fun h a => h a trivial, fun h a _ => h a⟩
 
 @[simp] theorem wp_fail_eq {α : Type} (Q : α → Prop) (E : EStack⟨⟩) :

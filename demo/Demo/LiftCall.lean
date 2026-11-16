@@ -20,7 +20,7 @@ namespace Ascent.Kraken
 
 /-- An unknown 8-byte word in the slot at `q`. -/
 def havocSlot (q : BitVec 64) : BlockM DataMem Unit :=
-  ExceptT.mk fun m => (Demonic.havoc : Demonic (BitVec 64)) >>= fun v => pure (.ok (), m.storeInt q 8 v.toInt)
+  ExceptT.mk fun m => (Demonic.unknown : Demonic (BitVec 64)) >>= fun v => pure (.ok (), m.storeInt q 8 v.toInt)
 
 theorem wp_havocSlot_fun (q : BitVec 64) (Q : Unit → DataMem → Prop)
     (E : (Int64 → DataMem → Prop) × EStack⟨⟩) :

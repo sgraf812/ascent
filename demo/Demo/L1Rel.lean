@@ -93,7 +93,7 @@ def hidePush (r : BitVec 64) (s : MachineData) : MachineData :=
 
 /-- An unknown 8-byte word in the slot at `q`. -/
 def havocSlotA (q : BitVec 64) : BlockM MachineData Unit :=
-  ExceptT.mk fun s => (Demonic.havoc : Demonic (BitVec 64)) >>= fun v =>
+  ExceptT.mk fun s => (Demonic.unknown : Demonic (BitVec 64)) >>= fun v =>
     pure (.ok (), { s with dmem := s.dmem.storeInt q 8 v.toInt })
 
 theorem wp_havocSlotA_fun (q : BitVec 64) (Q : Unit → MachineData → Prop)

@@ -15,8 +15,8 @@ example (Q : Nat → Prop) : wp (Demonic.abort : Demonic Nat) Q estack⟨⟩ = F
 
 example (p Q : Nat → Prop) : wp (Demonic.select p) Q estack⟨⟩ = ∀ a, p a → Q a := rfl
 
-example (Q : Nat → Prop) : wp (Demonic.havoc : Demonic Nat) Q estack⟨⟩ = ∀ a, Q a :=
-  Demonic.wp_havoc_eq Q _
+example (Q : Nat → Prop) : wp (Demonic.unknown : Demonic Nat) Q estack⟨⟩ = ∀ a, Q a :=
+  Demonic.wp_unknown_eq Q _
 
 example (Q : Nat → Prop) : wp (Demonic.magic : Demonic Nat) Q estack⟨⟩ = True :=
   Demonic.wp_magic_eq Q _
@@ -31,7 +31,7 @@ example : Demonic.assert False = Demonic.abort := Demonic.assert_of_neg id
 example : Demonic.assume False = Demonic.magic := Demonic.assume_of_neg id
 
 -- One aborting branch makes the whole program abort.
-example : (Demonic.havoc >>= fun b : Bool => if b then Demonic.abort else pure 1) = Demonic.abort :=
+example : (Demonic.unknown >>= fun b : Bool => if b then Demonic.abort else pure 1) = Demonic.abort :=
   Demonic.ext (funext fun _ => propext ⟨fun h => by simpa using h true trivial, False.elim⟩)
 
 -- A singleton `select` is `pure`.
