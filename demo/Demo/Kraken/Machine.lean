@@ -7,16 +7,15 @@ import Demo.Kraken.Mem
 The declarations of this module mirror the exported API of kraken's `Kraken.X64.Semantics`,
 `Kraken.X64.Registers` and `Kraken.Specs`, under kraken's names. The register file, the flags, the
 machine state and the effects of a step are structures and inductive types, because the demo builds
-and projects them. `RegZmms` keeps one of kraken's 32 vector registers. The operations are opaque,
-and the axioms state kraken's theorems about them.
+and projects them. `RegZmms` keeps one of kraken's 32 vector registers. `BitVec.take`,
+`CondCode.interp`, `Directives.interp` and `Executable.labels` are kraken's definitions. The other
+operations are opaque, and the axioms state kraken's theorems about them.
 
 These axioms are not theorems of kraken:
 
-* `BitVec.take_def`, `Effects.all_done`, `Directives.interp_nil`, `Directives.interp_cons` and
-  `Executable.labels_def` state kraken's definitions.
-* `CondCode.interp_o`, `CondCode.interp_no`, `CondCode.interp_s`, `CondCode.interp_ns`,
-  `CondCode.interp_p` and `CondCode.interp_np` state the cases of `CondCode.interp` that kraken has
-  no lemma for.
+* `Effects.all_done` states the case of kraken's `Effects.All` for the one constructor of
+  `Effects` in this module. The other cases of kraken's `Effects.All` need the other constructors
+  of kraken's `Effects`.
 * `Directive.interp_test_labels` and the other axioms of the section on label maps state that the
   step of an instruction reads the label map only at its jump target. `Demo.Binary` uses them for
   the instructions of its decoder.
@@ -24,9 +23,9 @@ These axioms are not theorems of kraken:
 
 namespace BitVec
 
-opaque take {w} (x : BitVec w) (n : Nat) : BitVec n
+def take {w} (x : BitVec w) (n : Nat) : BitVec n := x.extractLsb' 0 n
 
-axiom take_def {w} (x : BitVec w) (n : Nat) : x.take n = x.extractLsb' 0 n
+theorem take_def {w} (x : BitVec w) (n : Nat) : x.take n = x.extractLsb' 0 n := rfl
 
 opaque cpop_ {w} (x : BitVec w) : BitVec w
 
@@ -100,7 +99,15 @@ class Labels where label : Label → Int64
   deriving Inhabited
 export Labels (label)
 
-opaque CondCode.interp (cc : CondCode) (s : StatusFlags) : Bool
+def CondCode.interp (cc : CondCode) (s : StatusFlags) : Bool := match cc with
+  | .o  => s.of | .no => !s.of
+  | .c  => s.cf | .nc => !s.cf
+  | .z  => s.zf | .nz => !s.zf
+  | .be => s.cf || s.zf | .a  => !s.cf && !s.zf
+  | .s  => s.sf | .ns => !s.sf
+  | .p  => s.pf | .np => !s.pf
+  | .l  => s.sf != s.of | .ge => s.sf == s.of
+  | .le => (s.sf != s.of) || s.zf | .g  => !s.zf && (s.sf == s.of)
 
 structure StatusFlags.from_result.Remaining where
   cf : Bool
@@ -135,26 +142,35 @@ opaque Directive.interp [Labels]
   (d : Directive) (s : MachineData) (p : Std.Rco Int64)
   (next : MachineData → Effects) (jmp : Int64 → MachineData → Effects) : Effects
 
-opaque Directives.interp [Labels]
+def Directives.interp [Labels]
   (ds : List (Kraken.Sized Directive)) (s : MachineData) (pc : Int64)
-  (ret : Int64 → MachineData → Effects) (jmp : Int64 → MachineData → Effects := ret) : Effects
+  (ret : Int64 → MachineData → Effects) (jmp : Int64 → MachineData → Effects := ret) : Effects :=
+  match ds with
+  | [] => ret pc s
+  | {directive, size := sz} :: ds =>
+    directive.interp s (.mk pc (pc+.ofNat sz)) (jmp:=jmp) (next := (fun s =>
+    interp ds s (pc+.ofNat sz) ret jmp))
 
-axiom Directives.interp_nil [Labels] (s : MachineData) (pc : Int64)
-    (ret jmp : Int64 → MachineData → Effects) : Directives.interp [] s pc ret jmp = ret pc s
+theorem Directives.interp_nil [Labels] (s : MachineData) (pc : Int64)
+    (ret jmp : Int64 → MachineData → Effects) : Directives.interp [] s pc ret jmp = ret pc s := rfl
 
-axiom Directives.interp_cons [Labels] (directive : Directive) (sz : Nat) (ds : List (Kraken.Sized Directive))
+theorem Directives.interp_cons [Labels] (directive : Directive) (sz : Nat) (ds : List (Kraken.Sized Directive))
     (s : MachineData) (pc : Int64) (ret jmp : Int64 → MachineData → Effects) :
     Directives.interp ({directive, size := sz} :: ds) s pc ret jmp =
       directive.interp s (.mk pc (pc + .ofNat sz)) (jmp := jmp)
-        (next := fun s => Directives.interp ds s (pc + .ofNat sz) ret jmp)
+        (next := fun s => Directives.interp ds s (pc + .ofNat sz) ret jmp) := rfl
 
 abbrev Layout := Kraken.Layout Directive
 
-opaque Executable.labels (e : Executable) : Labels
+@[reducible]
+def Executable.labels (e : Executable) : Labels :=
+  { label l := (e.withAddresses.findSome?
+      (fun {directive, addr, ..} => if directive = .label l then .some addr else .none)).getD (-1) }
 
-axiom Executable.labels_def (e : Executable) (l : Label) :
+theorem Executable.labels_def (e : Executable) (l : Label) :
     (Executable.labels e).label l =
-      (e.withAddresses.findSome? (fun x => if x.directive = .label l then some x.addr else none)).getD (-1)
+      (e.withAddresses.findSome? (fun x => if x.directive = .label l then some x.addr else none)).getD (-1) :=
+  rfl
 
 /-! ## Label maps
 
@@ -373,40 +389,40 @@ opaque StatusFlags.ofLogic {w} (v : BitVec w) (af : Bool) : StatusFlags
 
 opaque StatusFlags.neg (s : StatusFlags) : Bool
 
-@[simp] axiom CondCode.interp_z (s : StatusFlags) :
-    CondCode.z.interp s = s.zf
+@[simp] theorem CondCode.interp_z (s : StatusFlags) :
+    CondCode.z.interp s = s.zf := rfl
 grind_pattern CondCode.interp_z => CondCode.z.interp s
-@[simp] axiom CondCode.interp_nz (s : StatusFlags) :
-    CondCode.nz.interp s = !s.zf
+@[simp] theorem CondCode.interp_nz (s : StatusFlags) :
+    CondCode.nz.interp s = !s.zf := rfl
 grind_pattern CondCode.interp_nz => CondCode.nz.interp s
-@[simp] axiom CondCode.interp_c (s : StatusFlags) :
-    CondCode.c.interp s = s.cf
+@[simp] theorem CondCode.interp_c (s : StatusFlags) :
+    CondCode.c.interp s = s.cf := rfl
 grind_pattern CondCode.interp_c => CondCode.c.interp s
-@[simp] axiom CondCode.interp_nc (s : StatusFlags) :
-    CondCode.nc.interp s = !s.cf
+@[simp] theorem CondCode.interp_nc (s : StatusFlags) :
+    CondCode.nc.interp s = !s.cf := rfl
 grind_pattern CondCode.interp_nc => CondCode.nc.interp s
-@[simp] axiom CondCode.interp_a (s : StatusFlags) :
-    CondCode.a.interp s = (!s.cf && !s.zf)
+@[simp] theorem CondCode.interp_a (s : StatusFlags) :
+    CondCode.a.interp s = (!s.cf && !s.zf) := rfl
 grind_pattern CondCode.interp_a => CondCode.a.interp s
-@[simp] axiom CondCode.interp_be (s : StatusFlags) :
-    CondCode.be.interp s = (s.cf || s.zf)
+@[simp] theorem CondCode.interp_be (s : StatusFlags) :
+    CondCode.be.interp s = (s.cf || s.zf) := rfl
 grind_pattern CondCode.interp_be => CondCode.be.interp s
 
-@[simp] axiom CondCode.interp_l (s : StatusFlags) :
-    CondCode.l.interp s = (s.sf != s.of)
-@[simp] axiom CondCode.interp_le (s : StatusFlags) :
-    CondCode.le.interp s = ((s.sf != s.of) || s.zf)
-@[simp] axiom CondCode.interp_ge (s : StatusFlags) :
-    CondCode.ge.interp s = (s.sf == s.of)
-@[simp] axiom CondCode.interp_g (s : StatusFlags) :
-    CondCode.g.interp s = (!s.zf && (s.sf == s.of))
+@[simp] theorem CondCode.interp_l (s : StatusFlags) :
+    CondCode.l.interp s = (s.sf != s.of) := rfl
+@[simp] theorem CondCode.interp_le (s : StatusFlags) :
+    CondCode.le.interp s = ((s.sf != s.of) || s.zf) := rfl
+@[simp] theorem CondCode.interp_ge (s : StatusFlags) :
+    CondCode.ge.interp s = (s.sf == s.of) := rfl
+@[simp] theorem CondCode.interp_g (s : StatusFlags) :
+    CondCode.g.interp s = (!s.zf && (s.sf == s.of)) := rfl
 
-axiom CondCode.interp_o (s : StatusFlags) : CondCode.o.interp s = s.of
-axiom CondCode.interp_no (s : StatusFlags) : CondCode.no.interp s = !s.of
-axiom CondCode.interp_s (s : StatusFlags) : CondCode.s.interp s = s.sf
-axiom CondCode.interp_ns (s : StatusFlags) : CondCode.ns.interp s = !s.sf
-axiom CondCode.interp_p (s : StatusFlags) : CondCode.p.interp s = s.pf
-axiom CondCode.interp_np (s : StatusFlags) : CondCode.np.interp s = !s.pf
+theorem CondCode.interp_o (s : StatusFlags) : CondCode.o.interp s = s.of := rfl
+theorem CondCode.interp_no (s : StatusFlags) : CondCode.no.interp s = !s.of := rfl
+theorem CondCode.interp_s (s : StatusFlags) : CondCode.s.interp s = s.sf := rfl
+theorem CondCode.interp_ns (s : StatusFlags) : CondCode.ns.interp s = !s.sf := rfl
+theorem CondCode.interp_p (s : StatusFlags) : CondCode.p.interp s = s.pf := rfl
+theorem CondCode.interp_np (s : StatusFlags) : CondCode.np.interp s = !s.pf := rfl
 
 axiom CondCode.interp_l_neg (s : StatusFlags) : CondCode.l.interp s = s.neg
 grind_pattern CondCode.interp_l_neg => CondCode.l.interp s

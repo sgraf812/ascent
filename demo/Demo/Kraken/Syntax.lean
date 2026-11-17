@@ -3,15 +3,12 @@
 
 The declarations of this module mirror the exported API of kraken's `Kraken.X64.Syntax` and
 `Kraken.Layout`, under kraken's names. The inductive types keep the constructors that the demo
-uses. The operations on executables are opaque, and the axioms state kraken's theorems about them.
+uses. The operations on texts and executables are kraken's definitions. The axioms state kraken's
+theorems about them, and every axiom of this module is a theorem of kraken.
 
-`Program.labels` is kraken's definition, with kraken's proofs of its theorems: the demo decides
-the membership of a label in the labels of a literal text by `decide +kernel`.
-
-The axioms `Kraken.Layout.apply_def`, `Kraken.Executable.withAddresses_nil`,
-`Kraken.Executable.withAddresses_cons`, `Kraken.Executable.directivesAtAddress_def`,
-`Kraken.Executable.sizeBefore_def` and `Kraken.Executable.addrOf_def` are not theorems of kraken.
-They state kraken's definitions, which `Demo.Binary` and `Demo.BinaryCheck` unfold.
+The demo decides the membership of a label in the labels of a literal text by `decide +kernel`.
+`Demo.Binary` and `Demo.BinaryCheck` unfold the operations on executables by their equation
+lemmas, such as `Kraken.Executable.withAddresses_cons`.
 -/
 
 inductive Width | W8 | W16 | W32 | W64 deriving DecidableEq
@@ -138,42 +135,53 @@ class Layout (Directive : Type) where
   start : Int64
   size : Nat → Nat
 
-opaque Layout.apply {Directive : Type} (l : Layout Directive) (prog : List Directive) :
-    Executable Directive
+def Layout.apply {Directive : Type} (l : Layout Directive) (prog : List Directive) : Executable Directive :=
+  {startAddr := l.start, program := prog.mapIdx (fun i directive => {directive, size := l.size i})}
 
-axiom Layout.apply_def {Directive : Type} (l : Layout Directive) (prog : List Directive) :
-    l.apply prog = {startAddr := l.start, program := prog.mapIdx (fun i directive => {directive, size := l.size i})}
+theorem Layout.apply_def {Directive : Type} (l : Layout Directive) (prog : List Directive) :
+    l.apply prog = {startAddr := l.start, program := prog.mapIdx (fun i directive => {directive, size := l.size i})} :=
+  rfl
 
 structure Addressable (Directive : Type) extends Sized Directive where (addr : Int64)
 
-opaque Executable.withAddresses {Directive : Type} (e : Executable Directive) :
-    List (Addressable Directive)
+def Executable.withAddresses {Directive : Type} (e : Executable Directive) : List (Addressable Directive) :=
+  let {startAddr, program} := e
+  match program with
+  | [] => []
+  | instr :: program =>
+    {instr with addr := startAddr} :: Executable.withAddresses {startAddr := startAddr + .ofNat instr.size, program}
+termination_by e.2
 
-axiom Executable.withAddresses_nil {Directive : Type} (startAddr : Int64) :
-    Executable.withAddresses ({startAddr, program := []} : Executable Directive) = []
+theorem Executable.withAddresses_nil {Directive : Type} (startAddr : Int64) :
+    Executable.withAddresses ({startAddr, program := []} : Executable Directive) = [] := by
+  rw [Executable.withAddresses]
 
-axiom Executable.withAddresses_cons {Directive : Type} (startAddr : Int64) (instr : Sized Directive)
+theorem Executable.withAddresses_cons {Directive : Type} (startAddr : Int64) (instr : Sized Directive)
     (program : List (Sized Directive)) :
     Executable.withAddresses ({startAddr, program := instr :: program} : Executable Directive) =
       {instr with addr := startAddr} ::
-        Executable.withAddresses {startAddr := startAddr + .ofNat instr.size, program}
+        Executable.withAddresses {startAddr := startAddr + .ofNat instr.size, program} := by
+  rw [Executable.withAddresses]
 
-opaque Executable.directivesAtAddress {Directive : Type} (e : Executable Directive) (a : Int64) :
-    List (Sized Directive)
+def Executable.directivesAtAddress {Directive : Type} (e : Executable Directive) (a : Int64) : List (Sized Directive) :=
+  let starts_at_a := e.withAddresses.dropWhile (·.addr ≠ a)
+  (starts_at_a.takeWhile (·.addr = a)).map (·.toSized)
 
-axiom Executable.directivesAtAddress_def {Directive : Type} (e : Executable Directive) (a : Int64) :
+theorem Executable.directivesAtAddress_def {Directive : Type} (e : Executable Directive) (a : Int64) :
     e.directivesAtAddress a =
-      ((e.withAddresses.dropWhile (·.addr ≠ a)).takeWhile (·.addr = a)).map (·.toSized)
+      ((e.withAddresses.dropWhile (·.addr ≠ a)).takeWhile (·.addr = a)).map (·.toSized) := rfl
 
-opaque Executable.sizeBefore {Directive : Type} (e : Executable Directive) (n : Nat) : Nat
+def Executable.sizeBefore {Directive : Type} (e : Executable Directive) (n : Nat) : Nat :=
+  ((e.program.take n).map (·.size)).sum
 
-axiom Executable.sizeBefore_def {Directive : Type} (e : Executable Directive) (n : Nat) :
-    e.sizeBefore n = ((e.program.take n).map (·.size)).sum
+theorem Executable.sizeBefore_def {Directive : Type} (e : Executable Directive) (n : Nat) :
+    e.sizeBefore n = ((e.program.take n).map (·.size)).sum := rfl
 
-opaque Executable.addrOf {Directive : Type} (e : Executable Directive) (n : Nat) : Int64
+def Executable.addrOf {Directive : Type} (e : Executable Directive) (n : Nat) : Int64 :=
+  e.startAddr + .ofNat (e.sizeBefore n)
 
-axiom Executable.addrOf_def {Directive : Type} (e : Executable Directive) (n : Nat) :
-    e.addrOf n = e.startAddr + .ofNat (e.sizeBefore n)
+theorem Executable.addrOf_def {Directive : Type} (e : Executable Directive) (n : Nat) :
+    e.addrOf n = e.startAddr + .ofNat (e.sizeBefore n) := rfl
 
 axiom Executable.mem_of_mem_directivesAtAddress {Directive : Type} {e : Executable Directive}
     {a : Int64} {c : Sized Directive} (h : c ∈ e.directivesAtAddress a) : c ∈ e.program

@@ -137,7 +137,7 @@ def stayIn (r₀ : BitVec 64) (st : MachineData) : Bool := stayAt r₀ (st.regs.
 theorem stayIn_iff (s₀ st : MachineData) :
     stayIn (s₀.regs.get64 .rsp) st = true ↔ st.StackAtOrBelow s₀ := by
   simp only [stayIn, stayAt, Bool.not_eq_eq_eq_not, Bool.not_true, MachineData.stackAtOrBelow_def,
-    MachineData.stackBelow_def, BitVec.serialLt_def, BitVec.slt, decide_eq_false_iff_not]
+    BitVec.serialLt_def, BitVec.slt, decide_eq_false_iff_not]
   simp
 
 @[simp, vcgen_simp] theorem stayIn_setReg_rsp (r₀ v : BitVec 64) (st : MachineData) :

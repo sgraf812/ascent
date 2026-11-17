@@ -5,12 +5,11 @@ import Demo.Kraken.Syntax
 
 The declarations of this module mirror the exported API of kraken's `Kraken.Blocks` and of the
 syntactic part of `Kraken.StateCfg`, under kraken's names. `Program.Block` is a structure, because
-the demo builds and projects blocks. The operations on texts are opaque, and the axioms state
-kraken's theorems about them.
-
-The axioms `Program.firstLabel_nil`, `Program.firstLabel_cons`, `Program.blockAt_def`,
-`Program.entryBlock_def`, `Program.fromNext_some` and `Program.fromNext_none` are not theorems of
-kraken. They state kraken's definitions, which `Demo.CfgGhost` and the simp sets of the demo use.
+the demo builds and projects blocks. `Program.firstLabel`, `Program.blockAt`,
+`Program.entryBlock` and `Program.fromNext` are kraken's definitions. `Demo.CfgGhost` and the simp
+sets of the demo use their equation lemmas, such as `Program.firstLabel_cons`. The other
+operations on texts are opaque. The axioms state kraken's theorems about them, and every axiom of
+this module is a theorem of kraken.
 -/
 
 opaque Program.fromLabel : Program → Label → Program
@@ -40,24 +39,28 @@ structure Program.Block where
   next : Option Label
   deriving Inhabited
 
-opaque Program.firstLabel : List (Label × Program) → Option Label
+def Program.firstLabel : List (Label × Program) → Option Label
+  | [] => none
+  | (l, _) :: _ => some l
 
-axiom Program.firstLabel_nil : Program.firstLabel [] = none
+theorem Program.firstLabel_nil : Program.firstLabel [] = none := rfl
 
-axiom Program.firstLabel_cons (l : Label) (b : Program) (bs : List (Label × Program)) :
-    Program.firstLabel ((l, b) :: bs) = some l
+theorem Program.firstLabel_cons (l : Label) (b : Program) (bs : List (Label × Program)) :
+    Program.firstLabel ((l, b) :: bs) = some l := rfl
 
 opaque Program.blockAtAux (j : Nat) : List (Label × Program) → Label → Option Program.Block
 
-opaque Program.blockAt (p : Program) (l : Label) : Option Program.Block
+def Program.blockAt (p : Program) (l : Label) : Option Program.Block :=
+  Program.blockAtAux 1 (Program.view p).2 l
 
-axiom Program.blockAt_def (p : Program) (l : Label) :
-    Program.blockAt p l = Program.blockAtAux 1 (Program.view p).2 l
+theorem Program.blockAt_def (p : Program) (l : Label) :
+    Program.blockAt p l = Program.blockAtAux 1 (Program.view p).2 l := rfl
 
-opaque Program.entryBlock (p : Program) : Program.Block
+def Program.entryBlock (p : Program) : Program.Block :=
+  ⟨none, 0, (Program.view p).1, Program.firstLabel (Program.view p).2⟩
 
-axiom Program.entryBlock_def (p : Program) :
-    Program.entryBlock p = ⟨none, 0, (Program.view p).1, Program.firstLabel (Program.view p).2⟩
+theorem Program.entryBlock_def (p : Program) :
+    Program.entryBlock p = ⟨none, 0, (Program.view p).1, Program.firstLabel (Program.view p).2⟩ := rfl
 
 opaque Program.blockIdx (p : Program) (l : Label) : Nat
 
@@ -115,11 +118,13 @@ axiom Program.mem_blocks_of_blockAt {p : Program} {l : Label} {blk : Program.Blo
     Program.blocksFrom b j body ((l, body') :: bs)
       = ⟨b, j, Program.straight body, some l⟩ :: Program.blocksFrom (some l) (j + 1) body' bs
 
-opaque Program.fromNext (p : Program) : Option Label → Program
+def Program.fromNext (p : Program) : Option Label → Program
+  | some l => Program.fromLabel p l
+  | none => []
 
-axiom Program.fromNext_some (p : Program) (l : Label) : Program.fromNext p (some l) = Program.fromLabel p l
+theorem Program.fromNext_some (p : Program) (l : Label) : Program.fromNext p (some l) = Program.fromLabel p l := rfl
 
-axiom Program.fromNext_none (p : Program) : Program.fromNext p none = []
+theorem Program.fromNext_none (p : Program) : Program.fromNext p none = [] := rfl
 
 axiom Program.fromLabel_block {p : Program} (hnd : (Program.labels p).Nodup)
     {l : Label} {blk : Program.Block} (h : Program.blockAt p l = some blk) :

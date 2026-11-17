@@ -9,17 +9,18 @@ import Std.Tactic.Do
 The declarations of this module mirror the exported API of kraken's `Kraken.X64.WP`,
 `Kraken.X64.WP.Spec`, `Kraken.X64.WP.Step`, `Kraken.X64.Inert`, `Kraken.KVCGen` and of the semantic
 part of `Kraken.StateCfg`, under kraken's names. The host program, its embeddings and its function
-declarations are structures and classes, because the demo builds them. `Program.wp` and the other
-operations are opaque, and the axioms state kraken's theorems about them. The `WP` instances of
-texts and directives are kraken's instances, built from `Program.wp`.
+declarations are structures and classes, because the demo builds them. `List.IsInfixAt`,
+`Host.exe`, `Host.addrOf`, `While`, `Program.InternalTarget`, `Embedding.startAddr`,
+`Embedding.endAddr`, `Executable.StepIn`, `Executable.StepOver`, `BitVec.SerialLt`,
+`MachineData.StackBelow`, `MachineData.StackAtOrBelow`, `Program.ContinueOnInternalExit` and
+`MachineData.push64` are kraken's definitions. `Program.wp` and the other operations are opaque,
+and the axioms state kraken's theorems about them. The `WP` instances of texts and directives are
+kraken's instances, built from `Program.wp`.
 
 These axioms are not theorems of kraken:
 
-* `List.isInfixAt_def`, `Host.exe_def`, `Host.addrOf_def`, `While_def`,
-  `Program.internalTarget_def`, `Embedding.startAddr_def`, `Embedding.endAddr_def`,
-  `Executable.stepIn_def`, `Executable.stepOver_def`, `Executable.stepOut_of_none`,
-  `BitVec.serialLt_def`, `MachineData.stackBelow_def`, `MachineData.stackAtOrBelow_def`,
-  `Program.continueOnInternalExit_def` and `MachineData.push64_def` state kraken's definitions.
+* `Executable.stepOut_of_none` states a case of kraken's `Executable.StepOut`. The other case of
+  kraken's `Executable.StepOut` needs `Executable.fallthrough`, which this module does not have.
 * `Directive.inert_label` states that a label is inert.
 * The specs `Program.WP.Spec.movzx_reg32_sib1`, `movzx_reg32_mem1`, `mov_sib1_reg8`, `mov_reg_mem`,
   `sub_reg_reg`, `shr_reg_one`, `mov_reg8_imm`, `test_reg8_reg8`, `push_reg16`, `pop_reg16`,
@@ -31,10 +32,10 @@ open Std.WP Lean.Order
 
 universe u
 
-opaque List.IsInfixAt {α : Type u} (l₁ l₂ : List α) (k : Nat) : Prop
+def List.IsInfixAt {α : Type u} (l₁ l₂ : List α) (k : Nat) : Prop := l₁.IsPrefix (l₂.drop k)
 
-axiom List.isInfixAt_def {α : Type u} (l₁ l₂ : List α) (k : Nat) :
-    l₁.IsInfixAt l₂ k = l₁.IsPrefix (l₂.drop k)
+theorem List.isInfixAt_def {α : Type u} (l₁ l₂ : List α) (k : Nat) :
+    l₁.IsInfixAt l₂ k = l₁.IsPrefix (l₂.drop k) := rfl
 
 axiom List.isInfixAt_iff_getElem? {α : Type u} {l₁ l₂ : List α} {k : Nat} :
     l₁.IsInfixAt l₂ k ↔ ∀ i (h : i < l₁.length), l₂[k + i]? = some l₁[i]
@@ -72,13 +73,13 @@ class Host where
 
 instance [Host] : Layout := Host.layout
 
-opaque Host.exe [Host] : Executable
+def Host.exe [Host] : Executable := Host.layout.apply Host.prog
 
-axiom Host.exe_def [Host] : Host.exe = Host.layout.apply Host.prog
+theorem Host.exe_def [Host] : Host.exe = Host.layout.apply Host.prog := rfl
 
-opaque Host.addrOf [Host] (k : Nat) : Int64
+def Host.addrOf [Host] (k : Nat) : Int64 := Host.exe.addrOf k
 
-axiom Host.addrOf_def [Host] (k : Nat) : Host.addrOf k = Host.exe.addrOf k
+theorem Host.addrOf_def [Host] (k : Nat) : Host.addrOf k = Host.exe.addrOf k := rfl
 
 instance [Host] : Labels := Executable.labels Host.exe
 
@@ -117,12 +118,14 @@ axiom Directives.interp_inert_append [Labels] {pre rest : List (Kraken.Sized Dir
 
 /-! ## Loops -/
 
-opaque While {σ : Type} (cond : σ → Prop) (body : (σ → Prop) → σ → Prop) (done : σ → Prop) :
-    σ → Prop
+def While {σ : Type} (cond : σ → Prop) (body : (σ → Prop) → σ → Prop) (done : σ → Prop) :
+    σ → Prop :=
+  Eventually (fun st «continue» => cond st ∧ body «continue» st) (fun st => ¬ cond st ∧ done st)
 
-axiom While_def {σ : Type} (cond : σ → Prop) (body : (σ → Prop) → σ → Prop) (done : σ → Prop) :
+theorem While_def {σ : Type} (cond : σ → Prop) (body : (σ → Prop) → σ → Prop) (done : σ → Prop) :
     While cond body done =
-      Eventually (fun st «continue» => cond st ∧ body «continue» st) (fun st => ¬ cond st ∧ done st)
+      Eventually (fun st «continue» => cond st ∧ body «continue» st) (fun st => ¬ cond st ∧ done st) :=
+  rfl
 
 section
 variable {σ : Type} {cond : σ → Prop} {body : (σ → Prop) → σ → Prop} {done : σ → Prop}
@@ -144,10 +147,11 @@ structure Embedding [Host] (p : Program) where
 class Embeds [Host] (p : Program) where
   embedding : Embedding p
 
-opaque Program.InternalTarget [Host] (p : Program) (a : Int64) : Prop
+def Program.InternalTarget [Host] (p : Program) (a : Int64) : Prop :=
+  ∃ l ∈ p.labels, label l = a
 
-axiom Program.internalTarget_def [Host] (p : Program) (a : Int64) :
-    p.InternalTarget a = ∃ l ∈ p.labels, label l = a
+theorem Program.internalTarget_def [Host] (p : Program) (a : Int64) :
+    p.InternalTarget a = ∃ l ∈ p.labels, label l = a := rfl
 
 structure Fragment [Host] where
   prog : Program
@@ -156,14 +160,15 @@ structure Fragment [Host] where
 section
 variable [Host]
 
-opaque Embedding.startAddr {p : Program} (e : Embedding p) : Int64
+def Embedding.startAddr {p : Program} (e : Embedding p) : Int64 := Host.addrOf e.start
 
-opaque Embedding.endAddr {p : Program} (e : Embedding p) : Int64
+def Embedding.endAddr {p : Program} (e : Embedding p) : Int64 :=
+  Host.addrOf (e.start + p.length)
 
-axiom Embedding.startAddr_def {p : Program} (e : Embedding p) : e.startAddr = Host.addrOf e.start
+theorem Embedding.startAddr_def {p : Program} (e : Embedding p) : e.startAddr = Host.addrOf e.start := rfl
 
-axiom Embedding.endAddr_def {p : Program} (e : Embedding p) :
-    e.endAddr = Host.addrOf (e.start + p.length)
+theorem Embedding.endAddr_def {p : Program} (e : Embedding p) :
+    e.endAddr = Host.addrOf (e.start + p.length) := rfl
 
 end
 
@@ -179,28 +184,36 @@ opaque FunDecls.at [Host] [FunDecls] (a : Int64) : Option Fragment
 
 /-! ## Steps -/
 
-opaque Executable.StepIn (e : Executable) (next jump : MachineState → Prop) (st : MachineState) : Prop
+def Executable.StepIn (e : Executable) (next jump : MachineState → Prop) (st : MachineState) : Prop :=
+  let := e.labels
+  ∀ ⦃P : MachineState → Prop⦄ ⦃ret jmp : MachineState → Effects⦄,
+    (∀ st', next st' → (ret st').All P) → (∀ st', jump st' → (jmp st').All P) →
+      (Directives.interp (e.directivesAtAddress st.pc) st.data st.pc (fun a s => ret ⟨s, a⟩)
+        (fun a s => jmp ⟨s, a⟩)).All P
 
-axiom Executable.stepIn_def (e : Executable) (next jump : MachineState → Prop) (st : MachineState) :
+theorem Executable.stepIn_def (e : Executable) (next jump : MachineState → Prop) (st : MachineState) :
     e.StepIn next jump st =
       let := e.labels
       ∀ ⦃P : MachineState → Prop⦄ ⦃ret jmp : MachineState → Effects⦄,
         (∀ st', next st' → (ret st').All P) → (∀ st', jump st' → (jmp st').All P) →
           (Directives.interp (e.directivesAtAddress st.pc) st.data st.pc (fun a s => ret ⟨s, a⟩)
-            (fun a s => jmp ⟨s, a⟩)).All P
+            (fun a s => jmp ⟨s, a⟩)).All P := rfl
 
-opaque BitVec.SerialLt {w : Nat} (a b : BitVec w) : Prop
+def BitVec.SerialLt {w : Nat} (a b : BitVec w) : Prop :=
+  0 < (b - a).toInt
 
-opaque MachineData.StackBelow (s' s : MachineData) : Prop
+abbrev MachineData.StackBelow (s' s : MachineData) : Prop :=
+  (s'.regs.get64 .rsp).SerialLt (s.regs.get64 .rsp)
 
-opaque MachineData.StackAtOrBelow (s' s : MachineData) : Prop
+abbrev MachineData.StackAtOrBelow (s' s : MachineData) : Prop := ¬ s.StackBelow s'
 
-axiom BitVec.serialLt_def {w : Nat} (a b : BitVec w) : a.SerialLt b = (0 < (b - a).toInt)
+theorem BitVec.serialLt_def {w : Nat} (a b : BitVec w) : a.SerialLt b = (0 < (b - a).toInt) := rfl
 
-axiom MachineData.stackBelow_def (s' s : MachineData) :
-    s'.StackBelow s = (s'.regs.get64 .rsp).SerialLt (s.regs.get64 .rsp)
+theorem MachineData.stackBelow_def (s' s : MachineData) :
+    s'.StackBelow s = (s'.regs.get64 .rsp).SerialLt (s.regs.get64 .rsp) := rfl
 
-axiom MachineData.stackAtOrBelow_def (s' s : MachineData) : s'.StackAtOrBelow s = ¬ s.StackBelow s'
+theorem MachineData.stackAtOrBelow_def (s' s : MachineData) : s'.StackAtOrBelow s = ¬ s.StackBelow s' :=
+  rfl
 
 opaque Executable.StepOut (e : Executable)
     (callee : Int64 → Option ((MachineState → Prop) → MachineData → Prop))
@@ -211,23 +224,26 @@ axiom Executable.stepOut_of_none (e : Executable)
     (st : MachineState) (next jump : MachineState → Prop) (st' : MachineState)
     (h : callee st'.pc = none) : e.StepOut callee st next jump st' = jump st'
 
-opaque Executable.StepOver (e : Executable)
+def Executable.StepOver (e : Executable)
     (callee : Int64 → Option ((MachineState → Prop) → MachineData → Prop))
-    (next jump : MachineState → Prop) (st : MachineState) : Prop
+    (next jump : MachineState → Prop) (st : MachineState) : Prop :=
+  e.StepIn next (e.StepOut callee st next jump) st
 
-axiom Executable.stepOver_def (e : Executable)
+theorem Executable.stepOver_def (e : Executable)
     (callee : Int64 → Option ((MachineState → Prop) → MachineData → Prop))
     (next jump : MachineState → Prop) (st : MachineState) :
-    e.StepOver callee next jump st = e.StepIn next (e.StepOut callee st next jump) st
-
-opaque Program.ContinueOnInternalExit [Host] (p : Program) (s : MachineData)
-    («continue» exit : MachineState → Prop) (st : MachineState) : Prop
+    e.StepOver callee next jump st = e.StepIn next (e.StepOut callee st next jump) st := rfl
 
 open Classical in
-axiom Program.continueOnInternalExit_def [Host] (p : Program) (s : MachineData)
+def Program.ContinueOnInternalExit [Host] (p : Program) (s : MachineData)
+    («continue» exit : MachineState → Prop) (st : MachineState) : Prop :=
+  if p.InternalTarget st.pc ∧ st.data.StackAtOrBelow s then «continue» st else exit st
+
+open Classical in
+theorem Program.continueOnInternalExit_def [Host] (p : Program) (s : MachineData)
     («continue» exit : MachineState → Prop) (st : MachineState) :
     p.ContinueOnInternalExit s «continue» exit st =
-      if p.InternalTarget st.pc ∧ st.data.StackAtOrBelow s then «continue» st else exit st
+      if p.InternalTarget st.pc ∧ st.data.StackAtOrBelow s then «continue» st else exit st := rfl
 
 /-! ## The weakest precondition -/
 
@@ -289,18 +305,21 @@ axiom MachineData.retAddr_eq (t : MachineData) :
       (fun i => Int64.ofBitVec (BitVec.ofInt 64 i))
 grind_pattern MachineData.retAddr_eq => t.retAddr
 
-opaque MachineData.push64 (s : MachineData) (v : Int64) : MachineData
+def MachineData.push64 (s : MachineData) (v : Int64) : MachineData :=
+  { s with regs := s.regs.set64 .rsp (s.regs.get64 .rsp - 8#64),
+           dmem := Mem.storeInt s.dmem (s.regs.get64 .rsp - 8#64) 8 v.toBitVec.toInt }
 
-axiom MachineData.push64_def (s : MachineData) (v : Int64) :
+theorem MachineData.push64_def (s : MachineData) (v : Int64) :
     s.push64 v = { s with regs := s.regs.set64 .rsp (s.regs.get64 .rsp - 8#64),
-                          dmem := Mem.storeInt s.dmem (s.regs.get64 .rsp - 8#64) 8 v.toBitVec.toInt }
+                          dmem := Mem.storeInt s.dmem (s.regs.get64 .rsp - 8#64) 8 v.toBitVec.toInt } :=
+  rfl
 
-axiom MachineData.regs_push64 (s : MachineData) (v : Int64) :
-    (s.push64 v).regs = s.regs.set64 .rsp (s.regs.get64 .rsp - 8#64)
+theorem MachineData.regs_push64 (s : MachineData) (v : Int64) :
+    (s.push64 v).regs = s.regs.set64 .rsp (s.regs.get64 .rsp - 8#64) := rfl
 grind_pattern MachineData.regs_push64 => (s.push64 v).regs
 
-axiom MachineData.dmem_push64 (s : MachineData) (v : Int64) :
-    (s.push64 v).dmem = Mem.storeInt s.dmem (s.regs.get64 .rsp - 8#64) 8 v.toBitVec.toInt
+theorem MachineData.dmem_push64 (s : MachineData) (v : Int64) :
+    (s.push64 v).dmem = Mem.storeInt s.dmem (s.regs.get64 .rsp - 8#64) 8 v.toBitVec.toInt := rfl
 grind_pattern MachineData.dmem_push64 => (s.push64 v).dmem
 
 axiom Int64.ofBitVec_ofBytes_toBytes (ra : Int64) :

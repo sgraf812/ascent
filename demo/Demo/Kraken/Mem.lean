@@ -5,23 +5,23 @@ import Std.Data.ExtHashMap
 
 The declarations of this module mirror the exported API of kraken's `Kraken.ToBytes`,
 `Kraken.Mem` and `Kraken.SeparationMem`, under kraken's names. A memory is a finite map from
-addresses to bytes. The operations on memories and byte lists are opaque, and the axioms state
-kraken's theorems about them.
+addresses to bytes. The operations on bytes (`Int.ofBytes`, `Int.toBytes`, `List.At`,
+`Mem.loadBytes`, `Mem.storeBytes`) and `Mem.restrict` are opaque. The other operations are
+kraken's definitions. The axioms state kraken's theorems, and every axiom of this module is a
+theorem of kraken.
 
-`Mem.Blocks.Inside`, `Mem.Blocks.Disjoint`, `Mem.Mapped` and the decision procedure
-`Mem.Blocks.decInside` are kraken's definitions: the separation proofs of the demo unfold them,
-and `FState.split` of `Demo.Frame` computes with the decision procedure.
-
-The axioms `Int.take_def`, `Mem.loadInt_def` and `Mem.storeInt_def` are not theorems of kraken.
-They state kraken's definitions, which the byte-level proofs of `Demo.Instr` and `Demo.Frame`
-unfold.
+The separation proofs of the demo unfold `Mem.Blocks.Inside`, `Mem.Blocks.Disjoint` and
+`Mem.Mapped`. `FState.split` of `Demo.Frame` computes with the decision procedure
+`Mem.Blocks.decInside`. The byte-level proofs of `Demo.Instr` and `Demo.Frame` unfold
+`Int.take`, `Mem.loadInt` and `Mem.storeInt` by `Int.take_def`, `Mem.loadInt_def` and
+`Mem.storeInt_def`.
 -/
 
 open Std
 
-opaque Int.take (v : Int) (w : Nat) : Int
+abbrev Int.take (v : Int) (w : Nat) : Int := v % (2 : Int) ^ w
 
-axiom Int.take_def (v : Int) (w : Nat) : v.take w = v % (2 : Int) ^ w
+theorem Int.take_def (v : Int) (w : Nat) : v.take w = v % (2 : Int) ^ w := rfl
 
 opaque Int.ofBytes (bs : List UInt8) : Int
 
@@ -41,19 +41,21 @@ abbrev Mem (w) := ExtHashMap (BitVec w) UInt8
 
 opaque Mem.loadBytes {w} (m : Mem w) (a : BitVec w) (n : Nat) : Option (List UInt8)
 
-opaque Mem.loadInt {w} (m : Mem w) (a : BitVec w) (n : Nat) : Option Int
+def Mem.loadInt {w} (m : Mem w) (a : BitVec w) (n : Nat) : Option Int :=
+  (loadBytes m a n).map Int.ofBytes
 
-axiom Mem.loadInt_def {w} (m : Mem w) (a : BitVec w) (n : Nat) :
-    m.loadInt a n = (m.loadBytes a n).map Int.ofBytes
+theorem Mem.loadInt_def {w} (m : Mem w) (a : BitVec w) (n : Nat) :
+    m.loadInt a n = (m.loadBytes a n).map Int.ofBytes := rfl
 
 opaque List.At {w} (bs : List UInt8) (a : BitVec w) : ExtHashMap (BitVec w) UInt8
 
 opaque Mem.storeBytes {w} (m : Mem w) (a : BitVec w) (bs : List UInt8) : Mem w
 
-opaque Mem.storeInt {w} (m : Mem w) (a : BitVec w) (n : Nat) (v : Int) : Mem w
+def Mem.storeInt {w} (m : Mem w) (a : BitVec w) (n : Nat) (v : Int) : Mem w :=
+  storeBytes m a (Int.toBytes n v)
 
-axiom Mem.storeInt_def {w} (m : Mem w) (a : BitVec w) (n : Nat) (v : Int) :
-    m.storeInt a n v = m.storeBytes a (Int.toBytes n v)
+theorem Mem.storeInt_def {w} (m : Mem w) (a : BitVec w) (n : Nat) (v : Int) :
+    m.storeInt a n v = m.storeBytes a (Int.toBytes n v) := rfl
 
 axiom mem_At_iff {w} (bs : List UInt8) (a : BitVec w) (k : BitVec w) :
     k ∈ bs.At a ↔ ∃ i < bs.length, k = a + .ofNat w i
