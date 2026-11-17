@@ -120,10 +120,7 @@ theorem assert_bind_of_neg {α : Type} {g : Prop} (h : ¬g) (f : Unit → Demoni
   rfl
 
 @[instance_reducible] def wpInst {α : Type} : WP (Demonic α) α Prop EStack⟨⟩ where
-  trans x := ⟨fun post _ => x.wpD post⟩
-  trans_monotone x := by
-    intro post post' epost epost' _ hpost
-    exact x.mono hpost
+  trans x := PredTrans.mk (fun post _ => x.wpD post) fun hpost _ => x.mono hpost
 
 instance instWPMonad : WPMonad Demonic Prop EStack⟨⟩ where
   toWP _ := wpInst

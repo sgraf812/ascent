@@ -58,7 +58,7 @@ instance {ε : Type u} : WPMonadExact (Except ε) Prop (ε → Prop) where
 instance {ε σ : Type} : WPMonadExact (EStateM ε σ) (σ → Prop) (ε → σ → Prop) where
   wp_pure_le := fun _ _ _ _ => PartialOrder.rel_refl
   wp_bind_le := fun x _ _ _ s => by
-    simp only [WP.wp, WP.trans, bind, EStateM.bind]
+    simp only [EStateM.wp_apply_eq, bind, EStateM.bind]
     cases (x s) <;> exact PartialOrder.rel_refl
 
 instance {σ : Type u} {m : Type u → Type v} {Pred : Type w} {EPosts : Type v}
