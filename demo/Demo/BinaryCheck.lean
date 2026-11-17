@@ -280,13 +280,13 @@ theorem findSome_withAddresses (l : Label) {a : Int64} {ds : Program} {ss : List
       (fun x => if x.directive = .label l then some x.addr else none) =
     (labelAddrs a ds ss).findSome? (fun x => if x.1 = l then some x.2 else none) := by
   induction ds generalizing a ss with
-  | nil => cases ss <;> simp [labelAddrs, Kraken.Executable.withAddresses.eq_1]
+  | nil => cases ss <;> simp [labelAddrs, Kraken.Executable.withAddresses_nil]
   | cons d ds ih =>
     cases ss with
     | nil => simp at h
     | cons s ss =>
       simp only [List.length_cons, Nat.add_right_cancel_iff] at h
-      rw [List.zipWith_cons_cons, Kraken.Executable.withAddresses.eq_2]
+      rw [List.zipWith_cons_cons, Kraken.Executable.withAddresses_cons]
       cases d with
       | label l' =>
         by_cases hl : l' = l
@@ -326,7 +326,7 @@ theorem mem_of_targetOK {lbls : List (Label × Int64)} {l : Label} {a : Int64}
 
 theorem apply_layoutOf {p : Program} {sizes : List Nat} (h : p.length = sizes.length) :
     (layoutOf sizes).apply p = {startAddr := base, program := List.zipWith (fun d s => ⟨d, s⟩) p sizes} := by
-  simp only [Kraken.Layout.apply]
+  rw [Kraken.Layout.apply_def]
   congr 1
   apply List.ext_getElem?
   intro i
@@ -349,7 +349,7 @@ theorem map_size_zipWith {p : Program} {sizes : List Nat} (h : p.length = sizes.
 
 theorem addrOf_layoutOf {p : Program} {sizes : List Nat} (h : p.length = sizes.length) (k : Nat) :
     ((layoutOf sizes).apply p).addrOf k = base + .ofNat (sizes.take k).sum := by
-  rw [apply_layoutOf h, Kraken.Executable.addrOf, Kraken.Executable.sizeBefore]
+  rw [apply_layoutOf h, Kraken.Executable.addrOf_def, Kraken.Executable.sizeBefore_def]
   show base + _ = _
   rw [List.map_take, map_size_zipWith h]
 
@@ -502,7 +502,7 @@ open Binary in
     have hj := sum_take_le sizes j
     have hk := sum_take_le sizes k
     rw [toNat_base_add (by omega), toNat_base_add (by omega)] at this
-    simp only [Kraken.Executable.sizeBefore, apply_layoutOf hl]
+    simp only [Kraken.Executable.sizeBefore_def, apply_layoutOf hl]
     rw [List.map_take, List.map_take, map_size_zipWith hl]
     omega
 
@@ -510,16 +510,15 @@ namespace Binary
 
 
 theorem exe_ofCheck {p : Program} {sizes : List Nat} {b : ByteArray} (h : check p sizes b = true) :
-    @Host.exe (Host.ofCheck p sizes b h) = (layoutOf sizes).apply p := rfl
+    @Host.exe (Host.ofCheck p sizes b h) = (layoutOf sizes).apply p :=
+  @Host.exe_def (Host.ofCheck p sizes b h)
 
 theorem label_ofCheck {p : Program} {sizes : List Nat} {b : ByteArray} (h : check p sizes b = true)
     {l : Label} {a : Int64} (hm : (l, a) ∈ labelAddrs base p sizes) :
     (Executable.labels (@Host.exe (Host.ofCheck p sizes b h))).label l = a := by
   obtain ⟨hw, -, -, hnd, -⟩ := check_parts h
   have hl := walkOK_length hw
-  show ((Kraken.Executable.withAddresses (@Host.exe (Host.ofCheck p sizes b h))).findSome?
-    (fun x => if x.directive = .label l then some x.addr else none)).getD (-1) = a
-  rw [exe_ofCheck, apply_layoutOf hl, findSome_withAddresses l hl,
+  rw [Executable.labels_def, exe_ofCheck, apply_layoutOf hl, findSome_withAddresses l hl,
     findSome_eq_of_mem (by rw [labelAddrs_fst hl]; exact hnd) hm]
   rfl
 
@@ -533,8 +532,9 @@ theorem assembles_of_check {p : Program} {sizes : List Nat} {b : ByteArray}
     (h : check p sizes b = true) : @Assembles (Host.ofCheck p sizes b h) p b := by
   obtain ⟨hw, hsum, hb, hnd, hcov⟩ := check_parts h
   have hl := walkOK_length hw
-  have haddr (k : Nat) : @Host.addrOf (Host.ofCheck p sizes b h) k = base + .ofNat (sizes.take k).sum :=
-    addrOf_layoutOf hl k
+  have haddr (k : Nat) : @Host.addrOf (Host.ofCheck p sizes b h) k = base + .ofNat (sizes.take k).sum := by
+    rw [@Host.addrOf_def (Host.ofCheck p sizes b h), exe_ofCheck]
+    exact addrOf_layoutOf hl k
   refine @Assembles.mk (Host.ofCheck p sizes b h) p b rfl ?_ ?_ ?_ ?_
   · rw [haddr]; exact add_ofNat_zero base
   · rw [haddr, List.take_of_length_le (Nat.le_of_eq hl.symm), hsum]
@@ -565,7 +565,7 @@ theorem assembles_of_check {p : Program} {sizes : List Nat} {b : ByteArray}
           simp only [Option.map_some]
           rw [label_ofCheck h (mem_of_targetOK ht)]
   · intro a
-    rw [targets_eq_jumpTargets h]
+    rw [targets_eq_jumpTargets h, @Program.internalTarget_def (Host.ofCheck p sizes b h)]
     constructor
     · intro ha
       obtain ⟨l, hl'⟩ := mem_jumpTargets hw ha

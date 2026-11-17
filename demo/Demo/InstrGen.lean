@@ -314,32 +314,20 @@ variable [Host] [FunDecls] {Q : Unit → MachineData → Prop} {E : Int64 → Ma
 theorem Spec.lea_reg_sib (rd b i : Reg64) (d : Int64) :
     ⦃ fun s => Q () { s with regs := s.regs.set64 rd (s.regs.get64 b + s.regs.get64 i * 8 + BitVec.ofInt 64 d.toInt) } ⦄
       (Directive.instr (.regular .W64 .W64 (.lea (.low rd .W64) ⟨some (.reg b), some ⟨i, .W64⟩, .int64 d⟩)))
-    ⦃ Q; E ⦄ := by
-  refine Triple.intro fun s hpre => ?_
-  refine Program.wp_single fun _ _ _ _ hn _ => ?_
-  simp only [Directive.interp, Instr.interp, Operation.interp, MachineData.setReg, Reg64s.set_low_W64,
-    AddrExpr.zeroExtend_interp_sib, Effects.All]
-  exact hn _ hpre
+    ⦃ Q; E ⦄ :=
+  Program.WP.Spec.lea_reg_sib rd b i d
 
 theorem Spec.lea_reg_base_disp (rd b : Reg64) (d : Int64) :
     ⦃ fun s => Q () { s with regs := s.regs.set64 rd (s.regs.get64 b + BitVec.ofInt 64 d.toInt) } ⦄
       (Directive.instr (.regular .W64 .W64 (.lea (.low rd .W64) ⟨some (.reg b), none, .int64 d⟩)))
-    ⦃ Q; E ⦄ := by
-  refine Triple.intro fun s hpre => ?_
-  refine Program.wp_single fun _ _ _ _ hn _ => ?_
-  simp only [Directive.interp, Instr.interp, Operation.interp, MachineData.setReg, Reg64s.set_low_W64,
-    AddrExpr.zeroExtend_interp_base_disp, Effects.All]
-  exact hn _ hpre
+    ⦃ Q; E ⦄ :=
+  Program.WP.Spec.lea_reg_base_disp rd b d
 
 theorem Spec.mov_reg32_imm (asz : Width) (r : Reg64) (i : Int64) :
     ⦃ fun s => Q () { s with regs := s.regs.set64 r ((i.toBitVec.setWidth 32).zeroExtend 64) } ⦄
       (Directive.instr (.regular asz .W32 (.mov (.reg (.low r .W32)) (.imm (.int64 i)))))
     ⦃ Q; E ⦄ :=
-  Triple.intro fun _ hq => Program.wp_single fun _ _ _ _ hn _ => by
-    simp only [Directive.interp, Instr.interp, Operation.interp, Operand.interp,
-      RegOrMem.interp, ConstExpr.interp, MachineData.set, MachineData.setReg,
-      Reg64s.set_low_W32, Effects.All]
-    exact hn _ hq
+  Program.WP.Spec.mov_reg32_imm asz r i
 
 end
 

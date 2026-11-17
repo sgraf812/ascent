@@ -1,6 +1,4 @@
 import Demo.CfgRewrite
-import Kraken.X64.Parser
-import Kraken.X64.PrettyPrint
 import Distillery.Tactic.VCGen.Command
 
 /-!
@@ -20,7 +18,7 @@ the abstract machine. The ten words need two registers beyond the caller-saved o
 `r14` and `rbx` on entry and pops them before the return.
 -/
 
-open Kraken.X64.Parser Std.WP Lean.Order Distillery Distillery.Kraken Distillery.Kraken.AInstr
+open Std.WP Lean.Order Distillery Distillery.Kraken Distillery.Kraken.AInstr
 open Distillery.Concretization (ofStateRepr)
 open scoped Program.WP
 
@@ -28,7 +26,7 @@ set_option experimental.vcgen true
 
 namespace Distillery.Kraken
 
-def rev10 : Program := parse("
+/-
   pushq %r14
   pushq %rbx
   movq (%rdi), %rax
@@ -54,7 +52,33 @@ def rev10 : Program := parse("
   popq %rbx
   popq %r14
   retq
-")
+-/
+def rev10 : Program := [
+  .instr (.regular .W64 .W64 (.push (.regOrMem (.reg (.low .r14 .W64))))),
+  .instr (.regular .W64 .W64 (.push (.regOrMem (.reg (.low .rbx .W64))))),
+  .instr (.regular .W64 .W64 (.mov (.reg (.low .rax .W64)) (.regOrMem (.mem ⟨some (.reg .rdi), none, .int64 0⟩)))),
+  .instr (.regular .W64 .W64 (.mov (.reg (.low .rcx .W64)) (.regOrMem (.mem ⟨some (.reg .rdi), none, .int64 8⟩)))),
+  .instr (.regular .W64 .W64 (.mov (.reg (.low .rdx .W64)) (.regOrMem (.mem ⟨some (.reg .rdi), none, .int64 16⟩)))),
+  .instr (.regular .W64 .W64 (.mov (.reg (.low .rsi .W64)) (.regOrMem (.mem ⟨some (.reg .rdi), none, .int64 24⟩)))),
+  .instr (.regular .W64 .W64 (.mov (.reg (.low .r8 .W64)) (.regOrMem (.mem ⟨some (.reg .rdi), none, .int64 32⟩)))),
+  .instr (.regular .W64 .W64 (.mov (.reg (.low .r9 .W64)) (.regOrMem (.mem ⟨some (.reg .rdi), none, .int64 40⟩)))),
+  .instr (.regular .W64 .W64 (.mov (.reg (.low .r10 .W64)) (.regOrMem (.mem ⟨some (.reg .rdi), none, .int64 48⟩)))),
+  .instr (.regular .W64 .W64 (.mov (.reg (.low .r11 .W64)) (.regOrMem (.mem ⟨some (.reg .rdi), none, .int64 56⟩)))),
+  .instr (.regular .W64 .W64 (.mov (.reg (.low .rbx .W64)) (.regOrMem (.mem ⟨some (.reg .rdi), none, .int64 64⟩)))),
+  .instr (.regular .W64 .W64 (.mov (.reg (.low .r14 .W64)) (.regOrMem (.mem ⟨some (.reg .rdi), none, .int64 72⟩)))),
+  .instr (.regular .W64 .W64 (.mov (.mem ⟨some (.reg .rdi), none, .int64 0⟩) (.regOrMem (.reg (.low .r14 .W64))))),
+  .instr (.regular .W64 .W64 (.mov (.mem ⟨some (.reg .rdi), none, .int64 8⟩) (.regOrMem (.reg (.low .rbx .W64))))),
+  .instr (.regular .W64 .W64 (.mov (.mem ⟨some (.reg .rdi), none, .int64 16⟩) (.regOrMem (.reg (.low .r11 .W64))))),
+  .instr (.regular .W64 .W64 (.mov (.mem ⟨some (.reg .rdi), none, .int64 24⟩) (.regOrMem (.reg (.low .r10 .W64))))),
+  .instr (.regular .W64 .W64 (.mov (.mem ⟨some (.reg .rdi), none, .int64 32⟩) (.regOrMem (.reg (.low .r9 .W64))))),
+  .instr (.regular .W64 .W64 (.mov (.mem ⟨some (.reg .rdi), none, .int64 40⟩) (.regOrMem (.reg (.low .r8 .W64))))),
+  .instr (.regular .W64 .W64 (.mov (.mem ⟨some (.reg .rdi), none, .int64 48⟩) (.regOrMem (.reg (.low .rsi .W64))))),
+  .instr (.regular .W64 .W64 (.mov (.mem ⟨some (.reg .rdi), none, .int64 56⟩) (.regOrMem (.reg (.low .rdx .W64))))),
+  .instr (.regular .W64 .W64 (.mov (.mem ⟨some (.reg .rdi), none, .int64 64⟩) (.regOrMem (.reg (.low .rcx .W64))))),
+  .instr (.regular .W64 .W64 (.mov (.mem ⟨some (.reg .rdi), none, .int64 72⟩) (.regOrMem (.reg (.low .rax .W64))))),
+  .instr (.regular .W64 .W64 (.pop (.reg (.low .rbx .W64)))),
+  .instr (.regular .W64 .W64 (.pop (.reg (.low .r14 .W64)))),
+  .instr (.regular .W64 .W64 .ret)]
 
 attribute [local vcgen_simp] rev10
 
@@ -64,8 +88,8 @@ distill_def rev10Instr [Host] [FunDecls] [Embeds rev10] (r₀ : BitVec 64) (ra :
   distill [refines_cfg (p := rev10) (habs := abs_regs)] with finish
 
 sym_simp_def rev10Loops [Host] [Embeds rev10] (r₀ : BitVec 64) (ra : Int64) : BlockM MachineData Unit from rev10Instr r₀ ra
-  using pre [] post [rev10Instr, rev10, Program.loop, Program.entryNext, Program.firstLabel, Program.table,
-    Program.blocks, List.filterMap_cons, List.filterMap_nil, List.reverse_nil, Table.get_cons,
+  using pre [] post [rev10Instr, rev10, Program.loop, Program.entryNext, Program.firstLabel_nil, Program.firstLabel_cons, Program.table,
+    Program.blocks_eq, List.filterMap_cons, List.filterMap_nil, List.reverse_nil, Table.get_cons,
     Option.some.injEq, reduceCtorEq, jumpTo_none, cfgLoop_eq_throw, Table.get?_nil, tryCatch_bind_assoc,
     tryCatch_modifyIf_bind, tryCatch_exitIf_cfgLoop, stayIn_setReg64_rsp, BitVec.reduceSLT, Bool.not_true,
     eq_self_iff_true, implies_true, bind_assoc, AInstr.exitIf_bind, bind_pure_unit, pure_bind]

@@ -1,6 +1,6 @@
 import Demo.Cfg
 import Distillery.PureRefinement
-import Kraken.X64.WP.Spec
+import Demo.Kraken.WP
 
 /-!
 # The instruction layer
@@ -106,11 +106,18 @@ theorem CondCode.interp_ofSub (cc : CondCode) (a b : BitVec 64) :
 
 theorem StatusFlags.ofLogic_eq (v : BitVec 64) (af : Bool) :
     StatusFlags.ofLogic v af = { StatusFlags.ofSub v 0 with af := af } := by
-  simp [StatusFlags.ofLogic, StatusFlags.ofSub, StatusFlags.from_result]
+  show StatusFlags.mk (StatusFlags.ofLogic v af).cf (StatusFlags.ofLogic v af).pf
+    (StatusFlags.ofLogic v af).af (StatusFlags.ofLogic v af).zf (StatusFlags.ofLogic v af).sf
+    (StatusFlags.ofLogic v af).of = _
+  simp [BitVec.usubOverflow, BitVec.ssubOverflow]
+  exact ⟨BitVec.toInt_lt, BitVec.le_toInt v⟩
 
 theorem CondCode.interp_af (cc : CondCode) (s : StatusFlags) (af : Bool) :
     cc.interp { s with af := af } = cc.interp s := by
-  cases cc <;> rfl
+  cases cc <;> simp only [CondCode.interp_o, CondCode.interp_no, CondCode.interp_c, CondCode.interp_nc,
+    CondCode.interp_z, CondCode.interp_nz, CondCode.interp_be, CondCode.interp_a, CondCode.interp_s,
+    CondCode.interp_ns, CondCode.interp_p, CondCode.interp_np, CondCode.interp_l, CondCode.interp_ge,
+    CondCode.interp_le, CondCode.interp_g]
 
 theorem CondCode.interp_ofLogic (cc : CondCode) (v : BitVec 64) (af : Bool) :
     cc.interp (StatusFlags.ofLogic v af) = cc.cmp v 0 := by
@@ -146,7 +153,7 @@ theorem Mem.Sub.loadBytes {m m' : DataMem} (h : Mem.Sub m m') {a : BitVec 64} {n
 
 theorem Mem.Sub.loadInt {m m' : DataMem} (h : Mem.Sub m m') {a : BitVec 64} {n : Nat} {v : Int}
     (hl : m.loadInt a n = some v) : m'.loadInt a n = some v := by
-  simp only [Mem.loadInt, Option.map_eq_some_iff] at hl ⊢
+  simp only [Mem.loadInt_def, Option.map_eq_some_iff] at hl ⊢
   obtain ⟨bs, hbs, rfl⟩ := hl
   exact ⟨bs, h.loadBytes hbs, rfl⟩
 
@@ -337,13 +344,13 @@ end
 theorem Mem.storeInt_take {w : Nat} (m : Mem w) (a : BitVec w) (n k : Nat) (h : n ≤ 8) (hk : k = 8 * n)
     (x : BitVec 64) : Mem.storeInt m a n ((x.take k).toInt) = Mem.storeInt m a n x.toInt := by
   subst hk
-  unfold Mem.storeInt
+  rw [Mem.storeInt_def, Mem.storeInt_def]
   rw [← Int.toBytes_emod n ((x.take (8 * n)).toInt), ← Int.toBytes_emod n x.toInt]
   congr 2
   have hd : (2:Int) ^ (8 * n) ∣ 2 ^ 64 := ⟨2 ^ (64 - 8 * n), by rw [← Int.pow_add]; congr 1; omega⟩
-  simp only [Int.take]
+  simp only [Int.take_def]
   rw [BitVec.toInt_emod_two_pow, ← Int.emod_emod_of_dvd x.toInt hd, BitVec.toInt_emod_two_pow]
-  simp only [BitVec.take, BitVec.extractLsb'_toNat, Nat.shiftRight_zero]
+  simp only [BitVec.take_def, BitVec.extractLsb'_toNat, Nat.shiftRight_zero]
   push_cast
   rfl
 
@@ -374,11 +381,8 @@ theorem Spec.movzx_reg32_sib1 (r b i : Reg64) (d : Int64) :
     ⦃ Q; E ⦄ := by
   refine Triple.intro fun s ⟨hsome, hq⟩ => ?_
   obtain ⟨v, hv⟩ := Option.isSome_iff_exists.mp hsome
-  refine Program.wp_single fun _ _ _ _ hn _ => ?_
-  simp only [Directive.interp, Instr.interp, Operation.interp, RegOrMem.interp, MachineData.load,
-    MachineData.set, MachineData.setReg, Reg64s.set_low_W32, AddrExpr.zeroExtend_interp_sib1,
-    Width.bytes, hv, Effects.All]
-  refine hn _ ?_
+  refine (Program.WP.Spec.movzx_reg32_sib1 (Q := Q) (E := E) r b i d).le_wp s ⟨hsome, ?_⟩
+  simp only [Reg64s.set_low_W32, hv, Option.get!_some]
   have hw : word 1 (s.regs.get64 b + s.regs.get64 i + BitVec.ofInt 64 d.toInt) s
       = BitVec.zeroExtend 64 (BitVec.zeroExtend Width.W32.bits (BitVec.ofInt Width.W8.bits v)) := by
     apply BitVec.eq_of_toNat_eq
@@ -396,14 +400,10 @@ theorem Spec.mov_sib1_reg8 (b i : Reg64) (d : Int64) (rs : Reg64) :
       (Directive.instr (.regular .W64 .W8
           (.mov (.mem ⟨some (.reg b), some ⟨i, .W8⟩, .int64 d⟩) (.regOrMem (.reg (.low rs .W8))))))
     ⦃ Q; E ⦄ := by
-  refine Triple.intro fun s ⟨hsome, hq⟩ => ?_
-  obtain ⟨v, hv⟩ := Option.isSome_iff_exists.mp hsome
-  refine Program.wp_single fun _ _ _ _ hn _ => ?_
-  simp only [Directive.interp, Instr.interp, Operation.interp, Operand.interp, RegOrMem.interp,
-    MachineData.set, MachineData.store, Reg64s.get_low_W8, AddrExpr.zeroExtend_interp_sib1,
-    Width.bytes, hv, Effects.All]
-  rw [Mem.storeInt_take _ _ 1 8 (by omega) rfl]
-  exact hn _ hq
+  refine Triple.intro fun s ⟨hsome, hq⟩ =>
+    (Program.WP.Spec.mov_sib1_reg8 (Q := Q) (E := E) b i d rs).le_wp s ⟨hsome, ?_⟩
+  rw [Reg64s.get_low_W8, Mem.storeInt_take _ _ 1 8 (by omega) rfl]
+  exact hq
 
 end
 
@@ -803,44 +803,29 @@ section
 variable [Host] [FunDecls] {Q : Unit → MachineData → Prop} {E : Int64 → MachineData → Prop}
 open scoped Program.WP
 
-local macro "run_step" : tactic =>
-  `(tactic| simp only [Directive.interp, Instr.interp, Operation.interp, Operand.interp,
-      RegOrMem.interp, RelRegOrMem.interp, ConstExpr.interp, MachineData.set, MachineData.setReg,
-      Reg64s.get_low_W64, Reg64s.set_low_W64, Reg64s.get_low_W8, Reg64s.set_low_W8, Effects.All,
-      ite_true, ShiftCountExpr.interpMasked, ShiftCountExpr.interp])
-
 theorem Spec.sub_reg_reg (asz : Width) (rd rs : Reg64) :
     ⦃ fun s => Q () { s with regs := s.regs.set64 rd (s.regs.get64 rd - s.regs.get64 rs), status := StatusFlags.ofSub (s.regs.get64 rd) (s.regs.get64 rs) } ⦄
       (Directive.instr (.regular asz .W64 (.sub (.reg (.low rd .W64)) (.regOrMem (.reg (.low rs .W64))))))
     ⦃ Q; E ⦄ :=
-  Triple.intro fun _ hq => Program.wp_single fun _ _ _ _ hn _ => by run_step; exact hn _ hq
+  Program.WP.Spec.sub_reg_reg asz rd rs
 
 theorem Spec.shr_reg_one (asz : Width) (r : Reg64) :
     ⦃ fun s => ∀ af : Bool, Q () { s with regs := s.regs.set64 r ((s.regs.get64 r).ushiftRight 1), status := StatusFlags.from_result ((s.regs.get64 r).ushiftRight 1) { cf := (s.regs.get64 r).getLsbD 0, af := af, of := (s.regs.get64 r).msb } } ⦄
       (Directive.instr (.regular asz .W64 (.shr (.reg (.low r .W64)) (.imm8 (.int64 1)))))
     ⦃ Q; E ⦄ :=
-  Triple.intro fun _ hq => Program.wp_single fun _ _ _ _ hn _ => by
-    run_step
-    have h1 : ((Int64.toBitVec 1).take 8).toNat &&& 63 = 1 := rfl
-    simp only [h1, Nat.reduceBEq, Bool.false_eq_true, ↓reduceIte, Width.bits, Nat.reduceLT, Nat.reduceSub,
-      beq_self_eq_true, Nat.sub_self]
-    intro af
-    exact hn _ (hq af)
+  Program.WP.Spec.shr_reg_one asz r
 
 theorem Spec.mov_reg8_imm (asz : Width) (r : Reg64) (i : Int64) :
     ⦃ fun s => Q () { s with regs := s.regs.set64 r ((s.regs.get64 r).replaceLow (i.toBitVec.truncate 8)) } ⦄
       (Directive.instr (.regular asz .W8 (.mov (.reg (.low r .W8)) (.imm (.int64 i)))))
     ⦃ Q; E ⦄ :=
-  Triple.intro fun _ hq => Program.wp_single fun _ _ _ _ hn _ => by run_step; exact hn _ hq
+  Program.WP.Spec.mov_reg8_imm asz r i
 
 theorem Spec.test_reg8_reg8 (asz : Width) (ra rb : Reg64) :
     ⦃ fun s => ∀ af : Bool, Q () { s with status := StatusFlags.from_result ((s.regs.get64 ra).take 8 &&& (s.regs.get64 rb).take 8) { cf := false, af := af, of := false } } ⦄
       (Directive.instr (.regular asz .W8 (.test (.reg (.low ra .W8)) (.regOrMem (.reg (.low rb .W8))))))
     ⦃ Q; E ⦄ :=
-  Triple.intro fun _ hq => Program.wp_single fun _ _ _ _ hn _ => by
-    run_step
-    intro af
-    exact hn _ (hq af)
+  Program.WP.Spec.test_reg8_reg8 asz ra rb
 
 end
 end Distillery.Kraken.AInstr
@@ -910,7 +895,8 @@ open scoped Program.WP
 
 omit [Host] [FunDecls] in
 theorem CondCode.z_interp_from_result {w : Nat} (v : BitVec w) (f : StatusFlags.from_result.Remaining) :
-    CondCode.z.interp (StatusFlags.from_result v f) = (v == 0#w) := rfl
+    CondCode.z.interp (StatusFlags.from_result v f) = (v == 0#w) := by
+  rw [CondCode.interp_z, StatusFlags.zf_from_result]; rfl
 
 omit [Host] [FunDecls] in
 theorem _root_.Reg64s.get64_set64_eq (s : Reg64s) (r : Reg64) (v : BitVec 64) :
@@ -920,7 +906,7 @@ theorem _root_.Reg64s.get64_set64_eq (s : Reg64s) (r : Reg64) (v : BitVec 64) :
 omit [Host] [FunDecls] in
 theorem _root_.BitVec.take_eq_setWidth {w : Nat} (x : BitVec w) (n : Nat) : x.take n = x.setWidth n := by
   apply BitVec.eq_of_getLsbD_eq; intro i hi
-  simp [BitVec.take, hi]
+  simp [BitVec.take_def, hi]
 
 omit [Host] [FunDecls] in
 theorem _root_.BitVec.setWidth_replaceLow_8 (x : BitVec 64) (v : BitVec 8) : (x.replaceLow v).setWidth 8 = v := by
@@ -929,7 +915,11 @@ theorem _root_.BitVec.setWidth_replaceLow_8 (x : BitVec 64) (v : BitVec 8) : (x.
 theorem CondCode.interp_from_result_af {w : Nat} (cc : CondCode) (v : BitVec w) (cf af of : Bool) :
     cc.interp (StatusFlags.from_result v { cf, af, of })
       = cc.interp (StatusFlags.from_result v { cf, af := false, of }) := by
-  cases cc <;> rfl
+  cases cc <;> simp only [CondCode.interp_o, CondCode.interp_no, CondCode.interp_c, CondCode.interp_nc,
+    CondCode.interp_z, CondCode.interp_nz, CondCode.interp_be, CondCode.interp_a, CondCode.interp_s,
+    CondCode.interp_ns, CondCode.interp_p, CondCode.interp_np, CondCode.interp_l, CondCode.interp_ge,
+    CondCode.interp_le, CondCode.interp_g, StatusFlags.cf_from_result, StatusFlags.zf_from_result,
+    StatusFlags.sf_from_result, StatusFlags.pf_from_result, StatusFlags.of_from_result]
 
 /-- `sub rd, rs; jcc cc, l` writes the difference and branches on the comparison of the two
 values before the write, which the abstract program reads with `peek`. -/
@@ -1176,15 +1166,8 @@ theorem Spec.mov_reg_mem (r b : Reg64) (d : Int64) :
         ∧ Q () { s with regs := s.regs.set64 r (BitVec.ofInt 64 (Mem.loadInt s.dmem (s.regs.get64 b + BitVec.ofInt 64 d.toInt) 8).get!) } ⦄
       (Directive.instr (.regular .W64 .W64
           (.mov (.reg (.low r .W64)) (.regOrMem (.mem ⟨some (.reg b), none, .int64 d⟩)))))
-    ⦃ Q; E ⦄ := by
-  refine Triple.intro fun s hpre => ?_
-  obtain ⟨hmapped, hpre⟩ := hpre
-  obtain ⟨i, hload⟩ := Option.isSome_iff_exists.mp hmapped
-  refine Program.wp_single fun _ _ _ _ hn _ => ?_
-  simp only [Directive.interp, Instr.interp, Operation.interp, Operand.interp,
-    RegOrMem.interp, MachineData.load, MachineData.set, MachineData.setReg, Reg64s.set_low_W64,
-    AddrExpr.zeroExtend_interp_base_disp, Width.bytes, hload, Effects.All, ite_true]
-  exact hn _ (by rwa [hload, Option.get!_some] at hpre)
+    ⦃ Q; E ⦄ :=
+  Program.WP.Spec.mov_reg_mem r b d
 
 end
 
@@ -1297,11 +1280,8 @@ theorem Spec.movzx_reg32_mem1 (r b : Reg64) (d : Int64) :
     ⦃ Q; E ⦄ := by
   refine Triple.intro fun s ⟨hsome, hq⟩ => ?_
   obtain ⟨v, hv⟩ := Option.isSome_iff_exists.mp hsome
-  refine Program.wp_single fun _ _ _ _ hn _ => ?_
-  simp only [Directive.interp, Instr.interp, Operation.interp, RegOrMem.interp, MachineData.load,
-    MachineData.set, MachineData.setReg, Reg64s.set_low_W32, AddrExpr.zeroExtend_interp_base_disp,
-    Width.bytes, hv, Effects.All]
-  refine hn _ ?_
+  refine (Program.WP.Spec.movzx_reg32_mem1 (Q := Q) (E := E) r b d).le_wp s ⟨hsome, ?_⟩
+  simp only [Reg64s.set_low_W32, hv, Option.get!_some]
   have hw : word 1 (s.regs.get64 b + BitVec.ofInt 64 d.toInt) s
       = BitVec.zeroExtend 64 (BitVec.zeroExtend Width.W32.bits (BitVec.ofInt Width.W8.bits v)) := by
     apply BitVec.eq_of_toNat_eq
@@ -1317,13 +1297,10 @@ theorem Spec.push_reg16 (rs : Reg64) :
                         dmem := Mem.storeInt s.dmem (s.regs.get64 .rsp - 2#64) 2 (s.regs.get64 rs).toInt } ⦄
       (Directive.instr (.regular .W64 .W16 (.push (.regOrMem (.reg (.low rs .W16))))))
     ⦃ Q; E ⦄ := by
-  refine Triple.intro fun s ⟨hsome, hq⟩ => ?_
-  obtain ⟨v, hv⟩ := Option.isSome_iff_exists.mp hsome
-  refine Program.wp_single fun _ _ _ _ hn _ => ?_
-  simp only [Directive.interp, Instr.interp, Operation.interp, Operand.interp, RegOrMem.interp,
-    MachineData.store, Reg64s.get_low_W16, Width.bytes, Width.bytesv, hv, Effects.All]
-  rw [Mem.storeInt_take _ _ 2 16 (by omega) rfl]
-  exact hn _ hq
+  refine Triple.intro fun s ⟨hsome, hq⟩ =>
+    (Program.WP.Spec.push_reg16 (Q := Q) (E := E) rs).le_wp s ⟨hsome, ?_⟩
+  rw [Reg64s.get_low_W16, Mem.storeInt_take _ _ 2 16 (by omega) rfl]
+  exact hq
 
 theorem Spec.pop_reg16 (rd : Reg64) :
     ⦃ fun s =>
@@ -1333,12 +1310,10 @@ theorem Spec.pop_reg16 (rd : Reg64) :
           ∧ Q () { s with regs := rs.set64 rd ((rs.get64 rd).replaceLow v) } ⦄
       (Directive.instr (.regular .W64 .W16 (.pop (.reg (.low rd .W16)))))
     ⦃ Q; E ⦄ := by
-  refine Triple.intro fun s ⟨hsome, hq⟩ => ?_
-  obtain ⟨v, hv⟩ := Option.isSome_iff_exists.mp hsome
-  refine Program.wp_single fun _ _ _ _ hn _ => ?_
-  simp only [Directive.interp, Instr.interp, Operation.interp, MachineData.load, MachineData.set,
-    MachineData.setReg, Reg64s.set_low_W16, Width.bytes, Width.bytesv, hv, Effects.All]
-  exact hn _ (by rwa [hv, Option.get!_some] at hq)
+  refine Triple.intro fun s ⟨hsome, hq⟩ =>
+    (Program.WP.Spec.pop_reg16 (Q := Q) (E := E) rd).le_wp s ⟨hsome, ?_⟩
+  rw [Reg64s.set_low_W16]
+  exact hq
 
 end
 
@@ -1425,7 +1400,8 @@ open scoped Program.WP
             (loadReg 1 r (fun st => st.regs.get64 b + BitVec.ofInt 64 d.toInt)
               fun w st => (st.regs.get64 r).replaceLow (w.setWidth 8))) Q E := by
   refine wrp_modifyIf (g := loadOk 1 fun st => st.regs.get64 b + BitVec.ofInt 64 d.toInt)
-    (fun Q E s hp hq => (Program.WP.Spec.mov_reg8_mem (Q := Q) (E := E) r b d).le_wp s ⟨hp, hq⟩) ?_
+    (fun Q E s hp hq => (Program.WP.Spec.mov_reg8_mem (Q := Q) (E := E) r b d).le_wp s
+      ⟨hp, by rw [Reg64s.set_low_W8]; exact hq⟩) ?_
   intro s hg
   exact ⟨hg, by rw [loadReg, word_setWidth 1 8 (by omega) rfl]; rfl⟩
 
@@ -1442,7 +1418,8 @@ open scoped Program.WP
             (loadReg 2 r (fun st => st.regs.get64 b + BitVec.ofInt 64 d.toInt)
               fun w st => (st.regs.get64 r).replaceLow (w.setWidth 16))) Q E := by
   refine wrp_modifyIf (g := loadOk 2 fun st => st.regs.get64 b + BitVec.ofInt 64 d.toInt)
-    (fun Q E s hp hq => (Program.WP.Spec.mov_reg16_mem (Q := Q) (E := E) r b d).le_wp s ⟨hp, hq⟩) ?_
+    (fun Q E s hp hq => (Program.WP.Spec.mov_reg16_mem (Q := Q) (E := E) r b d).le_wp s
+      ⟨hp, by rw [Reg64s.set_low_W16]; exact hq⟩) ?_
   intro s hg
   exact ⟨hg, by rw [loadReg, word_setWidth 2 16 (by omega) rfl]; rfl⟩
 

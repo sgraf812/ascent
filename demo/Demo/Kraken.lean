@@ -1,6 +1,5 @@
 import Distillery.Refinement
-import Kraken.X64.WP.Instance
-import Kraken.X64.WP.Spec
+import Demo.Kraken.WP
 
 open Std.WP Lean.Order Distillery
 open scoped Program.WP

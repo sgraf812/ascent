@@ -1,4 +1,4 @@
-import Kraken.StateCfg
+import Demo.Kraken.WP
 
 /-!
 # The control-flow rule with a ghost state
@@ -78,7 +78,7 @@ theorem cfg_ghost {G : Type} {p : Program} {s₀ : MachineData} {g₀ : G} {Q : 
         rw [Host.label_eq hlink (hcellOf l' (hne_of l' hsome'))]
         exact ih (l', g') hlt s' hsome' hI'
       obtain ⟨blk, hblk⟩ := Option.isSome_iff_exists.mp hsome
-      obtain ⟨hlab, i', hi', hnext', hidx⟩ := Program.blockAtAux_spec hblk
+      obtain ⟨hlab, i', hi', hnext', hidx⟩ := Program.blockAtAux_spec (Program.blockAt_def p l ▸ hblk)
       have hb := h blk (Program.mem_blocks_of_blockAt hblk)
       rw [hlab] at hb
       have htext := Program.fromLabel_block hnd hblk
@@ -91,7 +91,7 @@ theorem cfg_ghost {G : Type} {p : Program} {s₀ : MachineData} {g₀ : G} {Q : 
         omega
       generalize hi : p.length - (Program.fromLabel p l).length = i at hdrop ⊢
       rw [htext] at hdrop
-      have hbody : blk.body.IsInfixAt p (i + 1) :=
+      have hbody : blk.body.IsInfixAt p (i + 1) := List.isInfixAt_def .. ▸
         ⟨Program.fromNext p blk.next, by rw [← List.drop_drop, hdrop]; rfl⟩
       have hpi : p[i]? = some (.label l) := by
         have h0 := congrArg (·[0]?) hdrop
@@ -109,16 +109,15 @@ theorem cfg_ghost {G : Type} {p : Program} {s₀ : MachineData} {g₀ : G} {Q : 
         | none =>
           simp only [hn] at hnext hlen
           refine While.stop ?_ hnext
-          show ¬ st.pc ≠ Host.addrOf (H.embedding.start + p.length)
-          rw [hpc]
-          simp only [Program.fromNext, List.length_nil] at hlen
+          rw [Embedding.endAddr_def, hpc]
+          simp only [Program.fromNext_none, List.length_nil] at hlen
           intro hne
           exact hne (by congr 1; omega)
         | some l' =>
           simp only [hn] at hnext hlen
           obtain ⟨g', hI', hdec⟩ := hnext
           obtain ⟨hsome', -⟩ := Program.blockAt_next hnd hblk hn
-          simp only [Program.fromNext] at hlen
+          simp only [Program.fromNext_some] at hlen
           have hst : st = ⟨st.data, Host.addrOf (H.embedding.start + (p.length - (Program.fromLabel p l').length))⟩ := by
             cases st
             simp only [MachineState.mk.injEq, true_and] at hpc ⊢
@@ -132,30 +131,31 @@ theorem cfg_ghost {G : Type} {p : Program} {s₀ : MachineData} {g₀ : G} {Q : 
         subst hla
         obtain ⟨g', hI'', hdec⟩ := hI'
         exact jump l' d g' (Program.isSome_blockAt_of_mem (List.mem_of_getElem? hl')) hI'' hdec
-  have hq : (Program.view p).1.IsInfixAt p 0 := ⟨_, (Program.view_eq_entry hnd).symm⟩
+  have hq : (Program.view p).1.IsInfixAt p 0 := List.isInfixAt_def .. ▸ ⟨_, (Program.view_eq_entry hnd).symm⟩
   have hlen0 := congrArg List.length (Program.view_eq_entry hnd)
   simp only [List.length_append] at hlen0
-  refine Program.run_infix (o := 0) hq (by omega) (Program.entry_noInternal p)
-    (h _ (Program.entryBlock_mem_blocks p) s₀ g₀ ⟨rfl, rfl⟩) ?_ ?_
+  have hentry := h _ (Program.entryBlock_mem_blocks p) s₀ g₀
+    (by rw [Program.entryBlock_def]; exact ⟨rfl, rfl⟩)
+  rw [Program.entryBlock_def] at hentry
+  rw [Embedding.startAddr_def]
+  refine Program.run_infix (o := 0) hq (by omega) (Program.entry_noInternal p) hentry ?_ ?_
   · intro st hpc hnext
-    simp only [Program.entryBlock] at hnext hlen0
+    simp only [Program.entryBlock_def] at hnext hlen0
     cases hv : (Program.view p).2 with
     | nil =>
-      simp only [hv, Program.firstLabel, Program.fromNext, List.length_nil] at hnext hlen0
+      simp only [hv, Program.firstLabel_nil, Program.fromNext_none, List.length_nil] at hnext hlen0
       refine While.stop ?_ hnext
-      show ¬ st.pc ≠ Host.addrOf (H.embedding.start + p.length)
-      rw [hpc]
+      rw [Embedding.endAddr_def, hpc]
       intro hne
       exact hne (by congr 1; omega)
     | cons lb rest =>
       obtain ⟨l', b'⟩ := lb
-      simp only [hv, Program.firstLabel, Program.fromNext] at hnext hlen0
+      simp only [hv, Program.firstLabel_cons, Program.fromNext_some] at hnext hlen0
       obtain ⟨g', hI', -⟩ := hnext
       have hsome' : (Program.blockAt p l').isSome := by
         have hndv : ((Program.view p).2.map (·.1)).Nodup := by rwa [← Program.labels_view]
         have h0 : (Program.view p).2[0]? = some (l', b') := by rw [hv]; rfl
-        show (Program.blockAtAux 1 (Program.view p).2 l').isSome = true
-        rw [Program.blockAtAux_of_getElem hndv h0]
+        rw [Program.blockAt_def, Program.blockAtAux_of_getElem hndv h0]
         rfl
       have hst : st = ⟨st.data, Host.addrOf (H.embedding.start + (p.length - (Program.fromLabel p l').length))⟩ := by
         cases st

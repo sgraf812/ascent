@@ -1,7 +1,7 @@
 import Demo.Kraken
 import Distillery.Table
 import Distillery.BlockLoop
-import Kraken.StateCfg
+import Demo.Kraken.WP
 import Demo.CfgGhost
 import Distillery.Demonic.StateT
 import Distillery.Demonic.WhileLoop
@@ -136,8 +136,8 @@ def stayIn (r₀ : BitVec 64) (st : MachineData) : Bool := stayAt r₀ (st.regs.
 
 theorem stayIn_iff (s₀ st : MachineData) :
     stayIn (s₀.regs.get64 .rsp) st = true ↔ st.StackAtOrBelow s₀ := by
-  simp only [stayIn, stayAt, Bool.not_eq_eq_eq_not, Bool.not_true, MachineData.StackAtOrBelow,
-    MachineData.StackBelow, BitVec.SerialLt, BitVec.slt, decide_eq_false_iff_not]
+  simp only [stayIn, stayAt, Bool.not_eq_eq_eq_not, Bool.not_true, MachineData.stackAtOrBelow_def,
+    MachineData.stackBelow_def, BitVec.serialLt_def, BitVec.slt, decide_eq_false_iff_not]
   simp
 
 @[simp, vcgen_simp] theorem stayIn_setReg_rsp (r₀ v : BitVec 64) (st : MachineData) :
@@ -233,11 +233,11 @@ theorem Program.label_mem_blocksFrom {b : Option Label} :
     ∀ {j : Nat} {body : Program} {bs : List (Label × Program)} {blk : Program.Block},
       blk ∈ Program.blocksFrom b j body bs → blk.label = b ∨ ∃ lb ∈ bs, blk.label = some lb.1
   | _, _, [], blk, h => by
-    simp only [Program.blocksFrom, List.mem_singleton] at h
+    simp only [Program.blocksFrom_nil, List.mem_singleton] at h
     subst h
     exact Or.inl rfl
   | j, body, (l, body') :: bs, blk, h => by
-    simp only [Program.blocksFrom, List.mem_cons] at h
+    simp only [Program.blocksFrom_cons, List.mem_cons] at h
     rcases h with rfl | h
     · exact Or.inl rfl
     · rcases Program.label_mem_blocksFrom h with h | ⟨lb, hlb, h⟩
@@ -250,7 +250,7 @@ theorem Program.block_unique_blocksFrom {b : Option Label} :
         blk ∈ Program.blocksFrom b j body bs → blk' ∈ Program.blocksFrom b j body bs →
         blk.label = blk'.label → blk = blk'
   | _, _, [], _, _, blk, blk', h, h', _ => by
-    simp only [Program.blocksFrom, List.mem_singleton] at h h'
+    simp only [Program.blocksFrom_nil, List.mem_singleton] at h h'
     rw [h, h']
   | j, body, (l, body') :: bs, hnd, hb, blk, blk', h, h', he => by
     simp only [List.map_cons, List.nodup_cons, List.mem_map] at hnd
@@ -261,7 +261,7 @@ theorem Program.block_unique_blocksFrom {b : Option Label} :
       rcases Program.label_mem_blocksFrom hx with h | ⟨lb, hlb, h⟩
       · rw [h]; exact (hb (l, body') List.mem_cons_self).symm
       · rw [h]; exact (hb lb (List.mem_cons_of_mem _ hlb)).symm
-    simp only [Program.blocksFrom, List.mem_cons] at h h'
+    simp only [Program.blocksFrom_cons, List.mem_cons] at h h'
     rcases h with rfl | h <;> rcases h' with rfl | h'
     · rfl
     · exact absurd he.symm (hne h')
@@ -272,11 +272,13 @@ theorem Program.block_unique {p : Program} (hnd : (Program.labels p).Nodup) {blk
     (h : blk ∈ Program.blocks p) (h' : blk' ∈ Program.blocks p) (he : blk.label = blk'.label) :
     blk = blk' := by
   rw [Program.labels_view] at hnd
+  rw [Program.blocks_eq] at h h'
   exact Program.block_unique_blocksFrom hnd (fun _ _ => by simp) h h' he
 
 theorem Program.label_mem_labels {p : Program} {blk : Program.Block} {l : Label}
     (h : blk ∈ Program.blocks p) (hl : blk.label = some l) : l ∈ Program.labels p := by
   rw [Program.labels_view]
+  rw [Program.blocks_eq] at h
   rcases Program.label_mem_blocksFrom h with h' | ⟨lb, hlb, h'⟩
   · rw [hl] at h'; cases h'
   · rw [hl] at h'
@@ -287,7 +289,7 @@ theorem Program.exists_block_of_mem_labels {p : Program} {l : Label} (h : l ∈ 
     ∃ blk ∈ Program.blocks p, blk.label = some l := by
   rw [Program.labels_view] at h
   obtain ⟨⟨l, body⟩, hlb, rfl⟩ := List.mem_map.mp h
-  unfold Program.blocks
+  rw [Program.blocks_eq]
   generalize (Program.view p).1 = b0 at *
   generalize (Program.view p).2 = bs at hlb
   suffices ∀ (b : Option Label) j body0, ∃ blk ∈ Program.blocksFrom b j body0 bs, blk.label = some l from
@@ -295,12 +297,17 @@ theorem Program.exists_block_of_mem_labels {p : Program} {l : Label} (h : l ∈ 
   induction bs with
   | nil => exact nomatch hlb
   | cons lb bs ih =>
+    obtain ⟨l₁, b₁⟩ := lb
     intro b j body0
-    rcases List.mem_cons.mp hlb with rfl | hlb
-    · cases bs with
-      | nil => exact ⟨_, List.mem_cons_of_mem _ (List.mem_singleton_self _), rfl⟩
-      | cons _ _ => exact ⟨_, List.mem_cons_of_mem _ List.mem_cons_self, rfl⟩
-    · obtain ⟨blk, hblk, hl⟩ := ih hlb (some lb.1) (j + 1) lb.2
+    rw [Program.blocksFrom_cons]
+    rcases List.mem_cons.mp hlb with heq | hlb
+    · cases heq
+      cases bs with
+      | nil => exact ⟨_, List.mem_cons_of_mem _ (by rw [Program.blocksFrom_nil]; exact List.mem_singleton_self _), rfl⟩
+      | cons lb' _ =>
+        obtain ⟨_, _⟩ := lb'
+        exact ⟨_, List.mem_cons_of_mem _ (by rw [Program.blocksFrom_cons]; exact List.mem_cons_self), rfl⟩
+    · obtain ⟨blk, hblk, hl⟩ := ih hlb (some l₁) (j + 1) b₁
       exact ⟨blk, List.mem_cons_of_mem _ hblk, hl⟩
 
 theorem List.lookup_mem {κ β : Type} [DecidableEq κ] :
@@ -514,7 +521,7 @@ theorem wrp_cfg_le_exit {p : Program} [Embeds p] (hs : Program.Separated p = tru
   have hstay : ∀ t a, J t a → (stayIn (s₀.regs.get64 .rsp) a = true ↔ t.StackAtOrBelow s₀) := by
     intro t a hta
     rw [stayIn_iff]
-    simp only [MachineData.StackAtOrBelow, MachineData.StackBelow, hJ t a hta]
+    simp only [MachineData.stackAtOrBelow_def, MachineData.stackBelow_def, hJ t a hta]
   refine wrp_intro fun Qa Ea => ?_
   intro t ht
   simp only [meet_apply, meet_prop_eq_and, Concretization.ofStateRel_pred] at ht
@@ -533,8 +540,11 @@ theorem wrp_cfg_le_exit {p : Program} [Embeds p] (hs : Program.Separated p = tru
     InvImage (OptRel (CfgSafe.Child st T)) fun x => x.2.2
   have hentry : (Program.blocks p).head? = some ⟨none, 0, Program.straight (Program.view p).1,
       Program.entryNext p⟩ := by
-    unfold Program.blocks Program.entryNext
-    cases (Program.view p).2 <;> rfl
+    rw [Program.blocks_eq]
+    unfold Program.entryNext
+    rcases (Program.view p).2 with _ | ⟨⟨_, _⟩, _⟩ <;>
+      simp only [Program.blocksFrom_nil, Program.blocksFrom_cons, Program.firstLabel_nil,
+        Program.firstLabel_cons, List.head?_cons]
   refine Program.WP.cfg_ghost (p := p) (Q := Q)
     (E := EPostsConcretization.ePosts (Concretization.ofStateRel J) E Ea)
     (s₀ := t) (g₀ := (a₀, none)) Inv R
@@ -619,7 +629,7 @@ theorem wrp_cfg_le_exit {p : Program} [Embeds p] (hs : Program.Separated p = tru
           simp only [st, r₀] at hsv
           rw [hsv] at this
           exact nomatch this
-        simpa only [MachineData.StackAtOrBelow, Classical.not_not] using h1
+        simpa only [MachineData.stackAtOrBelow_def, Classical.not_not] using h1
     | true =>
     have hca : c = a' := by
       rcases hrel with ⟨-, h, -⟩ | h

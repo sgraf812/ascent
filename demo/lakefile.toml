@@ -5,9 +5,5 @@ defaultTargets = ["Demo"]
 name = "distillery"
 path = ".."
 
-[[require]]
-name = "Kraken"
-path = "../../kraken-distillery-demo"
-
 [[lean_lib]]
 name = "Demo"

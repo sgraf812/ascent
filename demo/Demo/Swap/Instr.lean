@@ -1,6 +1,4 @@
 import Demo.Instr
-import Kraken.X64.Parser
-import Kraken.X64.PrettyPrint
 import Distillery.Tactic.VCGen.Command
 
 /-!
@@ -16,7 +14,7 @@ with `-O1 -fno-vectorize -fno-unroll-loops -fno-builtin -fomit-frame-pointer`, a
 the abstract machine. The text starts with the label `_swap` that its callers jump to.
 -/
 
-open Kraken.X64.Parser Std.WP Lean.Order Distillery Distillery.Kraken Distillery.Kraken.AInstr
+open Std.WP Lean.Order Distillery Distillery.Kraken Distillery.Kraken.AInstr
 open Distillery.Concretization (ofStateRepr)
 open scoped Program.WP
 
@@ -24,14 +22,21 @@ set_option experimental.vcgen true
 
 namespace Distillery.Kraken
 
-def swap : Program := parse("
+/-
 _swap:
   movq (%rdi), %rax
   movq (%rsi), %rcx
   movq %rcx, (%rdi)
   movq %rax, (%rsi)
   retq
-")
+-/
+def swap : Program := [
+  .label "_swap",
+  .instr (.regular .W64 .W64 (.mov (.reg (.low .rax .W64)) (.regOrMem (.mem ⟨some (.reg .rdi), none, .int64 0⟩)))),
+  .instr (.regular .W64 .W64 (.mov (.reg (.low .rcx .W64)) (.regOrMem (.mem ⟨some (.reg .rsi), none, .int64 0⟩)))),
+  .instr (.regular .W64 .W64 (.mov (.mem ⟨some (.reg .rdi), none, .int64 0⟩) (.regOrMem (.reg (.low .rcx .W64))))),
+  .instr (.regular .W64 .W64 (.mov (.mem ⟨some (.reg .rsi), none, .int64 0⟩) (.regOrMem (.reg (.low .rax .W64))))),
+  .instr (.regular .W64 .W64 .ret)]
 
 attribute [local vcgen_simp] swap
 

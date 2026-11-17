@@ -60,7 +60,8 @@ theorem tryCatch_callA_bind {β : Type} (k : BitVec 64 → Int64 → BlockM Mach
       wp_modifyIf_fun, wp_tryCatch_fun] at hw ⊢ <;>
     exact hw
 
-theorem abs_push64 (s : MachineData) (v : Int64) : abs (s.push64 v) = (abs s).push64 v := rfl
+theorem abs_push64 (s : MachineData) (v : Int64) : abs (s.push64 v) = (abs s).push64 v := by
+  rw [MachineData.push64_def, MachineData.push64_def]; rfl
 
 attribute [vcgen_simp] MachineData.regs_push64
 

@@ -32,7 +32,7 @@ sym_simp_def zipWithAddLoops [Host] [Embeds zipWithAdd] (r₀ : BitVec 64) (ra :
     tryCatch_map_condState, tryCatch_map_throw, tryCatch_map_pure, tryCatch_map_modifyIf,
     BlockLoop.tryCatch_tryCatch, tryCatch_forIn_bind, tryCatch_map_forIn, tryCatch_forIn,
     modifyIf_stay_bind_condState]
-  post [zipWithAddInstr, zipWithAdd, Program.loop, Program.entryNext, Program.firstLabel, Table.get_cons,
+  post [zipWithAddInstr, zipWithAdd, Program.loop, Program.entryNext, Program.firstLabel_nil, Program.firstLabel_cons, Table.get_cons,
     Program.table, List.filterMap_cons, List.filterMap_nil, Option.map_some, Option.map_none,
     List.reverse_cons, List.reverse_nil, List.nil_append, List.cons_append, Option.some.injEq,
     reduceCtorEq, zipWithAdd.label_ne, zipWithAdd.label_ne',

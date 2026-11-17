@@ -145,7 +145,7 @@ sym_simp_def bsearchLoops [Host] [Embeds bsearch] (r₀ : BitVec 64) (ra : Int64
     tryCatch_map_modifyIf, BlockLoop.tryCatch_tryCatch, tryCatch_forIn_bind, tryCatch_map_forIn,
     tryCatch_forIn, tryCatch_forIn_bind_header, tryCatch_map_forIn_header, tryCatch_forIn_header,
     modifyIf_stay_bind_condState]
-  post [bsearchInstr, bsearch, Program.loop, Program.entryNext, Program.firstLabel, Table.get_cons,
+  post [bsearchInstr, bsearch, Program.loop, Program.entryNext, Program.firstLabel_nil, Program.firstLabel_cons, Table.get_cons,
     Program.table, List.filterMap_cons, List.filterMap_nil, Option.map_some, Option.map_none,
     List.reverse_cons, List.reverse_nil, List.nil_append, List.cons_append, Option.some.injEq,
     reduceCtorEq, bsearch.label_ne_0_1, bsearch.label_ne_0_2, bsearch.label_ne_0_3, bsearch.label_ne_0_4, bsearch.label_ne_0_5, bsearch.label_ne_1_0, bsearch.label_ne_1_2, bsearch.label_ne_1_3, bsearch.label_ne_1_4, bsearch.label_ne_1_5, bsearch.label_ne_2_0, bsearch.label_ne_2_1, bsearch.label_ne_2_3, bsearch.label_ne_2_4, bsearch.label_ne_2_5, bsearch.label_ne_3_0, bsearch.label_ne_3_1, bsearch.label_ne_3_2, bsearch.label_ne_3_4, bsearch.label_ne_3_5, bsearch.label_ne_4_0, bsearch.label_ne_4_1, bsearch.label_ne_4_2, bsearch.label_ne_4_3, bsearch.label_ne_4_5, bsearch.label_ne_5_0, bsearch.label_ne_5_1, bsearch.label_ne_5_2, bsearch.label_ne_5_3, bsearch.label_ne_5_4,

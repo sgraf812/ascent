@@ -10,7 +10,7 @@ that hypothesis. Two calls in sequence are defined: a call pushes an unknown wor
 slot, so the slot stays mapped for the next call.
 -/
 
-open Kraken.X64.Parser Std.WP Lean.Order Distillery Distillery.Kraken Distillery.Kraken.AInstr
+open Std.WP Lean.Order Distillery Distillery.Kraken Distillery.Kraken.AInstr
 open Distillery.Concretization (ofStateRepr ofStateRel)
 open scoped Program.WP
 
@@ -18,11 +18,15 @@ set_option experimental.vcgen true
 
 namespace Distillery.Kraken.Tests.Call
 
-def caller : Program := parse("
+/-
 _caller:
   callq _swap
   retq
-")
+-/
+def caller : Program := [
+  .label "_caller",
+  .instr (.regular .W64 .W64 (.call (.rel (.sub (.label "_swap") .after_current_instruction)))),
+  .instr (.regular .W64 .W64 .ret)]
 
 attribute [local vcgen_simp] caller
 
@@ -45,9 +49,11 @@ fun [Host] k r₀ ra =>
       [({ label := none, idx := 0, body := [], next := some "_caller" }.label, pure PUnit.unit),
         ({ label := some "_caller", idx := 1,
               body :=
-                [asm|
-                    "call _swap"
-                    "ret"],
+                [Directive.instr
+                    (Instr.regular Width.W64 Width.W64
+                      (Operation.call
+                        (RelRegOrMem.rel ((ConstExpr.label "_swap").sub ConstExpr.after_current_instruction)))),
+                  Directive.instr (Instr.regular Width.W64 Width.W64 Operation.ret)],
               next := none }.label,
           do
           callInstr k
@@ -76,6 +82,6 @@ example (s : MachineData) (h : (Mem.loadInt s.dmem (s.regs.get64 .rsp - 8#64) 8)
     wp (callInstr retK >>= fun _ => callInstr retK) (fun _ _ => True) (fun _ _ => True, estack⟨⟩) s := by
   simp only [callInstr, retK, WPMonadExact.wp_bind_eq, wp_peek, BlockLoop.wp_tryCatch, wp_modifyIf_fun,
     wp_pushUnknown_fun, wp_throw_block]
-  simpa [setReg64, MachineData.push64, BitVec.sub_add_cancel, Mem.loadInt_storeInt_64] using h
+  simpa [setReg64, MachineData.dmem_push64, MachineData.regs_push64, BitVec.sub_add_cancel, Mem.loadInt_storeInt_64] using h
 
 end Distillery.Kraken.Tests.Call

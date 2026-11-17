@@ -20,7 +20,7 @@ becomes `callInstr` of the abstract callee `k`, given by its refinement for ever
 address.
 -/
 
-open Kraken.X64.Parser Std.WP Lean.Order Distillery Distillery.Kraken Distillery.Kraken.AInstr
+open Std.WP Lean.Order Distillery Distillery.Kraken Distillery.Kraken.AInstr
 open Distillery.Concretization (ofStateRepr ofStateRel)
 open scoped Program.WP
 
@@ -28,7 +28,7 @@ set_option experimental.vcgen true
 
 namespace Distillery.Kraken
 
-def reverse : Program := parse("
+/-
 _reverse_:
   cmpq $2, %rsi
   jb LBB1_4
@@ -60,7 +60,39 @@ LBB1_2:
   popq %r15
 LBB1_4:
   retq
-")
+-/
+def reverse : Program := [
+  .label "_reverse_",
+  .instr (.regular .W64 .W64 (.cmp (.reg (.low .rsi .W64)) (.imm (.int64 2)))),
+  .instr (.regular .W64 .W64 (.jcc .c "LBB1_4")),
+  .instr (.regular .W64 .W64 (.push (.regOrMem (.reg (.low .r15 .W64))))),
+  .instr (.regular .W64 .W64 (.push (.regOrMem (.reg (.low .r14 .W64))))),
+  .instr (.regular .W64 .W64 (.push (.regOrMem (.reg (.low .r12 .W64))))),
+  .instr (.regular .W64 .W64 (.push (.regOrMem (.reg (.low .rbx .W64))))),
+  .instr (.regular .W64 .W64 (.push (.regOrMem (.reg (.low .rax .W64))))),
+  .instr (.regular .W64 .W64 (.mov (.reg (.low .rbx .W64)) (.regOrMem (.reg (.low .rsi .W64))))),
+  .instr (.regular .W64 .W64 (.mov (.reg (.low .r14 .W64)) (.regOrMem (.reg (.low .rdi .W64))))),
+  .instr (.regular .W64 .W64 (.lea (.low .r15 .W64) ⟨some (.reg .rdi), some ⟨.rsi, .W64⟩, .int64 0⟩)),
+  .instr (.regular .W64 .W64 (.add (.reg (.low .r15 .W64)) (.imm (.int64 (-8))))),
+  .instr (.regular .W64 .W64 (.dec (.reg (.low .rbx .W64)))),
+  .instr (.regular .W64 .W32 (.mov (.reg (.low .r12 .W32)) (.imm (.int64 1)))),
+  .label "LBB1_2",
+  .instr (.regular .W64 .W64 (.mov (.reg (.low .rdi .W64)) (.regOrMem (.reg (.low .r14 .W64))))),
+  .instr (.regular .W64 .W64 (.mov (.reg (.low .rsi .W64)) (.regOrMem (.reg (.low .r15 .W64))))),
+  .instr (.regular .W64 .W64 (.call (.rel (.sub (.label "_swap") .after_current_instruction)))),
+  .instr (.regular .W64 .W64 (.dec (.reg (.low .rbx .W64)))),
+  .instr (.regular .W64 .W64 (.add (.reg (.low .r15 .W64)) (.imm (.int64 (-8))))),
+  .instr (.regular .W64 .W64 (.add (.reg (.low .r14 .W64)) (.imm (.int64 8)))),
+  .instr (.regular .W64 .W64 (.cmp (.reg (.low .r12 .W64)) (.regOrMem (.reg (.low .rbx .W64))))),
+  .instr (.regular .W64 .W64 (.lea (.low .r12 .W64) ⟨some (.reg .r12), none, .int64 1⟩)),
+  .instr (.regular .W64 .W64 (.jcc .c "LBB1_2")),
+  .instr (.regular .W64 .W64 (.add (.reg (.low .rsp .W64)) (.imm (.int64 8)))),
+  .instr (.regular .W64 .W64 (.pop (.reg (.low .rbx .W64)))),
+  .instr (.regular .W64 .W64 (.pop (.reg (.low .r12 .W64)))),
+  .instr (.regular .W64 .W64 (.pop (.reg (.low .r14 .W64)))),
+  .instr (.regular .W64 .W64 (.pop (.reg (.low .r15 .W64)))),
+  .label "LBB1_4",
+  .instr (.regular .W64 .W64 .ret)]
 
 attribute [local vcgen_simp] reverse
 

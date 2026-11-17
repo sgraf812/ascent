@@ -386,7 +386,7 @@ theorem store_load_self {β : Type} (r : Region) (n : Nat) (a v : BitVec 64) (k 
   have hb : 8 * n ≤ 64 := by omega
   simp only [WPMonadExact.wp_bind_eq, wp_zoom, wp_store, wp_load, FState.get_set, FState.set_set,
     Mem.loadInt_storeInt _ _ _ _ hw, Option.isSome_some, Option.get!_some, ofBytes_toBytes,
-    Int.take, ofInt_emod_two_pow, true_and, ← setWidth_ofInt hb,
+    Int.take_def, ofInt_emod_two_pow, true_and, ← setWidth_ofInt hb,
     ← BitVec.signExtend_eq_setWidth_of_le v hb, BitVec.signExtend]
 
 theorem store_load_comm {β : Type} (r r' : Region) (n n' : Nat) (a v b : BitVec 64)

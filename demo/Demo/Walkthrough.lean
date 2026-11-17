@@ -29,19 +29,40 @@ namespace Distillery.Kraken.Walkthrough
 
 /--
 info: def zipWithAdd : Program :=
-[asm|
-    "test rcx, rcx"
-    "jle LBB0_3"
-    "xor eax, eax"
-    "LBB0_2:"
-    "mov r8, QWORD PTR [rsi+rax*8+0]"
-    "add r8, QWORD PTR [rdi+rax*8+0]"
-    "mov QWORD PTR [rdx+rax*8+0], r8"
-    "inc rax"
-    "cmp rcx, rax"
-    "jne LBB0_2"
-    "LBB0_3:"
-    "ret"]
+[Directive.instr
+    (Instr.regular Width.W64 Width.W64
+      (Operation.test (RegOrMem.reg (Reg.low Reg64.rcx Width.W64))
+        (Operand.regOrMem (RegOrMem.reg (Reg.low Reg64.rcx Width.W64))))),
+  Directive.instr (Instr.regular Width.W64 Width.W64 (Operation.jcc CondCode.le "LBB0_3")),
+  Directive.instr
+    (Instr.regular Width.W64 Width.W32
+      (Operation.xor (RegOrMem.reg (Reg.low Reg64.rax Width.W32))
+        (Operand.regOrMem (RegOrMem.reg (Reg.low Reg64.rax Width.W32))))),
+  Directive.label "LBB0_2",
+  Directive.instr
+    (Instr.regular Width.W64 Width.W64
+      (Operation.mov (RegOrMem.reg (Reg.low Reg64.r8 Width.W64))
+        (Operand.regOrMem
+          (RegOrMem.mem
+            { base := some (RegOrRip.reg Reg64.rsi), idx := some { reg := Reg64.rax, scale := Width.W64 } })))),
+  Directive.instr
+    (Instr.regular Width.W64 Width.W64
+      (Operation.add (RegOrMem.reg (Reg.low Reg64.r8 Width.W64))
+        (Operand.regOrMem
+          (RegOrMem.mem
+            { base := some (RegOrRip.reg Reg64.rdi), idx := some { reg := Reg64.rax, scale := Width.W64 } })))),
+  Directive.instr
+    (Instr.regular Width.W64 Width.W64
+      (Operation.mov
+        (RegOrMem.mem { base := some (RegOrRip.reg Reg64.rdx), idx := some { reg := Reg64.rax, scale := Width.W64 } })
+        (Operand.regOrMem (RegOrMem.reg (Reg.low Reg64.r8 Width.W64))))),
+  Directive.instr (Instr.regular Width.W64 Width.W64 (Operation.inc (RegOrMem.reg (Reg.low Reg64.rax Width.W64)))),
+  Directive.instr
+    (Instr.regular Width.W64 Width.W64
+      (Operation.cmp (RegOrMem.reg (Reg.low Reg64.rcx Width.W64))
+        (Operand.regOrMem (RegOrMem.reg (Reg.low Reg64.rax Width.W64))))),
+  Directive.instr (Instr.regular Width.W64 Width.W64 (Operation.jcc CondCode.nz "LBB0_2")), Directive.label "LBB0_3",
+  Directive.instr (Instr.regular Width.W64 Width.W64 Operation.ret)]
 -/
 #guard_msgs in
 #print zipWithAdd
@@ -67,10 +88,15 @@ fun [Host] r₀ ra =>
     (Table.get
       [({ label := none, idx := 0,
               body :=
-                [asm|
-                    "test rcx, rcx"
-                    "jle LBB0_3"
-                    "xor eax, eax"],
+                [Directive.instr
+                    (Instr.regular Width.W64 Width.W64
+                      (Operation.test (RegOrMem.reg (Reg.low Reg64.rcx Width.W64))
+                        (Operand.regOrMem (RegOrMem.reg (Reg.low Reg64.rcx Width.W64))))),
+                  Directive.instr (Instr.regular Width.W64 Width.W64 (Operation.jcc CondCode.le "LBB0_3")),
+                  Directive.instr
+                    (Instr.regular Width.W64 Width.W32
+                      (Operation.xor (RegOrMem.reg (Reg.low Reg64.rax Width.W32))
+                        (Operand.regOrMem (RegOrMem.reg (Reg.low Reg64.rax Width.W32)))))],
               next := some "LBB0_2" }.label,
           do
           branch (stayIn r₀) (fun st => CondCode.le.cmp (st.regs.get64 Reg64.rcx &&& st.regs.get64 Reg64.rcx) 0)
@@ -81,13 +107,34 @@ fun [Host] r₀ ra =>
           pure PUnit.unit),
         ({ label := some "LBB0_2", idx := 1,
               body :=
-                [asm|
-                    "mov r8, QWORD PTR [rsi+rax*8+0]"
-                    "add r8, QWORD PTR [rdi+rax*8+0]"
-                    "mov QWORD PTR [rdx+rax*8+0], r8"
-                    "inc rax"
-                    "cmp rcx, rax"
-                    "jne LBB0_2"],
+                [Directive.instr
+                    (Instr.regular Width.W64 Width.W64
+                      (Operation.mov (RegOrMem.reg (Reg.low Reg64.r8 Width.W64))
+                        (Operand.regOrMem
+                          (RegOrMem.mem
+                            { base := some (RegOrRip.reg Reg64.rsi),
+                              idx := some { reg := Reg64.rax, scale := Width.W64 } })))),
+                  Directive.instr
+                    (Instr.regular Width.W64 Width.W64
+                      (Operation.add (RegOrMem.reg (Reg.low Reg64.r8 Width.W64))
+                        (Operand.regOrMem
+                          (RegOrMem.mem
+                            { base := some (RegOrRip.reg Reg64.rdi),
+                              idx := some { reg := Reg64.rax, scale := Width.W64 } })))),
+                  Directive.instr
+                    (Instr.regular Width.W64 Width.W64
+                      (Operation.mov
+                        (RegOrMem.mem
+                          { base := some (RegOrRip.reg Reg64.rdx),
+                            idx := some { reg := Reg64.rax, scale := Width.W64 } })
+                        (Operand.regOrMem (RegOrMem.reg (Reg.low Reg64.r8 Width.W64))))),
+                  Directive.instr
+                    (Instr.regular Width.W64 Width.W64 (Operation.inc (RegOrMem.reg (Reg.low Reg64.rax Width.W64)))),
+                  Directive.instr
+                    (Instr.regular Width.W64 Width.W64
+                      (Operation.cmp (RegOrMem.reg (Reg.low Reg64.rcx Width.W64))
+                        (Operand.regOrMem (RegOrMem.reg (Reg.low Reg64.rax Width.W64))))),
+                  Directive.instr (Instr.regular Width.W64 Width.W64 (Operation.jcc CondCode.nz "LBB0_2"))],
               next := some "LBB0_3" }.label,
           do
           modifyIf (loadOk 8 (sib 8 Reg64.rsi Reg64.rax 0))
@@ -101,10 +148,7 @@ fun [Host] r₀ ra =>
               (label "LBB0_2")
           pure PUnit.unit),
         ({ label := some "LBB0_3", idx := 2,
-              body :=
-                [asm|
-                    "ret"],
-              next := none }.label,
+              body := [Directive.instr (Instr.regular Width.W64 Width.W64 Operation.ret)], next := none }.label,
           exitIf (retOk r₀ ra) (setReg64 Reg64.rsp fun x => r₀ + 8) ra)])
 -/
 #guard_msgs in

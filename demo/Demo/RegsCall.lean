@@ -77,7 +77,7 @@ theorem wrp_callA_callL {kT : BitVec 64 → Int64 → BlockM MachineData Unit}
   let Qa' : Unit → DataMem → Prop := fun _ _ => False
   let Ea' : (Int64 → DataMem → Prop) × EStack⟨⟩ := (fun l m => l = v ∧ Qa () m, Ea.2)
   have hdm : (t.push64 v).dmem = t.dmem.storeInt (r - 8#64) 8 v.toBitVec.toInt := by
-    simp only [MachineData.push64, hr]
+    simp only [MachineData.dmem_push64, hr]
   have hc := wrp_transport (hk v).le_wrp Qa' Ea' (t.push64 v)
     (by
       simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred]
