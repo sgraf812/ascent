@@ -594,10 +594,6 @@ def wpMatch? (goal : MVarId) (info : WRPApp) :
   let (goal, filled) ← fillAbstractHole goal info
   let .goals goals ← rule.applyChecked goal m!"split rule for{indentExpr info.prog}"
     | throwError "Failed to apply split rule for {indentExpr info.prog}"
-  unless ← filledInScope filled do
-    throwError "distill: the abstract split of{indentExpr info.prog}\nmentions a variable outside \
-      the context of the abstract program"
-  restoreHoleScope filled
   let mut simpGoals := #[]
   for g in goals do
     match ← simpGoalTelescope g with

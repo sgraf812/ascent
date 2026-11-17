@@ -9,7 +9,6 @@ import Lean.Elab.Tactic.Meta
 import Lean.Elab.Tactic.VCGen.Context
 import Lean.Elab.Tactic.VCGen.Solve
 import Distillery.Tactic.VCGen.Solve
-import Distillery.Tactic.VCGen.PureRefinement
 import Lean.Meta.Sym.Grind
 import Lean.Elab.Tactic.VCGen.Driver
 
@@ -129,11 +128,6 @@ def work (scope coreScope : Scope) (goal : Grind.Goal) : VCGenM Unit := do
   while let some s := worklist.back? do
     worklist := worklist.pop
     if ← s.goal.mvarId.isAssigned then continue
-    -- A subgoal of data type is a synthesis hole: it stays a natural metavariable until the
-    -- worklist is empty, and only then is it emitted, if no step assigned it.
-    unless (← Sym.getLevel (← s.goal.mvarId.getType)).isZero do
-      holes := holes.push s.goal
-      continue
     if let some (jp, jumps) := (← get).pendingJoinPoints[s.goal.mvarId]? then
       modify fun st => { st with pendingJoinPoints := st.pendingJoinPoints.erase s.goal.mvarId }
       finalizeJoinPoint jp jumps

@@ -31,14 +31,11 @@ Cached version of spec rule construction.
 Both `Triple`/`⊑ wp` and equality entries go through `tryMkBackwardRuleFromSpec`, which normalizes
 an equality spec to `⊑ wp` form using the supplied `wp` metadata before building the rule.
 
-Cache key: `(proof key, ruleKey, excessArgs.size)`, where `ruleKey` is the hash-consed
-`WRPApp.ruleKey` of the goal: the concrete `WP` instance, the abstract monad, the abstract assertion
-and exception types, and `γ`.
+Cache key: `(proof key, instWP, excessArgs.size)`.
 -/
 def mkBackwardRuleFromSpecCached (specThm : SpecTheorem) (info : WRPApp) :
     OptionT VCGenM BackwardRule := do
-  let ruleKey ← shareCommon (← info.ruleKey)
-  let key := (specThm.proof.key, ExprPtr.mk ruleKey, info.excessArgs.size)
+  let key := (specThm.proof.key, ExprPtr.mk info.instWP, info.excessArgs.size)
   let s := (← get).specBackwardRuleCache
   if let some rule := s[key]? then return rule
   let some rule ← withNewMCtxDepth <| tryMkBackwardRuleFromSpec specThm info |>.run
@@ -51,7 +48,7 @@ open Lean.Elab.Tactic.Do in
 /--
 Cached version of `mkBackwardRuleForSplit`.
 
-Cache key: `(splitter name, ruleKey, excessArgs.size)`, with `ruleKey` as for spec rules.
+Cache key: `(splitter name, instWP, excessArgs.size)`.
 -/
 def mkBackwardRuleForSplitCached (splitInfo : SplitInfo) (info : WRPApp) :
     VCGenM BackwardRule := do
@@ -60,7 +57,7 @@ def mkBackwardRuleForSplitCached (splitInfo : SplitInfo) (info : WRPApp) :
     | .dite .. => ``dite
     | .cond .. => ``cond
     | .matcher matcherApp => matcherApp.matcherName
-  let key := (cacheKey, ExprPtr.mk (← shareCommon (← info.ruleKey)), info.excessArgs.size)
+  let key := (cacheKey, ExprPtr.mk info.instWP, info.excessArgs.size)
   let s := (← get).splitBackwardRuleCache
   if let some rule := s[key]? then return rule
   let rule ← mkBackwardRuleForSplit splitInfo info

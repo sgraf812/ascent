@@ -101,33 +101,59 @@ construction of `RuleConstruction` (`mkSpecBackwardProof`, `tryMkBackwardRuleFro
 
 ## Deviations
 
-The series applies `D7`, `D8`, `D6`, `D2`, `D11` and `D12`, in this order, to the sources of the
-toolchain in `lean-toolchain`.
+The series applies `D1` to `D9`, in this order, to the sources of the toolchain in
+`lean-toolchain`. Each deviation is in the series because a test fails without it, or because
+the code of a later deviation or of the frontend does not compile without it. The acceptance of a
+deviation names the tests that fail when the deviation alone is reverted.
 
-### D7. No frame rules
+### D1. One worklist for `wrp` and `wp` goals
 
-**Intent.** An `distill` goal has no frame operator, so the forked modules carry no frame
+**Intent.** A concrete step without an abstract counterpart is decomposed by `vcgen`'s own rules
+and `@[spec]` database.
+
+**Change.** `work` sends a goal `pre ⊑ wp …` to `vcgen`'s `solve` with the core scope, which every
+work item carries next to the `distill` scope. `run` takes both scopes.
+
+**Acceptance.** The frontend passes both scopes to `run`. `Pipeline` mixes `@[spec]` steps with
+`@[distill]` rules.
+
+### D2. No frame rules
+
+**Intent.** A `distill` goal has no frame operator, so the forked modules carry no frame
 machinery.
 
 **Change.** `RuleConstruction`, `RuleCache` and `Solve` lose `mkFrameBackwardRule`, its cache, the
-`frames` alternatives and the frame callbacks. `applySpec` applies the spec rule directly.
+frame alternatives of `applySpecs`, the conjunctivity check of `applySpec`, and the `let` binders of
+the frame callbacks.
 
-**Acceptance.** Every `distill` test in `test/DistilleryTests` runs without a frame rule.
+**Acceptance.** The frame code does not type-check against `WRPApp`. Every test in
+`test/DistilleryTests` runs without a frame rule.
 
-### D8. Rule construction for `wrp` specs
+### D3. Rule construction for `wrp` specs
 
-**Intent.** A spec rule takes the concrete side of the goal verbatim, as core does, and is
-schematic in the abstract side, so one compiled rule serves every abstract program.
+**Intent.** A spec rule takes the concrete side of the goal verbatim, as core does. The return
+relation binds a concrete and an abstract value, and the exception relation stays the spec's.
 
-**Change.** `tryMkBackwardRuleFromSpec` unifies the abstract types and `γ` of the spec with the
-goal's prefix, then the concrete `WP` instance, then synthesizes the instance binders whose types
-are closed. The abstract value type, `WP` instance and program become rule parameters. The rule
-caches key on the hash-consed `wrp` prefix.
+**Change.** `mkBackwardRuleFromSpec` binds the return relation over the abstract and the concrete
+value, and takes the goal's concrete prefix verbatim. A fixed exception relation of the spec is
+matched structurally against the goal's relation, because `wrp` is monotone in the exception
+relation only for some `EPostsConcretization` instances.
 
-**Acceptance.** `ZipWithAdd` and `WordAbsEngine` apply generic rules such as `wrp_bind` at block
-stacks with several abstract monads.
+**Acceptance.** `wrp` has no monotonicity lemma in the exception relation, so the vanilla
+construction does not compile. `ZipWithAdd` and `WordAbsEngine` apply generic rules such as
+`wrp_bind`.
 
-### D6. Synthesis holes in their context
+### D4. Schematic abstract program in a refinement spec
+
+**Intent.** A spec stated as a `Refinement` applies to a goal whose abstract program is a hole.
+
+**Change.** The rule built from such a spec keeps its abstract program schematic, so the rule
+does not capture the goal's hole.
+
+**Acceptance.** `ForkTracer`, `PureRefinement`, `WordAbsEngine` and 19 of the regression tests in
+`Regress/`; the instruction layers of the demo.
+
+### D5. Synthesis holes in their context
 
 **Intent.** The run fills a hole of the abstract program only with terms in the hole's context.
 
@@ -141,52 +167,55 @@ Bocquet, WITS 2023): a pair `(a, b)` of free variables inverts to the projection
 the bound argument, and a closed argument of a subsingleton type inverts to nothing by its η rule.
 The result is a hole applied to the free variables, which takes the delayed assignment. The holes
 that the rule leaves in the filled program take the context of the filled hole, and the cache of
-`Sym.getMaxFVar?` starts afresh, since a table shares the program with the goals of the other
-cells (`restoreHoleScope`). The code of this deviation lives in the hunks of `D12`, which edit
-`fillAbstractHole` last.
+`Sym.getMaxFVar?` starts afresh (`restoreHoleScope`). `applySpec` restores the state when the rule
+fills a hole outside its scope. The hunk also defines `rhsExistsIntro?` and `mkWitnessHole`.
 
-**Acceptance.** `DistillDef`, `Regress/HoleScope`, `Regress/MixedHole`, and the demo's
-`zipWithAddA`, `memmoveA` and `memmoveL₀` (a loop value pair).
+**Acceptance.** `D8` calls `rhsExistsIntro?`. `DistillDef`, `Regress/HoleScope` and
+`Regress/MixedHole`.
 
-### D2. One worklist for `wrp` and `wp` goals, and holes as data
-
-**Intent.** A concrete step without an abstract counterpart is decomposed by `vcgen`'s own rules
-and `@[spec]` database, and a hole is never emitted as a verification condition.
-
-**Change.** `work` sends a goal `pre ⊑ wp …` to `vcgen`'s `solve` with the core scope. A subgoal
-whose type is not a proposition stays a natural metavariable.
-
-**Acceptance.** `Pipeline` mixes `@[spec]` steps with `@[distill]` rules.
-
-### D11. Schematic abstract program in a refinement spec
-
-**Intent.** A spec stated as a `Refinement` applies to a goal whose abstract program is a hole.
-
-**Change.** The rule built from such a spec keeps its abstract program schematic, so the rule
-does not capture the goal's hole.
-
-**Acceptance.** `DistillUnfold`.
-
-### D12. Pure refinements, existential witnesses and the two-sided split
+### D6. Pure refinements
 
 **Intent.** A value of the concrete program is refined to an abstract value by the
-`PureRefinement` solver, an existential on the right side is solved by synthesis, and a concrete
-`if` splits both programs on the same condition.
+`PureRefinement` solver of `Distillery/Tactic/VCGen/PureRefinement.lean`.
 
-**Change.** The driver dispatches `PureRefinement` goals to the solver of
-`Distillery/Tactic/VCGen/PureRefinement.lean`. The solver meets the goal's guard `P_goal` with the
-guard `P` of its solution by the consequence rule `PureRefinement.weaken_pre`, as a spec rule meets
-the goal's precondition: when `P_goal` is not `P`, the premise `hpre : P_goal → P` goes back to the
-worklist as a verification condition. `mkBackwardRuleForSplit` splits an `ite`, `dite` or
-`cond` on both sides with one fresh abstract branch per alternative, after `fillAbstractHole`
-fills the abstract hole. A matcher still splits on the concrete side only. `rhsExistsIntro?`
-turns `pre ⊑ ∃ x, p x` on the `Prop` lattice into `pre ⊑ p ?x`, with `?x` a fresh hole in the
-goal's context (`Distillery.le_exists_of_le`); for a tuple type the witness is the tuple of fresh holes
-(`mkWitnessHole`), so that a `match` on it reduces.
+**Change.** The worklist solves a `PureRefinement` subgoal at once, so that the continuation sees
+the abstract value and the precondition, and solves a `Refinement` subgoal with the specs of the
+invocation. A verification condition that an entry of the solver's environment states is closed
+by that entry.
 
-**Acceptance.** `PureRefinement`, `WordAbsEngine`, `Regress/ExistsHole`, `Regress/GuardConsequence`,
-and the register and
-array layers of the demo.
+**Acceptance.** `D9` uses the solver. `PureRefinement`, `Regress/GuardConsequence`,
+`Regress/WeakenPreValEq` and `Regress/RuleBacktrack`.
+
+### D7. Two-sided split
+
+**Intent.** A concrete `if` splits both programs on the same condition.
+
+**Change.** `mkBackwardRuleForSplit` splits an `ite`, `dite` or `cond` on both sides with one fresh
+abstract branch per alternative, after `fillAbstractHole` fills the abstract hole. A matcher
+splits on the concrete side only.
+
+**Acceptance.** `Regress/IteSplit`.
+
+### D8. Existential witness
+
+**Intent.** An existential on the right side of an entailment is solved by synthesis.
+
+**Change.** `solve` turns `pre ⊑ ∃ x, p x` on the `Prop` lattice into `pre ⊑ p ?x`, with `?x` a
+fresh hole in the goal's context (`Distillery.le_exists_of_le`). For a tuple type the witness is
+the tuple of fresh holes (`mkWitnessHole`), so that a `match` on it reduces.
+
+**Acceptance.** `Regress/ExistsHole`, `Regress/Invariants`, `Regress/Lockstep`,
+`Regress/MixedHole`, `Regress/ValEq`; the register layers of the demo.
+
+### D9. Spec backtracking on pure premises
+
+**Intent.** A spec whose `PureRefinement` premise has no solution gives way to the next spec.
+
+**Change.** `applySpecs` solves the `PureRefinement` premises of an applied candidate at once. When
+the solver fails, it restores the state and tries the next candidate. When no candidate remains,
+it raises the error of the last failed premise.
+
+**Acceptance.** `Regress/SpecBacktrack`.
 
 ### Covered by core
 

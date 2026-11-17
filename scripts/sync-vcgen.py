@@ -5,7 +5,8 @@ Each translated module is copied from the toolchain, rewritten by the translatio
 (T1 to T4 of `docs/vcgen-fork.md`), and then patched by `patches/vcgen/series`.
 
 Usage: `scripts/sync-vcgen.py` writes the tree. `scripts/sync-vcgen.py --check` fails if the
-committed tree differs from the regenerated one.
+committed tree differs from the regenerated one. `scripts/sync-vcgen.py --raw <dir>` writes the
+translation without the patches to `<dir>`. Any other argument prints this text and changes nothing.
 """
 
 import pathlib
@@ -89,6 +90,9 @@ def generate(dest: pathlib.Path, patches: bool = True) -> None:
 
 
 def main() -> None:
+    args = sys.argv[1:]
+    if args not in ([], ["--check"]) and not (len(args) == 2 and args[0] == "--raw"):
+        sys.exit(__doc__)
     if "--check" in sys.argv:
         with tempfile.TemporaryDirectory() as tmp:
             tree = pathlib.Path(tmp) / "Distillery" / "Tactic" / "VCGen"

@@ -1,6 +1,9 @@
-D7-no-frames.patch
-D8-wrp-spec-rules.patch
-D6-hole-context.patch
-D2-one-worklist-D1-synthesis-holes.patch
-D11-unfold-relation.patch
-D12-pure-refinement-dispatch.patch
+D1-one-worklist.patch
+D2-no-frames.patch
+D3-wrp-spec-rules.patch
+D4-schematic-abstract-program.patch
+D5-synthesis-holes.patch
+D6-pure-refinements.patch
+D7-two-sided-split.patch
+D8-existential-witness.patch
+D9-spec-backtracking.patch

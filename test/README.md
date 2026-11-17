@@ -33,19 +33,19 @@ tests fail.
 
 | Deviation | What it does | Tests | Verified |
 |---|---|---|---|
-| D7 | no frame rules in the forked modules | every `distill` test | no: without D7 the forked `RuleConstruction` does not compile |
-| D8 | spec rules take the concrete side verbatim and stay schematic in the abstract side | every test that applies `wrp_bind` at an `ExceptT` stack with a hole, e.g. `Regress/BinderHole`, `Regress/HoleScope` | no: without D8 the later patches do not apply |
-| D6, bare and delayed holes | a hole applied to distinct variables is filled by delayed assignment | `Regress/BinderHole`, `Regress/HoleScope`, `Regress/Lockstep`, `PureRefinement`, `WordAbsEngine` | yes, by disabling the delayed case |
-| D6, closed arguments | a hole applied to closed terms is filled by a constant function | `Regress/Commands`, `Regress/HoleScope`, `Regress/Lockstep` | yes, by disabling the closed case |
-| D6, table slots | a slot `Table.get ?tbl k` is filled by the cell of `k` | `Regress/HoleScope` | yes, by disabling the table case |
-| D6, hole scope | holes left by a rule take the context of the filled hole | `Regress/HoleScope` | yes, by disabling `restoreHoleScope` |
-| D6, mixed arguments | a hole applied to free variables, closed subsingletons and nested structure instances of free variables is rewritten to a hole applied to the variables | `Regress/MixedHole` | yes: the tests fail without `patternHole?` |
-| D2 | `wp` goals of the worklist go to core `solve` | `ForkTracer`, `Corpus/ZipL1L2` | yes, by disabling the dispatch |
-| D11 | a `Refinement` spec keeps its abstract program schematic | `DistillUnfold`, `PureRefinement`, `Regress/HoleScope` | yes, by removing the patch |
-| D12, pure refinements | `PureRefinement` goals go to their solver | `PureRefinement`, `WordAbsEngine`, `Regress/Lockstep`, `Regress/HoleScope` | yes, by disabling the dispatch |
-| D12, existential witness | `pre ⊑ ∃ x, p x` becomes `pre ⊑ p ?x` | `Regress/ExistsHole` | yes, by disabling the step |
-| D12, guard consequence | the solution's guard meets the goal's guard by `PureRefinement.weaken_pre`, with the VC `P_goal → P` | `Regress/GuardConsequence` | yes, against the solver before the change |
-| D12, two-sided split | an `if` splits both programs on one condition | `Regress/IteSplit` | no: without D12 the forked `Solve` does not compile |
+| D1 | `wp` goals of the worklist go to core `solve` | `ForkTracer`, `Pipeline`, `Corpus/ZipL1L2` | no: without D1 the frontend does not compile |
+| D2 | no frame rules in the forked modules | every `distill` test | no: with the frame rules the forked `RuleConstruction` does not compile |
+| D3 | spec rules take the concrete side verbatim, bind the return relation over both values, and keep a fixed exception relation | every test that applies `wrp_bind`, e.g. `Regress/BinderHole`, `ZipWithAdd` | no: without D3 the forked `RuleConstruction` does not compile |
+| D4 | a `Refinement` spec keeps its abstract program schematic | `ForkTracer`, `PureRefinement`, `WordAbsEngine`, 19 tests in `Regress/` | yes, by reverting the patch |
+| D5, bare and delayed holes | a hole applied to distinct variables is filled by delayed assignment | `Regress/BinderHole`, `Regress/HoleScope`, `Regress/Lockstep`, `PureRefinement`, `WordAbsEngine` | yes, by disabling the delayed case |
+| D5, closed arguments | a hole applied to closed terms is filled by a constant function | `Regress/Commands`, `Regress/HoleScope`, `Regress/Lockstep` | yes, by disabling the closed case |
+| D5, table slots | a slot `Table.get ?tbl k` is filled by the cell of `k` | `Regress/HoleScope` | yes, by disabling the table case |
+| D5, hole scope | holes left by a rule take the context of the filled hole | `Regress/HoleScope` | yes, by disabling `restoreHoleScope` |
+| D5, mixed arguments | a hole applied to free variables, closed subsingletons and nested structure instances of free variables is rewritten to a hole applied to the variables | `Regress/MixedHole` | yes: the tests fail without `patternHole?` |
+| D6 | `PureRefinement` and `Refinement` subgoals are solved at once, and an entry closes the VC it states | `PureRefinement`, `Regress/GuardConsequence`, `Regress/WeakenPreValEq`, `Regress/RuleBacktrack`, `Regress/RefinementPremise` | no: without D6 the code of D9 does not compile |
+| D7 | an `if` splits both programs on one condition | `Regress/IteSplit` | yes, by reverting the patch |
+| D8 | `pre ⊑ ∃ x, p x` becomes `pre ⊑ p ?x` | `Regress/ExistsHole`, `Regress/Invariants`, `Regress/Lockstep`, `Regress/MixedHole`, `Regress/ValEq` | yes, by reverting the patch |
+| D9 | a spec whose `PureRefinement` premise has no solution gives way to the next spec | `Regress/SpecBacktrack` | yes, against the engine without the backtracking |
 
 ## Regressions
 
@@ -65,6 +65,9 @@ tests fail.
 | `Regress/MixedHole` (`nestedArg`) | a hole applied to a nested pair `(a₁, (a₂, a₃))` was not inverted: only the outer fields were variables. `structPaths` now gives each variable its chain of projections |
 | `Regress/MixedHole` | a hole `?fa () a` or `?fa () (a₁, a₂)` was not filled. The loop rules now take `fa : βa → …`, so the remaining source is a tuple loop value, which core's `Prod.forall_intro` splits after the body hole exists (`?fa (a₁, a₂)`) |
 | `Regress/BlockLoop` | the block loop over a table of blocks: `cfgLoop_header` at a two-block loop and at a header with two back edges; `sym_simp_def` applies `cfgLoop_header` at every label and pushes each header's handler to the literal throws: a chain of jumps evaluates to its last jump, a cycle keeps one `repeat'` loop, and an outer header's handler crosses an inner loop by `tryCatch_forIn_bind`, whose `ThrowsOnly` premise needs `maxDischargeDepth` 16 in `sym_simp_def` |
+| `Regress/RuleBacktrack` | a pure rule that failed after it assigned the holes of the goal left them assigned, so every later rule failed; the solver now restores the state after a failed rule |
+| `Regress/WeakenPreValEq` | with both a given abstract value and a given guard, `PureRefinement.weaken_pre` received the solver's abstract value in place of the goal's, and the kernel rejected the term |
+| `Regress/SpecBacktrack` | a spec whose `PureRefinement` premise had no solution stopped the run although a later spec applied |
 | `Regress/CatchExit` | the exit catch at the top of a chain: `distill_def` refines a concrete block program to an abstract one, a triple about `catchExit` of the abstract program follows from `wp_catchExit`, and `Refinement.transport_catchExit` turns it into a triple about the concrete program whose exception postcondition at the exit is the caught program's return postcondition |
 
 Past problems that a test here does not pin:
@@ -80,7 +83,7 @@ Past problems that a test here does not pin:
 ## Tests in the demo
 
 The kraken-free suite has no machine memory, so tests of stack accesses live in the demo, which
-imports kraken. `demo/Demo/Tests/StackFrame.lean` pins the L1 synthesis and the structuring of leaf
+imports kraken. `demo/Demo/Tests/StackFrame.lean` pins the instruction-level synthesis and the structuring of leaf
 functions that push and pop words and 16-bit values, reserve a local area with `sub rsp`, spill
 words and bytes at unaligned offsets, and use the red zone below `rsp`. Build it with
 `lake build Demo.Tests.StackFrame` in `demo/`.

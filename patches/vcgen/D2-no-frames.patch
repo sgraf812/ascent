@@ -1,6 +1,28 @@
-diff -ruN a/Distillery/Tactic/VCGen/RuleConstruction.lean b/Distillery/Tactic/VCGen/RuleConstruction.lean
---- a/Distillery/Tactic/VCGen/RuleConstruction.lean	2026-11-07 22:38:56.133061480 +0000
-+++ b/Distillery/Tactic/VCGen/RuleConstruction.lean	2026-11-07 22:38:56.141511998 +0000
+--- a/Distillery/Tactic/VCGen/RuleCache.lean
++++ b/Distillery/Tactic/VCGen/RuleCache.lean
+@@ -83,20 +83,6 @@
+   return rule
+ 
+ /--
+-Cached version of `mkFrameBackwardRule`.
+-
+-Cache key: `(instWP, excessArgs.size)` (the operator is determined by the monad).
+--/
+-def mkFrameBackwardRuleCached (fp : FrameProc) (info : WRPApp) :
+-    VCGenM FrameBackwardRule := do
+-  let key := (ExprPtr.mk info.instWP, info.excessArgs.size)
+-  if let some rule := (← get).frameBackwardRuleCache[key]? then return rule
+-  let frule ← mkFrameBackwardRule fp info
+-  let frule := { frule with rule := ← frule.rule.shareCommon }
+-  modify fun st => { st with frameBackwardRuleCache := st.frameBackwardRuleCache.insert key frule }
+-  return frule
+-
+-/--
+ Cached construction of the backward rule of the `@[vcgen_rintro]` rule `e`. The rule abstracts
+ the `e.numPremises` premises and matches the conclusion of `e`.
+ 
+--- a/Distillery/Tactic/VCGen/RuleConstruction.lean
++++ b/Distillery/Tactic/VCGen/RuleConstruction.lean
 @@ -449,72 +449,4 @@
    let res ← abstractMVars prf
    mkBackwardRuleFromExpr res.expr res.paramNames.toList
@@ -74,33 +96,8 @@ diff -ruN a/Distillery/Tactic/VCGen/RuleConstruction.lean b/Distillery/Tactic/VC
 -  analyzeFrameRule rule fp.opHead info.excessArgs.size
 -
  end Lean.Elab.Tactic.VCGen.Distill
-diff -ruN a/Distillery/Tactic/VCGen/RuleCache.lean b/Distillery/Tactic/VCGen/RuleCache.lean
---- a/Distillery/Tactic/VCGen/RuleCache.lean	2026-11-07 22:38:56.133515094 +0000
-+++ b/Distillery/Tactic/VCGen/RuleCache.lean	2026-11-07 22:38:56.141603594 +0000
-@@ -83,20 +83,6 @@
-   return rule
- 
- /--
--Cached version of `mkFrameBackwardRule`.
--
--Cache key: `(instWP, excessArgs.size)` (the operator is determined by the monad).
---/
--def mkFrameBackwardRuleCached (fp : FrameProc) (info : WRPApp) :
--    VCGenM FrameBackwardRule := do
--  let key := (ExprPtr.mk info.instWP, info.excessArgs.size)
--  if let some rule := (← get).frameBackwardRuleCache[key]? then return rule
--  let frule ← mkFrameBackwardRule fp info
--  let frule := { frule with rule := ← frule.rule.shareCommon }
--  modify fun st => { st with frameBackwardRuleCache := st.frameBackwardRuleCache.insert key frule }
--  return frule
--
--/--
- Cached construction of the backward rule of the `@[vcgen_rintro]` rule `e`. The rule abstracts
- the `e.numPremises` premises and matches the conclusion of `e`.
- 
-diff -ruN a/Distillery/Tactic/VCGen/Solve.lean b/Distillery/Tactic/VCGen/Solve.lean
---- a/Distillery/Tactic/VCGen/Solve.lean	2026-11-07 22:38:56.137669027 +0000
-+++ b/Distillery/Tactic/VCGen/Solve.lean	2026-11-07 22:38:56.143517639 +0000
+--- a/Distillery/Tactic/VCGen/Solve.lean
++++ b/Distillery/Tactic/VCGen/Solve.lean
 @@ -440,101 +440,6 @@
      return true
    return false
@@ -203,17 +200,6 @@ diff -ruN a/Distillery/Tactic/VCGen/Solve.lean b/Distillery/Tactic/VCGen/Solve.l
  /--
  Apply the selected `@[spec]` theorem `thm` to a spec-ready program `info.prog`. `none` when no
  backward rule fits the goal's monad, or when the rule does not apply.
-@@ -546,8 +451,8 @@
- continuation; see `FrameProc.lean`. When the spec does not apply to the footprint, the copy is
- dropped and the candidate falls through.
- -/
--def applySpec (scope : Scope) (goal : MVarId) (info : WRPApp) (thm : SpecTheorem)
--    (fp : FrameProc) (providedFrame? : Option Expr) : VCGenM (Option SolveResult) := do
-+def applySpec (scope : Scope) (goal : MVarId) (info : WRPApp) (thm : SpecTheorem) :
-+    VCGenM (Option SolveResult) := do
-   let some specRule ←
-     try
-       mkBackwardRuleFromSpecCached thm info |>.run
 @@ -558,28 +463,6 @@
          Pred:{indentExpr info.Pred}\n\
          excessArgs: {info.excessArgs}"
@@ -243,17 +229,3 @@ diff -ruN a/Distillery/Tactic/VCGen/Solve.lean b/Distillery/Tactic/VCGen/Solve.l
    trace[Elab.Tactic.Do.vcgen] "Applying spec {thm.proof} for {info.prog}. Excess args: {info.excessArgs}"
    let .goals goals ← specRule.applyChecked goal m!"spec rule for{indentExpr info.prog}"
      | return none
-@@ -596,12 +479,8 @@
- def applySpecs (scope : Scope) (goal : MVarId) (info : WRPApp) :
-     VCGenM SolveResult := goal.withContext do
-   let candidates ← SpecTheorems.findSpecs scope.specs info.prog
--  let procs := (← read).frameProcs.byProg
--  let fp := info.M.getAppFn.constName?.bind (procs[·]?) |>.getD meetFrameProc
--  let providedFrame? ←
--    if candidates.isEmpty then pure none else matchFrame? fp info
-   for thm in candidates do
--    if let some res ← applySpec scope goal info thm fp providedFrame? then
-+    if let some res ← applySpec scope goal info thm then
-       return res
-     trace[Elab.Tactic.Do.vcgen] "Failed to apply spec {thm.proof} for {info.prog}"
-   stopOrErrorOnMissingSpec info.prog info.M candidates

@@ -108,9 +108,8 @@ partial def decomposeProdRel (EPosts epostsSpec epostsAbstract : Expr)
       if EPostsR.isConstOf ``PUnit then
         mkAppM ``Unit.unit_le #[epostsAbstract]
       else if EPostsR.isForall then
-        -- A bare exception relation `ε → εa → σ → Prop` yields a pointwise VC like a return
-        -- relation: the first two arguments are the concrete and the abstract exception.
-        let ssTypes ← forallTelescope EPostsR fun xs _ => xs.drop 2 |>.mapM (Meta.inferType ·)
+        -- A bare `ε → σ → Prop`, e.g. of `Except ε`, yields a pointwise VC like a stack component.
+        let ssTypes ← forallTelescope EPostsR fun xs _ => xs.drop 1 |>.mapM (Meta.inferType ·)
         let hTy ← mkPostPointwisePremise epostsSpec epostsAbstract EPostsR ssTypes stateArgNames
         let h ← mkFreshExprMVar (userName := `epostsImpl) hTy
         mkExpectedTypeHint h (← mkAppM ``PartialOrder.rel #[epostsSpec, epostsAbstract])
@@ -315,7 +314,7 @@ def eqSpecToWp? (info : WRPApp) (eqPrf eqType : Expr) :
   -- The abstract program is schematic, so that the rule does not capture the goal's hole.
   let abs ← mkFreshExprMVar (userName := `a) info.args[1]!
   let specProof ← mkAppOptM ``Distillery.wrp_le_wrp_of_eq <|
-    (info.args.take 17).map some ++ #[some abs, none, none, some eqPrf, some post, some eposts]
+    (info.lemmaPrefix).map some ++ #[none, none, some eqPrf, some post, some eposts]
   return (specProof, ← instantiateMVars (← Meta.inferType specProof))
 
 /--
@@ -426,9 +425,8 @@ both programs on the same condition: the abstract program of the conclusion is t
 fresh abstract branches, one for each alternative. -/
 def mkBackwardRuleForSplit
     (splitInfo : SplitInfo) (info : WRPApp) : MetaM BackwardRule := do
-  -- The rule takes the concrete side of the goal verbatim. On the abstract side the value type,
-  -- the `WP` instance and the program are replaced by metavariables that become rule parameters.
-  let info ← info.schematic
+  -- The split value type is the goal's, so reuse the goal's program type and `WP` instance directly.
+  let a := info.Value
   let ma := info.Prog
   let prf ←
     splitInfo.withAbstract ma fun abstractInfo splitFVars => do

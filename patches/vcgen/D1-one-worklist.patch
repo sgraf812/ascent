@@ -1,6 +1,5 @@
-diff -ruN a/Distillery/Tactic/VCGen/Driver.lean b/Distillery/Tactic/VCGen/Driver.lean
---- a/Distillery/Tactic/VCGen/Driver.lean	2026-11-07 22:38:56.175453209 +0000
-+++ b/Distillery/Tactic/VCGen/Driver.lean	2026-11-07 22:38:56.188286931 +0000
+--- a/Distillery/Tactic/VCGen/Driver.lean
++++ b/Distillery/Tactic/VCGen/Driver.lean
 @@ -10,6 +10,7 @@
  import Lean.Elab.Tactic.VCGen.Solve
  import Distillery.Tactic.VCGen.Solve
@@ -9,7 +8,7 @@ diff -ruN a/Distillery/Tactic/VCGen/Driver.lean b/Distillery/Tactic/VCGen/Driver
  
  open Lean Meta Elab Tactic Sym Sym.Internal Lean.Order
  open Lean.Elab.Tactic.Do.SpecAttr
-@@ -111,18 +112,39 @@
+@@ -111,10 +112,18 @@
  structure WorkItem where
    goal : Grind.Goal
    scope : Scope
@@ -30,13 +29,7 @@ diff -ruN a/Distillery/Tactic/VCGen/Driver.lean b/Distillery/Tactic/VCGen/Driver
    while let some s := worklist.back? do
      worklist := worklist.pop
      if ← s.goal.mvarId.isAssigned then continue
-+    -- A subgoal of data type is a synthesis hole: it stays a natural metavariable until the
-+    -- worklist is empty, and only then is it emitted, if no step assigned it.
-+    unless (← Sym.getLevel (← s.goal.mvarId.getType)).isZero do
-+      holes := holes.push s.goal
-+      continue
-     if let some (jp, jumps) := (← get).pendingJoinPoints[s.goal.mvarId]? then
-       modify fun st => { st with pendingJoinPoints := st.pendingJoinPoints.erase s.goal.mvarId }
+@@ -123,6 +132,14 @@
        finalizeJoinPoint jp jumps
      let goal ← processHypotheses s.goal
      if goal.inconsistent then continue
@@ -51,7 +44,7 @@ diff -ruN a/Distillery/Tactic/VCGen/Driver.lean b/Distillery/Tactic/VCGen/Driver
      match ← solve s.scope goal.mvarId with
      | .stop reason =>
        emitVC goal reason
-@@ -132,7 +154,11 @@
+@@ -132,7 +149,11 @@
        -- Non-invariant subgoals go to the worklist as usual and will eventually go through `emitVC`.
        let subgoals ← handleInvariantSubgoals subgoals
        worklist := worklist ++ subgoals.reverse.map (fun mv =>
@@ -64,7 +57,7 @@ diff -ruN a/Distillery/Tactic/VCGen/Driver.lean b/Distillery/Tactic/VCGen/Driver
  
  structure Result where
    /-- All invariant goals emitted during VC generation, in emit order. The MVarId at
-@@ -156,7 +182,7 @@
+@@ -156,7 +177,7 @@
  
  `stepLimit?`, when `some n`, seeds the fuel counter to `n`; when `none`, fuel is unlimited.
  -/
@@ -73,7 +66,7 @@ diff -ruN a/Distillery/Tactic/VCGen/Driver.lean b/Distillery/Tactic/VCGen/Driver
      (stepLimit? : Option Nat := none) (frameDB : FrameDB := {}) :
      Grind.GrindM Result := do
    let initState : State :=
-@@ -164,7 +190,7 @@
+@@ -164,7 +185,7 @@
    -- VCGen temporarily violates the `SymM` folded-projections invariant: `reduceHead?`
    -- exposes kernel projections in intermediate terms and restores the invariant in its
    -- final result, so the `shareCommon` kernel-projection check is disabled.
