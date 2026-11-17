@@ -33,7 +33,6 @@ forward simulation proof applies, one program construct at a time.
   behaviour (`abort`, a failed `assert`) has weakest precondition `⊥` and an unspecified value
   (`select`, `unknown`) is a demonic choice; the while loop as a least fixpoint in the flat order,
   and `wp` lemmas for `StateT σ Demonic`.
-* `Ascent/SP.lean`: strongest postconditions as the lower adjoint of `wp`.
 * `Ascent/Concretization.lean`: `Concretization`, its postcondition reification `post`, the
   state abstractions `ofStateRepr` and `ofStateRel`, purification, identity and composition.
 * `Ascent/EPostsConcretization.lean`: `EPostsConcretization`, the type of exception relations for

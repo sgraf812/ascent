@@ -1,4 +1,4 @@
-import Ascent.SP
+import Ascent.Demonic
 
 /-!
 # A non-principal element of `Demonic`
@@ -33,8 +33,9 @@ theorem eventually_ne_select (p : Nat → Prop) : eventually ≠ Demonic.select 
 theorem not_wpD_outs : ¬eventually.wpD (Demonic.Internal.outs eventually) :=
   fun h => not_eventually_false (eventually.mono (fun a ha => outs_eventually a ha) h)
 
-theorem not_infConjunctive : ¬WPInfConjunctive (Demonic Nat) Nat Prop EStack⟨⟩ := fun h => by
-  have := h.iInf_wp_le_wp_iInf (ι := ULift Nat) eventually (fun k a => a ≠ k.down) estack⟨⟩
+theorem not_infConjunctive :
+    ¬(iInf (fun k : ULift Nat => wp eventually (fun a => a ≠ k.down) estack⟨⟩)
+      ⊑ wp eventually (iInf fun (k : ULift Nat) (a : Nat) => a ≠ k.down) estack⟨⟩) := fun this => by
   rw [iInf_prop_eq_forall] at this
   have hall := this fun k => eventually_ne k.down
   have hQ : iInf (fun (k : ULift Nat) (a : Nat) => a ≠ k.down) = fun _ => False :=

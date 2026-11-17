@@ -6,7 +6,6 @@ import Ascent.Demonic.WhileLoop
 import Ascent.FixLoop
 import Ascent.FixLoop.Delab
 import Ascent.Demonic.StateT
-import Ascent.SP
 import Ascent.Concretization
 import Ascent.EPostsConcretization
 import Ascent.WRP
