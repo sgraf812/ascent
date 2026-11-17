@@ -19,6 +19,9 @@ systemd-run --user --scope -p MemorySwapMax=0 -p CPUWeight=50 --quiet timeout <s
 | bench | `lake build` in `bench/` |
 | demo | `lake build` in `demo/` |
 
+Before a commit, all four targets build and `scripts/sync-vcgen.py --check` passes. The demo builds
+without external projects, so it belongs to every check, also to the ablation of the patch series.
+
 `lean-toolchain` pins the toolchain. Do not change it without an explicit request. The demo builds
 on `demo/Demo/Kraken/`, a stub of kraken's API. It has kraken's definitions where their bodies use
 only what the stub has, opaque constants for the other operations, and axioms that state kraken's
@@ -71,7 +74,7 @@ a toolchain update or a large change:
 2. Revert each unit alone to the raw translation, and run the library, the tests and the demo.
 3. For the units that do not compile alone, revert the units of one feature together.
 4. Drop every unit or group whose reversion passes everything and does not slow the bench. A unit
-   that only the demo needs gets a regression test before it stays.
+   that only the demo needs stays, and gets a regression test in `test/DistilleryTests/Regress`.
 5. Regenerate the patches as the differences between consecutive trees, one deviation at a time,
    and update the acceptance lines in `docs/vcgen-fork.md`.
 
