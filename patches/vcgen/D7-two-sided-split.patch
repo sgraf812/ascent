@@ -1,6 +1,6 @@
 --- a/Distillery/Tactic/VCGen/RuleConstruction.lean
 +++ b/Distillery/Tactic/VCGen/RuleConstruction.lean
-@@ -394,11 +394,35 @@
+@@ -437,11 +437,35 @@
  /-! ## Split rules -/
  
  open Lean.Elab.Tactic.Do in
@@ -37,7 +37,7 @@
  def mkBackwardRuleForSplit
      (splitInfo : SplitInfo) (info : WRPApp) : MetaM BackwardRule := do
    -- The split value type is the goal's, so reuse the goal's program type and `WP` instance directly.
-@@ -409,24 +433,25 @@
+@@ -452,24 +476,25 @@
      -- Eta-reduce matcher alts for the backward rule pattern to avoid expensive
      -- higher-order unification. The alts are eta-expanded by `withAbstract` so that
      -- `splitWith`/`matcherApp.transform` can `instantiateLambda` them directly.
@@ -56,7 +56,7 @@
 -    let mkWP (prog : Expr) : Expr :=
 -      let args := info.lemmaPrefix ++ #[prog, post, eposts]
 +    let mkWP (prog abs : Expr) : Expr :=
-+      let args := ((info.args.set! 17 prog).set! 18 abs |>.set! 19 post).set! 20 eposts
++      let args := ((info.args.set! 18 prog).set! 19 abs |>.set! 20 post).set! 21 eposts
        mkAppN (mkAppN info.head args) ss
 -    let Pred' ← Meta.inferType (mkWP abstractProg)
 +    let Pred' ← Meta.inferType (mkWP concreteProg abstractProg)
@@ -70,7 +70,7 @@
      -- Use synthetic opaque mvars so that `rwIfOrMatcher`'s `assumption` cannot
      -- accidentally assign our subgoal metavariables.
      let subgoals ← splitInfo.altInfos.mapM fun _ =>
-@@ -436,25 +461,34 @@
+@@ -479,25 +504,34 @@
      let prf ←
        abstractInfo.splitWith
          (useSplitter := true)

@@ -33,10 +33,14 @@ universe u v₁ v₂ v₃ w w₁ w₂
 /-- Computes the type `ERels` of exception relations between the exception stacks `CEPosts`
 and `AEPosts`, and the concrete exception postconditions for an exception relation. -/
 class EPostsConcretization (CPred APred : Type w) (CEPosts : Type w₁) (AEPosts : Type w₂)
-    (ERels : outParam (Type u)) [Assertion CPred] [Assertion APred] where
+    (ERels : outParam (Type u)) [Assertion CPred] [Assertion APred] [Assertion CEPosts]
+    [Assertion ERels] where
   /-- The concrete exception postconditions for the exception relation `E` and the abstract exception
   postconditions `Ea`. -/
   ePosts : Concretization CPred APred → ERels → AEPosts → CEPosts
+  /-- The concrete exception postconditions grow with the exception relation. -/
+  ePosts_mono (γ : Concretization CPred APred) {E E' : ERels} (Ea : AEPosts) :
+    E ⊑ E' → ePosts γ E Ea ⊑ ePosts γ E' Ea
 
 namespace EPostsConcretization
 
@@ -44,24 +48,29 @@ variable {CPred APred : Type w} [Assertion CPred] [Assertion APred]
 
 instance : EPostsConcretization CPred APred EStack⟨⟩ EStack⟨⟩ EStack⟨⟩ where
   ePosts _ _ _ := estack⟨⟩
+  ePosts_mono _ _ _ _ _ := PartialOrder.rel_refl
 
 noncomputable instance {εc εa : Type u} :
     EPostsConcretization CPred APred (εc → CPred) (εa → APred) (εc → εa → CPred) where
   ePosts γ R Ea := γ.post R Ea
+  ePosts_mono γ _ _ Ea h := γ.post_mono Ea h
 
 instance {εc : Type u} : EPostsConcretization CPred APred (εc → CPred) EStack⟨⟩ (εc → CPred) where
   ePosts _ E _ := E
+  ePosts_mono _ _ _ _ h := h
 
 noncomputable instance {εc εa : Type u} {C : Type v₁} {A : Type v₂} {ERels : Type v₃}
-    [EPostsConcretization CPred APred C A ERels] :
+    [Assertion C] [Assertion ERels] [EPostsConcretization CPred APred C A ERels] :
     EPostsConcretization CPred APred ((εc → CPred) × C) ((εa → APred) × A)
       ((εc → εa → CPred) × ERels) where
   ePosts γ E Ea := (γ.post E.1 Ea.1, EPostsConcretization.ePosts γ E.2 Ea.2)
+  ePosts_mono γ _ _ Ea h := ⟨γ.post_mono Ea.1 h.1, EPostsConcretization.ePosts_mono γ Ea.2 h.2⟩
 
 instance (priority := low) {εc : Type u} {C : Type v₁} {A : Type v₂} {ERels : Type v₃}
-    [EPostsConcretization CPred APred C A ERels] :
+    [Assertion C] [Assertion ERels] [EPostsConcretization CPred APred C A ERels] :
     EPostsConcretization CPred APred ((εc → CPred) × C) A ((εc → CPred) × ERels) where
   ePosts γ E Ea := (E.1, EPostsConcretization.ePosts γ E.2 Ea)
+  ePosts_mono γ _ _ Ea h := ⟨h.1, EPostsConcretization.ePosts_mono γ Ea h.2⟩
 
 @[simp, grind norm] theorem ePosts_nil (γ : Concretization CPred APred) (E Ea : EStack⟨⟩) :
     ePosts γ E Ea = estack⟨⟩ := rfl
@@ -75,12 +84,12 @@ instance (priority := low) {εc : Type u} {C : Type v₁} {A : Type v₂} {ERels
     ePosts γ E Ea = E := rfl
 
 @[simp, grind norm] theorem ePosts_cons {εc εa : Type u} {C : Type v₁} {A : Type v₂} {ERels : Type v₃}
-    [EPostsConcretization CPred APred C A ERels] (γ : Concretization CPred APred)
+    [Assertion C] [Assertion ERels] [EPostsConcretization CPred APred C A ERels] (γ : Concretization CPred APred)
     (E : (εc → εa → CPred) × ERels) (Ea : (εa → APred) × A) :
     ePosts (CEPosts := (εc → CPred) × C) γ E Ea = (γ.post E.1 Ea.1, ePosts γ E.2 Ea.2) := rfl
 
 @[simp, grind norm] theorem ePosts_cons_fill {εc : Type u} {C : Type v₁} {A : Type v₂} {ERels : Type v₃}
-    [EPostsConcretization CPred APred C A ERels] (γ : Concretization CPred APred)
+    [Assertion C] [Assertion ERels] [EPostsConcretization CPred APred C A ERels] (γ : Concretization CPred APred)
     (E : (εc → CPred) × ERels) (Ea : A) :
     ePosts (CEPosts := (εc → CPred) × C) γ E Ea = (E.1, ePosts γ E.2 Ea) := rfl
 

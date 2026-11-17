@@ -39,7 +39,7 @@ end
 section
 variable {κ σ : Type} [DecidableEq κ] {CProg CVal CPred CEPosts : Type _} {ERels : Type _}
   [Assertion CPred] [Assertion CEPosts] [WP CProg CVal CPred CEPosts]
-  [EPostsConcretization CPred (σ → Prop) CEPosts ((κ → σ → Prop) × EStack⟨⟩) ERels]
+  [Assertion ERels] [EPostsConcretization CPred (σ → Prop) CEPosts ((κ → σ → Prop) × EStack⟨⟩) ERels]
   [Heyting CPred]
 
 theorem Refinement.transport_catchExit {e : κ} {γ : Concretization CPred (σ → Prop)}

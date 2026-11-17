@@ -30,7 +30,7 @@ syntax (name := distillTac) "distill" (" [" term,* "]")? (ppSpace Lean.Parser.Ta
 it. Returns the hole. -/
 def unsealAbstractHole (goal : MVarId) : MetaM (Option MVarId) := do
   let target := (← instantiateMVars (← goal.getType)).headBeta
-  unless target.isAppOfArity ``Distillery.Refinement 22 do return none
+  unless target.isAppOfArity ``Distillery.Refinement 23 do return none
   let .mvar mvarId := target.getAppArgs[14]!.getAppFn | return none
   if (← mvarId.getDecl).kind matches .syntheticOpaque then
     mvarId.setKind .natural

@@ -54,7 +54,7 @@ elab_rules : command
       mkLambdaFVars #[x] (← instantiateMVars e)
     let hole ← mkFreshExprMVar T
     let goalType := stmtFn.beta #[hole]
-    unless goalType.isAppOfArity ``Distillery.Refinement 22 do
+    unless goalType.isAppOfArity ``Distillery.Refinement 23 do
       throwError "distill_def: the statement is not a refinement:{indentExpr goalType}"
     let proof ← mkFreshExprSyntheticOpaqueMVar goalType
     let specs := (specs.map (·.getElems)).getD #[]

@@ -39,7 +39,7 @@ variable {CProg AProg : Type _} {CVal AVal : Type _}
   {CPred APred : Type w} {CEPosts AEPosts : Type w'} {ERels : Type u}
   [Assertion CPred] [Assertion APred] [Assertion CEPosts] [Assertion AEPosts]
   [WP CProg CVal CPred CEPosts] [instA : WP AProg AVal APred AEPosts]
-  [EPostsConcretization CPred APred CEPosts AEPosts ERels]
+  [Assertion ERels] [EPostsConcretization CPred APred CEPosts AEPosts ERels]
 
 /-- The weakest concrete assertion under which `c` refines `a`: every `wp` fact of `a`
 transports to `c` through `γ`, `Q` and `E`. -/
@@ -55,7 +55,7 @@ variable {CProg AProg : Type _} {CVal AVal : Type _}
   {CPred APred : Type w} {CEPosts AEPosts : Type w'} {ERels : Type u}
   [Assertion CPred] [Assertion APred] [Assertion CEPosts] [Assertion AEPosts]
   [WP CProg CVal CPred CEPosts] [instA : WP AProg AVal APred AEPosts]
-  [EPostsConcretization CPred APred CEPosts AEPosts ERels]
+  [Assertion ERels] [EPostsConcretization CPred APred CEPosts AEPosts ERels]
 
 variable {γ : Concretization CPred APred} {P : CPred}
   {c : CProg} {a : AProg} {Q : CVal → AVal → CPred} {E : ERels}
@@ -97,7 +97,7 @@ variable {CM AM : Type w → Type v} {CPred APred : Type w} {CEPosts AEPosts : T
   [Monad CM] [Monad AM]
   [Assertion CPred] [Assertion APred] [Assertion CEPosts] [Assertion AEPosts]
   [WPMonad CM CPred CEPosts] [WPMonad AM APred AEPosts] [WPMonadExact AM APred AEPosts]
-  [EPostsConcretization CPred APred CEPosts AEPosts ERels]
+  [Assertion ERels] [EPostsConcretization CPred APred CEPosts AEPosts ERels]
   {γ : Concretization CPred APred}
 
 theorem wrp_pure {CV AV : Type w} {Q : CV → AV → CPred} {E : ERels} (cv : CV) (av : AV) :

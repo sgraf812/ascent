@@ -21,7 +21,7 @@ structure WRPApp where
   expr : Expr
   /-- The `wrp` function head. -/
   head : Expr
-  /-- The 21 core arguments of `wrp`, ending with `γ, c, a, Q, E`. -/
+  /-- The 22 core arguments of `wrp`, ending with `γ, c, a, Q, E`. -/
   args : Array Expr
   /-- The arguments after `wrp … E`, the concrete state arguments. -/
   excessArgs : Array Expr
@@ -29,7 +29,7 @@ structure WRPApp where
 namespace WRPApp
 
 /-- The position of the concrete program `c` among the core arguments. -/
-def progIdx : Nat := 17
+def progIdx : Nat := 18
 
 /-- The concrete program type `CProg`. -/
 def Prog (info : WRPApp) : Expr := info.args[0]!
@@ -49,19 +49,19 @@ def instAL (info : WRPApp) : Expr := info.args[9]!
 /-- The concrete `WP` instance. -/
 def instWP (info : WRPApp) : Expr := info.args[13]!
 /-- The concretization `γ`. -/
-def γ (info : WRPApp) : Expr := info.args[16]!
+def γ (info : WRPApp) : Expr := info.args[17]!
 /-- The concrete program `c`. -/
-def prog (info : WRPApp) : Expr := info.args[17]!
+def prog (info : WRPApp) : Expr := info.args[18]!
 /-- The abstract program `a`. -/
-def abs (info : WRPApp) : Expr := info.args[18]!
+def abs (info : WRPApp) : Expr := info.args[19]!
 /-- The return relation `Q`. -/
-def post (info : WRPApp) : Expr := info.args[19]!
+def post (info : WRPApp) : Expr := info.args[20]!
 /-- The exception relation `E`. -/
-def eposts (info : WRPApp) : Expr := info.args[20]!
+def eposts (info : WRPApp) : Expr := info.args[21]!
 
-/-- The arguments that the `Shim` lemmas take before the concrete program: the 17 arguments of
+/-- The arguments that the `Shim` lemmas take before the concrete program: the 18 arguments of
 `wrp` before `c`, then `a`. -/
-def lemmaPrefix (info : WRPApp) : Array Expr := (info.args.take 17).push info.args[18]!
+def lemmaPrefix (info : WRPApp) : Array Expr := (info.args.take 18).push info.args[19]!
 
 /-- The `wrp` application itself, before the excess state arguments apply. -/
 def wp (info : WRPApp) : Expr := info.expr.stripArgsN info.excessArgs.size
@@ -94,7 +94,7 @@ def schematic (info : WRPApp) : MetaM WRPApp := do
     let instWP ← mkAppOptM ``Std.WP.instWPOfWPMonad
       #[m, args[5]!, args[7]!, v, none, args[10]!, args[12]!, inst]
     args := args.set! 3 v |>.set! 1 (mkApp m v) |>.set! 14 instWP
-  args := args.set! 18 (← mkFreshExprMVar (userName := `a) args[1]!)
+  args := args.set! 19 (← mkFreshExprMVar (userName := `a) args[1]!)
   return { info with args, expr := mkAppN info.head (args ++ info.excessArgs) }
 
 /-- The arguments a rule built from `schematic` bakes in, as one term for hash-consing: the
@@ -115,8 +115,8 @@ end WRPApp
 /-- The `wrp` metadata of `rhs`, or `none` when `rhs` is not a `wrp` application. -/
 def isWRPApp? (rhs : Expr) : Option WRPApp :=
   rhs.withApp fun head args =>
-    if head.isConstOf ``Distillery.wrp && args.size ≥ 21 then
-      some { expr := rhs, head, args := args.take 21, excessArgs := args.drop 21 }
+    if head.isConstOf ``Distillery.wrp && args.size ≥ 22 then
+      some { expr := rhs, head, args := args.take 22, excessArgs := args.drop 22 }
     else
       none
 

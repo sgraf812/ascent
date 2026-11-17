@@ -1,16 +1,16 @@
 --- a/Distillery/Tactic/VCGen/RuleConstruction.lean
 +++ b/Distillery/Tactic/VCGen/RuleConstruction.lean
-@@ -267,7 +267,8 @@
+@@ -310,7 +310,8 @@
    /- proof of the original theorem with abstracted `post` and `eposts` specialized to the excess state arguments -/
    specApplied := mkAppN specApplied ss
    /- `wp prog postAbstract epostsAbstract s₁ ... sₙ` -/
 -  let wpTy := mkAppN info.head <| wpArgs ++ #[prog, postAbstract, epostsAbstract] ++ ss
 +  let wpTy := mkAppN info.head <|
-+    info.args.take 17 ++ #[prog, info.abs, postAbstract, epostsAbstract] ++ ss
++    info.args.take 18 ++ #[prog, info.abs, postAbstract, epostsAbstract] ++ ss
    let specAppliedTy ← mkAppM ``PartialOrder.rel #[preApplied, wpTy]
    /- later when the whole proof is type checked, we want to help the kernel by providing the expected type -/
    specApplied ← mkExpectedTypeHint specApplied specAppliedTy
-@@ -306,10 +307,12 @@
+@@ -349,10 +350,12 @@
    -- are read-only there.
    guard <| ← withReducible <| approxDefEq <| isDefEqGuarded eqα info.Prog
    -- `post`/`eposts` are schematic metavariables (their VCs collapse downstream).

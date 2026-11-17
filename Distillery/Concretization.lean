@@ -41,6 +41,11 @@ noncomputable def post (r : Concretization CPred APred) {CVal AVal : Type _}
     (Q : CVal → AVal → CPred) (Qa : AVal → APred) : CVal → CPred :=
   fun cv => iSup fun av => Q cv av ⊓ r.pred (Qa av)
 
+theorem post_mono (r : Concretization CPred APred) {CVal AVal : Type _} {Q Q' : CVal → AVal → CPred}
+    (Qa : AVal → APred) (h : Q ⊑ Q') : r.post Q Qa ⊑ r.post Q' Qa := fun cv =>
+  iSup_le _ _ fun av => PartialOrder.rel_trans (meet_mono_left (h cv av))
+    (le_iSup (fun av' => Q' cv av' ⊓ r.pred (Qa av')) av)
+
 @[simp] theorem post_eq (r : Concretization CPred APred) {CVal AVal : Type _}
     (f : CVal → AVal) (Qa : AVal → APred) :
     r.post (fun cv av => (⌜f cv = av⌝ : CPred)) Qa = fun cv => r.pred (Qa (f cv)) := by

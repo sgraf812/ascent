@@ -10,7 +10,7 @@ variable [Host] [FunDecls]
   {AM : Type → Type} [Monad AM] {APred : Type} {AEPosts : Type} {ERels : Type}
   [Assertion APred] [Assertion AEPosts]
   [WPMonad AM APred AEPosts] [WPMonadExact AM APred AEPosts]
-  [EPostsConcretization (MachineData → Prop) APred (Int64 → MachineData → Prop) AEPosts ERels]
+  [Assertion ERels] [EPostsConcretization (MachineData → Prop) APred (Int64 → MachineData → Prop) AEPosts ERels]
   {γ : Concretization (MachineData → Prop) APred}
 
 @[distill] theorem wrp_cons {AV AV₂ : Type} (d : Directive) (p : Program) (a : AM AV) (k : AV → AM AV₂)

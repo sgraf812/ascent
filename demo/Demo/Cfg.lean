@@ -438,6 +438,7 @@ noncomputable instance {Aσ : Type} :
     EPostsConcretization (MachineData → Prop) (Aσ → Prop) (Int64 → MachineData → Prop)
       ((Int64 → Aσ → Prop) × EStack⟨⟩) (Int64 → Int64 → MachineData → Prop) where
   ePosts γ E Ea := γ.post E Ea.1
+  ePosts_mono γ _ _ Ea h := γ.post_mono Ea.1 h
 
 @[simp, grind norm] theorem ePosts_ret {Aσ : Type} (γ : Concretization (MachineData → Prop) (Aσ → Prop))
     (E : Int64 → Int64 → MachineData → Prop) (Ea : (Int64 → Aσ → Prop) × EStack⟨⟩) :

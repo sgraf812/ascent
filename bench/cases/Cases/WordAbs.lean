@@ -76,7 +76,7 @@ theorem bindChain {CM AM : Type w → Type v} {CPred APred : Type w}
     [Monad CM] [Monad AM]
     [Assertion CPred] [Assertion APred] [Assertion CEPosts] [Assertion AEPosts]
     [WPMonad CM CPred CEPosts] [WPMonad AM APred AEPosts] [WPMonadExact AM APred AEPosts]
-    [EPostsConcretization CPred APred CEPosts AEPosts ERels]
+    [Assertion ERels] [EPostsConcretization CPred APred CEPosts AEPosts ERels]
     {γ : Concretization CPred APred}
     [Heyting CPred] {CV AV CV₂ AV₂ : Type w} {P : CPred}
     {a₁ : AM AV} {c₁ : CM CV} {a₂ : AV → AM AV₂} {c₂ : CV → CM CV₂}

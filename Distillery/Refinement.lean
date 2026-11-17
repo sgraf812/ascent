@@ -29,7 +29,7 @@ structure Refinement {CProg AProg : Type _} {CVal AVal : Type _}
     (c : CProg) (a : AProg)
     [WP CProg CVal CPred CEPosts] [WP AProg AVal APred AEPosts]
     (γ : Concretization CPred APred)
-    [EPostsConcretization CPred APred CEPosts AEPosts ERels]
+    [Assertion ERels] [EPostsConcretization CPred APred CEPosts AEPosts ERels]
     (P : CPred) (Q : CVal → AVal → CPred) (E : ERels) : Prop where
   intro ::
   /-- The precondition entails the weakest refinement precondition. -/
@@ -56,7 +56,7 @@ variable {CProg AProg : Type _} {CVal AVal : Type _}
   {CPred APred : Type w} {CEPosts AEPosts : Type w'} {ERels : Type u}
   [Assertion CPred] [Assertion APred] [Assertion CEPosts] [Assertion AEPosts]
   [WP CProg CVal CPred CEPosts] [WP AProg AVal APred AEPosts]
-  [EPostsConcretization CPred APred CEPosts AEPosts ERels]
+  [Assertion ERels] [EPostsConcretization CPred APred CEPosts AEPosts ERels]
 
 variable {γ : Concretization CPred APred} {P : CPred}
   {c : CProg} {a : AProg} {Q : CVal → AVal → CPred} {E : ERels}
@@ -116,7 +116,7 @@ variable {CProg : Type _} {AProg : Type v} {CVal AVal : Type _}
   {CPred APred : Type w} {CEPosts AEPosts : Type w'} {ERels : Type u}
   [Assertion CPred] [Assertion APred] [Assertion CEPosts] [Assertion AEPosts]
   [WP CProg CVal CPred CEPosts] [CCPO AProg] [WP AProg AVal APred AEPosts] [WPCont AProg]
-  [EPostsConcretization CPred APred CEPosts AEPosts ERels]
+  [Assertion ERels] [EPostsConcretization CPred APred CEPosts AEPosts ERels]
   {γ : Concretization CPred APred}
 
 theorem Refinement.admissible [Heyting CPred]
@@ -138,7 +138,7 @@ variable {CM AM : Type w → Type v} {CPred APred : Type w} {CEPosts AEPosts : T
   [Monad CM] [Monad AM]
   [Assertion CPred] [Assertion APred] [Assertion CEPosts] [Assertion AEPosts]
   [WPMonad CM CPred CEPosts] [WPMonad AM APred AEPosts] [WPMonadExact AM APred AEPosts]
-  [EPostsConcretization CPred APred CEPosts AEPosts ERels]
+  [Assertion ERels] [EPostsConcretization CPred APred CEPosts AEPosts ERels]
   {γ : Concretization CPred APred}
 
 theorem Refinement.pure {CV AV : Type w} {Q : CV → AV → CPred} {E : ERels} (cv : CV) (av : AV) :
@@ -170,9 +170,9 @@ variable {CProg BProg AProg : Type _} {CVal BVal AVal : Type _}
   [Assertion CPred] [Assertion BPred] [Assertion APred]
   [Assertion CEPosts] [Assertion BEPosts] [Assertion AEPosts]
   [WP CProg CVal CPred CEPosts] [WP BProg BVal BPred BEPosts] [WP AProg AVal APred AEPosts]
-  [EPostsConcretization CPred BPred CEPosts BEPosts ERels₁]
-  [EPostsConcretization BPred APred BEPosts AEPosts ERels₂]
-  [EPostsConcretization CPred APred CEPosts AEPosts ERels]
+  [Assertion ERels₁] [EPostsConcretization CPred BPred CEPosts BEPosts ERels₁]
+  [Assertion ERels₂] [EPostsConcretization BPred APred BEPosts AEPosts ERels₂]
+  [Assertion ERels] [EPostsConcretization CPred APred CEPosts AEPosts ERels]
   [Heyting BPred] [Heyting CPred]
 
 theorem Refinement.comp

@@ -26,7 +26,7 @@ variable {CProg : Type u₁} {AProg : Type u₂} {CVal : Type u₃} {AVal : Type
   {CPred APred : Type w} {CEPosts AEPosts : Type w'} {ERels : Type u}
   [Assertion CPred] [Assertion APred] [Assertion CEPosts] [Assertion AEPosts]
   [WP CProg CVal CPred CEPosts] [WP AProg AVal APred AEPosts]
-  [EPostsConcretization CPred APred CEPosts AEPosts ERels]
+  [Assertion ERels] [EPostsConcretization CPred APred CEPosts AEPosts ERels]
   {γ : Concretization CPred APred} {a : AProg}
 
 theorem himp_mono_right_of_le {l : Type w} [CompleteLattice l] {p q q' : l} (h : q ⊑ q') :
@@ -43,6 +43,17 @@ theorem wrp_mono_post_le (x : CProg) (post post' : CVal → AVal → CPred) (epo
   refine iSup_le _ _ fun av => ?_
   refine PartialOrder.rel_trans ?_ (le_iSup (fun av' => post' cv av' ⊓ γ.pred (Qa av')) av)
   exact meet_mono_left (h cv av)
+
+theorem wrp_mono_erel_le (x : CProg) (post : CVal → AVal → CPred) (eposts eposts' : ERels)
+    (h : eposts ⊑ eposts') {pre : CPred} (h' : pre ⊑ wrp γ x a post eposts) :
+    pre ⊑ wrp γ x a post eposts' := by
+  refine PartialOrder.rel_trans h' (iInf_mono fun Qa => iInf_mono fun Ea => ?_)
+  exact himp_mono_right_of_le
+    (WP.wp_monotone_epost (x := x) (EPostsConcretization.ePosts_mono γ Ea h))
+
+theorem wrp_mono_bot_le (x : CProg) (post : CVal → AVal → CPred) (eposts : ERels) {pre : CPred}
+    (h : pre ⊑ wrp γ x a post ⊥) : pre ⊑ wrp γ x a post eposts :=
+  wrp_mono_erel_le x post ⊥ eposts (bot_le eposts) h
 
 theorem wrp_le_wrp_of_eq {x y : CProg} (h : x = y) (post : CVal → AVal → CPred)
     (eposts : ERels) : wrp γ y a post eposts ⊑ wrp γ x a post eposts := by
@@ -71,7 +82,7 @@ def unfoldRefinement (goal : MVarId) : VCGenM MVarId := do
 def setAbs (goal : MVarId) (info : WRPApp) (b : Expr) : VCGenM MVarId := do
   let_expr PartialOrder.rel α inst pre _ := ← goal.getType
     | throwError "setAbs: the goal is not an entailment"
-  let rhs ← mkAppNS info.head (info.args.set! 18 b ++ info.excessArgs)
+  let rhs ← mkAppNS info.head (info.args.set! 19 b ++ info.excessArgs)
   let target ← mkAppNS (← goal.getType).getAppFn #[α, inst, pre, rhs]
   let g ← mkFreshExprSyntheticOpaqueMVar (← shareCommon target) (← goal.getTag)
   goal.assign g
@@ -132,7 +143,7 @@ entailments. -/
 def wrpFormOf (declName : Name) : MetaM Name := do
   let info ← getConstInfo declName
   let isRefinement ← forallTelescope info.type fun _ body =>
-    return body.isAppOfArity ``Distillery.Refinement 22
+    return body.isAppOfArity ``Distillery.Refinement 23
   unless isRefinement do return declName
   let auxName := declName ++ `le_wrp
   if (← getEnv).contains auxName then return auxName

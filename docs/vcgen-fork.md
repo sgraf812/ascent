@@ -131,15 +131,18 @@ the frame callbacks.
 ### D3. Rule construction for `wrp` specs
 
 **Intent.** A spec rule takes the concrete side of the goal verbatim, as core does. The return
-relation binds a concrete and an abstract value, and the exception relation stays the spec's.
+relation and the exception relation bind a concrete and an abstract value.
 
 **Change.** `mkBackwardRuleFromSpec` binds the return relation over the abstract and the concrete
 value, and takes the goal's concrete prefix verbatim. A fixed exception relation of the spec is
-matched structurally against the goal's relation, because `wrp` is monotone in the exception
-relation only for some `EPostsConcretization` instances.
+weakened to the goal's relation by `wrp_mono_erel_le`, which holds because `ePosts` of every
+`EPostsConcretization` is monotone in the relation. `decomposeProdRel` builds one pointwise VC for
+each component of the relation. It counts the exception arguments of a component from the number
+of state arguments: a relation `εc → εa → σ → Prop` binds two, and a concrete-only layer
+`εc → σ → Prop` binds one.
 
-**Acceptance.** `wrp` has no monotonicity lemma in the exception relation, so the vanilla
-construction does not compile.
+**Acceptance.** Test: `Regress/BareExceptionRelation`, whose spec does not apply when a fixed
+exception relation is matched structurally.
 
 ### D4. Schematic abstract program in a refinement spec
 
