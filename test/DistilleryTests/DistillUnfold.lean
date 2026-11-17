@@ -2,6 +2,13 @@ import DistilleryTests.WordAbsEngine
 
 open Std.WP Lean.Order Distillery WordAbsEngine
 
+/-!
+# Unfolding a recursive concrete program
+
+`distill [chainC]` unfolds the recursive definition `chainC` at the literal depth `3`, and the run
+abstracts the resulting chain of `UInt64` additions to the guarded `Int` chain `chainA 7 3`.
+-/
+
 namespace DistillUnfold
 
 def chainC (c : UInt64) : Nat → Id UInt64

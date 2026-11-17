@@ -70,7 +70,7 @@ The verification conditions that remain go to the `with` step, a `grind` dischar
 
 `distill` is a fork of `vcgen`. A script translates the `vcgen` sources of the pinned toolchain,
 and a series of nine patches adds the steps of synthesis. `docs/vcgen-fork.md` describes the
-translation and each patch, and `test/README.md` lists the tests that each patch needs.
+translation and each patch, with a test for each.
 
 ## Modules
 

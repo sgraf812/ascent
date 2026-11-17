@@ -2,6 +2,13 @@ import Distillery.FixLoop.Delab
 
 open Distillery
 
+/-!
+# Printing `FixLoop` loops
+
+The delaborator prints a `FixLoop.mk.forIn` loop as `repeat'` with `break`, or as `while'` when the
+body starts with the loop test, and the printed program elaborates back to the same term.
+-/
+
 namespace DistilleryTests.FixLoopDelab
 
 noncomputable def fill (n : Nat) : StateM (Array Nat) Unit :=

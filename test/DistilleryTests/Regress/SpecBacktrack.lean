@@ -7,6 +7,8 @@ import Distillery.Refinement.Lockstep
 Two specs apply to `setC 7`. The later one, `wrp_setC_idx`, asks for an abstraction of `7` under
 the relation `Idx p`, and no rule abstracts `7` there. The engine passes over that spec and applies
 `wrp_setC`.
+
+The test pins the deviation "spec backtracking on pure premises" of `docs/vcgen-fork.md`.
 -/
 
 open Std.WP Lean.Order Distillery Distillery.Blocks

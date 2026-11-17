@@ -7,6 +7,8 @@ Regression for `efc5cac`. The first cell decrements `r`, branches on the flag th
 wrote, and continues after the branch. The abstract cell binds the flag to a value `z`, and the
 continuation after the branch is a hole under `z`. The cells share one abstract table, so the next
 cell's goal meets that hole; the hole keeps the context of the cell it fills.
+
+The test pins the deviation "synthesis holes in their context" of `docs/vcgen-fork.md`.
 -/
 
 open Std.WP Lean.Order Distillery Distillery.Blocks

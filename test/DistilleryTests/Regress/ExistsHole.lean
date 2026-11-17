@@ -6,6 +6,8 @@ import DistilleryTests.Setup.Blocks
 The step relation `∃ a, ra = a ∧ t.r ≐ a` names the abstract result through `∃`. The run
 introduces the `∃` with a hole `?a`, assigns the abstract result `?r := ?a` from the equation, and
 the value solver assigns `?a := r` from the entry `t.r ≐ r` of the precondition.
+
+The test pins the deviation "existential witness" of `docs/vcgen-fork.md`.
 -/
 
 open Std.WP Lean.Order Distillery Distillery.Blocks

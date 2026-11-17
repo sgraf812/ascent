@@ -5,6 +5,8 @@ import DistilleryTests.Setup.Blocks
 
 Regression for `a14ae3e`: the split of an `if` on a `wrp` goal splits the concrete and the abstract
 program on the same condition, with one fresh abstract branch per alternative.
+
+The test pins the deviation "two-sided split" of `docs/vcgen-fork.md`.
 -/
 
 open Std.WP Lean.Order Distillery Distillery.Blocks

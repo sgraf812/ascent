@@ -104,7 +104,8 @@ construction of `RuleConstruction` (`mkSpecBackwardProof`, `tryMkBackwardRuleFro
 The series applies `D1` to `D9`, in this order, to the sources of the toolchain in
 `lean-toolchain`. Each deviation is in the series because a test fails without it, or because
 the code of a later deviation or of the frontend does not compile without it. The acceptance of a
-deviation names the tests that fail when the deviation alone is reverted.
+deviation names that dependency or a test that fails without the deviation. The module doc of the
+test names the deviation.
 
 ### D1. One worklist for `wrp` and `wp` goals
 
@@ -114,8 +115,7 @@ and `@[spec]` database.
 **Change.** `work` sends a goal `pre ⊑ wp …` to `vcgen`'s `solve` with the core scope, which every
 work item carries next to the `distill` scope. `run` takes both scopes.
 
-**Acceptance.** The frontend passes both scopes to `run`. `Pipeline` mixes `@[spec]` steps with
-`@[distill]` rules.
+**Acceptance.** The frontend passes both scopes to `run`. Test: `ForkTracer`.
 
 ### D2. No frame rules
 
@@ -126,8 +126,7 @@ machinery.
 frame alternatives of `applySpecs`, the conjunctivity check of `applySpec`, and the `let` binders of
 the frame callbacks.
 
-**Acceptance.** The frame code does not type-check against `WRPApp`. Every test in
-`test/DistilleryTests` runs without a frame rule.
+**Acceptance.** The frame code does not type-check against `WRPApp`.
 
 ### D3. Rule construction for `wrp` specs
 
@@ -140,8 +139,7 @@ matched structurally against the goal's relation, because `wrp` is monotone in t
 relation only for some `EPostsConcretization` instances.
 
 **Acceptance.** `wrp` has no monotonicity lemma in the exception relation, so the vanilla
-construction does not compile. `ZipWithAdd` and `WordAbsEngine` apply generic rules such as
-`wrp_bind`.
+construction does not compile.
 
 ### D4. Schematic abstract program in a refinement spec
 
@@ -150,8 +148,7 @@ construction does not compile. `ZipWithAdd` and `WordAbsEngine` apply generic ru
 **Change.** The rule built from such a spec keeps its abstract program schematic, so the rule
 does not capture the goal's hole.
 
-**Acceptance.** `ForkTracer`, `PureRefinement`, `WordAbsEngine` and 19 of the regression tests in
-`Regress/`; the instruction layers of the demo.
+**Acceptance.** Test: `Regress/RefinementPremise`.
 
 ### D5. Synthesis holes in their context
 
@@ -170,8 +167,7 @@ that the rule leaves in the filled program take the context of the filled hole, 
 `Sym.getMaxFVar?` starts afresh (`restoreHoleScope`). `applySpec` restores the state when the rule
 fills a hole outside its scope. The hunk also defines `rhsExistsIntro?` and `mkWitnessHole`.
 
-**Acceptance.** `D8` calls `rhsExistsIntro?`. `DistillDef`, `Regress/HoleScope` and
-`Regress/MixedHole`.
+**Acceptance.** `D8` calls `rhsExistsIntro?`. Test: `Regress/HoleScope`.
 
 ### D6. Pure refinements
 
@@ -183,8 +179,7 @@ the abstract value and the precondition, and solves a `Refinement` subgoal with 
 invocation. A verification condition that an entry of the solver's environment states is closed
 by that entry.
 
-**Acceptance.** `D9` uses the solver. `PureRefinement`, `Regress/GuardConsequence`,
-`Regress/WeakenPreValEq` and `Regress/RuleBacktrack`.
+**Acceptance.** `D9` uses the solver. Test: `Regress/GuardConsequence`.
 
 ### D7. Two-sided split
 
@@ -194,7 +189,7 @@ by that entry.
 abstract branch per alternative, after `fillAbstractHole` fills the abstract hole. A matcher
 splits on the concrete side only.
 
-**Acceptance.** `Regress/IteSplit`.
+**Acceptance.** Test: `Regress/IteSplit`.
 
 ### D8. Existential witness
 
@@ -204,8 +199,7 @@ splits on the concrete side only.
 fresh hole in the goal's context (`Distillery.le_exists_of_le`). For a tuple type the witness is
 the tuple of fresh holes (`mkWitnessHole`), so that a `match` on it reduces.
 
-**Acceptance.** `Regress/ExistsHole`, `Regress/Invariants`, `Regress/Lockstep`,
-`Regress/MixedHole`, `Regress/ValEq`; the register layers of the demo.
+**Acceptance.** Test: `Regress/ExistsHole`.
 
 ### D9. Spec backtracking on pure premises
 
@@ -215,7 +209,7 @@ the tuple of fresh holes (`mkWitnessHole`), so that a `match` on it reduces.
 the solver fails, it restores the state and tries the next candidate. When no candidate remains,
 it raises the error of the last failed premise.
 
-**Acceptance.** `Regress/SpecBacktrack`.
+**Acceptance.** Test: `Regress/SpecBacktrack`.
 
 ### Covered by core
 

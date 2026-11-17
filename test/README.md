@@ -11,10 +11,11 @@ or a failing `distill` run is a build error.
 
 ## Rule
 
-Every fixed bug of the `distill` engine or of the refinement framework gets a minimal test in
-`DistilleryTests/Regress`, and every deviation of `patches/vcgen/series` has at least one test whose
-outcome depends on it. A test uses the smallest setup that shows the behaviour, imports no kraken,
-and names the bug or deviation in its module doc.
+Every test states its purpose in its module doc: the behaviour it pins, and the bug or the
+deviation of `patches/vcgen/series` that it guards. A test uses the smallest setup that shows the
+behaviour and imports no kraken. Every fixed bug of the `distill` engine or of the refinement
+framework gets such a test in `DistilleryTests/Regress`. Every deviation has at least one test,
+which `docs/vcgen-fork.md` names.
 
 ## Setup
 
@@ -24,61 +25,6 @@ a zero flag `zf`, the abstract state is the register alone, a block program runs
 `@[distill]` rules cover a decrement that writes the flag, a jump on the flag, a register write,
 and the table of cells, so a test reaches value carrying, continuation holes and table slots with a
 few lines.
-
-## Deviation coverage
-
-Each deviation of `patches/vcgen/series` (see `docs/vcgen-fork.md`) and the tests whose outcome
-depends on it. "Verified" means: with the deviation removed, or its code site disabled, the listed
-tests fail.
-
-| Deviation | What it does | Tests | Verified |
-|---|---|---|---|
-| D1 | `wp` goals of the worklist go to core `solve` | `ForkTracer`, `Pipeline`, `Corpus/ZipL1L2` | no: without D1 the frontend does not compile |
-| D2 | no frame rules in the forked modules | every `distill` test | no: with the frame rules the forked `RuleConstruction` does not compile |
-| D3 | spec rules take the concrete side verbatim, bind the return relation over both values, and keep a fixed exception relation | every test that applies `wrp_bind`, e.g. `Regress/BinderHole`, `ZipWithAdd` | no: without D3 the forked `RuleConstruction` does not compile |
-| D4 | a `Refinement` spec keeps its abstract program schematic | `ForkTracer`, `PureRefinement`, `WordAbsEngine`, 19 tests in `Regress/` | yes, by reverting the patch |
-| D5, bare and delayed holes | a hole applied to distinct variables is filled by delayed assignment | `Regress/BinderHole`, `Regress/HoleScope`, `Regress/Lockstep`, `PureRefinement`, `WordAbsEngine` | yes, by disabling the delayed case |
-| D5, closed arguments | a hole applied to closed terms is filled by a constant function | `Regress/Commands`, `Regress/HoleScope`, `Regress/Lockstep` | yes, by disabling the closed case |
-| D5, table slots | a slot `Table.get ?tbl k` is filled by the cell of `k` | `Regress/HoleScope` | yes, by disabling the table case |
-| D5, hole scope | holes left by a rule take the context of the filled hole | `Regress/HoleScope` | yes, by disabling `restoreHoleScope` |
-| D5, mixed arguments | a hole applied to free variables, closed subsingletons and nested structure instances of free variables is rewritten to a hole applied to the variables | `Regress/MixedHole` | yes: the tests fail without `patternHole?` |
-| D6 | `PureRefinement` and `Refinement` subgoals are solved at once, and an entry closes the VC it states | `PureRefinement`, `Regress/GuardConsequence`, `Regress/WeakenPreValEq`, `Regress/RuleBacktrack`, `Regress/RefinementPremise` | no: without D6 the code of D9 does not compile |
-| D7 | an `if` splits both programs on one condition | `Regress/IteSplit` | yes, by reverting the patch |
-| D8 | `pre ⊑ ∃ x, p x` becomes `pre ⊑ p ?x` | `Regress/ExistsHole`, `Regress/Invariants`, `Regress/Lockstep`, `Regress/MixedHole`, `Regress/ValEq` | yes, by reverting the patch |
-| D9 | a spec whose `PureRefinement` premise has no solution gives way to the next spec | `Regress/SpecBacktrack` | yes, against the engine without the backtracking |
-
-## Regressions
-
-| Test | Origin |
-|---|---|
-| `Regress/HoleScope` | `efc5cac`: "unknown free variable" when a table cell keeps a hole under a carried flag |
-| `Regress/BinderHole` | continuation holes applied to a bound value (the demo's `LiftTest`) |
-| `Regress/IteSplit` | `a14ae3e`: the split of an `if` put the abstract program in the concrete slot |
-| `Regress/Lockstep` | `113749a`: the loop value stayed unassigned under a named step relation; the `match` post reduces |
-| `Regress/Commands` | `a14ae3e`, `62af746`: "declaration has metavariables" from a binder of type `Array Nat`; `0581e81` names in the current namespace; `423b076` used binders; `99e069f` refinement notation |
-| every `wrp_bind` test on `BlockM` | `0ee3ec1`: a generic rule failed on an `ExceptT` stack because the matcher met `?AM ?AV` |
-| `FixLoopDelab` | `68f7877` and the `repeat'` delaborator round trip |
-| `Regress/TopLevelRule` | `distill_def` added the unfold equations of the concrete head, which ranked above a rule for the head; now it unfolds only the definitions its list names |
-| `Regress/ExistsHole` | an existential on the right side, `∃ a, ra = a ∧ …`, had no step; it is introduced with a hole as witness |
-| `Regress/GuardConsequence` | a value rule with a guard stronger than the goal's fixed guard `True` was rejected ("the abstract value does not fit"); the guard becomes a VC |
-| `Regress/Lockstep`, `Regress/MixedHole` (`pairArg`) | the loop leaves needed rules that fix the abstract constructor (`wrp_yield`, `wrp_done`, `wrp_yield_pair`); the step relation now names the abstract step through `∃`, and a tuple witness is a tuple of holes |
-| `Regress/MixedHole` (`nestedArg`) | a hole applied to a nested pair `(a₁, (a₂, a₃))` was not inverted: only the outer fields were variables. `structPaths` now gives each variable its chain of projections |
-| `Regress/MixedHole` | a hole `?fa () a` or `?fa () (a₁, a₂)` was not filled. The loop rules now take `fa : βa → …`, so the remaining source is a tuple loop value, which core's `Prod.forall_intro` splits after the body hole exists (`?fa (a₁, a₂)`) |
-| `Regress/BlockLoop` | the block loop over a table of blocks: `cfgLoop_header` at a two-block loop and at a header with two back edges; `sym_simp_def` applies `cfgLoop_header` at every label and pushes each header's handler to the literal throws: a chain of jumps evaluates to its last jump, a cycle keeps one `repeat'` loop, and an outer header's handler crosses an inner loop by `tryCatch_forIn_bind`, whose `ThrowsOnly` premise needs `maxDischargeDepth` 16 in `sym_simp_def` |
-| `Regress/RuleBacktrack` | a pure rule that failed after it assigned the holes of the goal left them assigned, so every later rule failed; the solver now restores the state after a failed rule |
-| `Regress/WeakenPreValEq` | with both a given abstract value and a given guard, `PureRefinement.weaken_pre` received the solver's abstract value in place of the goal's, and the kernel rejected the term |
-| `Regress/SpecBacktrack` | a spec whose `PureRefinement` premise had no solution stopped the run although a later spec applied |
-| `Regress/CatchExit` | the exit catch at the top of a chain: `distill_def` refines a concrete block program to an abstract one, a triple about `catchExit` of the abstract program follows from `wp_catchExit`, and `Refinement.transport_catchExit` turns it into a triple about the concrete program whose exception postcondition at the exit is the caught program's return postcondition |
-
-Past problems that a test here does not pin:
-- The kernel unfolds `Bind.bind` chains when a rule premise applies a pattern variable under `>>=`
-  (2026-11-04, quadratic kernel time). A performance cliff, measured by the bench case
-  `Cases/WordAbsVal` (a left-nested chain that `wrp_bind_assoc` and `wrp_kleisli` reassociate).
-- `instantiateNewMVarTypes` of Sym is quadratic on left-nested chains (lean4#16241). A performance
-  cliff in core; no test or bench case pins it here.
-- Open: vcgen gives no option to raise the step limit of its `Sym.simp` step (100,000 per call).
-- `List.mem_cons` in `vcgen_simp` rewrites the binder domain of `∀ x ∈ a :: l` and stops the
-  `forall_mem_cons_intro` split. A configuration pitfall, not an engine bug.
 
 ## Tests in the demo
 

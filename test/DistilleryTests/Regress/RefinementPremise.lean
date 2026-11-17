@@ -6,6 +6,9 @@ import DistilleryTests.Setup.Blocks
 The rule `wrp_wrap` refines `wrap c` to `wrap a` from the premise `⦃P⦄ c ⪯ a ⦃Q; E⦄`, whose
 precondition `P` and abstract program `a` are schematic. The engine closes the premise with the
 spec `inner.refines` of the invocation, which assigns `a` and `P`.
+
+The spec keeps its abstract program schematic, the deviation "schematic abstract program" of
+`docs/vcgen-fork.md`.
 -/
 
 open Std.WP Lean.Order Distillery Distillery.Blocks

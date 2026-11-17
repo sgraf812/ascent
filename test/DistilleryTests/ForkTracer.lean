@@ -7,6 +7,15 @@ open Std.WP Lean.Order Distillery Distillery.Concretization
 
 set_option experimental.vcgen true
 
+/-!
+# A `distill` goal and a `vcgen` goal in one run
+
+The concrete program writes a local with `setL` and reads it back with `getL`. The stutter spec of
+`setL` leaves a `vcgen` goal for the write, which the `@[spec]` theorem `setL_spec` decomposes, and
+the read spec synthesizes the abstract `pure m`. The test pins the deviation "one worklist for `wrp`
+and `wp` goals" of `docs/vcgen-fork.md`.
+-/
+
 namespace ForkTracer
 
 structure St where

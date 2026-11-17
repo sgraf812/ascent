@@ -24,13 +24,13 @@ depends on kraken through the path in `demo/lakefile.toml`.
 
 ## Tests
 
-`test/README.md` states the rule and the coverage. In short:
+`test/README.md` states the rule. In short:
 
 - Every fixed bug of the engine or of the framework gets a minimal test in
   `test/DistilleryTests/Regress`, on the toy machine `DistilleryTests.Setup.Blocks`, without kraken.
   Its module doc names the bug.
-- Every deviation of the patch series has a test whose outcome depends on it, listed in the
-  coverage table of `test/README.md`.
+- Every test states its purpose in its module doc. A test that guards a deviation of the patch
+  series names that deviation, and `docs/vcgen-fork.md` names one such test for each deviation.
 - The tests build with `sym.debug` on.
 - A feature that only the demo exercises gets a test here first.
 
@@ -51,7 +51,8 @@ To change a translated module:
 2. If the change belongs to an existing deviation, run `scripts/refresh-patch.py <patch>` to
    rewrite that patch from the tree.
 3. If it is a new deviation, add a patch to `patches/vcgen/` and a line to `series`, a section to
-   `docs/vcgen-fork.md` with intent, change and acceptance, a test, and a row of the coverage table.
+   `docs/vcgen-fork.md` with intent, change and acceptance, and a test whose module doc names the
+   deviation.
 4. Run `scripts/sync-vcgen.py --check`. It fails when the translation and the series do not
    reproduce the committed tree.
 
@@ -69,7 +70,7 @@ a toolchain update or a large change:
 4. Drop every unit or group whose reversion passes everything and does not slow the bench. A unit
    that only the demo needs gets a regression test before it stays.
 5. Regenerate the patches as the differences between consecutive trees, one deviation at a time,
-   and update the acceptance tests in `docs/vcgen-fork.md` and `test/README.md`.
+   and update the acceptance lines in `docs/vcgen-fork.md`.
 
 Run the reversions in parallel worktrees, each with its own `.lake`.
 

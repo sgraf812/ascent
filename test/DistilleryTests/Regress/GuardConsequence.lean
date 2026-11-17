@@ -7,6 +7,8 @@ import Distillery.Tactic.VCGen.Frontend
 A rule asks for `PureRefinement c ?x True R`, and the only value rule for `c` concludes a guard
 stronger than `True`. The solver applies the consequence rule `PureRefinement.weaken_pre`: the
 guard becomes the verification condition `True → guard`, and `finish` closes it.
+
+The test pins the deviation "pure refinements" of `docs/vcgen-fork.md`.
 -/
 
 open Std.WP Lean.Order Distillery
