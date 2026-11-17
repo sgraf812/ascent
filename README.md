@@ -1,8 +1,9 @@
 # Distillery
 
-Distillery climbs from a concrete program to an abstract one. Each step takes a program and
-produces a more abstract program together with a proof that the input refines the output.
-Every property proved of the abstract program transports to the concrete one.
+Distillery draws an abstract program out of a concrete one. Each `distill_def` takes a program and
+produces a more abstract program, together with a proof that the input refines the output. A chain
+of such steps leads from machine code to a pure function, and every property proved of the last
+program transports to the first.
 
 Distillery is built on the `Std.WP` weakest-precondition metatheory of the Lean toolchain.
 
@@ -24,6 +25,53 @@ is the weakest refinement precondition: the weakest assertion under which every 
 `a` transports to `c`. The `pure`, `bind`, `throw` and `tryCatch` laws of `wrp` are the rules a
 forward simulation proof applies, one program construct at a time.
 
+## The engine
+
+`distill_def` states a refinement whose abstract program is a hole, and the tactic `distill`
+computes the hole. The test `test/DistilleryTests/PureRefinement.lean` abstracts a chain of
+`UInt64` additions to a chain of `Nat` additions:
+
+```lean
+def prog : Demonic UInt64 := do let a ← pure (7 : UInt64); let b ← pure (a + 7); pure (b + 7)
+
+distill_def progN : Demonic Nat from
+  ⦃(⊤ : Prop)⦄ prog ⪯[Concretization.id Prop] progN ⦃(⌜FunRel UInt64.toNat · ·⌝)⦄
+  distill [prog]
+```
+
+The run unfolds `prog`, applies the rule `wrp_bind` at each `>>=` and the rule
+`Refinement.pure_rel` at each `pure`. At each `pure`, it asks for an abstract value of the concrete
+value. For `a + 7`, the rule `abs_add` abstracts the sum to `x + 7`, where `x` is the abstract value
+of `a`, under the guard `x + 7 < 2 ^ 64`. The result is
+
+```lean
+def progN : Demonic Nat := do
+  let x ← do Demonic.assert True; pure 7
+  let x ← do Demonic.assert (x + 7 < 2 ^ 64); pure (x + 7)
+  Demonic.assert (x + 7 < 2 ^ 64)
+  pure (x + 7)
+```
+
+with the theorem `progN.refines : ⦃⊤⦄ prog ⪯[Concretization.id Prop] progN ⦃⌜FunRel UInt64.toNat · ·⌝⦄`.
+The guards are part of the abstract program: a `Demonic.assert` that fails is undefined behaviour,
+so a property of `progN` holds of `prog` only on the runs without overflow.
+
+Three kinds of rules drive a run:
+
+* `@[distill]` rules are `Refinement` theorems keyed by the concrete program, such as `wrp_bind`.
+  The list of a run names definitions to unfold, such as `prog` above, and further rules. There the
+  theorem `a.refines` of an earlier `distill_def` serves as a rule, for example the refinement of a
+  callee at its call.
+* `@[distill_pure]` rules are `PureRefinement` theorems, which relate a concrete value to an
+  abstract value under a guard. `abs_add` above is one.
+* `@[spec]` theorems of `vcgen` decompose a concrete step that has no abstract counterpart.
+
+The verification conditions that remain go to the `with` step, a `grind` discharger.
+
+`distill` is a fork of `vcgen`. A script translates the `vcgen` sources of the pinned toolchain,
+and a series of nine patches adds the steps of synthesis. `docs/vcgen-fork.md` describes the
+translation and each patch, and `test/README.md` lists the tests that each patch needs.
+
 ## Modules
 
 * `Distillery/WPMonadExact.lean`: monads whose `wp` computes `pure` and `bind` exactly, which the
@@ -41,6 +89,15 @@ forward simulation proof applies, one program construct at a time.
 * `Distillery/Refinement.lean`: `Refinement`, its notation, the triple forms of the laws,
   composition of refinements, and purification of a write-once program.
 * `Distillery/Refinement/WhileLoop.lean`: the while-loop rule.
+* `Distillery/Refinement/Lockstep.lean`, `Distillery/Refinement/Catch.lean`,
+  `Distillery/Refinement/StateRepr.lean`: loops that refine step by step, the transport of a triple
+  about a caught program, and the rules of the state abstraction `ofStateRepr`.
+* `Distillery/PureRefinement.lean`: `PureRefinement`, the refinement of a pure concrete value by an
+  abstract value under a guard.
+* `Distillery/WPCont.lean`, `Distillery/FixLoop.lean`: continuity of `wp` along chains, and loops as
+  least fixed points.
+* `Distillery/Table.lean`, `Distillery/BlockLoop.lean`: tables of cells, and block programs whose
+  jumps are exceptions, with the loop that runs them and their termination.
 * `Distillery/Tactic/`: the `distill` tactic and the `distill_def` command. On a goal
   `⦃P⦄ c ⪯[γ] (_ : AM AV) ⦃Q; E⦄` the tactic computes the abstract program into the hole and
   proves the triple, leaving the verification conditions as goals. The command stores the
@@ -48,6 +105,8 @@ forward simulation proof applies, one program construct at a time.
   theorems registered with `@[distill]`, keyed by the concrete program.
 * `test/`: worked refinements, the `zip_with_add` case study, and negative tests.
 * `bench/`: the synthesis benchmark harness.
+* `demo/`: pipelines from x64 text to pure functions for `zipWithAdd`, `memmove`, a binary search
+  and an in-place reverse with a call, over the x64 model of kraken.
 
 ## Build
 
