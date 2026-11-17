@@ -1,11 +1,11 @@
 import Demo.Instr
-import Ascent.FixLoop
-import Ascent.FixLoop.Delab
+import Distillery.FixLoop
+import Distillery.FixLoop.Delab
 
 /-!
 # Structuring a block loop by rewriting
 
-The block loop of a text is structured by `cfgLoop_header` of `Ascent.BlockLoop`, applied at every
+The block loop of a text is structured by `cfgLoop_header` of `Distillery.BlockLoop`, applied at every
 label: each label becomes the header of a `repeat'` loop over the other blocks that continues on a
 return to the label in a state with the stack test. The equations of this file push the loop's
 `try` into the blocks, through a mapped computation as well, until it meets the throws.
@@ -23,9 +23,9 @@ exception effect `ThrowsOnly` as premise). The marks `done <$>` then collect at 
 (`forIn_map_done`, `forIn_bind_exitIf`, `forIn_exitIf`).
 -/
 
-open Std.WP Lean.Order Ascent
+open Std.WP Lean.Order Distillery
 
-namespace Ascent.Kraken
+namespace Distillery.Kraken
 
 theorem BlockM.ext_wp {σ α : Type} {x y : BlockM σ α}
     (h : ∀ (Q : α → σ → Prop) (E : (Int64 → σ → Prop) × EStack⟨⟩) s, wp x Q E s → wp y Q E s)
@@ -297,4 +297,4 @@ theorem stayIn_setReg64_rsp (r₀ k : BitVec 64) (st : MachineData) :
   congr 2
   rw [BitVec.add_comm, BitVec.add_sub_cancel]
 
-end Ascent.Kraken
+end Distillery.Kraken

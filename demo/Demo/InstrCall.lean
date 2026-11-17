@@ -13,11 +13,11 @@ is back at `r`. The refinement of a call instantiates `v` with the actual return
 abstract state equals the concrete one, return slot included.
 -/
 
-open Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
-open Ascent.Concretization (ofStateRepr ofStateRel ofStateRepr_pred ofStateRel_pred)
+open Std.WP Lean.Order Distillery Distillery.Kraken Distillery.Kraken.AInstr
+open Distillery.Concretization (ofStateRepr ofStateRel ofStateRepr_pred ofStateRel_pred)
 open scoped Program.WP
 
-namespace Ascent.Kraken
+namespace Distillery.Kraken
 
 /-- Push an unknown 8-byte word below the stack pointer and return it. -/
 def pushUnknown : BlockM MachineData Int64 :=
@@ -47,7 +47,7 @@ theorem wp_tryCatch_fun {σ α : Type} (x : BlockM σ α) (h : Int64 → BlockM 
   funext fun s => BlockLoop.wp_tryCatch x h Q E s
 
 theorem ThrowsOnly.callInstr {P : Int64 → MachineData → Prop} (k : BitVec 64 → Int64 → BlockM MachineData Unit) :
-    Ascent.ThrowsOnly P (callInstr k) = True := eq_true fun Q E s hw => by
+    Distillery.ThrowsOnly P (callInstr k) = True := eq_true fun Q E s hw => by
   simp only [Kraken.callInstr, WPMonadExact.wp_bind_eq, wp_peek, wp_pushUnknown_fun, BlockLoop.wp_tryCatch,
     wp_modifyIf_fun] at hw ⊢
   exact hw
@@ -67,7 +67,7 @@ attribute [vcgen_simp] MachineData.regs_push64
 section
 variable [Host] [FunDecls]
 
-@[ascend] theorem wrp_call {f : Label} {g : Fragment} (hg : FunDecls.at (label f) = some g)
+@[distill] theorem wrp_call {f : Label} {g : Fragment} (hg : FunDecls.at (label f) = some g)
     (asz osz : Width) {k : BitVec 64 → Int64 → BlockM MachineData Unit}
     (hk : ∀ (r : BitVec 64) (ra : Int64),
       ⦃fun s => s.regs.get64 .rsp = r ∧ s.retAddr = some ra⦄ g.prog ⪯[ofStateRepr abs] (k r ra)
@@ -115,4 +115,4 @@ variable [Host] [FunDecls]
 
 end
 
-end Ascent.Kraken
+end Distillery.Kraken

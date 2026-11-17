@@ -12,17 +12,17 @@ call is the body of `swapFrame₀`: the handler of the call catches the return a
 return address that the body threw, so only the push of the unknown return address stays.
 -/
 
-open Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
-open Ascent.Concretization (ofStateRepr)
+open Std.WP Lean.Order Distillery Distillery.Kraken Distillery.Kraken.AInstr
+open Distillery.Concretization (ofStateRepr)
 
-namespace Ascent.Kraken
+namespace Distillery.Kraken
 
-ascend_def reverseFrame₀ [Host] [Embeds swap] (rdi rsi rax rbx r12 r14 r15 rsp sp : BitVec 64)
+distill_def reverseFrame₀ [Host] [Embeds swap] (rdi rsi rax rbx r12 r14 r15 rsp sp : BitVec 64)
     (ra : Int64) : BlockM FState Unit from
   ⦃fun m => rsp ≐ₛ sp ∧ retAddrAt m rsp = some ra⦄
   (reverseRegs rdi rsi rax rbx r12 r14 r15 rsp ra) ⪯[ofStateRepr (FState.split (Fr rsp 6 0))] reverseFrame₀
   ⦃fun _ _ _ => True; (fun l l' _ => l = l', estack⟨⟩)⦄
-  ascend [reverseRegs, wrp_callRegs_callFrame, swapFrame₀.refines,
+  distill [reverseRegs, wrp_callRegs_callFrame, swapFrame₀.refines,
     wrp_forIn_lockstep_bind_unit _ _ (_, _, _, _)]
   invariants
   · fun (v : BitVec 64 × BitVec 64 × BitVec 64 × BitVec 64) m
@@ -46,7 +46,7 @@ theorem reverseFrame.refines [Host] [FunDecls] [Embeds swap]
     reverseFrame₀.refines rdi rsi rax rbx r12 r14 r15 rsp rsp ra
 
 /--
-info: def Ascent.Kraken.reverseFrame : BitVec 64 →
+info: def Distillery.Kraken.reverseFrame : BitVec 64 →
   BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → Int64 → BlockM FState Unit :=
 fun rdi rsi rax rbx r12 r14 r15 rsp ra =>
   condState (fun x => CondCode.c.cmp rsi 2#64) (throw ra) do
@@ -77,4 +77,4 @@ fun rdi rsi rax rbx r12 r14 r15 rsp ra =>
 #guard_msgs in
 #print reverseFrame
 
-end Ascent.Kraken
+end Distillery.Kraken

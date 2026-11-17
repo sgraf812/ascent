@@ -9,11 +9,11 @@ test on `rdi` and `rsi` is a `condState` whose branches hold the two copy loops,
 loop that continues on its jump to itself and leaves by the return.
 -/
 
-open Std.WP Lean.Order Ascent Ascent.Kraken.AInstr
-open Ascent.Concretization (ofStateRepr)
+open Std.WP Lean.Order Distillery Distillery.Kraken.AInstr
+open Distillery.Concretization (ofStateRepr)
 open scoped Program.WP
 
-namespace Ascent.Kraken
+namespace Distillery.Kraken
 
 theorem memmove.label_ne_0_1 [Host] [Embeds memmove] : (label "LBB0_6" = label "LBB0_1") = False :=
   Program.label_eq_false (p := memmove) (by decide +kernel) (by decide +kernel) (by decide +kernel)
@@ -95,7 +95,7 @@ theorem memmoveLoops.refines [Host] [FunDecls] [Embeds memmove] (r₀ : BitVec 6
   memmoveLoops.eq r₀ ra ▸ memmoveInstr.refines r₀ ra
 
 /--
-info: def Ascent.Kraken.memmoveLoops : BitVec 64 → Int64 → BlockM MachineData Unit :=
+info: def Distillery.Kraken.memmoveLoops : BitVec 64 → Int64 → BlockM MachineData Unit :=
 fun r₀ ra => do
   modifyIf (fun x => True) (setReg64 Reg64.rax fun st => st.regs.rdi.toBitVec)
   condState (fun st => CondCode.nc.cmp st.regs.rdi.toBitVec st.regs.rsi.toBitVec)
@@ -147,4 +147,4 @@ fun r₀ ra => do
 #guard_msgs in
 #print memmoveLoops
 
-end Ascent.Kraken
+end Distillery.Kraken

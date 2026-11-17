@@ -1,6 +1,6 @@
 import Cases.WordAbs
 import Driver
-open Lean Meta Elab Sym Std.WP Lean.Order Ascent AscendBench
+open Lean Meta Elab Sym Std.WP Lean.Order Distillery DistillBench
 
 set_option maxRecDepth 10000
 
@@ -122,19 +122,19 @@ unsafe def benchT (label : String) (nodes reps : Nat) (mk : Nat → Expr) : IO U
 
 #eval show TermElabM _ from do
   -- Representative pieces from the WordAbs goals.
-  let wrpApp ← Term.elabTerm (← `(wrp γw (pure 0 : UB Int) (pure 0 : Id UInt64)
+  let wrpApp ← Term.elabTerm (← `(wrp γw (pure 0 : Demonic Int) (pure 0 : Id UInt64)
     (fun c a => ⌜wordVal c = a⌝) ⊥)) none
   Term.synthesizeSyntheticMVarsNoPostponing
   let wrpApp ← instantiateMVars wrpApp
   let lam ← Term.elabTerm (← `(fun (av : Int) (cv : UInt64) =>
-    wrp γw (pure cv : Id UInt64) (pure av : UB Int) (fun c a => ⌜wordVal c = a⌝) ⊥)) none
+    wrp γw (pure cv : Id UInt64) (pure av : Demonic Int) (fun c a => ⌜wordVal c = a⌝) ⊥)) none
   Term.synthesizeSyntheticMVarsNoPostponing
   let lam ← instantiateMVars lam
   let eqE ← Term.elabTerm (← `((0 : Int) = wordVal 7)) none
   Term.synthesizeSyntheticMVarsNoPostponing
   let eqE ← instantiateMVars eqE
   let prefix4 := wrpApp.appFn!.appFn!.appFn!.appFn!
-  let aSlot := wrpApp.appFn!.appFn!.appFn!.appArg!   -- `pure 0 : UB Int`
+  let aSlot := wrpApp.appFn!.appFn!.appFn!.appArg!   -- `pure 0 : Demonic Int`
   let cSlot := wrpApp.appFn!.appFn!.appArg!
   let qSlot := wrpApp.appFn!.appArg!
   let eSlot := wrpApp.appArg!

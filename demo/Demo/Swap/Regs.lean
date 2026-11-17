@@ -4,24 +4,24 @@ import Demo.Swap.Loops
 /-!
 # `swap` with its registers lifted
 
-`swapRegs₀` is `swapLoops` over the data memory alone, synthesized by `ascend`. `rdi`, `rsi` and `rsp` are
+`swapRegs₀` is `swapLoops` over the data memory alone, synthesized by `distill`. `rdi`, `rsi` and `rsp` are
 parameters. The callee-saved registers of the SysV calling convention, `rbx`, `rbp` and `r12` to
 `r15`, are parameters too, and the exit relation states that the return leaves them unchanged.
 -/
 
-open Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
-open Ascent.Concretization (ofStateRepr)
+open Std.WP Lean.Order Distillery Distillery.Kraken Distillery.Kraken.AInstr
+open Distillery.Concretization (ofStateRepr)
 
-namespace Ascent.Kraken
+namespace Distillery.Kraken
 
-ascend_def swapRegs₀ (rdi rsi rsp rbx rbp r12 r13 r14 r15 : BitVec 64) (r₀ : BitVec 64) (ra : Int64) :
+distill_def swapRegs₀ (rdi rsi rsp rbx rbp r12 r13 r14 r15 : BitVec 64) (r₀ : BitVec 64) (ra : Int64) :
     BlockM DataMem Unit from
   ⦃RegsRel [(.rdi, rdi), (.rsi, rsi), (.rsp, rsp), (.rbx, rbx), (.rbp, rbp), (.r12, r12), (.r13, r13),
     (.r14, r14), (.r15, r15)]⦄
   (swapLoops r₀ ra) ⪯[ofStateRepr MachineData.dmem] swapRegs₀
   ⦃fun _ _ _ => True; (fun l l' t => l = l' ∧ t.regs.get64 .rsp = r₀ + 8 ∧ RegsRel [(.rbx, rbx), (.rbp, rbp), (.r12, r12), (.r13, r13),
     (.r14, r14), (.r15, r15)] t, estack⟨⟩)⦄
-  ascend [swapLoops]
+  distill [swapLoops]
   with finish
 
 sym_simp_def swapRegs (rdi rsi : BitVec 64) (rsp : BitVec 64) (ra : Int64) : BlockM DataMem Unit from
@@ -41,7 +41,7 @@ theorem swapRegs.refines (rdi rsi rbx rbp r12 r13 r14 r15 : BitVec 64) (rsp : Bi
   swapRegs.eq rdi rsi rsp ra ▸ swapRegs₀.refines rdi rsi rsp rbx rbp r12 r13 r14 r15 rsp ra
 
 /--
-info: def Ascent.Kraken.swapRegs : BitVec 64 → BitVec 64 → BitVec 64 → Int64 → BlockM DataMem Unit :=
+info: def Distillery.Kraken.swapRegs : BitVec 64 → BitVec 64 → BitVec 64 → Int64 → BlockM DataMem Unit :=
 fun rdi rsi rsp ra => do
   let x ← load 8 rdi
   let x_1 ← load 8 rsi
@@ -53,4 +53,4 @@ fun rdi rsi rsp ra => do
 #guard_msgs in
 #print swapRegs
 
-end Ascent.Kraken
+end Distillery.Kraken

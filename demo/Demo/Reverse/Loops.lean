@@ -8,11 +8,11 @@ import Demo.Reverse.Instr
 `callInstr k` never throws, so the handlers of the block loop pass it.
 -/
 
-open Std.WP Lean.Order Ascent Ascent.Kraken.AInstr
-open Ascent.Concretization (ofStateRepr ofStateRel)
+open Std.WP Lean.Order Distillery Distillery.Kraken.AInstr
+open Distillery.Concretization (ofStateRepr ofStateRel)
 open scoped Program.WP
 
-namespace Ascent.Kraken
+namespace Distillery.Kraken
 
 theorem reverse.label_ne_1 [Host] [Embeds reverse] :
     (label "_reverse_" = label "LBB1_2") = False :=
@@ -74,7 +74,7 @@ theorem reverseLoops.refines [Host] [FunDecls] [Embeds reverse] (g : Fragment)
   reverseLoops.eq k r₀ ra ▸ reverseInstr.refines g hg k hk r₀ ra
 
 /--
-info: def Ascent.Kraken.reverseLoops : (BitVec 64 → Int64 → BlockM MachineData Unit) →
+info: def Distillery.Kraken.reverseLoops : (BitVec 64 → Int64 → BlockM MachineData Unit) →
   BitVec 64 → Int64 → BlockM MachineData Unit :=
 fun k r₀ ra => do
   modifyIf (fun s => stayIn r₀ s = true) id
@@ -141,4 +141,4 @@ fun k r₀ ra => do
 #guard_msgs in
 #print reverseLoops
 
-end Ascent.Kraken
+end Distillery.Kraken

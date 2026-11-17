@@ -1,11 +1,11 @@
-# The ascend fork of vcgen
+# The distill fork of vcgen
 
-`ascend` is a fork of `vcgen` (`Lean.Elab.Tactic.VCGen` and the spec attribute in
-`Lean.Elab.Tactic.Do.Attr`). `vcgen` decomposes goals `pre ⊑ wp x Q E s⃗`. `ascend` decomposes
+`distill` is a fork of `vcgen` (`Lean.Elab.Tactic.VCGen` and the spec attribute in
+`Lean.Elab.Tactic.Do.Attr`). `vcgen` decomposes goals `pre ⊑ wp x Q E s⃗`. `distill` decomposes
 goals `pre ⊑ wrp γ c a Q E s⃗`, where `a` contains the synthesis hole of the abstract program.
 The fork consists of three parts:
 
-1. modules of `vcgen` that `ascend` imports and calls unchanged,
+1. modules of `vcgen` that `distill` imports and calls unchanged,
 2. modules that a fixed translation table derives from `vcgen` (`T1` to `T4` below),
 3. a list of deviations, one patch each, in the order of `patches/vcgen/series`.
 
@@ -18,18 +18,18 @@ The concrete program is `setSize "n" m >>= fun _ => getSize "n"` and the concret
 `ofStateRepr (·.heap)`. The run has one worklist with two kinds of goals:
 
 ```
-P s ⊑ wrp γ (setSize "n" m >>= fun _ => getSize "n") ?a Q E s       -- ascend goal
+P s ⊑ wrp γ (setSize "n" m >>= fun _ => getSize "n") ?a Q E s       -- distill goal
   stutter spec:
 P s ⊑ wp (setSize "n" m) (fun _ s' => ⌜s'.heap = s.heap⌝ ⊓ wrp γ (getSize "n") ?a Q E s') ⊥ s
                                                                       -- vcgen goal
   setSize_spec, state simp:   s₁ := { s with locals := … }, ⌜s₁.heap = s.heap⌝ ↝ True
-P' ⊑ wrp γ (getSize "n") ?a Q E s₁                                    -- ascend goal
+P' ⊑ wrp γ (getSize "n") ?a Q E s₁                                    -- distill goal
   read spec:                  ?a := pure ?av
   getSize_spec, match iota:   Q m ?av s₁
   VC cleanup:                 ?av := m
 ```
 
-The `vcgen` goals go to `vcgen`'s own `solve`. The `ascend` goals go to the forked `solve`. The
+The `vcgen` goals go to `vcgen`'s own `solve`. The `distill` goals go to the forked `solve`. The
 value of the local `"n"` comes from the state term `s₁`, and the abstract value comes from
 unification.
 
@@ -37,21 +37,21 @@ unification.
 
 | Path | Content |
 |---|---|
-| `Ascent/Tactic/VCGen/` | the translated modules, one file for each `vcgen` file it derives from |
-| `Ascent/Tactic/Shim.lean` | the `wrp` lemmas that `T4` substitutes, with the binder order of their `wp` counterparts |
+| `Distillery/Tactic/VCGen/` | the translated modules, one file for each `vcgen` file it derives from |
+| `Distillery/Tactic/Shim.lean` | the `wrp` lemmas that `T4` substitutes, with the binder order of their `wp` counterparts |
 | `patches/vcgen/series` | the order of the deviation patches |
 | `patches/vcgen/D<n>-<name>.patch` | one patch for each deviation |
-| `scripts/sync-vcgen` | regenerates `Ascent/Tactic/VCGen/` from the toolchain in `lean-toolchain` |
+| `scripts/sync-vcgen` | regenerates `Distillery/Tactic/VCGen/` from the toolchain in `lean-toolchain` |
 
 `scripts/sync-vcgen` copies the source files from the pinned toolchain, applies `T1` to `T4`, and
 then applies the patches in `series`. CI runs the script and fails if its output differs from
-the committed `Ascent/Tactic/VCGen/`. So `diff` between the toolchain source and the committed
+the committed `Distillery/Tactic/VCGen/`. So `diff` between the toolchain source and the committed
 tree shows exactly the translation and the deviations.
 
 ## Imported unchanged
 
-`ascend` runs in `VCGenM` with an additional state layer:
-`AscendM := StateRefT AscendState VCGenM`. These modules are imported, and their functions are
+`distill` runs in `VCGenM` with an additional state layer:
+`DistillM := StateRefT DistillState VCGenM`. These modules are imported, and their functions are
 called through `liftM`:
 
 - `Context`, `Util`, `Reduce`, `BinderName`, `LatticeOp`, `Entails`: phases 1 to 3 of `solve`,
@@ -62,9 +62,9 @@ called through `liftM`:
 
 ## Translation table
 
-`T1`. Namespaces and names. `Lean.Elab.Tactic.VCGen` becomes `Ascent.Tactic.VCGen`.
-`Lean.Elab.Tactic.Do.SpecAttr` becomes `Ascent.Tactic.SpecAttr`. The attribute `spec` becomes
-`ascend`.
+`T1`. Namespaces and names. `Lean.Elab.Tactic.VCGen` becomes `Distillery.Tactic.VCGen`.
+`Lean.Elab.Tactic.Do.SpecAttr` becomes `Distillery.Tactic.SpecAttr`. The attribute `spec` becomes
+`distill`.
 
 `T2`. Module headers. `module`, `prelude` and `public section` are removed. `public import`
 becomes `import`. `builtin_initialize` becomes `initialize`.
@@ -84,13 +84,13 @@ map as follows:
 
 `T4`. Lemmas. Each lemma in the left column becomes the `Shim.lean` lemma in the right column:
 
-| `vcgen` | `ascend` |
+| `vcgen` | `distill` |
 |---|---|
-| `Std.WP.Triple.intro` | `Ascent.Refinement.intro` |
-| `WP.wp_monotone_post_le` | `Ascent.wrp_mono_post_le` |
-| `WP.wp_monotone_epost_le` | `Ascent.wrp_mono_erel_le` |
-| `WP.wp_monotone_bot_le` | `Ascent.wrp_mono_bot_le` |
-| `Std.WP.wp_le_wp_of_eq` | `Ascent.wrp_le_wrp_of_eq` |
+| `Std.WP.Triple.intro` | `Distillery.Refinement.intro` |
+| `WP.wp_monotone_post_le` | `Distillery.wrp_mono_post_le` |
+| `WP.wp_monotone_epost_le` | `Distillery.wrp_mono_erel_le` |
+| `WP.wp_monotone_bot_le` | `Distillery.wrp_mono_bot_le` |
+| `Std.WP.wp_le_wp_of_eq` | `Distillery.wrp_le_wrp_of_eq` |
 | `tripleToWpProof?` | `refinementToWrpProof?` |
 
 The translated modules are `WPApp`, the phase 4 steps of `Solve` (`wpLet?`, `wpSimpStateArgs?`,
@@ -106,13 +106,13 @@ toolchain in `lean-toolchain`.
 
 ### D7. No frame rules
 
-**Intent.** An `ascend` goal has no frame operator, so the forked modules carry no frame
+**Intent.** An `distill` goal has no frame operator, so the forked modules carry no frame
 machinery.
 
 **Change.** `RuleConstruction`, `RuleCache` and `Solve` lose `mkFrameBackwardRule`, its cache, the
 `frames` alternatives and the frame callbacks. `applySpec` applies the spec rule directly.
 
-**Acceptance.** Every `ascend` test in `test/AscentTests` runs without a frame rule.
+**Acceptance.** Every `distill` test in `test/DistilleryTests` runs without a frame rule.
 
 ### D8. Rule construction for `wrp` specs
 
@@ -145,7 +145,7 @@ that the rule leaves in the filled program take the context of the filled hole, 
 cells (`restoreHoleScope`). The code of this deviation lives in the hunks of `D12`, which edit
 `fillAbstractHole` last.
 
-**Acceptance.** `AscendDef`, `Regress/HoleScope`, `Regress/MixedHole`, and the demo's
+**Acceptance.** `DistillDef`, `Regress/HoleScope`, `Regress/MixedHole`, and the demo's
 `zipWithAddA`, `memmoveA` and `memmoveL₀` (a loop value pair).
 
 ### D2. One worklist for `wrp` and `wp` goals, and holes as data
@@ -156,7 +156,7 @@ and `@[spec]` database, and a hole is never emitted as a verification condition.
 **Change.** `work` sends a goal `pre ⊑ wp …` to `vcgen`'s `solve` with the core scope. A subgoal
 whose type is not a proposition stays a natural metavariable.
 
-**Acceptance.** `Pipeline` mixes `@[spec]` steps with `@[ascend]` rules.
+**Acceptance.** `Pipeline` mixes `@[spec]` steps with `@[distill]` rules.
 
 ### D11. Schematic abstract program in a refinement spec
 
@@ -165,7 +165,7 @@ whose type is not a proposition stays a natural metavariable.
 **Change.** The rule built from such a spec keeps its abstract program schematic, so the rule
 does not capture the goal's hole.
 
-**Acceptance.** `AscendUnfold`.
+**Acceptance.** `DistillUnfold`.
 
 ### D12. Pure refinements, existential witnesses and the two-sided split
 
@@ -174,14 +174,14 @@ does not capture the goal's hole.
 `if` splits both programs on the same condition.
 
 **Change.** The driver dispatches `PureRefinement` goals to the solver of
-`Ascent/Tactic/VCGen/PureRefinement.lean`. The solver meets the goal's guard `P_goal` with the
+`Distillery/Tactic/VCGen/PureRefinement.lean`. The solver meets the goal's guard `P_goal` with the
 guard `P` of its solution by the consequence rule `PureRefinement.weaken_pre`, as a spec rule meets
 the goal's precondition: when `P_goal` is not `P`, the premise `hpre : P_goal → P` goes back to the
 worklist as a verification condition. `mkBackwardRuleForSplit` splits an `ite`, `dite` or
 `cond` on both sides with one fresh abstract branch per alternative, after `fillAbstractHole`
 fills the abstract hole. A matcher still splits on the concrete side only. `rhsExistsIntro?`
 turns `pre ⊑ ∃ x, p x` on the `Prop` lattice into `pre ⊑ p ?x`, with `?x` a fresh hole in the
-goal's context (`Ascent.le_exists_of_le`); for a tuple type the witness is the tuple of fresh holes
+goal's context (`Distillery.le_exists_of_le`); for a tuple type the witness is the tuple of fresh holes
 (`mkWitnessHole`), so that a `match` on it reduces.
 
 **Acceptance.** `PureRefinement`, `WordAbsEngine`, `Regress/ExistsHole`, `Regress/GuardConsequence`,
@@ -192,7 +192,7 @@ array layers of the demo.
 
 Core vcgen covers these earlier deviations, which the series no longer contains: the product
 binder split and the list membership split, through `@[vcgen_rintro]` rules (`Prod.forall_intro`,
-and `forall_mem_cons_intro`/`forall_mem_nil_intro` in `Ascent/Table.lean`), and the head
+and `forall_mem_cons_intro`/`forall_mem_nil_intro` in `Distillery/Table.lean`), and the head
 reduction of the entailment, through `instantiateGoal?`, which reduces assigned head
 metavariables and `match` on constructors.
 

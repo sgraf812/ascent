@@ -5,21 +5,21 @@ import Demo.Tests.StackFrame.Loops
 # Stack frames with their registers lifted
 
 Regression tests for the register layer on the leaf functions of `Demo.Tests.StackFrame.Loops`. Each
-`xL₀` is `xT` over the data memory alone, synthesized by `ascend`, and `xL` instantiates the frame
+`xL₀` is `xT` over the data memory alone, synthesized by `distill`, and `xL` instantiates the frame
 parameter `r₀` with the entry value of `rsp`. The `#print` of each `xL` records the current result.
 -/
 
-open Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
-open Ascent.Concretization (ofStateRepr)
+open Std.WP Lean.Order Distillery Distillery.Kraken Distillery.Kraken.AInstr
+open Distillery.Concretization (ofStateRepr)
 
-namespace Ascent.Kraken.Tests.StackFrame
+namespace Distillery.Kraken.Tests.StackFrame
 
-ascend_def pushPopRegs₀ [Host] [Embeds pushPop] (rdi rsi rbx r12 rsp : BitVec 64) (r₀ : BitVec 64) (ra : Int64) :
+distill_def pushPopRegs₀ [Host] [Embeds pushPop] (rdi rsi rbx r12 rsp : BitVec 64) (r₀ : BitVec 64) (ra : Int64) :
     BlockM DataMem Unit from
   ⦃RegsRel [(.rdi, rdi), (.rsi, rsi), (.rbx, rbx), (.r12, r12), (.rsp, rsp)]⦄
   (pushPopLoops r₀ ra) ⪯[ofStateRepr MachineData.dmem] pushPopRegs₀
   ⦃fun _ _ _ => True; (fun l l' t => l = l' ∧ t.regs.get64 .rsp = r₀ + 8, estack⟨⟩)⦄
-  ascend [pushPopLoops]
+  distill [pushPopLoops]
   with finish
 
 sym_simp_def pushPopRegs [Host] [Embeds pushPop] (rbx r12 rsp : BitVec 64) (ra : Int64) :
@@ -30,7 +30,7 @@ sym_simp_def pushPopRegs [Host] [Embeds pushPop] (rbx r12 rsp : BitVec 64) (ra :
     Int64.toBitVec_ofNat, Int64.toBitVec_neg, BitVec.ofNat_eq_ofNat, BitVec.add_neg_eq_sub]
 
 /--
-info: def Ascent.Kraken.Tests.StackFrame.pushPopRegs : BitVec 64 → BitVec 64 → BitVec 64 → Int64 → BlockM DataMem Unit :=
+info: def Distillery.Kraken.Tests.StackFrame.pushPopRegs : BitVec 64 → BitVec 64 → BitVec 64 → Int64 → BlockM DataMem Unit :=
 fun rbx r12 rsp ra => do
   store 8 (rsp - 8#64) rbx
   store 8 (rsp - 8#64 - 8#64) r12
@@ -42,12 +42,12 @@ fun rbx r12 rsp ra => do
 #guard_msgs in
 #print pushPopRegs
 
-ascend_def localsRegs₀ [Host] [Embeds locals] (rdi rsi rsp : BitVec 64) (r₀ : BitVec 64) (ra : Int64) :
+distill_def localsRegs₀ [Host] [Embeds locals] (rdi rsi rsp : BitVec 64) (r₀ : BitVec 64) (ra : Int64) :
     BlockM DataMem Unit from
   ⦃RegsRel [(.rdi, rdi), (.rsi, rsi), (.rsp, rsp)]⦄
   (localsLoops r₀ ra) ⪯[ofStateRepr MachineData.dmem] localsRegs₀
   ⦃fun _ _ _ => True; (fun l l' t => l = l' ∧ t.regs.get64 .rsp = r₀ + 8, estack⟨⟩)⦄
-  ascend [localsLoops]
+  distill [localsLoops]
   with finish
 
 sym_simp_def localsRegs [Host] [Embeds locals] (rdi rsi rsp : BitVec 64) (ra : Int64) :
@@ -58,7 +58,7 @@ sym_simp_def localsRegs [Host] [Embeds locals] (rdi rsi rsp : BitVec 64) (ra : I
     Int64.toBitVec_ofNat, Int64.toBitVec_neg, BitVec.ofNat_eq_ofNat, BitVec.add_neg_eq_sub]
 
 /--
-info: def Ascent.Kraken.Tests.StackFrame.localsRegs : BitVec 64 → BitVec 64 → BitVec 64 → Int64 → BlockM DataMem Unit :=
+info: def Distillery.Kraken.Tests.StackFrame.localsRegs : BitVec 64 → BitVec 64 → BitVec 64 → Int64 → BlockM DataMem Unit :=
 fun rdi rsi rsp ra => do
   store 8 (rsp - 16#64 + 8#64) rdi
   store 8 (rsp - 16#64) rsi
@@ -70,12 +70,12 @@ fun rdi rsi rsp ra => do
 #guard_msgs in
 #print localsRegs
 
-ascend_def bytesRegs₀ [Host] [Embeds bytes] (rax rcx rsp : BitVec 64) (r₀ : BitVec 64) (ra : Int64) :
+distill_def bytesRegs₀ [Host] [Embeds bytes] (rax rcx rsp : BitVec 64) (r₀ : BitVec 64) (ra : Int64) :
     BlockM DataMem Unit from
   ⦃RegsRel [(.rax, rax), (.rcx, rcx), (.rsp, rsp)]⦄
   (bytesLoops r₀ ra) ⪯[ofStateRepr MachineData.dmem] bytesRegs₀
   ⦃fun _ _ _ => True; (fun l l' t => l = l' ∧ t.regs.get64 .rsp = r₀ + 8, estack⟨⟩)⦄
-  ascend [bytesLoops]
+  distill [bytesLoops]
   with finish
 
 sym_simp_def bytesRegs [Host] [Embeds bytes] (rax rsp : BitVec 64) (ra : Int64) :
@@ -86,7 +86,7 @@ sym_simp_def bytesRegs [Host] [Embeds bytes] (rax rsp : BitVec 64) (ra : Int64) 
     Int64.toBitVec_ofNat, Int64.toBitVec_neg, BitVec.ofNat_eq_ofNat, BitVec.add_neg_eq_sub]
 
 /--
-info: def Ascent.Kraken.Tests.StackFrame.bytesRegs : BitVec 64 → BitVec 64 → Int64 → BlockM DataMem Unit :=
+info: def Distillery.Kraken.Tests.StackFrame.bytesRegs : BitVec 64 → BitVec 64 → Int64 → BlockM DataMem Unit :=
 fun rax rsp ra => do
   store 1 (rsp - 16#64 + 3#64) rax
   let _ ← load 1 (rsp - 16#64 + 3#64)
@@ -97,12 +97,12 @@ fun rax rsp ra => do
 #guard_msgs in
 #print bytesRegs
 
-ascend_def halvesRegs₀ [Host] [Embeds halves] (rax rcx rdx rsp : BitVec 64) (r₀ : BitVec 64) (ra : Int64) :
+distill_def halvesRegs₀ [Host] [Embeds halves] (rax rcx rdx rsp : BitVec 64) (r₀ : BitVec 64) (ra : Int64) :
     BlockM DataMem Unit from
   ⦃RegsRel [(.rax, rax), (.rcx, rcx), (.rdx, rdx), (.rsp, rsp)]⦄
   (halvesLoops r₀ ra) ⪯[ofStateRepr MachineData.dmem] halvesRegs₀
   ⦃fun _ _ _ => True; (fun l l' t => l = l' ∧ t.regs.get64 .rsp = r₀ + 8, estack⟨⟩)⦄
-  ascend [halvesLoops]
+  distill [halvesLoops]
   with finish
 
 sym_simp_def halvesRegs [Host] [Embeds halves] (rax rsp : BitVec 64) (ra : Int64) :
@@ -113,7 +113,7 @@ sym_simp_def halvesRegs [Host] [Embeds halves] (rax rsp : BitVec 64) (ra : Int64
     Int64.toBitVec_ofNat, Int64.toBitVec_neg, BitVec.ofNat_eq_ofNat, BitVec.add_neg_eq_sub]
 
 /--
-info: def Ascent.Kraken.Tests.StackFrame.halvesRegs : BitVec 64 → BitVec 64 → Int64 → BlockM DataMem Unit :=
+info: def Distillery.Kraken.Tests.StackFrame.halvesRegs : BitVec 64 → BitVec 64 → Int64 → BlockM DataMem Unit :=
 fun rax rsp ra => do
   store 2 (rsp - 8#64 - 2#64) rax
   let _ ← load 2 (rsp - 8#64 - 2#64)
@@ -125,12 +125,12 @@ fun rax rsp ra => do
 #guard_msgs in
 #print halvesRegs
 
-ascend_def redZoneRegs₀ [Host] [Embeds redZone] (rdi rax rsp : BitVec 64) (r₀ : BitVec 64) (ra : Int64) :
+distill_def redZoneRegs₀ [Host] [Embeds redZone] (rdi rax rsp : BitVec 64) (r₀ : BitVec 64) (ra : Int64) :
     BlockM DataMem Unit from
   ⦃RegsRel [(.rdi, rdi), (.rax, rax), (.rsp, rsp)]⦄
   (redZoneLoops r₀ ra) ⪯[ofStateRepr MachineData.dmem] redZoneRegs₀
   ⦃fun _ _ _ => True; (fun l l' t => l = l' ∧ t.regs.get64 .rsp = r₀ + 8, estack⟨⟩)⦄
-  ascend [redZoneLoops]
+  distill [redZoneLoops]
   with finish
 
 sym_simp_def redZoneRegs [Host] [Embeds redZone] (rdi rax rsp : BitVec 64) (ra : Int64) :
@@ -141,7 +141,7 @@ sym_simp_def redZoneRegs [Host] [Embeds redZone] (rdi rax rsp : BitVec 64) (ra :
     Int64.toBitVec_ofNat, Int64.toBitVec_neg, BitVec.ofNat_eq_ofNat, BitVec.add_neg_eq_sub]
 
 /--
-info: def Ascent.Kraken.Tests.StackFrame.redZoneRegs : BitVec 64 → BitVec 64 → BitVec 64 → Int64 → BlockM DataMem Unit :=
+info: def Distillery.Kraken.Tests.StackFrame.redZoneRegs : BitVec 64 → BitVec 64 → BitVec 64 → Int64 → BlockM DataMem Unit :=
 fun rdi rax rsp ra => do
   store 8 (rsp - 8#64) rdi
   store 1 (rsp - 11#64) rax
@@ -153,4 +153,4 @@ fun rdi rax rsp ra => do
 #guard_msgs in
 #print redZoneRegs
 
-end Ascent.Kraken.Tests.StackFrame
+end Distillery.Kraken.Tests.StackFrame

@@ -13,7 +13,7 @@ host that lays out `p` with `sizes` from `Binary.base`, and `Binary.assembles_of
 `check p sizes b`.
 -/
 
-namespace Ascent.Kraken
+namespace Distillery.Kraken
 
 namespace Binary
 
@@ -586,4 +586,4 @@ theorem assembles_of_check {p : Program} {sizes : List Nat} {b : ByteArray}
 
 end Binary
 
-end Ascent.Kraken
+end Distillery.Kraken

@@ -20,13 +20,13 @@ becomes `callInstr` of the abstract callee `k`, given by its refinement for ever
 address.
 -/
 
-open Kraken.X64.Parser Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
-open Ascent.Concretization (ofStateRepr ofStateRel)
+open Kraken.X64.Parser Std.WP Lean.Order Distillery Distillery.Kraken Distillery.Kraken.AInstr
+open Distillery.Concretization (ofStateRepr ofStateRel)
 open scoped Program.WP
 
 set_option experimental.vcgen true
 
-namespace Ascent.Kraken
+namespace Distillery.Kraken
 
 def reverse : Program := parse("
 _reverse_:
@@ -64,7 +64,7 @@ LBB1_4:
 
 attribute [local vcgen_simp] reverse
 
-ascend_def reverseInstr [Host] [FunDecls] [Embeds reverse] (g : Fragment)
+distill_def reverseInstr [Host] [FunDecls] [Embeds reverse] (g : Fragment)
     (hg : FunDecls.at (label "_swap") = some g)
     (k : BitVec 64 → Int64 → BlockM MachineData Unit)
     (hk : ∀ (r : BitVec 64) (ra : Int64),
@@ -73,7 +73,7 @@ ascend_def reverseInstr [Host] [FunDecls] [Embeds reverse] (g : Fragment)
     (r₀ : BitVec 64) (ra : Int64) : BlockM MachineData Unit from
   ⦃fun s => s.regs.get64 .rsp = r₀ ∧ s.retAddr = some ra⦄ reverse ⪯[ofStateRepr abs] reverseInstr
     ⦃fun _ _ => ⊤; AddrRel r₀ ra⦄
-  ascend [refines_cfg (p := reverse) (habs := abs_regs), wrp_call hg _ _ hk]
+  distill [refines_cfg (p := reverse) (habs := abs_regs), wrp_call hg _ _ hk]
     with finish
 
-end Ascent.Kraken
+end Distillery.Kraken

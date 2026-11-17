@@ -9,11 +9,11 @@ import Demo.BinaryCheck
 `Binary.Assembles zipWithAdd zipWithAddBinary` at it.
 -/
 
-open Std.WP Lean.Order Ascent
-open Ascent.Concretization (ofStateRepr ofStateRepr_pred)
+open Std.WP Lean.Order Distillery
+open Distillery.Concretization (ofStateRepr ofStateRepr_pred)
 open scoped Program.WP
 
-namespace Ascent.Kraken
+namespace Distillery.Kraken
 
 def zipWithAddSizes : List Nat := [3, 2, 2, 0, 4, 4, 4, 3, 3, 2, 0, 1]
 
@@ -82,4 +82,4 @@ theorem zipWithAddHost_correct (s : MachineData) (ra : Int64) {A B O : BitVec 64
             (words 8 64 (s.push64 ra).dmem B n)) :=
   @zipWithAddBinary_correct zipWithAddHost s ra zipWithAddHost_assembles A B O n hrdi hrsi hrdx hrcx hmem
 
-end Ascent.Kraken
+end Distillery.Kraken

@@ -10,11 +10,11 @@ and leaves it by the return. `zipWithAddLoops.refines` is the refinement of `zip
 rewritten along `zipWithAddLoops.eq`.
 -/
 
-open Std.WP Lean.Order Ascent Ascent.Kraken.AInstr
-open Ascent.Concretization (ofStateRepr)
+open Std.WP Lean.Order Distillery Distillery.Kraken.AInstr
+open Distillery.Concretization (ofStateRepr)
 open scoped Program.WP
 
-namespace Ascent.Kraken
+namespace Distillery.Kraken
 
 theorem zipWithAdd.label_ne [Host] [Embeds zipWithAdd] :
     (label "LBB0_2" = label "LBB0_3") = False :=
@@ -54,7 +54,7 @@ theorem zipWithAddLoops.refines [Host] [FunDecls] [Embeds zipWithAdd] (r₀ : Bi
   zipWithAddLoops.eq r₀ ra ▸ zipWithAddInstr.refines r₀ ra
 
 /--
-info: def Ascent.Kraken.zipWithAddLoops : BitVec 64 → Int64 → BlockM MachineData Unit :=
+info: def Distillery.Kraken.zipWithAddLoops : BitVec 64 → Int64 → BlockM MachineData Unit :=
 fun r₀ ra =>
   condState (fun st => CondCode.le.cmp (st.regs.rcx.toBitVec &&& st.regs.rcx.toBitVec) 0#64)
     (do
@@ -82,4 +82,4 @@ fun r₀ ra =>
 #guard_msgs in
 #print zipWithAddLoops
 
-end Ascent.Kraken
+end Distillery.Kraken

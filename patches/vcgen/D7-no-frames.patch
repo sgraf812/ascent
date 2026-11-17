@@ -1,6 +1,6 @@
-diff -ruN a/Ascent/Tactic/VCGen/RuleConstruction.lean b/Ascent/Tactic/VCGen/RuleConstruction.lean
---- a/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-11-07 22:38:56.133061480 +0000
-+++ b/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-11-07 22:38:56.141511998 +0000
+diff -ruN a/Distillery/Tactic/VCGen/RuleConstruction.lean b/Distillery/Tactic/VCGen/RuleConstruction.lean
+--- a/Distillery/Tactic/VCGen/RuleConstruction.lean	2026-11-07 22:38:56.133061480 +0000
++++ b/Distillery/Tactic/VCGen/RuleConstruction.lean	2026-11-07 22:38:56.141511998 +0000
 @@ -449,72 +449,4 @@
    let res ← abstractMVars prf
    mkBackwardRuleFromExpr res.expr res.paramNames.toList
@@ -73,10 +73,10 @@ diff -ruN a/Ascent/Tactic/VCGen/RuleConstruction.lean b/Ascent/Tactic/VCGen/Rule
 -  let rule ← mkBackwardRuleFromExpr res.expr res.paramNames.toList
 -  analyzeFrameRule rule fp.opHead info.excessArgs.size
 -
- end Lean.Elab.Tactic.VCGen.Ascend
-diff -ruN a/Ascent/Tactic/VCGen/RuleCache.lean b/Ascent/Tactic/VCGen/RuleCache.lean
---- a/Ascent/Tactic/VCGen/RuleCache.lean	2026-11-07 22:38:56.133515094 +0000
-+++ b/Ascent/Tactic/VCGen/RuleCache.lean	2026-11-07 22:38:56.141603594 +0000
+ end Lean.Elab.Tactic.VCGen.Distill
+diff -ruN a/Distillery/Tactic/VCGen/RuleCache.lean b/Distillery/Tactic/VCGen/RuleCache.lean
+--- a/Distillery/Tactic/VCGen/RuleCache.lean	2026-11-07 22:38:56.133515094 +0000
++++ b/Distillery/Tactic/VCGen/RuleCache.lean	2026-11-07 22:38:56.141603594 +0000
 @@ -83,20 +83,6 @@
    return rule
  
@@ -98,9 +98,9 @@ diff -ruN a/Ascent/Tactic/VCGen/RuleCache.lean b/Ascent/Tactic/VCGen/RuleCache.l
  Cached construction of the backward rule of the `@[vcgen_rintro]` rule `e`. The rule abstracts
  the `e.numPremises` premises and matches the conclusion of `e`.
  
-diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
---- a/Ascent/Tactic/VCGen/Solve.lean	2026-11-07 22:38:56.137669027 +0000
-+++ b/Ascent/Tactic/VCGen/Solve.lean	2026-11-07 22:38:56.143517639 +0000
+diff -ruN a/Distillery/Tactic/VCGen/Solve.lean b/Distillery/Tactic/VCGen/Solve.lean
+--- a/Distillery/Tactic/VCGen/Solve.lean	2026-11-07 22:38:56.137669027 +0000
++++ b/Distillery/Tactic/VCGen/Solve.lean	2026-11-07 22:38:56.143517639 +0000
 @@ -440,101 +440,6 @@
      return true
    return false

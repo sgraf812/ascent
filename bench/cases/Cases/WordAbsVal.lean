@@ -1,30 +1,30 @@
-import Ascent.PureRefinement
-import Ascent.UB
-import Ascent.Tactic.VCGen.Frontend
+import Distillery.PureRefinement
+import Distillery.Demonic
+import Distillery.Tactic.VCGen.Frontend
 
 /-!
-# Guarded word abstraction through `@[ascend_pure]` rules
+# Guarded word abstraction through `@[distill_pure]` rules
 
 The family of `Cases.WordAbs`: a chain of `n` dependent `UInt64` additions in `Id` abstracts to a
-guarded `Int` chain in `UB`, related by `FunRel wordVal`. `Refinement.pure_rel` abstracts each
+guarded `Int` chain in `Demonic`, related by `FunRel wordVal`. `Refinement.pure_rel` abstracts each
 `pure`, and the rules `abs_add` and `abs_wordVal` abstract the value inside it. `chainC` unfolds to
 a left-nested chain of binds, and `wrp_bind_assoc` reassociates it to the right, so the abstract
 program is the right-nested `chainA`.
 -/
 
-open Std.WP Lean.Order Ascent
+open Std.WP Lean.Order Distillery
 
-namespace AscendBenchVal
+namespace DistillBenchVal
 
 def wordVal : UInt64 → Int := fun w => (w.toNat : Int)
 
 abbrev γw : Concretization Prop Prop := Concretization.id Prop
 
-attribute [ascend] wrp_bind Refinement.pure_rel
-attribute [ascend default + 1] wrp_bind_assoc
-attribute [ascend] wrp_kleisli
+attribute [distill] wrp_bind Refinement.pure_rel
+attribute [distill default + 1] wrp_bind_assoc
+attribute [distill] wrp_kleisli
 
-@[ascend_pure] theorem abs_add {a b : UInt64} {x y : Int} {P₁ P₂ : Prop}
+@[distill_pure] theorem abs_add {a b : UInt64} {x y : Int} {P₁ P₂ : Prop}
     (h₁ : PureRefinement a x P₁ (FunRel wordVal)) (h₂ : PureRefinement b y P₂ (FunRel wordVal)) :
     PureRefinement (a + b) (x + y) (P₁ ∧ P₂ ∧ x + y < 2 ^ 64) (FunRel wordVal) := by
   intro ⟨hP₁, hP₂, h⟩
@@ -36,7 +36,7 @@ attribute [ascend] wrp_kleisli
   simp only [UInt64.toNat_add, Nat.mod_eq_of_lt h']
   omega
 
-@[ascend_pure low] theorem abs_wordVal {c : UInt64} :
+@[distill_pure low] theorem abs_wordVal {c : UInt64} :
     PureRefinement c (wordVal c) True (FunRel wordVal) :=
   PureRefinement.funRel
 
@@ -44,20 +44,20 @@ def chainC (c : UInt64) : Nat → Id UInt64
   | 0 => pure c
   | n+1 => do let r ← chainC c n; pure (r + c)
 
-noncomputable def chainASteps (c : UInt64) : Int → Nat → UB Int
-  | acc, 0 => (do UB.assume (acc + wordVal c < 2 ^ 64); pure (acc + wordVal c))
-  | acc, n+1 => do let r ← (do UB.assume (acc + wordVal c < 2 ^ 64); pure (acc + wordVal c)); chainASteps c r n
+noncomputable def chainASteps (c : UInt64) : Int → Nat → Demonic Int
+  | acc, 0 => (do Demonic.assert (acc + wordVal c < 2 ^ 64); pure (acc + wordVal c))
+  | acc, n+1 => do let r ← (do Demonic.assert (acc + wordVal c < 2 ^ 64); pure (acc + wordVal c)); chainASteps c r n
 
-noncomputable def chainA (c : UInt64) : Nat → UB Int
-  | 0 => (do UB.assume True; pure (wordVal c))
-  | n+1 => do let r ← (do UB.assume True; pure (wordVal c)); chainASteps c r n
+noncomputable def chainA (c : UInt64) : Nat → Demonic Int
+  | 0 => (do Demonic.assert True; pure (wordVal c))
+  | n+1 => do let r ← (do Demonic.assert True; pure (wordVal c)); chainASteps c r n
 
 def chainCR (c : UInt64) : UInt64 → Nat → Id UInt64
   | acc, 0 => pure acc
   | acc, n+1 => do let r ← pure (acc + c); chainCR c r n
 
-noncomputable def chainAR (c : UInt64) : Int → Nat → UB Int
-  | acc, 0 => (do UB.assume True; pure acc)
-  | acc, n+1 => do let r ← (do UB.assume (acc + wordVal c < 2 ^ 64); pure (acc + wordVal c)); chainAR c r n
+noncomputable def chainAR (c : UInt64) : Int → Nat → Demonic Int
+  | acc, 0 => (do Demonic.assert True; pure acc)
+  | acc, n+1 => do let r ← (do Demonic.assert (acc + wordVal c < 2 ^ 64); pure (acc + wordVal c)); chainAR c r n
 
-end AscendBenchVal
+end DistillBenchVal

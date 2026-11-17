@@ -1,6 +1,6 @@
-diff -ruN a/Ascent/Tactic/VCGen/RuleConstruction.lean b/Ascent/Tactic/VCGen/RuleConstruction.lean
---- a/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-11-07 22:38:56.183971437 +0000
-+++ b/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-11-07 22:38:56.195611936 +0000
+diff -ruN a/Distillery/Tactic/VCGen/RuleConstruction.lean b/Distillery/Tactic/VCGen/RuleConstruction.lean
+--- a/Distillery/Tactic/VCGen/RuleConstruction.lean	2026-11-07 22:38:56.183971437 +0000
++++ b/Distillery/Tactic/VCGen/RuleConstruction.lean	2026-11-07 22:38:56.195611936 +0000
 @@ -308,12 +308,14 @@
    -- are read-only there.
    guard <| ← withReducible <| approxDefEq <| isDefEqGuarded eqα info.Prog
@@ -12,7 +12,7 @@ diff -ruN a/Ascent/Tactic/VCGen/RuleConstruction.lean b/Ascent/Tactic/VCGen/Rule
    -- exactly the leading arguments of `wp_le_wp_of_eq`.
 +  -- The abstract program is schematic, so that the rule does not capture the goal's hole.
 +  let abs ← mkFreshExprMVar (userName := `a) info.args[1]!
-   let specProof ← mkAppOptM ``Ascent.wrp_le_wrp_of_eq <|
+   let specProof ← mkAppOptM ``Distillery.wrp_le_wrp_of_eq <|
 -    (info.lemmaPrefix).map some ++ #[none, none, some eqPrf, some post, some eposts]
 +    (info.args.take 17).map some ++ #[some abs, none, none, some eqPrf, some post, some eposts]
    return (specProof, ← instantiateMVars (← Meta.inferType specProof))

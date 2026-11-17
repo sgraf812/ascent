@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regenerate `Ascent/Tactic/VCGen/` from the `vcgen` sources of the pinned toolchain.
+"""Regenerate `Distillery/Tactic/VCGen/` from the `vcgen` sources of the pinned toolchain.
 
 Each translated module is copied from the toolchain, rewritten by the translation table `RULES`
 (T1 to T4 of `docs/vcgen-fork.md`), and then patched by `patches/vcgen/series`.
@@ -16,7 +16,7 @@ import sys
 import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-OUT = ROOT / "Ascent" / "Tactic" / "VCGen"
+OUT = ROOT / "Distillery" / "Tactic" / "VCGen"
 PATCHES = ROOT / "patches" / "vcgen"
 
 # Translated modules, in import order.
@@ -24,8 +24,8 @@ MODULES = ["RuleConstruction", "RuleCache", "JoinPoint", "Solve", "Driver"]
 
 RULES = [
     # T1. Names.
-    (r"^namespace Lean\.Elab\.Tactic\.VCGen$", "namespace Lean.Elab.Tactic.VCGen.Ascend"),
-    (r"^end Lean\.Elab\.Tactic\.VCGen$", "end Lean.Elab.Tactic.VCGen.Ascend"),
+    (r"^namespace Lean\.Elab\.Tactic\.VCGen$", "namespace Lean.Elab.Tactic.VCGen.Distill"),
+    (r"^end Lean\.Elab\.Tactic\.VCGen$", "end Lean.Elab.Tactic.VCGen.Distill"),
     # T2. Module headers.
     (r"^module\n", ""),
     (r"^prelude\n", ""),
@@ -41,13 +41,13 @@ RULES = [
     (r"getArg! 7", "getArg! WRPApp.progIdx"),
     (r"setAppArg rhs 7 ", "setAppArg rhs WRPApp.progIdx "),
     # T4. Lemmas.
-    (r"``Std\.WP\.Triple\.intro\b", "``Ascent.Refinement.intro"),
-    (r"``Triple\b", "``Ascent.Refinement"),
+    (r"``Std\.WP\.Triple\.intro\b", "``Distillery.Refinement.intro"),
+    (r"``Triple\b", "``Distillery.Refinement"),
     (r"\bunfoldTriple\b", "unfoldRefinement"),
-    (r"``WP\.wp_monotone_post_le\b", "``Ascent.wrp_mono_post_le"),
-    (r"``WP\.wp_monotone_epost_le\b", "``Ascent.wrp_mono_erel_le"),
-    (r"``WP\.wp_monotone_bot_le\b", "``Ascent.wrp_mono_bot_le"),
-    (r"``Std\.WP\.wp_le_wp_of_eq\b", "``Ascent.wrp_le_wrp_of_eq"),
+    (r"``WP\.wp_monotone_post_le\b", "``Distillery.wrp_mono_post_le"),
+    (r"``WP\.wp_monotone_epost_le\b", "``Distillery.wrp_mono_erel_le"),
+    (r"``WP\.wp_monotone_bot_le\b", "``Distillery.wrp_mono_bot_le"),
+    (r"``Std\.WP\.wp_le_wp_of_eq\b", "``Distillery.wrp_le_wrp_of_eq"),
     (r"\btripleToWpProof\?", "refinementToWrpProof?"),
 ]
 
@@ -68,12 +68,12 @@ def translate(text: str) -> str:
     def sibling(m: re.Match) -> str:
         line = m.group(0)
         if m.group(1) in MODULES:
-            return line + "\nimport Ascent.Tactic.VCGen." + m.group(1)
+            return line + "\nimport Distillery.Tactic.VCGen." + m.group(1)
         return line
 
     text = SIBLING_IMPORT.sub(sibling, text)
     # Every translated module sees the hand-written metadata and lemmas.
-    return text.replace("\nimport ", "\nimport Ascent.Tactic.VCGen.Shim\nimport ", 1)
+    return text.replace("\nimport ", "\nimport Distillery.Tactic.VCGen.Shim\nimport ", 1)
 
 
 def generate(dest: pathlib.Path, patches: bool = True) -> None:
@@ -91,7 +91,7 @@ def generate(dest: pathlib.Path, patches: bool = True) -> None:
 def main() -> None:
     if "--check" in sys.argv:
         with tempfile.TemporaryDirectory() as tmp:
-            tree = pathlib.Path(tmp) / "Ascent" / "Tactic" / "VCGen"
+            tree = pathlib.Path(tmp) / "Distillery" / "Tactic" / "VCGen"
             generate(tree)
             diff = subprocess.run(["diff", "-r", "-q", str(tree), str(OUT),
                                    "-x", "Shim.lean", "-x", "WRPApp.lean", "-x", "Frontend.lean",

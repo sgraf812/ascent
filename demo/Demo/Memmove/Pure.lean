@@ -7,18 +7,18 @@ import Demo.Zip.Pure
 `memmoveArrays_spec` states the result of the array program: both loops exit with the destination
 equal to the source array `a`. `vcgen` proves it with one invariant and one measure per loop. The
 backward loop keeps the cells at and above its counter, the forward loop the cells below it.
-`ascend_def` synthesizes the pure program `memmovePure` from this result, and `Refinement.comp_le`
+`distill_def` synthesizes the pure program `memmovePure` from this result, and `Refinement.comp_le`
 composes the layers into `memmove_refines_Pure`, from the x64 text to `memmovePure` on the source bytes.
 `memmove_correct` reads the destination array back as memory bytes.
 -/
 
-open Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
-open Ascent.Concretization (ofStateRepr ofStateRepr_pred ofStateRepr_post_post)
+open Std.WP Lean.Order Distillery Distillery.Kraken Distillery.Kraken.AInstr
+open Distillery.Concretization (ofStateRepr ofStateRepr_pred ofStateRepr_post_post)
 open scoped Program.WP
 
 set_option experimental.vcgen true
 
-namespace Ascent.Kraken
+namespace Distillery.Kraken
 
 theorem memmoveArrays_spec {ra : Int64} {n : Nat} {a : Array (BitVec 8)} (back : Bool) (ha : a.size = n) :
     ⦃(·.size = n)⦄ memmoveArrays ra n a back
@@ -37,11 +37,11 @@ theorem memmoveArrays_spec {ra : Int64} {n : Nat} {a : Array (BitVec 8)} (back :
 
 /-! ## The pure program -/
 
-ascend_def memmovePure (ra : Int64) (n : Nat) (a : Array (BitVec 8)) (back : Bool) (ha : a.size = n) :
+distill_def memmovePure (ra : Int64) (n : Nat) (a : Array (BitVec 8)) (back : Bool) (ha : a.size = n) :
     Id (Array (BitVec 8)) from
   ⦃(·.size = n)⦄ (memmoveArrays ra n a back) ⪯[purify (Array (BitVec 8))] memmovePure
     ⦃fun _ _ _ => False; (fun l o => l = ra ∧ o = Id.run memmovePure, estack⟨⟩)⦄
-  ascend [wrp_purify_throw (memmoveArrays_spec back ha)] with finish
+  distill [wrp_purify_throw (memmoveArrays_spec back ha)] with finish
 
 /-! ## The chain of refinements -/
 
@@ -160,4 +160,4 @@ theorem memmove_correct {O S : BitVec 64} {n : Nat}
 
 end
 
-end Ascent.Kraken
+end Distillery.Kraken

@@ -4,22 +4,22 @@ import Demo.Memmove.Loops
 /-!
 # `memmove` with its registers lifted
 
-`memmoveRegs₀` is `memmoveLoops` over the data memory alone, synthesized by `ascend`. The lifting relation
+`memmoveRegs₀` is `memmoveLoops` over the data memory alone, synthesized by `distill`. The lifting relation
 `RegsRel` names the registers that become values: `rdi`, `rsi`, `rdx` and `rsp` are parameters, and
 both loops carry `rcx` and `rdx` as their value. `rax` holds `dst` from the first instruction on, and
 the exit relation states that it still does at the return.
 -/
 
-open Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
-open Ascent.Concretization (ofStateRepr)
+open Std.WP Lean.Order Distillery Distillery.Kraken Distillery.Kraken.AInstr
+open Distillery.Concretization (ofStateRepr)
 
-namespace Ascent.Kraken
+namespace Distillery.Kraken
 
-ascend_def memmoveRegs₀ (rdi rsi rdx rsp : BitVec 64) (r₀ : BitVec 64) (ra : Int64) : BlockM DataMem Unit from
+distill_def memmoveRegs₀ (rdi rsi rdx rsp : BitVec 64) (r₀ : BitVec 64) (ra : Int64) : BlockM DataMem Unit from
   ⦃RegsRel [(.rdi, rdi), (.rsi, rsi), (.rdx, rdx), (.rsp, rsp)]⦄
   (memmoveLoops r₀ ra) ⪯[ofStateRepr MachineData.dmem] memmoveRegs₀
   ⦃fun _ _ _ => True; (fun l l' t => l = l' ∧ t.regs.get64 .rax = rdi ∧ t.regs.get64 .rsp = r₀ + 8, estack⟨⟩)⦄
-  ascend [memmoveLoops, wrp_forIn_lockstep_unit (R := _) (ab := (_, _))]
+  distill [memmoveLoops, wrp_forIn_lockstep_unit (R := _) (ab := (_, _))]
   invariants
   · fun _ t (v : BitVec 64 × BitVec 64) => match v with
     | (rcx, rdx) => RegsRel [(.rsi, rsi), (.rax, rdi), (.rsp, rsp), (.rcx, rcx), (.rdx, rdx)] t
@@ -42,7 +42,7 @@ theorem memmoveRegs.refines (rdi rsi rdx : BitVec 64) (rsp : BitVec 64) (ra : In
   memmoveRegs.eq rdi rsi rdx rsp ra ▸ memmoveRegs₀.refines rdi rsi rdx rsp rsp ra
 
 /--
-info: def Ascent.Kraken.memmoveRegs : BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → Int64 → BlockM DataMem Unit :=
+info: def Distillery.Kraken.memmoveRegs : BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → Int64 → BlockM DataMem Unit :=
 fun rdi rsi rdx rsp ra =>
   if rsi ≤ rdi then
     if rdx = 0#64 then do
@@ -76,4 +76,4 @@ fun rdi rsi rdx rsp ra =>
 #guard_msgs in
 #print memmoveRegs
 
-end Ascent.Kraken
+end Distillery.Kraken

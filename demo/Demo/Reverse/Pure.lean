@@ -5,7 +5,7 @@ import Demo.Reverse.Arrays
 
 `reverseArrays_spec` states the result of the synthesized array program `reverseArrays`: it exits
 with the array reversed. `vcgen` proves it with the loop invariant "the cells outside `[i, j]` hold
-the reversed values, the cells inside hold the input" and the measure `j - i`. `ascend_def`
+the reversed values, the cells inside hold the input" and the measure `j - i`. `distill_def`
 synthesizes the pure program `reversePure` from this result through `wrp_purify_throw`.
 
 `Refinement.comp_le` composes the refinements of the layers into `reverse_refines_Pure`, from the
@@ -13,13 +13,13 @@ x64 text to `reversePure` on the input array. `reverse_correct` is one `Refineme
 composition, with the output array read back as memory words.
 -/
 
-open Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
-open Ascent.Concretization (ofStateRepr ofStateRepr_pred ofStateRepr_post_post)
+open Std.WP Lean.Order Distillery Distillery.Kraken Distillery.Kraken.AInstr
+open Distillery.Concretization (ofStateRepr ofStateRepr_pred ofStateRepr_post_post)
 open scoped Program.WP
 
 set_option experimental.vcgen true
 
-namespace Ascent.Kraken
+namespace Distillery.Kraken
 
 theorem reverseArrays_spec {ra : Int64} {n : Nat} {a : Array (BitVec 64)} (ha : a.size = n) :
     ⦃(· = a)⦄ reverseArrays ra n
@@ -36,13 +36,13 @@ theorem reverseArrays_spec {ra : Int64} {n : Nat} {a : Array (BitVec 64)} (ha : 
 
 /-! ## The pure program -/
 
-ascend_def reversePure (ra : Int64) (n : Nat) (a : Array (BitVec 64)) (ha : a.size = n) : Id (Array (BitVec 64)) from
+distill_def reversePure (ra : Int64) (n : Nat) (a : Array (BitVec 64)) (ha : a.size = n) : Id (Array (BitVec 64)) from
   ⦃(· = a)⦄ (reverseArrays ra n) ⪯[purify (Array (BitVec 64))] reversePure
     ⦃fun _ _ _ => False; (fun l o => l = ra ∧ o = Id.run reversePure, estack⟨⟩)⦄
-  ascend [wrp_purify_throw (reverseArrays_spec ha)] with finish
+  distill [wrp_purify_throw (reverseArrays_spec ha)] with finish
 
 /--
-info: def Ascent.Kraken.reversePure : Array (BitVec 64) → Id (Array (BitVec 64)) :=
+info: def Distillery.Kraken.reversePure : Array (BitVec 64) → Id (Array (BitVec 64)) :=
 fun a => pure a.reverse
 -/
 #guard_msgs in
@@ -174,4 +174,4 @@ theorem reverse_correct (hg : FunDecls.at (label "_swap") = some ⟨swap⟩) {A 
 
 end
 
-end Ascent.Kraken
+end Distillery.Kraken

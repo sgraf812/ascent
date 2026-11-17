@@ -10,18 +10,18 @@ import Demo.RegsCall
 `r12`, `r14` and `r15` that `swap` keeps.
 -/
 
-open Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
-open Ascent.Concretization (ofStateRepr)
+open Std.WP Lean.Order Distillery Distillery.Kraken Distillery.Kraken.AInstr
+open Distillery.Concretization (ofStateRepr)
 
-namespace Ascent.Kraken
+namespace Distillery.Kraken
 
-ascend_def reverseRegs₀ [Host] [Embeds swap] (rdi rsi rax rsp rbx rbp r12 r13 r14 r15 : BitVec 64) (r₀ : BitVec 64)
+distill_def reverseRegs₀ [Host] [Embeds swap] (rdi rsi rax rsp rbx rbp r12 r13 r14 r15 : BitVec 64) (r₀ : BitVec 64)
     (ra : Int64) : BlockM DataMem Unit from
   ⦃RegsRel [(.rdi, rdi), (.rsi, rsi), (.rax, rax), (.rsp, rsp), (.rbx, rbx), (.rbp, rbp), (.r12, r12), (.r13, r13),
     (.r14, r14), (.r15, r15)]⦄
   (reverseLoops (fun r ra => swapLoops r ra) r₀ ra) ⪯[ofStateRepr MachineData.dmem] reverseRegs₀
   ⦃fun _ _ _ => False; (fun l l' t => l = l' ∧ t.regs.get64 .rsp = r₀ + 8#64, estack⟨⟩)⦄
-  ascend [reverseLoops, wrp_callA_callL, swapRegs₀.refines, wrp_forIn_lockstep_unit (R := _) (ab := (_, _, _, _))]
+  distill [reverseLoops, wrp_callA_callL, swapRegs₀.refines, wrp_forIn_lockstep_unit (R := _) (ab := (_, _, _, _))]
   invariants
   · fun _ t (v : BitVec 64 × BitVec 64 × BitVec 64 × BitVec 64) => match v with
       | (a14, a15, b, c) => RegsRel [(.r14, a14), (.r15, a15), (.rbx, b), (.r12, c),
@@ -35,7 +35,7 @@ sym_simp_def reverseRegs [Host] [Embeds swap] (rdi rsi rax rbx r12 r14 r15 rsp :
     Int64.toBitVec_ofNat, Int64.toBitVec_neg, BitVec.ofNat_eq_ofNat, BitVec.add_neg_eq_sub]
 
 /--
-info: def Ascent.Kraken.reverseRegs : BitVec 64 →
+info: def Distillery.Kraken.reverseRegs : BitVec 64 →
   BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → Int64 → BlockM DataMem Unit :=
 fun rdi rsi rax rbx r12 r14 r15 rsp ra =>
   condState (fun x => CondCode.c.cmp rsi 2#64)
@@ -80,4 +80,4 @@ theorem reverseRegs.refines [Host] [Embeds swap] (rdi rsi rax rbx rbp r12 r13 r1
   reverseRegs.eq rdi rsi rax rbx r12 r14 r15 rsp ra ▸
     reverseRegs₀.refines rdi rsi rax rsp rbx rbp r12 r13 r14 r15 rsp ra
 
-end Ascent.Kraken
+end Distillery.Kraken

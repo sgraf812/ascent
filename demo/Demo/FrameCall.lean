@@ -13,10 +13,10 @@ leaves the frame of the caller unchanged. The caller continues with the exit rel
 callee and with the frame it had after the push.
 -/
 
-open Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
-open Ascent.Concretization (ofStateRepr ofStateRepr_pred)
+open Std.WP Lean.Order Distillery Distillery.Kraken Distillery.Kraken.AInstr
+open Distillery.Concretization (ofStateRepr ofStateRepr_pred)
 
-namespace Ascent.Kraken
+namespace Distillery.Kraken
 
 /-- `x` leaves the frame of the state unchanged. -/
 def KeepsFrame {α : Type} (x : BlockM FState α) : Prop :=
@@ -171,7 +171,7 @@ theorem wrp_pushUnknownFrame_frame {σa : Type} {view : DataMem → σa} {Q : In
   rw [Concretization.post_pi]
   exact ⟨(), hq v, hqa⟩
 
-attribute [ascend] wrp_pushUnknownFrame_frame
+attribute [distill] wrp_pushUnknownFrame_frame
 
 /-! ## Inlining a callee
 
@@ -213,4 +213,4 @@ theorem retAddrAt_eq_of_restrict_eq {bs : List (BitVec 64 × Nat)} {m m' : DataM
 
 grind_pattern retAddrAt_eq_of_restrict_eq => retAddrAt m' p, Mem.restrict m' bs, Mem.restrict m bs
 
-end Ascent.Kraken
+end Distillery.Kraken

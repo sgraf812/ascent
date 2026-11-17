@@ -1,0 +1,155 @@
+import Distillery.Tactic.VCGen.Frontend
+
+/-!
+# The `distill_def` and `sym_simp_def` commands
+
+`distill_def a xs : T from ⦃P⦄ c ⪯[γ] a ⦃Q; E⦄ distill [specs] with tac` defines `a : ∀ xs, T` as the
+abstract program that `distill` synthesizes for `c`, and proves the refinement as the theorem
+`a.refines`. In the statement, `a` is a variable of type `T` that stands for `a xs`. The command
+replaces `a` by a synthesis hole, runs `distill` with the head definition of `c` unfolded and the
+specs of the `distill` clause, and closes every VC with the `grind` step `tac`.
+
+`sym_simp_def a xs : T from c using pre [ps] post [qs]` is the simplification between two runs:
+it defines `a : ∀ xs, T` as `c` simplified by `Sym.simp` with the rewrite rules `ps` and `qs`, and
+proves `a.eq : ∀ xs, c = a xs`.
+
+Both commands give `a` only the binders among `xs` that `T` or the body of `a` mentions, and the
+binders that their types mention. The theorems `a.refines` and `a.eq` take all of `xs`.
+-/
+
+open Lean Meta Elab Command Term
+
+namespace Lean.Elab.Tactic.VCGen.Distill
+
+syntax (name := distillDefCmd)
+  "distill_def " ident bracketedBinder* " : " term " from " term
+    (&" distill " "[" term,* "]")? (ppSpace Lean.Parser.Tactic.invariantAlts)?
+    (" with " vcgenDischarge)? : command
+
+/-- The binders among `xs` that `es` mention, together with the binders that their types mention,
+in the order of `xs`. -/
+def usedBinders (xs : Array Expr) (es : Array Expr) : MetaM (Array Expr) := do
+  let mut used : CollectFVars.State := {}
+  for e in es do
+    used := collectFVars used (← instantiateMVars e)
+  for x in xs.reverse do
+    if used.fvarSet.contains x.fvarId! then
+      used := collectFVars used (← instantiateMVars (← inferType x))
+  return xs.filter (used.fvarSet.contains ·.fvarId!)
+
+/-- `distill_def f xs : T from stmt distill [specs] with tac` synthesizes `f : ∀ xs, T` from the
+refinement statement `stmt`, in which `f` stands for `f xs`, and proves `f.refines : ∀ xs, stmt`.
+The run unfolds the head of the concrete program and takes the specs of the `distill` clause; the
+`grind` step `tac` closes every verification condition. -/
+elab_rules : command
+  | `(distill_def $name $binders* : $type from $stmt $[distill [$specs,*]]? $[$invs?:invariantAlts]?
+      $[with $tac?]?) =>
+    liftTermElabM <| Term.elabBinders binders fun xs => do
+    let (declName, _) ← mkDeclName (← getCurrNamespace) {} name.getId
+    let T ← elabType type
+    synthesizeSyntheticMVarsNoPostponing
+    let stmtFn ← withLocalDeclD name.getId T fun x => do
+      let e ← elabType stmt
+      synthesizeSyntheticMVarsNoPostponing
+      mkLambdaFVars #[x] (← instantiateMVars e)
+    let hole ← mkFreshExprMVar T
+    let goalType := stmtFn.beta #[hole]
+    unless goalType.isAppOfArity ``Distillery.Refinement 22 do
+      throwError "distill_def: the statement is not a refinement:{indentExpr goalType}"
+    let proof ← mkFreshExprSyntheticOpaqueMVar goalType
+    let specs := (specs.map (·.getElems)).getD #[]
+    let distillStx ← match tac?, invs? with
+      | some tac, some invs => `(tactic| distill [$specs,*] $invs:invariantAlts with $tac)
+      | some tac, none => `(tactic| distill [$specs,*] with $tac)
+      | none, some invs => `(tactic| distill [$specs,*] $invs:invariantAlts)
+      | none, none => `(tactic| distill [$specs,*])
+    let (vcs, _) ← Lean.Elab.runTactic proof.mvarId! distillStx
+    unless vcs.isEmpty do
+      let msg := vcs.foldl (fun acc vc => acc ++ m!"\n{vc}") m!""
+      throwError "distill_def: unsolved verification conditions:{msg}\nprovide a `with` clause"
+    let value ← instantiateMVars hole
+    if value.hasMVar then
+      throwError "distill_def: the synthesized program has holes:{indentExpr value}"
+    let ys ← usedBinders xs #[T, value]
+    addDecl <| .defnDecl {
+      name := declName, levelParams := [], type := ← instantiateMVars (← mkForallFVars ys T),
+      value := ← instantiateMVars (← mkLambdaFVars ys value), hints := .regular 0,
+      safety := .safe }
+    enableRealizationsForConst declName
+    addDeclarationRangesFromSyntax declName (← getRef) name
+    addTermInfo' (isBinder := true) name (mkConst declName)
+    let proof ← instantiateMVars proof
+    if proof.hasMVar then
+      throwError "distill_def: the refinement proof has holes"
+    addDecl <| .thmDecl {
+      name := declName ++ `refines, levelParams := [],
+      type := ← instantiateMVars
+        (← mkForallFVars xs (stmtFn.beta #[mkAppN (mkConst declName) ys])),
+      value := ← instantiateMVars (← mkLambdaFVars xs proof) }
+    addDeclarationRangesFromSyntax (declName ++ `refines) (← getRef) name
+
+syntax (name := symSimpDefCmd)
+  "sym_simp_def " ident bracketedBinder* " : " term " from " term
+    " using " &"pre " "[" ident,* "]" &" post " "[" ident,* "]" : command
+
+def symSimpTheorems (ids : Array Ident) : MetaM Sym.Simp.Theorems := do
+  let mut thms : Sym.Simp.Theorems := {}
+  for id in ids do
+    for thm in ← Sym.Simp.mkTheoremsFromDecl (← realizeGlobalConstNoOverload id) do
+      thms := thms.insert thm
+  return thms
+
+/-- Discharge a side condition by `Sym.simp`, and else by `grind`. -/
+def dischargeSimpSelfOrGrind (params : Grind.Params) : Sym.Simp.Discharger := fun e => do
+  match ← Sym.Simp.dischargeSimpSelf e with
+  | r@(.solved ..) => return r
+  | _ =>
+    let g ← mkFreshExprMVar e
+    let r ← Grind.main g.mvarId! params
+    if r.failure?.isNone then return .solved (← instantiateMVars g) true
+    return .failed true
+
+/-- `sym_simp_def f xs : T from c using pre [ps] post [qs]` defines `f : ∀ xs, T` as `c` simplified by
+`Sym.simp`, rewriting with `ps` before and with `qs` and the `vcgen_simp` set after visiting the
+subterms of a term, and proves `f.eq : ∀ xs, c = f xs`. A side condition of a rule of `ps` or `qs`
+is discharged by `Sym.simp` or by `grind`. -/
+elab_rules : command
+  | `(sym_simp_def $name $binders* : $type from $c using pre [$pres,*] post [$posts,*]) =>
+    liftTermElabM <| Term.elabBinders binders fun xs => do
+    let (declName, _) ← mkDeclName (← getCurrNamespace) {} name.getId
+    let T ← elabType type
+    let c ← Term.elabTermEnsuringType c T
+    synthesizeSyntheticMVarsNoPostponing
+    let c ← instantiateMVars c
+    let preThms ← symSimpTheorems pres.getElems
+    let postThms ← symSimpTheorems posts.getElems
+    let vcThms ← vcgenSimpExt.getTheorems
+    let params ← Grind.mkDefaultParams {}
+    let (value, proof) ← Sym.SymM.run do
+      let c ← Sym.shareCommon c
+      let methods : Sym.Simp.Methods :=
+        { pre := Sym.Simp.beta >> Sym.Simp.reduceProj >> Sym.Simp.reduceMatcher >>
+            Sym.Simp.reduceControl >> preThms.rewrite (dischargeSimpSelfOrGrind params)
+          post := Sym.Simp.evalGround >> Grind.NormSym.reduceCtorEq >> vcThms.rewrite >>
+            postThms.rewrite (dischargeSimpSelfOrGrind params) }
+      let (r, _) ← Sym.Simp.SimpM.run (Sym.Simp.simp c) methods { maxDischargeDepth := 64 }
+      match r with
+      | .rfl .. => return (c, ← mkEqRefl c)
+      | .step e h .. => return (e, h)
+    let value ← instantiateMVars value
+    if value.hasMVar then throwError "sym_simp_def: the simplified program has holes:{indentExpr value}"
+    let ys ← usedBinders xs #[T, value]
+    addDecl <| .defnDecl {
+      name := declName, levelParams := [], type := ← instantiateMVars (← mkForallFVars ys T),
+      value := ← instantiateMVars (← mkLambdaFVars ys value), hints := .regular 0, safety := .safe }
+    enableRealizationsForConst declName
+    addDeclarationRangesFromSyntax declName (← getRef) name
+    addTermInfo' (isBinder := true) name (mkConst declName)
+    let proof ← instantiateMVars proof
+    addDecl <| .thmDecl {
+      name := declName ++ `eq, levelParams := [],
+      type := ← instantiateMVars (← mkForallFVars xs (← mkEq c (mkAppN (mkConst declName) ys))),
+      value := ← instantiateMVars (← mkLambdaFVars xs proof) }
+    addDeclarationRangesFromSyntax (declName ++ `eq) (← getRef) name
+
+end Lean.Elab.Tactic.VCGen.Distill

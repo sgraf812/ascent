@@ -18,12 +18,12 @@ compiled by clang with `-O1 -fno-vectorize -fno-unroll-loops` is the kraken prog
 Each section below is one refinement, from the machine code to the pure program.
 -/
 
-open Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
-open Ascent.Concretization (ofStateRepr)
+open Std.WP Lean.Order Distillery Distillery.Kraken Distillery.Kraken.AInstr
+open Distillery.Concretization (ofStateRepr)
 open StateT (assert)
 open scoped Program.WP
 
-namespace Ascent.Kraken.Walkthrough
+namespace Distillery.Kraken.Walkthrough
 
 /-! ## 1. The x64 text -/
 
@@ -46,11 +46,11 @@ info: def zipWithAdd : Program :=
 #guard_msgs in
 #print zipWithAdd
 
-/-! ## 2. Blocks, synthesized by `ascend_def`
+/-! ## 2. Blocks, synthesized by `distill_def`
 
 `zipWithAddInstr` is a loop over the blocks of the text, one guarded step per instruction, with the flags
 cleared and `cmp; jcc` fused into one branch. Each step is a register write `setReg64`, a load into a
-register `loadReg 8`, or a store `storeWord 8`. `ascend_def` synthesized it and proved: -/
+register `loadReg 8`, or a store `storeWord 8`. `distill_def` synthesized it and proved: -/
 
 /--
 info: @zipWithAddInstr.refines : ∀ [inst : Host] [inst_1 : FunDecls] [Embeds zipWithAdd] (r₀ : BitVec 64) (ra : Int64),
@@ -126,7 +126,7 @@ info: @zipWithAddLoops.refines : ∀ [inst : Host] [inst_1 : FunDecls] [Embeds z
 #check @zipWithAddLoops.refines
 
 /--
-info: def Ascent.Kraken.zipWithAddLoops : BitVec 64 → Int64 → BlockM MachineData Unit :=
+info: def Distillery.Kraken.zipWithAddLoops : BitVec 64 → Int64 → BlockM MachineData Unit :=
 fun r₀ ra =>
   condState (fun st => CondCode.le.cmp (st.regs.rcx.toBitVec &&& st.regs.rcx.toBitVec) 0#64)
     (do
@@ -154,12 +154,12 @@ fun r₀ ra =>
 #guard_msgs in
 #print zipWithAddLoops
 
-/-! ## 4. Registers as values, synthesized by `ascend_def`
+/-! ## 4. Registers as values, synthesized by `distill_def`
 
 The state is the data memory alone. The lifting relation, the one hint of the run, is
 `RegsRel [(.rdi, rdi), …, (.rax, rax)]`: it names the registers that become values. `rdi`, `rsi`,
 `rdx`, `rcx` and `rsp` are parameters, and `rax` is the value of the loop. The loaded values of
-`r8` become variables. `ascend_def` synthesized `zipWithAddRegs₀`, and `sym_simp_def` states its
+`r8` become variables. `distill_def` synthesized `zipWithAddRegs₀`, and `sym_simp_def` states its
 branch conditions as comparisons of the values in `zipWithAddRegs`. A jump is an `assert` that the
 stack pointer lies in the frame; with `rsp` the stack pointer of the entry, these tests hold and
 vanish. The return is an `assert` that the return slot at `rsp` holds the return address `ra`,
@@ -175,7 +175,7 @@ info: zipWithAddRegs.refines : ∀ (rdi rsi rdx rcx rsp : BitVec 64) (ra : Int64
 #check @zipWithAddRegs.refines
 
 /--
-info: def Ascent.Kraken.zipWithAddRegs : BitVec 64 →
+info: def Distillery.Kraken.zipWithAddRegs : BitVec 64 →
   BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → Int64 → BlockM DataMem Unit :=
 fun rdi rsi rdx rcx rsp ra =>
   if rcx.toInt ≤ 0 then do
@@ -196,7 +196,7 @@ fun rdi rsi rdx rcx rsp ra =>
 #guard_msgs in
 #print zipWithAddRegs
 
-/-! ## 5. The stack frame, synthesized by `ascend_def`
+/-! ## 5. The stack frame, synthesized by `distill_def`
 
 The state splits the memory at the frame of the function into `frame` and `dmem`. The frame of
 `zipWithAdd` is `Fr rsp 0 0`, the return slot alone. An address computed from the stack pointer goes
@@ -214,7 +214,7 @@ info: zipWithAddFrame.refines : ∀ (rdi rsi rdx rcx rsp sp : BitVec 64) (ra : I
 #check @zipWithAddFrame.refines
 
 /--
-info: def Ascent.Kraken.zipWithAddFrame : BitVec 64 →
+info: def Distillery.Kraken.zipWithAddFrame : BitVec 64 →
   BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → Int64 → BlockM FState Unit :=
 fun rdi rsi rdx rcx rsp ra =>
   condState (fun x => CondCode.le.cmp (rcx &&& rcx) 0#64) (throw ra) do
@@ -229,7 +229,7 @@ fun rdi rsi rdx rcx rsp ra =>
 #guard_msgs in
 #print zipWithAddFrame
 
-/-! ## 6. Arrays, synthesized by `ascend_def`
+/-! ## 6. Arrays, synthesized by `distill_def`
 
 The state is the output array. The input arrays are parameters, named by their base addresses, and
 the loads and the store become array reads and an array update. The words that count become
@@ -237,7 +237,7 @@ numbers: the loop counter `v` of `zipWithAddRegs` holds the number `i` (`v ≐�
 holds `n`, and the comparisons of the words become comparisons of the numbers. The relation of the
 loop, the hint of the run, states `v ≐ₙ i`, the bound `i < n`, the layout
 `ArrayLayout 8 64 [(A, a), (B, b)] O n` of `dmem`, and `ZipApart`: each array misses the frame,
-which discharges the assumption of each access. `ascend_def` synthesized `zipWithAddArrays₀`, and
+which discharges the assumption of each access. `distill_def` synthesized `zipWithAddArrays₀`, and
 `sym_simp_def` puts the array reads in place and states the conditions as propositions in
 `zipWithAddArrays`: -/
 
@@ -253,7 +253,7 @@ info: zipWithAddArrays.refines : ∀ (A B O r₀ : BitVec 64) (ra : Int64) (n : 
 #check @zipWithAddArrays.refines
 
 /--
-info: def Ascent.Kraken.zipWithAddArrays : Int64 →
+info: def Distillery.Kraken.zipWithAddArrays : Int64 →
   Nat → Array (BitVec 64) → Array (BitVec 64) → BlockM (Array (BitVec 64)) Unit :=
 fun ra n a b =>
   if n = 0 then throw ra
@@ -272,7 +272,7 @@ fun ra n a b =>
 /-! ## 7. The pure program
 
 `vcgen` proves that the array program exits with `Array.zipWith (· + ·)` of its inputs, from a loop
-invariant and a measure. `ascend_def` takes this result as the premise of `wrp_purify_throw` and
+invariant and a measure. `distill_def` takes this result as the premise of `wrp_purify_throw` and
 synthesizes the pure program: -/
 
 /--
@@ -286,7 +286,7 @@ info: @zipWithAddArrays_spec : ∀ {ra : Int64} {n : Nat} {a b : Array (BitVec 6
 #check @zipWithAddArrays_spec
 
 /--
-info: def Ascent.Kraken.zipWithAddPure : Array (BitVec 64) → Array (BitVec 64) → Id (Array (BitVec 64)) :=
+info: def Distillery.Kraken.zipWithAddPure : Array (BitVec 64) → Array (BitVec 64) → Id (Array (BitVec 64)) :=
 fun a b => pure (Array.zipWith HAdd.hAdd a b)
 -/
 #guard_msgs in
@@ -356,7 +356,7 @@ layer assumes that the source and the destination do not overlap, names the dire
 and reads the source as the array `a`: -/
 
 /--
-info: def Ascent.Kraken.memmoveArrays : Int64 → Nat → Array (BitVec 8) → Bool → BlockM (Array (BitVec 8)) Unit :=
+info: def Distillery.Kraken.memmoveArrays : Int64 → Nat → Array (BitVec 8) → Bool → BlockM (Array (BitVec 8)) Unit :=
 fun ra n a back =>
   if back = true then
     if n = 0 then throw ra
@@ -382,11 +382,11 @@ fun ra n a back =>
 #guard_msgs in
 #print memmoveArrays
 
-/-! `vcgen` proves that both loops leave the destination equal to `a`, and `ascend_def` synthesizes
+/-! `vcgen` proves that both loops leave the destination equal to `a`, and `distill_def` synthesizes
 the pure program from that result: -/
 
 /--
-info: def Ascent.Kraken.memmovePure : Array (BitVec 8) → Id (Array (BitVec 8)) :=
+info: def Distillery.Kraken.memmovePure : Array (BitVec 8) → Id (Array (BitVec 8)) :=
 fun a => pure a
 -/
 #guard_msgs in
@@ -408,7 +408,7 @@ machine code becomes a `break` that leaves the loop with `rax` set, and the func
 after the loop: -/
 
 /--
-info: def Ascent.Kraken.bsearchRegs : BitVec 64 →
+info: def Distillery.Kraken.bsearchRegs : BitVec 64 →
   BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → Int64 → BlockM DataMem (BitVec 64) :=
 fun rdi rsi rdx rax rsp ra => do
   let mut a := (0#64, rsi, rax)
@@ -437,7 +437,7 @@ fun rdi rsi rdx rax rsp ra => do
 index, `none` until the loop leaves: -/
 
 /--
-info: def Ascent.Kraken.bsearchArrays : BitVec 64 → Nat → Array (BitVec 64) → BlockM Unit (Option Nat) :=
+info: def Distillery.Kraken.bsearchArrays : BitVec 64 → Nat → Array (BitVec 64) → BlockM Unit (Option Nat) :=
 fun key n a => do
   let mut a_1 := (0, n, none)
   repeat'
@@ -459,10 +459,10 @@ fun key n a => do
 #print bsearchArrays
 
 /-! `vcgen` proves that the loop returns the result of the recursive search `binarySearch`, and
-`ascend_def` synthesizes the pure program: -/
+`distill_def` synthesizes the pure program: -/
 
 /--
-info: def Ascent.Kraken.bsearchPure : BitVec 64 → Nat → Array (BitVec 64) → Id (Option Nat) :=
+info: def Distillery.Kraken.bsearchPure : BitVec 64 → Nat → Array (BitVec 64) → Id (Option Nat) :=
 fun key n a => pure (binarySearch a key 0 n)
 -/
 #guard_msgs in
@@ -474,4 +474,4 @@ composition gives the result for the x64 text: -/
 #check @bsearch_correct
 #print axioms bsearch_correct
 
-end Ascent.Kraken.Walkthrough
+end Distillery.Kraken.Walkthrough

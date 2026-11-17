@@ -1,5 +1,5 @@
 import Demo.Cfg
-import Ascent.PureRefinement
+import Distillery.PureRefinement
 import Kraken.X64.WP.Spec
 
 /-!
@@ -14,7 +14,7 @@ two registers, and no abstract instruction reads or writes a flag.
 An abstract instruction is a guarded update of the state: `modifyIf g f` updates by `f` when the
 guard `g` holds and is undefined behaviour otherwise, `exitIf g f a` updates and throws the address
 `a`, and `branch st c a` throws `a` when the condition `c` holds, in a state with the stack test
-`st`. The operations in `AInstr` name one such step per machine instruction, and each `@[ascend]`
+`st`. The operations in `AInstr` name one such step per machine instruction, and each `@[distill]`
 rule pairs it with kraken's spec of that instruction. The update of a step is the post state of the
 spec, and a guard is the precondition of the spec stated on the abstract state.
 
@@ -24,8 +24,8 @@ stack pointer `r₀` and the return address `ra₀` of the entry state. A jump t
 `r₀` and the return slot holds `ra₀`. It sets the stack pointer to `r₀ + 8` and throws `ra₀`.
 -/
 
-open Std.WP Lean.Order Ascent
-open Ascent.Concretization (ofStateRepr ofStateRepr_pred ofStateRel ofStateRel_pred)
+open Std.WP Lean.Order Distillery
+open Distillery.Concretization (ofStateRepr ofStateRepr_pred ofStateRel ofStateRel_pred)
 open scoped Program.WP
 
 def StatusFlags.clear : StatusFlags := ⟨false, false, false, false, false, false⟩
@@ -116,7 +116,7 @@ theorem CondCode.interp_ofLogic (cc : CondCode) (v : BitVec 64) (af : Bool) :
     cc.interp (StatusFlags.ofLogic v af) = cc.cmp v 0 := by
   rw [StatusFlags.ofLogic_eq, CondCode.interp_af, CondCode.interp_ofSub]
 
-namespace Ascent.Kraken
+namespace Distillery.Kraken
 
 def abs (s : MachineData) : MachineData := { s with status := .clear }
 
@@ -413,7 +413,7 @@ section
 variable [Host] [FunDecls] {Q : Unit → Unit → MachineData → Prop}
   {E : Int64 → Int64 → MachineData → Prop}
 
-@[ascend] theorem wrp_movRegSib8 (r b i : Reg64) (d : Int64) :
+@[distill] theorem wrp_movRegSib8 (r b i : Reg64) (d : Int64) :
     (fun s =>
       let a := s.regs.get64 b + s.regs.get64 i * 8 + BitVec.ofInt 64 d.toInt
       (Mem.loadInt s.dmem a 8).isSome = true →
@@ -428,7 +428,7 @@ variable [Host] [FunDecls] {Q : Unit → Unit → MachineData → Prop}
   intro s hg
   exact ⟨hg, by rw [loadReg, word_eight]; rfl⟩
 
-@[ascend] theorem wrp_addRegSib8 (rd b i : Reg64) (d : Int64) :
+@[distill] theorem wrp_addRegSib8 (rd b i : Reg64) (d : Int64) :
     (fun s =>
       let a := s.regs.get64 b + s.regs.get64 i * 8 + BitVec.ofInt 64 d.toInt
       (Mem.loadInt s.dmem a 8).isSome = true →
@@ -447,7 +447,7 @@ variable [Host] [FunDecls] {Q : Unit → Unit → MachineData → Prop}
   intro s hg
   exact ⟨hg, by rw [loadReg, word_eight]; rfl⟩
 
-@[ascend] theorem wrp_movSib8Reg (b i : Reg64) (d : Int64) (rs : Reg64) :
+@[distill] theorem wrp_movSib8Reg (b i : Reg64) (d : Int64) (rs : Reg64) :
     (fun s =>
       let a := s.regs.get64 b + s.regs.get64 i * 8 + BitVec.ofInt 64 d.toInt
       (Mem.loadInt s.dmem a 8).isSome = true →
@@ -464,7 +464,7 @@ variable [Host] [FunDecls] {Q : Unit → Unit → MachineData → Prop}
   intro s h hg
   exact h hg
 
-@[ascend] theorem wrp_incReg (asz : Width) (r : Reg64) :
+@[distill] theorem wrp_incReg (asz : Width) (r : Reg64) :
     (fun s => True → Q () () { s with
         regs := s.regs.set64 r (s.regs.get64 r + 1),
         status := StatusFlags.ofInc (s.regs.get64 r) s.status.cf })
@@ -476,7 +476,7 @@ variable [Host] [FunDecls] {Q : Unit → Unit → MachineData → Prop}
   intro s _
   exact ⟨trivial, rfl⟩
 
-@[ascend] theorem wrp_xorReg32Reg32 (asz : Width) (rd rs : Reg64) :
+@[distill] theorem wrp_xorReg32Reg32 (asz : Width) (rd rs : Reg64) :
     (fun s => True →
       let v := (s.regs.get64 rd).take 32 ^^^ (s.regs.get64 rs).take 32
       ∀ af : Bool, Q () () { s with
@@ -496,7 +496,7 @@ variable [Host] [FunDecls] {Q : Unit → Unit → MachineData → Prop}
 
 /-- `cmp ra, rb; jcc cc, l` branches on the comparison of the two registers. The flags the pair
 writes are cleared by `abs`. -/
-@[ascend default + 1] theorem wrp_cmpJcc_rel {M : DataMem → DataMem → Prop} {r₀ : BitVec 64} {ra₀ : Int64} (asz₁ asz₂ osz : Width) (ra rb : Reg64) (cc : CondCode)
+@[distill default + 1] theorem wrp_cmpJcc_rel {M : DataMem → DataMem → Prop} {r₀ : BitVec 64} {ra₀ : Int64} (asz₁ asz₂ osz : Width) (ra rb : Reg64) (cc : CondCode)
     (l : Label) (p : Program) (k : Unit → BlockM MachineData Unit)
     (hN : Program.labels (Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p) = []) :
     (fun s =>
@@ -538,7 +538,7 @@ writes are cleared by `abs`. -/
     (Program.WP.Spec.cmp_reg_reg asz₁ ra rb).le_wp s (Program.wp_cons hN h₂)
   exact Program.wp_cons (by rw [Program.labels_cons_instr]; exact hN) h₁
 
-@[ascend default + 1] theorem wrp_cmpJcc {r₀ : BitVec 64} {ra₀ : Int64} (asz₁ asz₂ osz : Width) (ra rb : Reg64) (cc : CondCode)
+@[distill default + 1] theorem wrp_cmpJcc {r₀ : BitVec 64} {ra₀ : Int64} (asz₁ asz₂ osz : Width) (ra rb : Reg64) (cc : CondCode)
     (l : Label) (p : Program) (k : Unit → BlockM MachineData Unit)
     (hN : Program.labels (Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p) = []) :
     (fun s =>
@@ -554,7 +554,7 @@ writes are cleared by `abs`. -/
   exact wrp_cmpJcc_rel asz₁ asz₂ osz ra rb cc l p k hN
 
 /-- `test ra, rb; jcc cc, l` branches on the comparison of `ra &&& rb` with zero. -/
-@[ascend default + 1] theorem wrp_testJcc_rel {M : DataMem → DataMem → Prop} {r₀ : BitVec 64} {ra₀ : Int64} (asz₁ asz₂ osz : Width) (ra rb : Reg64) (cc : CondCode)
+@[distill default + 1] theorem wrp_testJcc_rel {M : DataMem → DataMem → Prop} {r₀ : BitVec 64} {ra₀ : Int64} (asz₁ asz₂ osz : Width) (ra rb : Reg64) (cc : CondCode)
     (l : Label) (p : Program) (k : Unit → BlockM MachineData Unit)
     (hN : Program.labels (Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p) = []) :
     (fun s => ∀ af : Bool,
@@ -599,7 +599,7 @@ writes are cleared by `abs`. -/
     (Program.WP.Spec.test_reg_reg asz₁ ra rb).le_wp s fun af => Program.wp_cons hN (h₂ af)
   exact Program.wp_cons (by rw [Program.labels_cons_instr]; exact hN) h₁
 
-@[ascend default + 1] theorem wrp_testJcc {r₀ : BitVec 64} {ra₀ : Int64} (asz₁ asz₂ osz : Width) (ra rb : Reg64) (cc : CondCode)
+@[distill default + 1] theorem wrp_testJcc {r₀ : BitVec 64} {ra₀ : Int64} (asz₁ asz₂ osz : Width) (ra rb : Reg64) (cc : CondCode)
     (l : Label) (p : Program) (k : Unit → BlockM MachineData Unit)
     (hN : Program.labels (Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p) = []) :
     (fun s => ∀ af : Bool,
@@ -620,7 +620,7 @@ writes are cleared by `abs`. -/
 def retOk (r₀ : BitVec 64) (ra : Int64) (st : MachineData) : Prop :=
   st.regs.get64 .rsp = r₀ ∧ st.retAddr = some ra
 
-@[ascend] theorem wrp_ret {r₀ : BitVec 64} {ra₀ : Int64} (asz osz : Width) :
+@[distill] theorem wrp_ret {r₀ : BitVec 64} {ra₀ : Int64} (asz osz : Width) :
     (fun _ => True)
       ⊑ wrp (ofStateRepr abs) (Directive.instr (.regular asz osz .ret))
         (exitIf (retOk r₀ ra₀) (setReg64 .rsp fun _ => r₀ + 8) ra₀)
@@ -646,7 +646,7 @@ def retOk (r₀ : BitVec 64) (ra : Int64) (st : MachineData) : Prop :=
       exact hE
 
 /-- A `ret` ends the block, and the directives after it are unreachable. -/
-@[ascend default + 1] theorem wrp_ret_cons {r₀ : BitVec 64} {ra₀ : Int64} (asz osz : Width) (p : Program)
+@[distill default + 1] theorem wrp_ret_cons {r₀ : BitVec 64} {ra₀ : Int64} (asz osz : Width) (p : Program)
     (hN : Program.labels (Directive.instr (.regular asz osz .ret) :: p) = []) :
     (fun _ => True)
       ⊑ wrp (ofStateRepr abs) (Directive.instr (.regular asz osz .ret) :: p)
@@ -664,7 +664,7 @@ that test with `peek` before the step, and a later `jcc` branches on the value. 
 only instructions that leave the flags unchanged may run: their rules keep `status` of the state,
 so the branch reads the flag that `dec` wrote. -/
 
-@[ascend] theorem wrp_movzxRegSib1 (r b i : Reg64) (d : Int64) :
+@[distill] theorem wrp_movzxRegSib1 (r b i : Reg64) (d : Int64) :
     (fun s =>
       let a := s.regs.get64 b + s.regs.get64 i + BitVec.ofInt 64 d.toInt
       (Mem.loadInt s.dmem a 1).isSome = true → Q () () { s with regs := s.regs.set64 r (word 1 a s) })
@@ -678,7 +678,7 @@ so the branch reads the flag that `dec` wrote. -/
   intro s h hg
   exact h (by simpa only [loadOk, sib_one, abs_regs, abs_dmem] using hg)
 
-@[ascend] theorem wrp_movSib1Reg8 (b i : Reg64) (d : Int64) (rs : Reg64) :
+@[distill] theorem wrp_movSib1Reg8 (b i : Reg64) (d : Int64) (rs : Reg64) :
     (fun s =>
       let a := s.regs.get64 b + s.regs.get64 i + BitVec.ofInt 64 d.toInt
       (Mem.loadInt s.dmem a 1).isSome = true →
@@ -696,7 +696,7 @@ so the branch reads the flag that `dec` wrote. -/
   simp only [storeOk, loadOk, sib_one, abs_regs, abs_dmem] at hg
   simpa only [sib_one] using h hg
 
-@[ascend] theorem wrp_movRegReg (asz : Width) (rd rs : Reg64) :
+@[distill] theorem wrp_movRegReg (asz : Width) (rd rs : Reg64) :
     (fun s => True → Q () () { s with regs := s.regs.set64 rd (s.regs.get64 rs) })
       ⊑ wrp (ofStateRepr abs)
           (Directive.instr (.regular asz .W64 (.mov (.reg (.low rd .W64)) (.regOrMem (.reg (.low rs .W64))))))
@@ -706,7 +706,7 @@ so the branch reads the flag that `dec` wrote. -/
   intro s _
   exact ⟨trivial, rfl⟩
 
-@[ascend] theorem wrp_jmp {r₀ : BitVec 64} {ra₀ : Int64} (asz osz : Width) (l : Label) :
+@[distill] theorem wrp_jmp {r₀ : BitVec 64} {ra₀ : Int64} (asz osz : Width) (l : Label) :
     (fun s => (AddrRel r₀ ra₀) (label l) (label l) s)
       ⊑ wrp (ofStateRepr abs)
           (Directive.instr (.regular asz osz (.jmp (.rel (.sub (.label l) .after_current_instruction)))))
@@ -721,7 +721,7 @@ so the branch reads the flag that `dec` wrote. -/
   exact ⟨label l, hs.1, hs.2.2⟩
 
 /-- A `jmp` ends the block, and the directives after it are unreachable. -/
-@[ascend default + 1] theorem wrp_jmp_cons {r₀ : BitVec 64} {ra₀ : Int64} (asz osz : Width) (l : Label) (p : Program)
+@[distill default + 1] theorem wrp_jmp_cons {r₀ : BitVec 64} {ra₀ : Int64} (asz osz : Width) (l : Label) (p : Program)
     (hN : Program.labels (Directive.instr (.regular asz osz
       (.jmp (.rel (.sub (.label l) .after_current_instruction)))) :: p) = []) :
     (fun s => (AddrRel r₀ ra₀) (label l) (label l) s)
@@ -731,7 +731,7 @@ so the branch reads the flag that `dec` wrote. -/
   rw [← bind_pure_unit (x := (branch (stayIn (r₀)) (fun _ => true) (label l) : BlockM MachineData Unit))]
   exact PartialOrder.rel_trans (wrp_jmp asz osz l) (wrp_cons _ p _ (fun _ => pure ()) hN)
 
-@[ascend] theorem wrp_jcc {r₀ : BitVec 64} {ra₀ : Int64} (asz osz : Width) (cc : CondCode) (l : Label) (b : Bool) :
+@[distill] theorem wrp_jcc {r₀ : BitVec 64} {ra₀ : Int64} (asz osz : Width) (cc : CondCode) (l : Label) (b : Bool) :
     (fun s => PureRefinement (cc.interp s.status) b True Eq ∧
       (b = true → (AddrRel r₀ ra₀) (label l) (label l) s) ∧ (b = false → Q () () s))
       ⊑ wrp (ofStateRepr abs) (Directive.instr (.regular asz osz (.jcc cc l)))
@@ -755,7 +755,7 @@ so the branch reads the flag that `dec` wrote. -/
       ofStateRepr_pred]
     exact ⟨(), hfall h, hw⟩
 
-@[ascend] theorem wrp_decReg (asz : Width) (r : Reg64) {Qb : Unit → Bool → MachineData → Prop} :
+@[distill] theorem wrp_decReg (asz : Width) (r : Reg64) {Qb : Unit → Bool → MachineData → Prop} :
     (fun s => ∀ (cf z : Bool), PureRefinement (s.regs.get64 r - 1 == BitVec.zero 64) z True Eq →
       Qb () z { s with regs := s.regs.set64 r (s.regs.get64 r - 1), status := StatusFlags.ofDec (s.regs.get64 r) cf })
       ⊑ wrp (ofStateRepr abs) (Directive.instr (.regular asz .W64 (.dec (.reg (.low r .W64)))))
@@ -774,12 +774,12 @@ so the branch reads the flag that `dec` wrote. -/
   exact ⟨_, hk s.status.cf _ (PureRefinement.of_rel rfl), hw⟩
 
 omit [Host] [FunDecls] in
-@[ascend_pure] theorem abs_interp_nz {st : StatusFlags} {z : Bool} {P : Prop}
+@[distill_pure] theorem abs_interp_nz {st : StatusFlags} {z : Bool} {P : Prop}
     (h : PureRefinement st.zf z P Eq) : PureRefinement (CondCode.nz.interp st) (!z) P Eq :=
   fun hp => by rw [CondCode.interp_nz, h hp]
 
 omit [Host] [FunDecls] in
-@[ascend_pure] theorem abs_interp_z {st : StatusFlags} {z : Bool} {P : Prop}
+@[distill_pure] theorem abs_interp_z {st : StatusFlags} {z : Bool} {P : Prop}
     (h : PureRefinement st.zf z P Eq) : PureRefinement (CondCode.z.interp st) z P Eq :=
   fun hp => by rw [CondCode.interp_z, h hp]
 
@@ -788,7 +788,7 @@ end
 
 end AInstr
 
-end Ascent.Kraken
+end Distillery.Kraken
 
 /-! ## Subtraction, shifts, byte writes and byte tests, and a comparison read by two jumps
 
@@ -797,7 +797,7 @@ write: the abstract program reads the comparison with `peek` before the write. `
 branches twice on one comparison, since a jump that is not taken leaves the flags unchanged. A test
 of two byte registers branches on the flags of the byte `ra8 &&& rb8`. -/
 
-namespace Ascent.Kraken.AInstr
+namespace Distillery.Kraken.AInstr
 
 section
 variable [Host] [FunDecls] {Q : Unit → MachineData → Prop} {E : Int64 → MachineData → Prop}
@@ -843,15 +843,15 @@ theorem Spec.test_reg8_reg8 (asz : Width) (ra rb : Reg64) :
     exact hn _ (hq af)
 
 end
-end Ascent.Kraken.AInstr
+end Distillery.Kraken.AInstr
 
-namespace Ascent.Kraken.AInstr
+namespace Distillery.Kraken.AInstr
 section
 variable [Host] [FunDecls] {Q : Unit → Unit → MachineData → Prop}
   {E : Int64 → Int64 → MachineData → Prop}
 open scoped Program.WP
 
-@[ascend] theorem wrp_movRegImm (asz : Width) (r : Reg64) (i : Int64) :
+@[distill] theorem wrp_movRegImm (asz : Width) (r : Reg64) (i : Int64) :
     (fun s => True → Q () () { s with regs := s.regs.set64 r (BitVec.setWidth 64 i.toBitVec) })
       ⊑ wrp (ofStateRepr abs)
           (Directive.instr (.regular asz .W64 (.mov (.reg (.low r .W64)) (.imm (.int64 i)))))
@@ -861,7 +861,7 @@ open scoped Program.WP
   intro s _
   exact ⟨trivial, rfl⟩
 
-@[ascend] theorem wrp_movReg8Imm (asz : Width) (r : Reg64) (i : Int64) :
+@[distill] theorem wrp_movReg8Imm (asz : Width) (r : Reg64) (i : Int64) :
     (fun s => True → Q () ()
         { s with regs := s.regs.set64 r ((s.regs.get64 r).replaceLow (i.toBitVec.truncate 8)) })
       ⊑ wrp (ofStateRepr abs)
@@ -873,7 +873,7 @@ open scoped Program.WP
   intro s _
   exact ⟨trivial, rfl⟩
 
-@[ascend] theorem wrp_addRegReg (asz : Width) (rd rs : Reg64) :
+@[distill] theorem wrp_addRegReg (asz : Width) (rd rs : Reg64) :
     (fun s => True → Q () () { s with
         regs := s.regs.set64 rd (s.regs.get64 rs + s.regs.get64 rd),
         status := StatusFlags.ofAdd (s.regs.get64 rs) (s.regs.get64 rd) })
@@ -885,7 +885,7 @@ open scoped Program.WP
   intro s _
   exact ⟨trivial, rfl⟩
 
-@[ascend] theorem wrp_shrRegOne (asz : Width) (r : Reg64) :
+@[distill] theorem wrp_shrRegOne (asz : Width) (r : Reg64) :
     (fun s => True → ∀ af : Bool, Q () () { s with
         regs := s.regs.set64 r ((s.regs.get64 r).ushiftRight 1),
         status := StatusFlags.from_result ((s.regs.get64 r).ushiftRight 1)
@@ -900,9 +900,9 @@ open scoped Program.WP
   rfl
 
 end
-end Ascent.Kraken.AInstr
+end Distillery.Kraken.AInstr
 
-namespace Ascent.Kraken.AInstr
+namespace Distillery.Kraken.AInstr
 section
 variable [Host] [FunDecls] {Q : Unit → Unit → MachineData → Prop}
   {E : Int64 → Int64 → MachineData → Prop}
@@ -933,7 +933,7 @@ theorem CondCode.interp_from_result_af {w : Nat} (cc : CondCode) (v : BitVec w) 
 
 /-- `sub rd, rs; jcc cc, l` writes the difference and branches on the comparison of the two
 values before the write, which the abstract program reads with `peek`. -/
-@[ascend default + 1] theorem wrp_subJcc_rel {M : DataMem → DataMem → Prop} {r₀ : BitVec 64} {ra₀ : Int64} (asz₁ asz₂ osz : Width) (rd rs : Reg64) (cc : CondCode)
+@[distill default + 1] theorem wrp_subJcc_rel {M : DataMem → DataMem → Prop} {r₀ : BitVec 64} {ra₀ : Int64} (asz₁ asz₂ osz : Width) (rd rs : Reg64) (cc : CondCode)
     (l : Label) (p : Program) (k : Unit → BlockM MachineData Unit)
     (hN : Program.labels (Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p) = []) :
     (fun s =>
@@ -980,7 +980,7 @@ values before the write, which the abstract program reads with `peek`. -/
     (Spec.sub_reg_reg asz₁ rd rs).le_wp s (Program.wp_cons hN h₂)
   exact Program.wp_cons (by rw [Program.labels_cons_instr]; exact hN) h₁
 
-@[ascend default + 1] theorem wrp_subJcc {r₀ : BitVec 64} {ra₀ : Int64} (asz₁ asz₂ osz : Width) (rd rs : Reg64) (cc : CondCode)
+@[distill default + 1] theorem wrp_subJcc {r₀ : BitVec 64} {ra₀ : Int64} (asz₁ asz₂ osz : Width) (rd rs : Reg64) (cc : CondCode)
     (l : Label) (p : Program) (k : Unit → BlockM MachineData Unit)
     (hN : Program.labels (Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p) = []) :
     (fun s =>
@@ -999,7 +999,7 @@ values before the write, which the abstract program reads with `peek`. -/
 
 /-- `cmp ra, rb; jcc c₁, l₁; jcc c₂, l₂` branches twice on one comparison: the flags survive the
 first jump when it is not taken. -/
-@[ascend default + 2] theorem wrp_cmpJccJcc_rel {M : DataMem → DataMem → Prop} {r₀ : BitVec 64} {ra₀ : Int64} (asz₁ asz₂ asz₃ osz₂ osz₃ : Width) (ra rb : Reg64)
+@[distill default + 2] theorem wrp_cmpJccJcc_rel {M : DataMem → DataMem → Prop} {r₀ : BitVec 64} {ra₀ : Int64} (asz₁ asz₂ asz₃ osz₂ osz₃ : Width) (ra rb : Reg64)
     (c₁ c₂ : CondCode) (l₁ l₂ : Label) (p : Program) (k : Unit → BlockM MachineData Unit)
     (hN₂ : Program.labels (Directive.instr (.regular asz₂ osz₂ (.jcc c₁ l₁))
       :: Directive.instr (.regular asz₃ osz₃ (.jcc c₂ l₂)) :: p) = [])
@@ -1065,7 +1065,7 @@ first jump when it is not taken. -/
     (Program.WP.Spec.cmp_reg_reg asz₁ ra rb).le_wp s (Program.wp_cons hN₂ h₂)
   exact Program.wp_cons (by rw [Program.labels_cons_instr]; exact hN₂) h₁
 
-@[ascend default + 2] theorem wrp_cmpJccJcc {r₀ : BitVec 64} {ra₀ : Int64} (asz₁ asz₂ asz₃ osz₂ osz₃ : Width) (ra rb : Reg64)
+@[distill default + 2] theorem wrp_cmpJccJcc {r₀ : BitVec 64} {ra₀ : Int64} (asz₁ asz₂ asz₃ osz₂ osz₃ : Width) (ra rb : Reg64)
     (c₁ c₂ : CondCode) (l₁ l₂ : Label) (p : Program) (k : Unit → BlockM MachineData Unit)
     (hN₂ : Program.labels (Directive.instr (.regular asz₂ osz₂ (.jcc c₁ l₁))
       :: Directive.instr (.regular asz₃ osz₃ (.jcc c₂ l₂)) :: p) = [])
@@ -1088,7 +1088,7 @@ first jump when it is not taken. -/
   exact wrp_cmpJccJcc_rel asz₁ asz₂ asz₃ osz₂ osz₃ ra rb c₁ c₂ l₁ l₂ p k hN₂ hN₃
 
 /-- `test ra8, rb8; jcc cc, l` branches on the flags of the byte `ra8 &&& rb8`. -/
-@[ascend default + 1] theorem wrp_testJcc8_rel {M : DataMem → DataMem → Prop} {r₀ : BitVec 64} {ra₀ : Int64} (asz₁ asz₂ osz : Width) (ra rb : Reg64) (cc : CondCode)
+@[distill default + 1] theorem wrp_testJcc8_rel {M : DataMem → DataMem → Prop} {r₀ : BitVec 64} {ra₀ : Int64} (asz₁ asz₂ osz : Width) (ra rb : Reg64) (cc : CondCode)
     (l : Label) (p : Program) (k : Unit → BlockM MachineData Unit)
     (hN : Program.labels (Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p) = []) :
     (fun s => ∀ af : Bool,
@@ -1137,7 +1137,7 @@ first jump when it is not taken. -/
     (Spec.test_reg8_reg8 asz₁ ra rb).le_wp s fun af => Program.wp_cons hN (h₂ af)
   exact Program.wp_cons (by rw [Program.labels_cons_instr]; exact hN) h₁
 
-@[ascend default + 1] theorem wrp_testJcc8 {r₀ : BitVec 64} {ra₀ : Int64} (asz₁ asz₂ osz : Width) (ra rb : Reg64) (cc : CondCode)
+@[distill default + 1] theorem wrp_testJcc8 {r₀ : BitVec 64} {ra₀ : Int64} (asz₁ asz₂ osz : Width) (ra rb : Reg64) (cc : CondCode)
     (l : Label) (p : Program) (k : Unit → BlockM MachineData Unit)
     (hN : Program.labels (Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p) = []) :
     (fun s => ∀ af : Bool,
@@ -1158,14 +1158,14 @@ first jump when it is not taken. -/
   exact wrp_testJcc8_rel asz₁ asz₂ osz ra rb cc l p k hN
 
 end
-end Ascent.Kraken.AInstr
+end Distillery.Kraken.AInstr
 
 /-! ## Loads and stores through a base register
 
 `mov r64, [b + d]` and `mov [b + d], r64` address memory through one base register and a
 displacement, with no index. -/
 
-namespace Ascent.Kraken.AInstr
+namespace Distillery.Kraken.AInstr
 
 section
 variable [Host] [FunDecls] {Q : Unit → MachineData → Prop} {E : Int64 → MachineData → Prop}
@@ -1193,7 +1193,7 @@ variable [Host] [FunDecls] {Q : Unit → Unit → MachineData → Prop}
   {E : Int64 → Int64 → MachineData → Prop}
 open scoped Program.WP
 
-@[ascend] theorem wrp_movRegMem (r b : Reg64) (d : Int64) :
+@[distill] theorem wrp_movRegMem (r b : Reg64) (d : Int64) :
     (fun s =>
       let a := s.regs.get64 b + BitVec.ofInt 64 d.toInt
       (Mem.loadInt s.dmem a 8).isSome = true →
@@ -1209,7 +1209,7 @@ open scoped Program.WP
   intro s hg
   exact ⟨hg, by rw [loadReg, word_eight]; rfl⟩
 
-@[ascend] theorem wrp_movMemReg (b : Reg64) (d : Int64) (rs : Reg64) :
+@[distill] theorem wrp_movMemReg (b : Reg64) (d : Int64) (rs : Reg64) :
     (fun s =>
       let a := s.regs.get64 b + BitVec.ofInt 64 d.toInt
       (Mem.loadInt s.dmem a 8).isSome = true →
@@ -1228,7 +1228,7 @@ open scoped Program.WP
   intro s h hg
   exact h hg
 
-@[ascend] theorem wrp_pushReg (rs : Reg64) :
+@[distill] theorem wrp_pushReg (rs : Reg64) :
     (fun s =>
       let a := s.regs.get64 .rsp - 8#64
       (Mem.loadInt s.dmem a 8).isSome = true →
@@ -1248,7 +1248,7 @@ open scoped Program.WP
   rw [Concretization.post_pi]
   exact ⟨(), hk hm, hw⟩
 
-@[ascend] theorem wrp_popReg (rd : Reg64) :
+@[distill] theorem wrp_popReg (rd : Reg64) :
     (fun s =>
       let v := BitVec.ofInt 64 (Mem.loadInt s.dmem (s.regs.get64 .rsp) 8).get!
       (Mem.loadInt s.dmem (s.regs.get64 .rsp) 8).isSome = true →
@@ -1273,7 +1273,7 @@ open scoped Program.WP
   exact hw
 
 end
-end Ascent.Kraken.AInstr
+end Distillery.Kraken.AInstr
 
 /-! ## Stack frames and narrow accesses
 
@@ -1282,7 +1282,7 @@ base register and a displacement writes the low `n` bytes of a register or of me
 is `storeWord 1 (fun st => st.regs.get64 .rsp + 3) fun st => st.regs.get64 .rax`. A 16-bit `push`
 or `pop` moves the stack pointer by two. -/
 
-namespace Ascent.Kraken.AInstr
+namespace Distillery.Kraken.AInstr
 
 section
 variable [Host] [FunDecls] {Q : Unit → MachineData → Prop} {E : Int64 → MachineData → Prop}
@@ -1347,7 +1347,7 @@ variable [Host] [FunDecls] {Q : Unit → Unit → MachineData → Prop}
   {E : Int64 → Int64 → MachineData → Prop}
 open scoped Program.WP
 
-@[ascend] theorem wrp_subRegImm (asz : Width) (r : Reg64) (i : Int64) :
+@[distill] theorem wrp_subRegImm (asz : Width) (r : Reg64) (i : Int64) :
     (fun s => True → Q () () { s with
         regs := s.regs.set64 r (s.regs.get64 r - BitVec.setWidth 64 i.toBitVec),
         status := StatusFlags.ofSub (s.regs.get64 r) (BitVec.setWidth 64 i.toBitVec) })
@@ -1360,7 +1360,7 @@ open scoped Program.WP
   intro s _
   exact ⟨trivial, rfl⟩
 
-@[ascend] theorem wrp_addRegImm (asz : Width) (r : Reg64) (i : Int64) :
+@[distill] theorem wrp_addRegImm (asz : Width) (r : Reg64) (i : Int64) :
     (fun s => True → Q () () { s with
         regs := s.regs.set64 r (s.regs.get64 r + BitVec.setWidth 64 i.toBitVec),
         status := StatusFlags.ofAdd (BitVec.setWidth 64 i.toBitVec) (s.regs.get64 r) })
@@ -1374,7 +1374,7 @@ open scoped Program.WP
   intro s _
   exact ⟨trivial, rfl⟩
 
-@[ascend] theorem wrp_movMemReg8 (b : Reg64) (d : Int64) (rs : Reg64) :
+@[distill] theorem wrp_movMemReg8 (b : Reg64) (d : Int64) (rs : Reg64) :
     (fun s =>
       let a := s.regs.get64 b + BitVec.ofInt 64 d.toInt
       (Mem.loadInt s.dmem a 1).isSome = true →
@@ -1393,7 +1393,7 @@ open scoped Program.WP
   intro s h hg
   exact h hg
 
-@[ascend] theorem wrp_movMemReg16 (b : Reg64) (d : Int64) (rs : Reg64) :
+@[distill] theorem wrp_movMemReg16 (b : Reg64) (d : Int64) (rs : Reg64) :
     (fun s =>
       let a := s.regs.get64 b + BitVec.ofInt 64 d.toInt
       (Mem.loadInt s.dmem a 2).isSome = true →
@@ -1412,7 +1412,7 @@ open scoped Program.WP
   intro s h hg
   exact h hg
 
-@[ascend] theorem wrp_movReg8Mem (r b : Reg64) (d : Int64) :
+@[distill] theorem wrp_movReg8Mem (r b : Reg64) (d : Int64) :
     (fun s =>
       let a := s.regs.get64 b + BitVec.ofInt 64 d.toInt
       (Mem.loadInt s.dmem a 1).isSome = true →
@@ -1429,7 +1429,7 @@ open scoped Program.WP
   intro s hg
   exact ⟨hg, by rw [loadReg, word_setWidth 1 8 (by omega) rfl]; rfl⟩
 
-@[ascend] theorem wrp_movReg16Mem (r b : Reg64) (d : Int64) :
+@[distill] theorem wrp_movReg16Mem (r b : Reg64) (d : Int64) :
     (fun s =>
       let a := s.regs.get64 b + BitVec.ofInt 64 d.toInt
       (Mem.loadInt s.dmem a 2).isSome = true →
@@ -1446,7 +1446,7 @@ open scoped Program.WP
   intro s hg
   exact ⟨hg, by rw [loadReg, word_setWidth 2 16 (by omega) rfl]; rfl⟩
 
-@[ascend] theorem wrp_movzxRegMem1 (r b : Reg64) (d : Int64) :
+@[distill] theorem wrp_movzxRegMem1 (r b : Reg64) (d : Int64) :
     (fun s =>
       let a := s.regs.get64 b + BitVec.ofInt 64 d.toInt
       (Mem.loadInt s.dmem a 1).isSome = true → Q () () { s with regs := s.regs.set64 r (word 1 a s) })
@@ -1460,7 +1460,7 @@ open scoped Program.WP
   intro s hg
   exact ⟨hg, rfl⟩
 
-@[ascend] theorem wrp_pushReg16 (rs : Reg64) :
+@[distill] theorem wrp_pushReg16 (rs : Reg64) :
     (fun s =>
       let a := s.regs.get64 .rsp - 2#64
       (Mem.loadInt s.dmem a 2).isSome = true →
@@ -1480,7 +1480,7 @@ open scoped Program.WP
   rw [Concretization.post_pi]
   exact ⟨(), hk hm, hw⟩
 
-@[ascend] theorem wrp_popReg16 (rd : Reg64) :
+@[distill] theorem wrp_popReg16 (rd : Reg64) :
     (fun s =>
       let v := BitVec.ofInt 16 (Mem.loadInt s.dmem (s.regs.get64 .rsp) 2).get!
       let rs := s.regs.set64 .rsp (s.regs.get64 .rsp + 2#64)
@@ -1507,4 +1507,4 @@ open scoped Program.WP
   exact hw
 
 end
-end Ascent.Kraken.AInstr
+end Distillery.Kraken.AInstr

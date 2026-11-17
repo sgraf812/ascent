@@ -1,6 +1,6 @@
 import Demo.CfgRewrite
 import Demo.Bsearch.Instr
-import Ascent.Refinement.Catch
+import Distillery.Refinement.Catch
 
 /-!
 # The structured program of the binary search
@@ -10,11 +10,11 @@ header `LBB0_3` becomes a `repeat'` loop, every other label runs its block once,
 back to the header continue the loop.
 -/
 
-open Std.WP Lean.Order Ascent Ascent.Kraken.AInstr
-open Ascent.Concretization (ofStateRepr)
+open Std.WP Lean.Order Distillery Distillery.Kraken.AInstr
+open Distillery.Concretization (ofStateRepr)
 open scoped Program.WP
 
-namespace Ascent.Kraken
+namespace Distillery.Kraken
 
 theorem bsearch.label_ne_0_1 [Host] [Embeds bsearch] : (label "LBB0_1" = label "LBB0_2") = False :=
   Program.label_eq_false (p := bsearch) (by decide +kernel) (by decide +kernel) (by decide +kernel)
@@ -178,7 +178,7 @@ theorem bsearchLoops.refines [Host] [FunDecls] [Embeds bsearch] (r₀ : BitVec 6
   bsearchLoops.eq r₀ ra ▸ bsearchInstr.refines r₀ ra
 
 /--
-info: def Ascent.Kraken.bsearchLoops : BitVec 64 → Int64 → BlockM MachineData Unit :=
+info: def Distillery.Kraken.bsearchLoops : BitVec 64 → Int64 → BlockM MachineData Unit :=
 fun r₀ ra => do
   modifyIf (fun x => True) (setReg64 Reg64.rcx fun st => 0#64)
   modifyIf (fun s => stayIn r₀ s = true) id
@@ -252,7 +252,7 @@ fun r₀ ra => do
 #print bsearchLoops
 
 /--
-info: def Ascent.Kraken.bsearchResult : BitVec 64 → Int64 → BlockM MachineData Unit :=
+info: def Distillery.Kraken.bsearchResult : BitVec 64 → Int64 → BlockM MachineData Unit :=
 fun r₀ ra => do
   modifyIf (fun x => True) (setReg64 Reg64.rcx fun st => 0#64)
   modifyIf (fun s => stayIn r₀ s = true) id
@@ -301,4 +301,4 @@ fun r₀ ra => do
 #guard_msgs in
 #print bsearchResult
 
-end Ascent.Kraken
+end Distillery.Kraken

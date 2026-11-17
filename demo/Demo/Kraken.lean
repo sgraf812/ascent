@@ -1,11 +1,11 @@
-import Ascent.Refinement
+import Distillery.Refinement
 import Kraken.X64.WP.Instance
 import Kraken.X64.WP.Spec
 
-open Std.WP Lean.Order Ascent
+open Std.WP Lean.Order Distillery
 open scoped Program.WP
 
-namespace Ascent.Kraken
+namespace Distillery.Kraken
 
 variable [Host] [FunDecls]
   {AM : Type → Type} [Monad AM] {APred : Type} {AEPosts : Type} {ERels : Type}
@@ -14,7 +14,7 @@ variable [Host] [FunDecls]
   [EPostsConcretization (MachineData → Prop) APred (Int64 → MachineData → Prop) AEPosts ERels]
   {γ : Concretization (MachineData → Prop) APred}
 
-@[ascend] theorem wrp_cons {AV AV₂ : Type} (d : Directive) (p : Program) (a : AM AV) (k : AV → AM AV₂)
+@[distill] theorem wrp_cons {AV AV₂ : Type} (d : Directive) (p : Program) (a : AM AV) (k : AV → AM AV₂)
     {Q : Unit → AV₂ → MachineData → Prop} {E : ERels} (hN : Program.labels (d :: p) = []) :
     wrp γ d a (fun _ x => wrp γ p (k x) Q E) E ⊑ wrp γ (d :: p) (a >>= k) Q E := by
   refine wrp_intro fun Qa Ea => ?_
@@ -35,7 +35,7 @@ variable [Host] [FunDecls]
   · intro s hw
     exact Program.wp_cons hN hw
 
-@[ascend] theorem wrp_nil {Q : Unit → Unit → MachineData → Prop} {E : ERels} :
+@[distill] theorem wrp_nil {Q : Unit → Unit → MachineData → Prop} {E : ERels} :
     Q () () ⊑ wrp γ ([] : Program) (pure () : AM Unit) Q E := by
   refine wrp_intro fun Qa Ea => ?_
   intro s hs
@@ -46,4 +46,4 @@ variable [Host] [FunDecls]
   simp only [Concretization.post, iSup_apply, iSup_prop_eq_exists, meet_apply, meet_prop_eq_and]
   exact ⟨(), hQ, hQa⟩
 
-end Ascent.Kraken
+end Distillery.Kraken

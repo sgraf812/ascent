@@ -10,10 +10,10 @@ misses the frame `bs`; the rules discharge that assumption from the layout fact 
 array misses the frame.
 -/
 
-open Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
-open Ascent.Concretization (ofStateRepr ofStateRepr_pred)
+open Std.WP Lean.Order Distillery Distillery.Kraken Distillery.Kraken.AInstr
+open Distillery.Concretization (ofStateRepr ofStateRepr_pred)
 
-namespace Ascent.Kraken
+namespace Distillery.Kraken
 
 section
 variable {σa : Type} {bs : List (BitVec 64 × Nat)} {E : (Int64 → Int64 → FState → Prop) × EStack⟨⟩}
@@ -35,7 +35,7 @@ theorem disjoint_cell {w n j : Nat} {p : BitVec 64} (hd : Mem.Blocks.Disjoint [(
     (hw : w ≤ 8) (hj : j < n) (hn : n < 2 ^ 61) : Mem.Blocks.Disjoint [(cell w p j, w)] bs :=
   fun c hc => hd c (hc.of_singleton (cell_inside hw hj hn))
 
-@[ascend] theorem wrp_loadIn_getElem {view : DataMem → σa} {Q : BitVec 64 → BitVec 64 → FState → Prop}
+@[distill] theorem wrp_loadIn_getElem {view : DataMem → σa} {Q : BitVec 64 → BitVec 64 → FState → Prop}
     (w b : Nat) (p o : BitVec 64) (arr : Array (BitVec b)) (j : Nat) (P : Prop) (harr : p ≐ₐ arr)
     (hij : PureRefinement o j P (Scaled w)) :
     (fun s => P ∧ w ≤ 8 ∧ b = 8 * w ∧
@@ -54,7 +54,7 @@ theorem disjoint_cell {w n j : Nat} {p : BitVec 64} (hd : Mem.Blocks.Disjoint [(
   exact ⟨hcell ▸ disjoint_cell hd hw hj hn, hP, hw, hb, hwd, hmap, hj, hn,
     fun y hy => by rw [FState.set_dmem_self]; exact hk y hy⟩
 
-@[ascend] theorem wrp_loadIn_getElem_const {c : σa} {Q : BitVec 64 → BitVec 64 → FState → Prop}
+@[distill] theorem wrp_loadIn_getElem_const {c : σa} {Q : BitVec 64 → BitVec 64 → FState → Prop}
     (w b : Nat) (p o : BitVec 64) (arr : Array (BitVec b)) (j : Nat) (P : Prop) (harr : p ≐ₐ arr)
     (hij : PureRefinement o j P (Scaled w)) :
     (fun s => P ∧ w ≤ 8 ∧ b = 8 * w ∧
@@ -66,7 +66,7 @@ theorem disjoint_cell {w n j : Nat} {p : BitVec 64} (hd : Mem.Blocks.Disjoint [(
           (pure ((arr[j]!).setWidth 64) : BlockM σa (BitVec 64)) Q E :=
   wrp_loadIn_getElem (view := fun _ => c) w b p o arr j P harr hij
 
-@[ascend] theorem wrp_storeIn_set {Q : Unit → Unit → FState → Prop} (w b : Nat) (p o v v' : BitVec 64)
+@[distill] theorem wrp_storeIn_set {Q : Unit → Unit → FState → Prop} (w b : Nat) (p o v v' : BitVec 64)
     (n j : Nat) (P : Prop) (hij : PureRefinement o j P (Scaled w)) :
     (fun s => v ≐ v' ∧ P ∧ w ≤ 8 ∧ b = 8 * w ∧ j < n ∧ n < 2 ^ 61 ∧
       Mem.Mapped [(p, w * n)] s.dmem ∧ Mem.Blocks.Disjoint [(p, w * n)] bs ∧
@@ -81,7 +81,7 @@ theorem disjoint_cell {w n j : Nat} {p : BitVec 64} (hd : Mem.Blocks.Disjoint [(
   have hcell : p + o = cell w p j := by rw [hij hP]; rfl
   exact ⟨hcell ▸ disjoint_cell hd hw hj hn, hv, hP, hw, hb, hj, hn, hmap, hk⟩
 
-@[ascend default + 1] theorem wrp_loadIn_getElem_pred {view : DataMem → σa}
+@[distill default + 1] theorem wrp_loadIn_getElem_pred {view : DataMem → σa}
     {Q : BitVec 64 → BitVec 64 → FState → Prop} (w b : Nat) (p o : BitVec 64) (d : Int)
     (arr : Array (BitVec b)) (j : Nat) (P : Prop) (harr : p ≐ₐ arr) (hij : PureRefinement o j P (Scaled w)) :
     (fun s => P ∧ 0 < j ∧ d = -(w : Int) ∧ w ≤ 8 ∧ b = 8 * w ∧
@@ -100,7 +100,7 @@ theorem disjoint_cell {w n j : Nat} {p : BitVec 64} (hd : Mem.Blocks.Disjoint [(
   exact ⟨hcell ▸ disjoint_cell hd hw hj hn, hP, hj0, hd', hw, hb, hwd, hmap, hj, hn,
     fun y hy => by rw [FState.set_dmem_self]; exact hk y hy⟩
 
-@[ascend default + 1] theorem wrp_storeIn_set_pred {Q : Unit → Unit → FState → Prop} (w b : Nat)
+@[distill default + 1] theorem wrp_storeIn_set_pred {Q : Unit → Unit → FState → Prop} (w b : Nat)
     (p o v v' : BitVec 64) (d : Int) (n j : Nat) (P : Prop) (hij : PureRefinement o j P (Scaled w)) :
     (fun s => v ≐ v' ∧ P ∧ 0 < j ∧ d = -(w : Int) ∧ w ≤ 8 ∧ b = 8 * w ∧ j - 1 < n ∧ n < 2 ^ 61 ∧
       Mem.Mapped [(p, w * n)] s.dmem ∧ Mem.Blocks.Disjoint [(p, w * n)] bs ∧
@@ -115,7 +115,7 @@ theorem disjoint_cell {w n j : Nat} {p : BitVec 64} (hd : Mem.Blocks.Disjoint [(
   have hcell : p + o + BitVec.ofInt 64 d = cell w p (j - 1) := by rw [hij hP, hd', cell_pred p hj0]
   exact ⟨hcell ▸ disjoint_cell hd hw (by omega) hn, hv, hP, hj0, hd', hw, hb, hj, hn, hmap, hk⟩
 
-@[ascend default - 1] theorem wrp_loadIn_get_at {Q : BitVec 64 → BitVec 64 → FState → Prop} (w b : Nat) (p c : BitVec 64)
+@[distill default - 1] theorem wrp_loadIn_get_at {Q : BitVec 64 → BitVec 64 → FState → Prop} (w b : Nat) (p c : BitVec 64)
     (n j : Nat) (P : Prop) (hij : PureRefinement c j P (Index w p)) :
     (fun s => P ∧ w ≤ 8 ∧ b = 8 * w ∧ j < n ∧ n < 2 ^ 61 ∧
       Mem.Mapped [(p, w * n)] s.dmem ∧ Mem.Blocks.Disjoint [(p, w * n)] bs ∧
@@ -133,7 +133,7 @@ theorem disjoint_cell {w n j : Nat} {p : BitVec 64} (hd : Mem.Blocks.Disjoint [(
   exact ⟨hcell ▸ disjoint_cell hd hw hj hn, hP, hw, hb, hj, hn, hmap,
     fun y hy => by rw [FState.set_dmem_self]; exact hk y hy⟩
 
-@[ascend default - 1] theorem wrp_storeIn_set_at {Q : Unit → Unit → FState → Prop} (w b : Nat) (p c v v' : BitVec 64)
+@[distill default - 1] theorem wrp_storeIn_set_at {Q : Unit → Unit → FState → Prop} (w b : Nat) (p c v v' : BitVec 64)
     (n j : Nat) (P : Prop) (hij : PureRefinement c j P (Index w p)) :
     (fun s => v ≐ v' ∧ P ∧ w ≤ 8 ∧ b = 8 * w ∧ j < n ∧ n < 2 ^ 61 ∧
       Mem.Mapped [(p, w * n)] s.dmem ∧ Mem.Blocks.Disjoint [(p, w * n)] bs ∧
@@ -152,7 +152,7 @@ theorem disjoint_cell {w n j : Nat} {p : BitVec 64} (hd : Mem.Blocks.Disjoint [(
 
 An access to the frame leaves `dmem` unchanged, so it refines a `pure` step. -/
 
-@[ascend] theorem wrp_zoom_frame_store {view : DataMem → σa} {Q : Unit → Unit → FState → Prop} (n : Nat)
+@[distill] theorem wrp_zoom_frame_store {view : DataMem → σa} {Q : Unit → Unit → FState → Prop} (n : Nat)
     (a v : BitVec 64) :
     (fun s => (Mem.loadInt s.frame a n).isSome = true ∧
       Q () () (s.set .frame (Mem.storeInt s.frame a n v.toInt)))
@@ -165,7 +165,7 @@ An access to the frame leaves `dmem` unchanged, so it refines a `pure` step. -/
   rw [wp_zoom, wp_store, Concretization.post_pi]
   exact ⟨hm, (), hq, hqa⟩
 
-@[ascend] theorem wrp_zoom_frame_load {view : DataMem → σa} {Q : BitVec 64 → BitVec 64 → FState → Prop}
+@[distill] theorem wrp_zoom_frame_load {view : DataMem → σa} {Q : BitVec 64 → BitVec 64 → FState → Prop}
     (n : Nat) (a : BitVec 64) :
     (fun s => (Mem.loadInt s.frame a n).isSome = true ∧
       Q (BitVec.ofInt 64 ((Mem.loadInt s.frame a n).get! % 2 ^ (8 * n))) 0#64 s)
@@ -241,4 +241,4 @@ noncomputable abbrev memToArray (w b : Nat) (r₀ O : BitVec 64) (k n : Nat) :=
 noncomputable abbrev machineToArray (w b : Nat) (r₀ O : BitVec 64) (k n : Nat) :=
   (ofStateRepr abs).comp (memToArray w b r₀ O k n)
 
-end Ascent.Kraken
+end Distillery.Kraken

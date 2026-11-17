@@ -6,7 +6,7 @@ import Demo.Zip.Arrays
 `zipWithAddArrays_spec` states the result of the synthesized array program `zipWithAddArrays`: it exits
 with the output array `Array.zipWith (· + ·) a b`. `vcgen` proves it with the loop invariant
 "the first `i` cells hold the sums" and the measure `n - i`, and `finish` closes the verification
-conditions. `ascend_def` synthesizes the pure program `zipWithAddPure` from this result through
+conditions. `distill_def` synthesizes the pure program `zipWithAddPure` from this result through
 `wrp_purify_throw`.
 
 `Refinement.comp_le` composes the refinements of the layers into `zipWithAdd_refines_Pure`, from the
@@ -17,13 +17,13 @@ assumes, such as `ZipArrays.layout`, are `grind` rules next to their definitions
 back as memory words.
 -/
 
-open Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
-open Ascent.Concretization (ofStateRepr ofStateRepr_pred ofStateRepr_post_post)
+open Std.WP Lean.Order Distillery Distillery.Kraken Distillery.Kraken.AInstr
+open Distillery.Concretization (ofStateRepr ofStateRepr_pred ofStateRepr_post_post)
 open scoped Program.WP
 
 set_option experimental.vcgen true
 
-namespace Ascent.Kraken
+namespace Distillery.Kraken
 
 /-- The memory at the entry of `zipWithAdd`: arrays `A`, `B` and `O` of `n` mapped words, the output
 array apart from the inputs, and all three apart from the return slot at `rsp`. -/
@@ -74,11 +74,11 @@ theorem zipWithAddArrays_spec {ra : Int64} {n : Nat} {a b : Array (BitVec 64)} (
 
 /-! ## The pure program -/
 
-ascend_def zipWithAddPure (ra : Int64) (n : Nat) (a b : Array (BitVec 64)) (ha : a.size = n)
+distill_def zipWithAddPure (ra : Int64) (n : Nat) (a b : Array (BitVec 64)) (ha : a.size = n)
     (hb : b.size = n) : Id (Array (BitVec 64)) from
   ⦃(·.size = n)⦄ (zipWithAddArrays ra n a b) ⪯[purify (Array (BitVec 64))] zipWithAddPure
     ⦃fun _ _ _ => False; (fun l o => l = ra ∧ o = Id.run zipWithAddPure, estack⟨⟩)⦄
-  ascend [wrp_purify_throw (zipWithAddArrays_spec ha hb)] with finish
+  distill [wrp_purify_throw (zipWithAddArrays_spec ha hb)] with finish
 
 /-! ## The chain of refinements -/
 
@@ -186,4 +186,4 @@ theorem zipWithAdd_correct {A B O : BitVec 64} {n : Nat}
   grind [outView_split]
 end
 
-end Ascent.Kraken
+end Distillery.Kraken

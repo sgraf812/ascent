@@ -1,7 +1,7 @@
 import Demo.Instr
 import Kraken.X64.Parser
 import Kraken.X64.PrettyPrint
-import Ascent.Tactic.VCGen.Command
+import Distillery.Tactic.VCGen.Command
 
 /-!
 # Binary search
@@ -27,13 +27,13 @@ the abstract machine. The loop has several blocks: the header `LBB0_3` returns t
 records whether the loop continues.
 -/
 
-open Kraken.X64.Parser Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
-open Ascent.Concretization (ofStateRepr)
+open Kraken.X64.Parser Std.WP Lean.Order Distillery Distillery.Kraken Distillery.Kraken.AInstr
+open Distillery.Concretization (ofStateRepr)
 open scoped Program.WP
 
 set_option experimental.vcgen true
 
-namespace Ascent.Kraken
+namespace Distillery.Kraken
 
 def bsearch : Program := parse("
   xorl %ecx, %ecx
@@ -70,15 +70,15 @@ LBB0_9:
 
 attribute [local vcgen_simp] bsearch
 
-ascend_def bsearchInstr [Host] [FunDecls] [Embeds bsearch] (r₀ : BitVec 64) (ra : Int64) :
+distill_def bsearchInstr [Host] [FunDecls] [Embeds bsearch] (r₀ : BitVec 64) (ra : Int64) :
     BlockM MachineData Unit from
   ⦃fun s => s.regs.get64 .rsp = r₀ ∧ s.retAddr = some ra⦄ bsearch ⪯[ofStateRepr abs] bsearchInstr ⦃fun _ _ => ⊤; AddrRel r₀ ra⦄
-  ascend [refines_cfg (p := bsearch) (habs := abs_regs)] with finish
+  distill [refines_cfg (p := bsearch) (habs := abs_regs)] with finish
 
 
 
 /--
-info: def Ascent.Kraken.bsearchInstr : [Host] → BitVec 64 → Int64 → BlockM MachineData Unit :=
+info: def Distillery.Kraken.bsearchInstr : [Host] → BitVec 64 → Int64 → BlockM MachineData Unit :=
 fun [Host] r₀ ra =>
   Program.loop bsearch r₀
     (Table.get
@@ -184,4 +184,4 @@ fun [Host] r₀ ra =>
 #guard_msgs in
 #print bsearchInstr
 
-end Ascent.Kraken
+end Distillery.Kraken

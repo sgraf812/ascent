@@ -1,7 +1,7 @@
 import Demo.Instr
 import Kraken.X64.Parser
 import Kraken.X64.PrettyPrint
-import Ascent.Tactic.VCGen.Command
+import Distillery.Tactic.VCGen.Command
 
 /-!
 # `zipWithAdd`
@@ -18,8 +18,8 @@ void zipWithAdd(const long *a, const long *b, long *out, long n) {
 with `-O1 -fno-vectorize -fno-unroll-loops`, and its refinement to the abstract machine.
 -/
 
-open Kraken.X64.Parser Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
-open Ascent.Concretization (ofStateRepr)
+open Kraken.X64.Parser Std.WP Lean.Order Distillery Distillery.Kraken Distillery.Kraken.AInstr
+open Distillery.Concretization (ofStateRepr)
 open scoped Program.WP
 
 set_option experimental.vcgen true
@@ -43,10 +43,10 @@ attribute [local vcgen_simp] zipWithAdd
 
 
 
-ascend_def zipWithAddInstr [Host] [FunDecls] [Embeds zipWithAdd] (r₀ : BitVec 64) (ra : Int64) :
+distill_def zipWithAddInstr [Host] [FunDecls] [Embeds zipWithAdd] (r₀ : BitVec 64) (ra : Int64) :
     BlockM MachineData Unit from
   ⦃fun s => s.regs.get64 .rsp = r₀ ∧ s.retAddr = some ra⦄ zipWithAdd ⪯[ofStateRepr abs] zipWithAddInstr ⦃fun _ _ => ⊤; AddrRel r₀ ra⦄
-  ascend [refines_cfg (p := zipWithAdd) (habs := abs_regs)] with finish
+  distill [refines_cfg (p := zipWithAdd) (habs := abs_regs)] with finish
 
 
 /--

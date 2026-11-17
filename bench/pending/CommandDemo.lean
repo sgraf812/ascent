@@ -1,18 +1,18 @@
 import Cases.WordAbs
-import Ascent.Tactic
+import Distillery.Tactic
 
 /-!
-# The `ascend` command, end to end
+# The `distill` command, end to end
 
 Synthesize the abstract program for a concrete program directly into a definition, with its
 certified refinement theorem, and confirm the synthesized program is the hand-written expected
 image. The concrete program's head definition is unfolded automatically.
 -/
 
-open Std.WP Lean.Order Ascent AscendBench
+open Std.WP Lean.Order Distillery DistillBench
 
-ascend_def chainA3 from
-  ⦃(⊤ : Prop)⦄ (chainC 7 3) ⪯[γw] (_ : UB Int) ⦃(⌜wordVal · = ·⌝)⦄
+distill_def chainA3 from
+  ⦃(⊤ : Prop)⦄ (chainC 7 3) ⪯[γw] (_ : Demonic Int) ⦃(⌜wordVal · = ·⌝)⦄
   by simp only [wordVal, UInt64.toNat_add] at * <;> omega
 
 /-- The command produced a refinement theorem against the synthesized constant. -/
@@ -26,12 +26,12 @@ engine threads the related value through the continuation lexically, so the synt
 is a chain of guarded sums with no residual holes. -/
 def prog : Id UInt64 := do let a ← pure (7 : UInt64); let b ← pure (a + 7); pure (b + 7)
 
-ascend_def progA from
-  ⦃(⊤ : Prop)⦄ prog ⪯[γw] (_ : UB Int) ⦃(⌜wordVal · = ·⌝)⦄
+distill_def progA from
+  ⦃(⊤ : Prop)⦄ prog ⪯[γw] (_ : Demonic Int) ⦃(⌜wordVal · = ·⌝)⦄
   by simp only [wordVal, UInt64.toNat_add] at * <;> omega
 
 /-- The `do`-block abstracts to the guarded chain, threading each output into the next guard. -/
 example : progA = (do
     let a ← pure (wordVal 7)
-    let b ← (do UB.assume (a + wordVal 7 < 2 ^ 64); pure (a + wordVal 7))
-    (do UB.assume (b + wordVal 7 < 2 ^ 64); pure (b + wordVal 7))) := rfl
+    let b ← (do Demonic.assert (a + wordVal 7 < 2 ^ 64); pure (a + wordVal 7))
+    (do Demonic.assert (b + wordVal 7 < 2 ^ 64); pure (b + wordVal 7))) := rfl

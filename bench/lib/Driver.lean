@@ -1,8 +1,8 @@
 import Lean
-import Ascent.Refinement
+import Distillery.Refinement
 
 /-!
-# The ascend benchmark driver
+# The distill benchmark driver
 
 Runs one synthesis problem per size: elaborate a `Refinement` statement with a `?a` hole for the
 abstract program, unseal the hole to a natural metavariable, unfold the concrete program's
@@ -13,7 +13,7 @@ its expected image, and kernel-checking time of the final proof (after `shareCom
 
 open Lean Meta Elab Sym
 
-namespace AscendBench
+namespace DistillBench
 
 def timeItMs {α : Type} (k : MetaM α) : MetaM (α × Nat) := do
   let t0 ← IO.monoNanosNow
@@ -104,4 +104,4 @@ def runBench (label : String) (mkStmt : Nat → MetaM Term) (unfold : List Name)
       driver s!"{label}({n})" (← mkStmt n) unfold (← mkExpected n) (solve n) discharge
         (showSynth := showSynth) : MetaM Unit).run' {} {}
 
-end AscendBench
+end DistillBench

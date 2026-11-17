@@ -38,11 +38,11 @@ jump target, and that the targets of the direct jumps of `b` are the labels of `
 to the bytes of `zipWithAdd`.
 -/
 
-open Std.WP Lean.Order Ascent
-open Ascent.Concretization (ofStateRepr ofStateRepr_pred)
+open Std.WP Lean.Order Distillery
+open Distillery.Concretization (ofStateRepr ofStateRepr_pred)
 open scoped Program.WP
 
-namespace Ascent.Kraken
+namespace Distillery.Kraken
 
 namespace Binary
 
@@ -386,4 +386,4 @@ end
 
 end Binary
 
-end Ascent.Kraken
+end Distillery.Kraken

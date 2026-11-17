@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Regenerate one patch of `patches/vcgen/series` from the committed tree.
 
-`scripts/refresh-patch.py D8-wrp-spec-rules.patch` takes `Ascent/Tactic/VCGen/` as the intended
+`scripts/refresh-patch.py D8-wrp-spec-rules.patch` takes `Distillery/Tactic/VCGen/` as the intended
 result of the whole series, reverse-applies the patches after the named one to it, and diffs the
 outcome against the raw translation with the patches before the named one applied. The named patch
 is rewritten with that diff. `scripts/sync-vcgen.py --check` then validates the series.
@@ -18,7 +18,7 @@ sync = __import__("sync-vcgen")
 ROOT = sync.ROOT
 OUT = sync.OUT
 PATCHES = sync.PATCHES
-REL = pathlib.Path("Ascent") / "Tactic" / "VCGen"
+REL = pathlib.Path("Distillery") / "Tactic" / "VCGen"
 
 
 def apply(patches: list[str], root: pathlib.Path, reverse: bool = False) -> None:

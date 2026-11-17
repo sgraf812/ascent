@@ -3,25 +3,25 @@
 Run the suite with
 
 ```
-lake build AscentTests
+lake build DistilleryTests
 ```
 
-The library `AscentTests` builds every test module with `sym.debug` on. A failing `#guard_msgs`
-or a failing `ascend` run is a build error.
+The library `DistilleryTests` builds every test module with `sym.debug` on. A failing `#guard_msgs`
+or a failing `distill` run is a build error.
 
 ## Rule
 
-Every fixed bug of the `ascend` engine or of the refinement framework gets a minimal test in
-`AscentTests/Regress`, and every deviation of `patches/vcgen/series` has at least one test whose
+Every fixed bug of the `distill` engine or of the refinement framework gets a minimal test in
+`DistilleryTests/Regress`, and every deviation of `patches/vcgen/series` has at least one test whose
 outcome depends on it. A test uses the smallest setup that shows the behaviour, imports no kraken,
 and names the bug or deviation in its module doc.
 
 ## Setup
 
-`AscentTests/Setup/Blocks.lean` is a toy block machine: the concrete state has a register `r` and
+`DistilleryTests/Setup/Blocks.lean` is a toy block machine: the concrete state has a register `r` and
 a zero flag `zf`, the abstract state is the register alone, a block program runs in
 `BlockM σ := ExceptT Lbl (StateT σ Demonic)`, and a table of cells runs through `cells`. Its
-`@[ascend]` rules cover a decrement that writes the flag, a jump on the flag, a register write,
+`@[distill]` rules cover a decrement that writes the flag, a jump on the flag, a register write,
 and the table of cells, so a test reaches value carrying, continuation holes and table slots with a
 few lines.
 
@@ -33,7 +33,7 @@ tests fail.
 
 | Deviation | What it does | Tests | Verified |
 |---|---|---|---|
-| D7 | no frame rules in the forked modules | every `ascend` test | no: without D7 the forked `RuleConstruction` does not compile |
+| D7 | no frame rules in the forked modules | every `distill` test | no: without D7 the forked `RuleConstruction` does not compile |
 | D8 | spec rules take the concrete side verbatim and stay schematic in the abstract side | every test that applies `wrp_bind` at an `ExceptT` stack with a hole, e.g. `Regress/BinderHole`, `Regress/HoleScope` | no: without D8 the later patches do not apply |
 | D6, bare and delayed holes | a hole applied to distinct variables is filled by delayed assignment | `Regress/BinderHole`, `Regress/HoleScope`, `Regress/Lockstep`, `PureRefinement`, `WordAbsEngine` | yes, by disabling the delayed case |
 | D6, closed arguments | a hole applied to closed terms is filled by a constant function | `Regress/Commands`, `Regress/HoleScope`, `Regress/Lockstep` | yes, by disabling the closed case |
@@ -41,7 +41,7 @@ tests fail.
 | D6, hole scope | holes left by a rule take the context of the filled hole | `Regress/HoleScope` | yes, by disabling `restoreHoleScope` |
 | D6, mixed arguments | a hole applied to free variables, closed subsingletons and nested structure instances of free variables is rewritten to a hole applied to the variables | `Regress/MixedHole` | yes: the tests fail without `patternHole?` |
 | D2 | `wp` goals of the worklist go to core `solve` | `ForkTracer`, `Corpus/ZipL1L2` | yes, by disabling the dispatch |
-| D11 | a `Refinement` spec keeps its abstract program schematic | `AscendUnfold`, `PureRefinement`, `Regress/HoleScope` | yes, by removing the patch |
+| D11 | a `Refinement` spec keeps its abstract program schematic | `DistillUnfold`, `PureRefinement`, `Regress/HoleScope` | yes, by removing the patch |
 | D12, pure refinements | `PureRefinement` goals go to their solver | `PureRefinement`, `WordAbsEngine`, `Regress/Lockstep`, `Regress/HoleScope` | yes, by disabling the dispatch |
 | D12, existential witness | `pre ⊑ ∃ x, p x` becomes `pre ⊑ p ?x` | `Regress/ExistsHole` | yes, by disabling the step |
 | D12, guard consequence | the solution's guard meets the goal's guard by `PureRefinement.weaken_pre`, with the VC `P_goal → P` | `Regress/GuardConsequence` | yes, against the solver before the change |
@@ -58,14 +58,14 @@ tests fail.
 | `Regress/Commands` | `a14ae3e`, `62af746`: "declaration has metavariables" from a binder of type `Array Nat`; `0581e81` names in the current namespace; `423b076` used binders; `99e069f` refinement notation |
 | every `wrp_bind` test on `BlockM` | `0ee3ec1`: a generic rule failed on an `ExceptT` stack because the matcher met `?AM ?AV` |
 | `FixLoopDelab` | `68f7877` and the `repeat'` delaborator round trip |
-| `Regress/TopLevelRule` | `ascend_def` added the unfold equations of the concrete head, which ranked above a rule for the head; now it unfolds only the definitions its list names |
+| `Regress/TopLevelRule` | `distill_def` added the unfold equations of the concrete head, which ranked above a rule for the head; now it unfolds only the definitions its list names |
 | `Regress/ExistsHole` | an existential on the right side, `∃ a, ra = a ∧ …`, had no step; it is introduced with a hole as witness |
 | `Regress/GuardConsequence` | a value rule with a guard stronger than the goal's fixed guard `True` was rejected ("the abstract value does not fit"); the guard becomes a VC |
 | `Regress/Lockstep`, `Regress/MixedHole` (`pairArg`) | the loop leaves needed rules that fix the abstract constructor (`wrp_yield`, `wrp_done`, `wrp_yield_pair`); the step relation now names the abstract step through `∃`, and a tuple witness is a tuple of holes |
 | `Regress/MixedHole` (`nestedArg`) | a hole applied to a nested pair `(a₁, (a₂, a₃))` was not inverted: only the outer fields were variables. `structPaths` now gives each variable its chain of projections |
 | `Regress/MixedHole` | a hole `?fa () a` or `?fa () (a₁, a₂)` was not filled. The loop rules now take `fa : βa → …`, so the remaining source is a tuple loop value, which core's `Prod.forall_intro` splits after the body hole exists (`?fa (a₁, a₂)`) |
 | `Regress/BlockLoop` | the block loop over a table of blocks: `cfgLoop_header` at a two-block loop and at a header with two back edges; `sym_simp_def` applies `cfgLoop_header` at every label and pushes each header's handler to the literal throws: a chain of jumps evaluates to its last jump, a cycle keeps one `repeat'` loop, and an outer header's handler crosses an inner loop by `tryCatch_forIn_bind`, whose `ThrowsOnly` premise needs `maxDischargeDepth` 16 in `sym_simp_def` |
-| `Regress/CatchExit` | the exit catch at the top of a chain: `ascend_def` refines a concrete block program to an abstract one, a triple about `catchExit` of the abstract program follows from `wp_catchExit`, and `Refinement.transport_catchExit` turns it into a triple about the concrete program whose exception postcondition at the exit is the caught program's return postcondition |
+| `Regress/CatchExit` | the exit catch at the top of a chain: `distill_def` refines a concrete block program to an abstract one, a triple about `catchExit` of the abstract program follows from `wp_catchExit`, and `Refinement.transport_catchExit` turns it into a triple about the concrete program whose exception postcondition at the exit is the caught program's return postcondition |
 
 Past problems that a test here does not pin:
 - The kernel unfolds `Bind.bind` chains when a rule premise applies a pattern variable under `>>=`

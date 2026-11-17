@@ -1,13 +1,13 @@
-name = "ascent-demo"
+name = "distillery-demo"
 defaultTargets = ["Demo"]
 
 [[require]]
-name = "ascent"
+name = "distillery"
 path = ".."
 
 [[require]]
 name = "Kraken"
-path = "../../kraken-ascent-demo"
+path = "../../kraken-distillery-demo"
 
 [[lean_lib]]
 name = "Demo"

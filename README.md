@@ -1,10 +1,10 @@
-# Ascent
+# Distillery
 
-Ascent climbs from a concrete program to an abstract one. Each step takes a program and
+Distillery climbs from a concrete program to an abstract one. Each step takes a program and
 produces a more abstract program together with a proof that the input refines the output.
 Every property proved of the abstract program transports to the concrete one.
 
-Ascent is built on the `Std.WP` weakest-precondition metatheory of the Lean toolchain.
+Distillery is built on the `Std.WP` weakest-precondition metatheory of the Lean toolchain.
 
 ## The judgment
 
@@ -26,26 +26,26 @@ forward simulation proof applies, one program construct at a time.
 
 ## Modules
 
-* `Ascent/WPMonadExact.lean`: monads whose `wp` computes `pure` and `bind` exactly, which the
+* `Distillery/WPMonadExact.lean`: monads whose `wp` computes `pure` and `bind` exactly, which the
   abstract side of a refinement needs.
-* `Ascent/Demonic.lean`, `Ascent/Demonic/WhileLoop.lean`, `Ascent/Demonic/StateT.lean`: the effect
+* `Distillery/Demonic.lean`, `Distillery/Demonic/WhileLoop.lean`, `Distillery/Demonic/StateT.lean`: the effect
   of abstract programs, monotone and finitely conjunctive predicate transformers, where undefined
   behaviour (`abort`, a failed `assert`) has weakest precondition `⊥` and an unspecified value
   (`select`, `unknown`) is a demonic choice; the while loop as a least fixpoint in the flat order,
   and `wp` lemmas for `StateT σ Demonic`.
-* `Ascent/Concretization.lean`: `Concretization`, its postcondition reification `post`, the
+* `Distillery/Concretization.lean`: `Concretization`, its postcondition reification `post`, the
   state abstractions `ofStateRepr` and `ofStateRel`, purification, identity and composition.
-* `Ascent/EPostsConcretization.lean`: `EPostsConcretization`, the type of exception relations for
+* `Distillery/EPostsConcretization.lean`: `EPostsConcretization`, the type of exception relations for
   a pair of exception stacks, and the concrete exception postconditions for an exception relation.
-* `Ascent/WRP.lean`: `wrp` and its laws for `pure`, `bind`, `throw` and `tryCatch`.
-* `Ascent/Refinement.lean`: `Refinement`, its notation, the triple forms of the laws,
+* `Distillery/WRP.lean`: `wrp` and its laws for `pure`, `bind`, `throw` and `tryCatch`.
+* `Distillery/Refinement.lean`: `Refinement`, its notation, the triple forms of the laws,
   composition of refinements, and purification of a write-once program.
-* `Ascent/Refinement/WhileLoop.lean`: the while-loop rule.
-* `Ascent/Tactic/`: the `ascend` tactic and the `ascend_def` command. On a goal
+* `Distillery/Refinement/WhileLoop.lean`: the while-loop rule.
+* `Distillery/Tactic/`: the `distill` tactic and the `distill_def` command. On a goal
   `⦃P⦄ c ⪯[γ] (_ : AM AV) ⦃Q; E⦄` the tactic computes the abstract program into the hole and
   proves the triple, leaving the verification conditions as goals. The command stores the
   abstract program as a definition `a` with the theorem `a.refines`. Rules are `Refinement`
-  theorems registered with `@[ascend]`, keyed by the concrete program.
+  theorems registered with `@[distill]`, keyed by the concrete program.
 * `test/`: worked refinements, the `zip_with_add` case study, and negative tests.
 * `bench/`: the synthesis benchmark harness.
 

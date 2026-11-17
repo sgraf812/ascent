@@ -15,14 +15,14 @@ For a function with the stack pointer `r₀` at entry, `k` reserved words below 
 The abstract program accesses one of the two memories with `zoom`. An address computed from the
 stack pointer goes to `frame` with the verification condition that the access lies inside `bs`, and
 every other address goes to `dmem` with the condition that the access is apart from `bs`. The
-hypothesis `rsp ≐ₛ x` marks the value `rsp` as a stack address, and the `@[ascend_pure]` rules of
+hypothesis `rsp ≐ₛ x` marks the value `rsp` as a stack address, and the `@[distill_pure]` rules of
 `StackAddr` propagate the mark through offsets.
 -/
 
-open Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
-open Ascent.Concretization (ofStateRepr ofStateRepr_pred)
+open Std.WP Lean.Order Distillery Distillery.Kraken Distillery.Kraken.AInstr
+open Distillery.Concretization (ofStateRepr ofStateRepr_pred)
 
-namespace Ascent.Kraken
+namespace Distillery.Kraken
 
 /-! ## States -/
 
@@ -258,23 +258,23 @@ theorem wp_assert_bind {σ α : Type} (g : σ → Prop) (x : BlockM σ α) (Q : 
 section
 variable {a b x y : BitVec 64} {P₁ P₂ : Prop} {bs : List (BitVec 64 × Nat)} {n : Nat}
 
-@[ascend_pure] theorem stack_add (h₁ : PureRefinement a x P₁ StackAddr) (h₂ : PureRefinement b y P₂ Eq) :
+@[distill_pure] theorem stack_add (h₁ : PureRefinement a x P₁ StackAddr) (h₂ : PureRefinement b y P₂ Eq) :
     PureRefinement (a + b) (x + y) (P₁ ∧ P₂) StackAddr := fun ⟨hp₁, hp₂⟩ => by
   rw [StackAddr, h₁ hp₁, h₂ hp₂]
 
-@[ascend_pure] theorem stack_sub (h₁ : PureRefinement a x P₁ StackAddr) (h₂ : PureRefinement b y P₂ Eq) :
+@[distill_pure] theorem stack_sub (h₁ : PureRefinement a x P₁ StackAddr) (h₂ : PureRefinement b y P₂ Eq) :
     PureRefinement (a - b) (x - y) (P₁ ∧ P₂) StackAddr := fun ⟨hp₁, hp₂⟩ => by
   rw [StackAddr, h₁ hp₁, h₂ hp₂]
 
-@[ascend_pure] theorem abs_stackAddr (h : PureRefinement a x P₁ StackAddr) :
+@[distill_pure] theorem abs_stackAddr (h : PureRefinement a x P₁ StackAddr) :
     PureRefinement a x P₁ Eq :=
   h
 
-@[ascend_pure] theorem loc_frame (h : PureRefinement a x P₁ StackAddr) :
+@[distill_pure] theorem loc_frame (h : PureRefinement a x P₁ StackAddr) :
     PureRefinement a (Region.frame, x) (P₁ ∧ Mem.Blocks.Inside a n bs) (Located bs n) :=
   fun ⟨hp, hi⟩ => ⟨h hp, hi⟩
 
-@[ascend_pure low] theorem loc_dmem (h : PureRefinement a x P₁ Eq) :
+@[distill_pure low] theorem loc_dmem (h : PureRefinement a x P₁ Eq) :
     PureRefinement a (Region.dmem, x) P₁ (Located bs n) :=
   fun hp => ⟨h hp, trivial⟩
 
@@ -285,7 +285,7 @@ end
 section
 variable {bs : List (BitVec 64 × Nat)} {E : (Int64 → Int64 → DataMem → Prop) × EStack⟨⟩}
 
-@[ascend] theorem wrp_load_loadIn {Q : BitVec 64 → BitVec 64 → DataMem → Prop} (n : Nat)
+@[distill] theorem wrp_load_loadIn {Q : BitVec 64 → BitVec 64 → DataMem → Prop} (n : Nat)
     (a : BitVec 64) (r : Region) (x : BitVec 64) (P : Prop) :
     (fun m => PureRefinement a (r, x) P (Located bs n) ∧ P ∧
       (DmemOk bs a n r → ∀ y, BitVec.ofInt 64 ((Mem.loadInt m a n).get! % 2 ^ (8 * n)) ≐ y →
@@ -304,7 +304,7 @@ variable {bs : List (BitVec 64 × Nat)} {E : (Int64 → Int64 → DataMem → Pr
   simp only [ofStateRepr_pred]
   cases r <;> exact hqa
 
-@[ascend] theorem wrp_store_storeIn {Q : Unit → Unit → DataMem → Prop} (n : Nat) (a v : BitVec 64)
+@[distill] theorem wrp_store_storeIn {Q : Unit → Unit → DataMem → Prop} (n : Nat) (a v : BitVec 64)
     (r : Region) (x v' : BitVec 64) (P : Prop) :
     (fun m => PureRefinement a (r, x) P (Located bs n) ∧ v ≐ v' ∧ P ∧
       (DmemOk bs a n r → Q () () (Mem.storeInt m a n v.toInt)))
@@ -406,4 +406,4 @@ theorem store_load_comm {β : Type} (r r' : Region) (n n' : Nat) (a v b : BitVec
         | exact propext ⟨fun ⟨h₁, h₂, h₃⟩ => ⟨h₂, h₁, h₃⟩, fun ⟨h₁, h₂, h₃⟩ => ⟨h₂, h₁, h₃⟩⟩
         | rfl
 
-end Ascent.Kraken
+end Distillery.Kraken

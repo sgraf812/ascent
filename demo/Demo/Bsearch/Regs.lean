@@ -4,24 +4,24 @@ import Demo.Bsearch.Loops
 /-!
 # The binary search with its registers lifted
 
-`bsearchRegs₀` is `bsearchLoops` over the data memory alone, synthesized by `ascend`. The lifting relation
+`bsearchRegs₀` is `bsearchLoops` over the data memory alone, synthesized by `distill`. The lifting relation
 `RegsRel` names the registers that become values: `rdi` (the array), `rdx` (the key) and `rsp` are
 parameters, `rsi` starts as the length, and the loop carries the bounds `rcx` and `rsi` and the
 result register `rax`. The concrete program is `bsearchResult`, in which the return leaves the loop, and
 the abstract program returns the value of `rax`.
 -/
 
-open Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
-open Ascent.Concretization (ofStateRepr)
+open Std.WP Lean.Order Distillery Distillery.Kraken Distillery.Kraken.AInstr
+open Distillery.Concretization (ofStateRepr)
 
-namespace Ascent.Kraken
+namespace Distillery.Kraken
 
-ascend_def bsearchRegs₀ (rdi rsi rdx rax rsp : BitVec 64) (r₀ : BitVec 64) (ra : Int64) : BlockM DataMem (BitVec 64) from
+distill_def bsearchRegs₀ (rdi rsi rdx rax rsp : BitVec 64) (r₀ : BitVec 64) (ra : Int64) : BlockM DataMem (BitVec 64) from
   ⦃RegsRel [(.rdi, rdi), (.rsi, rsi), (.rdx, rdx), (.rax, rax), (.rsp, rsp)]⦄
   (bsearchResult r₀ ra) ⪯[ofStateRepr MachineData.dmem] bsearchRegs₀
   ⦃fun _ v t => t.regs.get64 .rax ≐ v ∧ t.regs.get64 .rsp = r₀ + 8;
     (fun l l' _ => l = l', estack⟨⟩)⦄
-  ascend [bsearchResult, wrp_forIn_lockstep_pure _ _ _ (_, _, _)]
+  distill [bsearchResult, wrp_forIn_lockstep_pure _ _ _ (_, _, _)]
   invariants
   · fun _ t (v : BitVec 64 × BitVec 64 × BitVec 64) => match v with
       | (lo, hi, res) => RegsRel [(.rdi, rdi), (.rdx, rdx), (.rsp, rsp), (.rcx, lo), (.rsi, hi), (.rax, res)] t
@@ -44,7 +44,7 @@ theorem bsearchRegs.refines (rdi rsi rdx rax : BitVec 64) (rsp : BitVec 64) (ra 
   bsearchRegs.eq rdi rsi rdx rax rsp ra ▸ bsearchRegs₀.refines rdi rsi rdx rax rsp rsp ra
 
 /--
-info: def Ascent.Kraken.bsearchRegs : BitVec 64 →
+info: def Distillery.Kraken.bsearchRegs : BitVec 64 →
   BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → Int64 → BlockM DataMem (BitVec 64) :=
 fun rdi rsi rdx rax rsp ra => do
   let mut a := (0#64, rsi, rax)
@@ -69,4 +69,4 @@ fun rdi rsi rdx rax rsp ra => do
 #guard_msgs in
 #print bsearchRegs
 
-end Ascent.Kraken
+end Distillery.Kraken

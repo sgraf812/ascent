@@ -3,11 +3,11 @@
  "packages":
  [{"type": "path",
    "scope": "",
-   "name": "ascent",
+   "name": "distillery",
    "manifestFile": "lake-manifest.json",
    "inherited": false,
    "dir": "..",
    "configFile": "lakefile.toml"}],
- "name": "«ascent-bench»",
+ "name": "«distillery-bench»",
  "lakeDir": ".lake",
  "fixedToolchain": false}

@@ -4,21 +4,21 @@ import Demo.Frame
 /-!
 # The binary search with its frame split off
 
-`bsearchFrame₀` is `bsearchRegs₀` over the split state `FState`, synthesized by `ascend`, for the
+`bsearchFrame₀` is `bsearchRegs₀` over the split state `FState`, synthesized by `distill`, for the
 frame `Fr rsp 0 0` of the return slot alone. Every access goes to `dmem` and assumes that it misses
 the frame. `bsearchFrame` takes `rsp` for `sp`.
 -/
 
-open Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
-open Ascent.Concretization (ofStateRepr)
+open Std.WP Lean.Order Distillery Distillery.Kraken Distillery.Kraken.AInstr
+open Distillery.Concretization (ofStateRepr)
 
-namespace Ascent.Kraken
+namespace Distillery.Kraken
 
-ascend_def bsearchFrame₀ (rdi rsi rdx rax rsp sp : BitVec 64) (ra : Int64) : BlockM FState (BitVec 64) from
+distill_def bsearchFrame₀ (rdi rsi rdx rax rsp sp : BitVec 64) (ra : Int64) : BlockM FState (BitVec 64) from
   ⦃fun m => rsp ≐ₛ sp ∧ retAddrAt m rsp = some ra⦄
   (bsearchRegs₀ rdi rsi rdx rax rsp rsp ra) ⪯[ofStateRepr (FState.split (Fr rsp 0 0))] bsearchFrame₀
   ⦃fun v v' _ => v ≐ v'; (fun l l' _ => l = l', estack⟨⟩)⦄
-  ascend [bsearchRegs₀, wrp_forIn_lockstep_bind _ _ _ (_, _, _)]
+  distill [bsearchRegs₀, wrp_forIn_lockstep_bind _ _ _ (_, _, _)]
   invariants
   · fun (v : BitVec 64 × BitVec 64 × BitVec 64) m (v' : BitVec 64 × BitVec 64 × BitVec 64) => match v, v' with
     | (c, d, r), (c', d', r') => c ≐ c' ∧ d ≐ d' ∧ r ≐ r' ∧ retAddrAt m rsp = some ra
@@ -39,4 +39,4 @@ theorem bsearchFrame.refines (rdi rsi rdx rax rsp sp : BitVec 64) (ra : Int64) :
 
 #print bsearchFrame
 
-end Ascent.Kraken
+end Distillery.Kraken

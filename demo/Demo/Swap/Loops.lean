@@ -8,11 +8,11 @@ import Demo.Swap.Instr
 `swap` followed by the return.
 -/
 
-open Std.WP Lean.Order Ascent Ascent.Kraken.AInstr
-open Ascent.Concretization (ofStateRepr)
+open Std.WP Lean.Order Distillery Distillery.Kraken.AInstr
+open Distillery.Concretization (ofStateRepr)
 open scoped Program.WP
 
-namespace Ascent.Kraken
+namespace Distillery.Kraken
 
 sym_simp_def swapLoops [Host] [Embeds swap] (r₀ : BitVec 64) (ra : Int64) :
     BlockM MachineData Unit from swapInstr r₀ ra
@@ -46,7 +46,7 @@ theorem swapLoops.refines [Host] [FunDecls] [Embeds swap] (r₀ : BitVec 64) (ra
   swapLoops.eq r₀ ra ▸ swapInstr.refines r₀ ra
 
 /--
-info: def Ascent.Kraken.swapLoops : BitVec 64 → Int64 → BlockM MachineData Unit :=
+info: def Distillery.Kraken.swapLoops : BitVec 64 → Int64 → BlockM MachineData Unit :=
 fun r₀ ra => do
   modifyIf (fun s => stayIn r₀ s = true) id
   modifyIf (loadOk 8 fun st => st.regs.rdi.toBitVec) (loadReg 8 Reg64.rax (fun st => st.regs.rdi.toBitVec) fun w x => w)
@@ -60,4 +60,4 @@ fun r₀ ra => do
 #guard_msgs in
 #print swapLoops
 
-end Ascent.Kraken
+end Distillery.Kraken

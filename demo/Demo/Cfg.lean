@@ -1,18 +1,18 @@
 import Demo.Kraken
-import Ascent.Table
-import Ascent.BlockLoop
+import Distillery.Table
+import Distillery.BlockLoop
 import Kraken.StateCfg
 import Demo.CfgGhost
-import Ascent.Demonic.StateT
-import Ascent.Demonic.WhileLoop
-import Ascent.Refinement.Lockstep
+import Distillery.Demonic.StateT
+import Distillery.Demonic.WhileLoop
+import Distillery.Refinement.Lockstep
 
 /-!
 # Control-flow graphs
 
 `Program.loop p r₀ cell` is the abstract program of a kraken text `p` with labels, for a function
 whose frame has the stack pointer `r₀`. It runs the abstract cell of the entry block and then the
-block loop of `Ascent.BlockLoop` over the table of the text. The table maps the address `label l`
+block loop of `Distillery.BlockLoop` over the table of the text. The table maps the address `label l`
 of each label `l` to its cell followed by the fall through to the successor in the text. A block
 program lives in `BlockM σ`, and a jump is the exception that carries its target address.
 
@@ -26,13 +26,13 @@ pointer lies in the frame.
 text relate the concrete exit address to the abstract exception by equality (`AddrRel`).
 -/
 
-open Std.WP Lean.Order Ascent
+open Std.WP Lean.Order Distillery
 open scoped Program.WP
 
 attribute [vcgen_simp] Program.straight_nil Program.straight_cons_instr Program.straight_cons_label
   Program.straight_cons_byteArray
 
-namespace Ascent.Kraken
+namespace Distillery.Kraken
 
 abbrev BlockM (σ : Type) := ExceptT Int64 (StateT σ Demonic)
 
@@ -694,7 +694,7 @@ theorem wrp_cfg_le {p : Program} [Embeds p] (hs : Program.Separated p = true)
   exact wrp_cfg_le_rel _ (fun t a hta => by subst hta; exact habs t) hs h
 
 /-- The control-flow rule as a spec: the abstract program is the block loop over the table of the
-text, whose cells `ascend` fills block by block. -/
+text, whose cells `distill` fills block by block. -/
 theorem refines_cfg {p : Program} [Embeds p] {r₀ : BitVec 64} {ra : Int64}
     (tbl : Table (Option Label) (BlockM MachineData Unit)) (hs : Program.Separated p = true := by decide +kernel)
     (h : ∀ blk ∈ Program.blocks p, ∀ t,
@@ -743,4 +743,4 @@ theorem refines_cfg_rel (J : MachineData → MachineData → Prop) (hJ : ∀ t a
 
 end
 
-end Ascent.Kraken
+end Distillery.Kraken

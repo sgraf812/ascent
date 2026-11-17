@@ -1,9 +1,9 @@
-name = "ascent-bench"
+name = "distillery-bench"
 defaultTargets = ["Bench"]
 precompileModules = true
 
 [[require]]
-name = "ascent"
+name = "distillery"
 path = ".."
 
 [[lean_lib]]
@@ -17,4 +17,4 @@ globs = ["Cases.*"]
 
 [[lean_lib]]
 name = "Bench"
-roots = ["ascend_word_abs", "ascend_word_abs_val"]
+roots = ["distill_word_abs", "distill_word_abs_val"]

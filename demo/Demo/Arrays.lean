@@ -13,10 +13,10 @@ store into the written array becomes `set!` at the index `i`. A load and a store
 the memory steps and the bound of the index as verification conditions.
 -/
 
-open Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
-open Ascent.Concretization (ofStateRepr ofStateRepr_pred)
+open Std.WP Lean.Order Distillery Distillery.Kraken Distillery.Kraken.AInstr
+open Distillery.Concretization (ofStateRepr ofStateRepr_pred)
 
-namespace Ascent.Kraken
+namespace Distillery.Kraken
 
 /-- The `n` words of `w` bytes at the base address `p` as an array of `b`-bit vectors. -/
 def outView (w b : Nat) (p : BitVec 64) (n : Nat) (m : DataMem) : Array (BitVec b) :=
@@ -44,7 +44,7 @@ scoped notation:50 q:51 " ≐ₐ " a:51 => PureRefinement q a True ArrayBase
 words. -/
 def Scaled (w : Nat) (x : BitVec 64) (j : Nat) : Prop := x = BitVec.ofNat 64 j * BitVec.ofNat 64 w
 
-@[ascend_pure] theorem absS_mul {x : BitVec 64} {j w : Nat} {P : Prop}
+@[distill_pure] theorem absS_mul {x : BitVec 64} {j w : Nat} {P : Prop}
     (h : PureRefinement x j P WordNat) : PureRefinement (x * BitVec.ofNat 64 w) j P (Scaled w) :=
   fun hp => by rw [Scaled, h hp]
 
@@ -53,7 +53,7 @@ theorem CondCode.cmp_c_eq_true (a b : BitVec 64) : (CondCode.c.cmp a b = true) =
 
 attribute [grind =] Nat.blt_eq Nat.ble_eq
 
-@[ascend_pure high] theorem absN_cmp_c {a b : BitVec 64} {n m : Nat} {P₁ P₂ : Prop}
+@[distill_pure high] theorem absN_cmp_c {a b : BitVec 64} {n m : Nat} {P₁ P₂ : Prop}
     (h₁ : PureRefinement a n P₁ WordNat) (h₂ : PureRefinement b m P₂ WordNat) :
     PureRefinement (CondCode.c.cmp a b) (Nat.blt n m) (P₁ ∧ P₂ ∧ n < 2 ^ 64 ∧ m < 2 ^ 64) Eq :=
   fun ⟨hp₁, hp₂, hn, hm⟩ => by
@@ -197,7 +197,7 @@ section
 variable {σa : Type} {view : DataMem → σa}
   {E : (Int64 → Int64 → DataMem → Prop) × EStack⟨⟩}
 
-@[ascend] theorem wrp_load_getElem {Q : BitVec 64 → BitVec 64 → DataMem → Prop}
+@[distill] theorem wrp_load_getElem {Q : BitVec 64 → BitVec 64 → DataMem → Prop}
     (w b : Nat) (p o : BitVec 64) (arr : Array (BitVec b)) (j : Nat) (P : Prop) (_harr : p ≐ₐ arr)
     (hij : PureRefinement o j P (Scaled w)) :
     (fun m => P ∧ w ≤ 8 ∧ b = 8 * w ∧
@@ -235,17 +235,17 @@ def Index (w : Nat) (p : BitVec 64) (c : BitVec 64) (j : Nat) : Prop := c = cell
 section
 variable {w : Nat} {p c x : BitVec 64} {j i : Nat} {P P₁ P₂ : Prop}
 
-@[ascend_pure] theorem absI_base : PureRefinement p 0 True (Index w p) :=
+@[distill_pure] theorem absI_base : PureRefinement p 0 True (Index w p) :=
   PureRefinement.of_rel (by simp [Index, cell])
 
-@[ascend_pure] theorem absI_add_w (h : PureRefinement c j P (Index w p)) :
+@[distill_pure] theorem absI_add_w (h : PureRefinement c j P (Index w p)) :
     PureRefinement (c + BitVec.ofNat 64 w) (j + 1) P (Index w p) := fun hp => by
   have e : c = cell w p j := h hp
   rw [Index, e]
   simp only [cell, BitVec.ofNat_add]
   grind
 
-@[ascend_pure low] theorem absI_sub {k : Nat} (h : PureRefinement c j P (Index w p)) :
+@[distill_pure low] theorem absI_sub {k : Nat} (h : PureRefinement c j P (Index w p)) :
     PureRefinement (c + BitVec.ofNat 64 k) (j - 1) (P ∧ 0 < j ∧ k + w = 2 ^ 64) (Index w p) :=
   fun ⟨hp, hj, hk⟩ => by
     have e : c = cell w p j := h hp
@@ -257,7 +257,7 @@ variable {w : Nat} {p c x : BitVec 64} {j i : Nat} {P P₁ P₂ : Prop}
     simp only [cell, BitVec.ofNat_add]
     grind
 
-@[ascend_pure] theorem absI_add_scaled (h₁ : PureRefinement c j P₁ (Index w p))
+@[distill_pure] theorem absI_add_scaled (h₁ : PureRefinement c j P₁ (Index w p))
     (h₂ : PureRefinement x i P₂ WordNat) :
     PureRefinement (c + x * BitVec.ofNat 64 w) (j + i) (P₁ ∧ P₂) (Index w p) := fun ⟨hp₁, hp₂⟩ => by
   have e₁ : c = cell w p j := h₁ hp₁
@@ -269,7 +269,7 @@ variable {w : Nat} {p c x : BitVec 64} {j i : Nat} {P P₁ P₂ : Prop}
 end
 
 
-@[ascend default + 1] theorem wrp_load_getElem_pred {Q : BitVec 64 → BitVec 64 → DataMem → Prop}
+@[distill default + 1] theorem wrp_load_getElem_pred {Q : BitVec 64 → BitVec 64 → DataMem → Prop}
     (w b : Nat) (p o : BitVec 64) (d : Int) (arr : Array (BitVec b)) (j : Nat) (P : Prop) (_harr : p ≐ₐ arr)
     (hij : PureRefinement o j P (Scaled w)) :
     (fun m => P ∧ 0 < j ∧ d = -(w : Int) ∧ w ≤ 8 ∧
@@ -294,7 +294,7 @@ end
   · simp only [ofStateRepr_pred]
     exact hq
 
-@[ascend] theorem wrp_store_set {Q : Unit → Unit → DataMem → Prop} (w b : Nat) (p o v v' : BitVec 64)
+@[distill] theorem wrp_store_set {Q : Unit → Unit → DataMem → Prop} (w b : Nat) (p o v v' : BitVec 64)
     (n j : Nat) (P : Prop) (hij : PureRefinement o j P (Scaled w)) :
     (fun m => v ≐ v' ∧ P ∧ w ≤ 8 ∧ b = 8 * w ∧ j < n ∧ n < 2 ^ 61 ∧
       Mem.Mapped [(p, w * n)] m ∧
@@ -313,7 +313,7 @@ end
   rw [outView_storeInt hw hb hj hn, hv]
   exact hq
 
-@[ascend default + 1] theorem wrp_store_set_pred {Q : Unit → Unit → DataMem → Prop} (w b : Nat)
+@[distill default + 1] theorem wrp_store_set_pred {Q : Unit → Unit → DataMem → Prop} (w b : Nat)
     (p o v v' : BitVec 64) (d : Int) (n j : Nat) (P : Prop) (hij : PureRefinement o j P (Scaled w)) :
     (fun m => v ≐ v' ∧ P ∧ 0 < j ∧ d = -(w : Int) ∧ w ≤ 8 ∧
       b = 8 * w ∧ j - 1 < n ∧ n < 2 ^ 61 ∧ Mem.Mapped [(p, w * n)] m ∧
@@ -332,7 +332,7 @@ end
   rw [outView_storeInt hw hb hj hn, hv]
   exact hq
 
-@[ascend default - 1] theorem wrp_load_get {Q : BitVec 64 → BitVec 64 → DataMem → Prop} (w b : Nat) (p c : BitVec 64)
+@[distill default - 1] theorem wrp_load_get {Q : BitVec 64 → BitVec 64 → DataMem → Prop} (w b : Nat) (p c : BitVec 64)
     (n j : Nat) (P : Prop) (hij : PureRefinement c j P (Index w p)) :
     (fun m => P ∧ w ≤ 8 ∧ b = 8 * w ∧ j < n ∧ n < 2 ^ 61 ∧
       Mem.Mapped [(p, w * n)] m ∧
@@ -360,7 +360,7 @@ end
   · simp only [ofStateRepr_pred]
     exact hq
 
-@[ascend default - 1] theorem wrp_store_set_at {Q : Unit → Unit → DataMem → Prop} (w b : Nat) (p c v v' : BitVec 64)
+@[distill default - 1] theorem wrp_store_set_at {Q : Unit → Unit → DataMem → Prop} (w b : Nat) (p c v v' : BitVec 64)
     (n j : Nat) (P : Prop) (hij : PureRefinement c j P (Index w p)) :
     (fun m => v ≐ v' ∧ P ∧ w ≤ 8 ∧ b = 8 * w ∧ j < n ∧ n < 2 ^ 61 ∧
       Mem.Mapped [(p, w * n)] m ∧
@@ -381,7 +381,7 @@ end
 
 end
 
-end Ascent.Kraken
+end Distillery.Kraken
 
 /-! ## `Array.zipWith` from its elements -/
 

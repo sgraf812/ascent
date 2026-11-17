@@ -1,6 +1,6 @@
-diff -ruN a/Ascent/Tactic/VCGen/RuleConstruction.lean b/Ascent/Tactic/VCGen/RuleConstruction.lean
---- a/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-11-07 22:38:56.141511998 +0000
-+++ b/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-11-07 22:38:56.156670736 +0000
+diff -ruN a/Distillery/Tactic/VCGen/RuleConstruction.lean b/Distillery/Tactic/VCGen/RuleConstruction.lean
+--- a/Distillery/Tactic/VCGen/RuleConstruction.lean	2026-11-07 22:38:56.141511998 +0000
++++ b/Distillery/Tactic/VCGen/RuleConstruction.lean	2026-11-07 22:38:56.156670736 +0000
 @@ -35,14 +35,15 @@
      on the premise and are later introduced with the right user-facing names. -/
  def mkPostPointwisePremise (postSpec postTarget postTy : Expr) (ssTypes : Array Expr)
@@ -36,7 +36,7 @@ diff -ruN a/Ascent/Tactic/VCGen/RuleConstruction.lean b/Ascent/Tactic/VCGen/Rule
          let h ← mkFreshExprMVar (userName := `epostsImpl) hTy
          mkExpectedTypeHint h (← mkAppM ``PartialOrder.rel #[epostsSpec, epostsAbstract])
 @@ -253,35 +255,8 @@
-     specApplied := mkAppN (wpLemma ``Ascent.wrp_mono_post_le)
+     specApplied := mkAppN (wpLemma ``Distillery.wrp_mono_post_le)
        #[prog, postSpec, postAbstract, epostsSpec, hpostRel, pre, specApplied]
  
 -  /- abstract concrete `eposts` if it is not already abstract -/
@@ -60,13 +60,13 @@ diff -ruN a/Ascent/Tactic/VCGen/RuleConstruction.lean b/Ascent/Tactic/VCGen/Rule
 -    if isBot then
 -      /- get the proof of `pre ⊑ wp prog postAbstract epostsAbstract`, where `eposts (= ⊥)` is abstracted.
 -        This proof DOES NOT have a `?epostsImpl` premise -/
--      specApplied := mkAppN (wpLemma ``Ascent.wrp_mono_bot_le)
+-      specApplied := mkAppN (wpLemma ``Distillery.wrp_mono_bot_le)
 -        #[prog, postAbstract, epostsAbstract, pre, specApplied]
 -    else
 -      /- Decompose `epostsSpec ⊑ epostsAbstract` into per-component proofs
 -        using `Prod.mk_le` and `Unit.unit_le` -/
 -      let heposts ← decomposeProdRel info.EPosts epostsSpec epostsAbstract stateArgNames
--      specApplied := mkAppN (wpLemma ``Ascent.wrp_mono_erel_le)
+-      specApplied := mkAppN (wpLemma ``Distillery.wrp_mono_erel_le)
 -        #[prog, postAbstract, epostsSpec, epostsAbstract, heposts, pre, specApplied]
 +  /- The exception relation stays the spec's: a fixed `E` is matched against the goal's `E`
 +    structurally. `wrp` is not monotone in `E` for an arbitrary `EPostsConcretization`. -/
@@ -151,9 +151,9 @@ diff -ruN a/Ascent/Tactic/VCGen/RuleConstruction.lean b/Ascent/Tactic/VCGen/Rule
    let a := info.Value
    let ma := info.Prog
    let prf ←
-diff -ruN a/Ascent/Tactic/VCGen/RuleCache.lean b/Ascent/Tactic/VCGen/RuleCache.lean
---- a/Ascent/Tactic/VCGen/RuleCache.lean	2026-11-07 22:38:56.141603594 +0000
-+++ b/Ascent/Tactic/VCGen/RuleCache.lean	2026-11-07 22:38:56.157620267 +0000
+diff -ruN a/Distillery/Tactic/VCGen/RuleCache.lean b/Distillery/Tactic/VCGen/RuleCache.lean
+--- a/Distillery/Tactic/VCGen/RuleCache.lean	2026-11-07 22:38:56.141603594 +0000
++++ b/Distillery/Tactic/VCGen/RuleCache.lean	2026-11-07 22:38:56.157620267 +0000
 @@ -31,11 +31,14 @@
  Both `Triple`/`⊑ wp` and equality entries go through `tryMkBackwardRuleFromSpec`, which normalizes
  an equality spec to `⊑ wp` form using the supplied `wp` metadata before building the rule.

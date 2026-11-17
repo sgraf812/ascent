@@ -1,7 +1,7 @@
 import Demo.Instr
 import Kraken.X64.Parser
 import Kraken.X64.PrettyPrint
-import Ascent.Tactic.VCGen.Command
+import Distillery.Tactic.VCGen.Command
 
 /-!
 # `swap`
@@ -16,13 +16,13 @@ with `-O1 -fno-vectorize -fno-unroll-loops -fno-builtin -fomit-frame-pointer`, a
 the abstract machine. The text starts with the label `_swap` that its callers jump to.
 -/
 
-open Kraken.X64.Parser Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
-open Ascent.Concretization (ofStateRepr)
+open Kraken.X64.Parser Std.WP Lean.Order Distillery Distillery.Kraken Distillery.Kraken.AInstr
+open Distillery.Concretization (ofStateRepr)
 open scoped Program.WP
 
 set_option experimental.vcgen true
 
-namespace Ascent.Kraken
+namespace Distillery.Kraken
 
 def swap : Program := parse("
 _swap:
@@ -35,9 +35,9 @@ _swap:
 
 attribute [local vcgen_simp] swap
 
-ascend_def swapInstr [Host] [FunDecls] [Embeds swap] (r₀ : BitVec 64) (ra : Int64) :
+distill_def swapInstr [Host] [FunDecls] [Embeds swap] (r₀ : BitVec 64) (ra : Int64) :
     BlockM MachineData Unit from
   ⦃fun s => s.regs.get64 .rsp = r₀ ∧ s.retAddr = some ra⦄ swap ⪯[ofStateRepr abs] swapInstr ⦃fun _ _ => ⊤; AddrRel r₀ ra⦄
-  ascend [refines_cfg (p := swap) (habs := abs_regs)] with finish
+  distill [refines_cfg (p := swap) (habs := abs_regs)] with finish
 
-end Ascent.Kraken
+end Distillery.Kraken

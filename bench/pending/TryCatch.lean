@@ -1,5 +1,5 @@
 import Cases.WordAbs
-import Ascent.Tactic
+import Distillery.Tactic
 
 /-!
 # `tryCatch` synthesis, end to end
@@ -10,20 +10,20 @@ exactly as `bind`'s head and continuation. The concrete program catches a thrown
 identity handler; the synthesized abstract program mirrors it under the identity concretization.
 -/
 
-open Std.WP Lean.Order Ascent AscendBench
+open Std.WP Lean.Order Distillery DistillBench
 
 /-- The identity concretization over `Except Nat`, aligning the single exception layer. -/
 noncomputable def γe : Concretization Prop Prop :=
   Concretization.id Prop
 
 -- A `pure` leaf under the identity concretization, related by equality.
-attribute [local ascend] Ascent.Refinement.pure
+attribute [local distill] Distillery.Refinement.pure
 
 /-- Catch a thrown value and return it: `tryCatch (throw 5) pure` evaluates to `.ok 5`. -/
 def ctc : Except Nat Nat :=
   MonadExceptOf.tryCatch (MonadExceptOf.throw 5) (fun e => pure e)
 
-ascend_def atc from
+distill_def atc from
   ⦃(⊤ : Prop)⦄ ctc ⪯[γe] (_ : Except Nat Nat) ⦃(fun c a => ⌜c = a⌝); (fun ec ea => ⌜ec = ea⌝)⦄
   by first | rfl | (intro h; exact h) | simp_all
 

@@ -1,4 +1,4 @@
-import Ascent.Refinement.Catch
+import Distillery.Refinement.Catch
 import Demo.Bsearch.Arrays
 import Demo.Zip.Pure
 
@@ -16,16 +16,16 @@ or `-1` when a sorted `a` holds no `key`.
 
 `bsearchArrays_spec` states that the array program returns `binarySearch a key 0 n`. `vcgen` proves it
 with the invariant `binarySearch a key lo hi = binarySearch a key 0 n` on the bounds `lo` and `hi`, and
-`ascend_def` then synthesizes the pure program `bsearchPure`.
+`distill_def` then synthesizes the pure program `bsearchPure`.
 -/
 
-open Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
-open Ascent.Concretization (ofStateRepr ofStateRepr_pred ofStateRepr_post_post)
+open Std.WP Lean.Order Distillery Distillery.Kraken Distillery.Kraken.AInstr
+open Distillery.Concretization (ofStateRepr ofStateRepr_pred ofStateRepr_post_post)
 open scoped Program.WP
 
 set_option experimental.vcgen true
 
-namespace Ascent.Kraken
+namespace Distillery.Kraken
 
 def binarySearch (a : Array (BitVec 64)) (key : BitVec 64) (lo hi : Nat) : Option Nat :=
   if hi ≤ lo then none
@@ -100,14 +100,14 @@ theorem bsearchArrays_spec (key : BitVec 64) (n : Nat) (a : Array (BitVec 64)) :
 
 /-! ## The pure program -/
 
-ascend_def bsearchPure (key : BitVec 64) (n : Nat) (a : Array (BitVec 64)) :
+distill_def bsearchPure (key : BitVec 64) (n : Nat) (a : Array (BitVec 64)) :
     Id (Option Nat) from
   ⦃fun _ => True⦄ (bsearchArrays key n a) ⪯[purify Unit] bsearchPure
     ⦃fun v o _ => v = o; (fun _ _ => False, estack⟨⟩)⦄
-  ascend [wrp_purify_ret (bsearchArrays_spec key n a)] with finish
+  distill [wrp_purify_ret (bsearchArrays_spec key n a)] with finish
 
 /--
-info: def Ascent.Kraken.bsearchPure : BitVec 64 → Nat → Array (BitVec 64) → Id (Option Nat) :=
+info: def Distillery.Kraken.bsearchPure : BitVec 64 → Nat → Array (BitVec 64) → Id (Option Nat) :=
 fun key n a => pure (binarySearch a key 0 n)
 -/
 #guard_msgs in
@@ -197,4 +197,4 @@ theorem bsearch_correct {A key : BitVec 64} {n : Nat}
 
 end
 
-end Ascent.Kraken
+end Distillery.Kraken

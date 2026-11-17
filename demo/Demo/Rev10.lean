@@ -1,7 +1,7 @@
 import Demo.CfgRewrite
 import Kraken.X64.Parser
 import Kraken.X64.PrettyPrint
-import Ascent.Tactic.VCGen.Command
+import Distillery.Tactic.VCGen.Command
 
 /-!
 # `rev10`
@@ -20,13 +20,13 @@ the abstract machine. The ten words need two registers beyond the caller-saved o
 `r14` and `rbx` on entry and pops them before the return.
 -/
 
-open Kraken.X64.Parser Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
-open Ascent.Concretization (ofStateRepr)
+open Kraken.X64.Parser Std.WP Lean.Order Distillery Distillery.Kraken Distillery.Kraken.AInstr
+open Distillery.Concretization (ofStateRepr)
 open scoped Program.WP
 
 set_option experimental.vcgen true
 
-namespace Ascent.Kraken
+namespace Distillery.Kraken
 
 def rev10 : Program := parse("
   pushq %r14
@@ -58,10 +58,10 @@ def rev10 : Program := parse("
 
 attribute [local vcgen_simp] rev10
 
-ascend_def rev10Instr [Host] [FunDecls] [Embeds rev10] (r₀ : BitVec 64) (ra : Int64) :
+distill_def rev10Instr [Host] [FunDecls] [Embeds rev10] (r₀ : BitVec 64) (ra : Int64) :
     BlockM MachineData Unit from
   ⦃fun s => s.regs.get64 .rsp = r₀ ∧ s.retAddr = some ra⦄ rev10 ⪯[ofStateRepr abs] rev10Instr ⦃fun _ _ => ⊤; AddrRel r₀ ra⦄
-  ascend [refines_cfg (p := rev10) (habs := abs_regs)] with finish
+  distill [refines_cfg (p := rev10) (habs := abs_regs)] with finish
 
 sym_simp_def rev10Loops [Host] [Embeds rev10] (r₀ : BitVec 64) (ra : Int64) : BlockM MachineData Unit from rev10Instr r₀ ra
   using pre [] post [rev10Instr, rev10, Program.loop, Program.entryNext, Program.firstLabel, Program.table,
@@ -75,7 +75,7 @@ theorem rev10Loops.refines [Host] [FunDecls] [Embeds rev10] (r₀ : BitVec 64) (
   rev10Loops.eq r₀ ra ▸ rev10Instr.refines r₀ ra
 
 /--
-info: def Ascent.Kraken.rev10Loops : BitVec 64 → Int64 → BlockM MachineData Unit :=
+info: def Distillery.Kraken.rev10Loops : BitVec 64 → Int64 → BlockM MachineData Unit :=
 fun r₀ ra => do
   modifyIf (storeOk 8 fun st => st.regs.rsp.toBitVec - 8#64)
       (storeWord 8 (fun st => st.regs.rsp.toBitVec - 8#64) fun st => st.regs.r14.toBitVec)
@@ -133,4 +133,4 @@ fun r₀ ra => do
 #guard_msgs in
 #print rev10Loops
 
-end Ascent.Kraken
+end Distillery.Kraken

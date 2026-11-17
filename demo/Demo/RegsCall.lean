@@ -14,10 +14,10 @@ keeps. The caller continues with `Ec` alone, so the registers that the callee cl
 value.
 -/
 
-open Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
-open Ascent.Concretization (ofStateRepr ofStateRepr_pred)
+open Std.WP Lean.Order Distillery Distillery.Kraken Distillery.Kraken.AInstr
+open Distillery.Concretization (ofStateRepr ofStateRepr_pred)
 
-namespace Ascent.Kraken
+namespace Distillery.Kraken
 
 /-- Push an unknown 8-byte word below the stack pointer `r` and return it. -/
 def pushUnknownRegs (r : BitVec 64) : BlockM DataMem Int64 :=
@@ -37,7 +37,7 @@ noncomputable def callRegs (r : BitVec 64) (k : Int64 → BlockM DataMem Unit) :
   tryCatch (do k v; modifyIf (fun _ => False) id) fun l => modifyIf (fun _ => l = v) id
 
 theorem ThrowsOnly.callRegs {P : Int64 → DataMem → Prop} (r : BitVec 64) (k : Int64 → BlockM DataMem Unit) :
-    Ascent.ThrowsOnly P (callRegs r k) = True := eq_true fun Q E s hw => by
+    Distillery.ThrowsOnly P (callRegs r k) = True := eq_true fun Q E s hw => by
   simp only [Kraken.callRegs, WPMonadExact.wp_bind_eq, wp_pushUnknownRegs_fun, BlockLoop.wp_tryCatch,
     wp_modifyIf_fun] at hw ⊢
   exact hw
@@ -114,4 +114,4 @@ theorem Refinement.mono_exit_dmem {CV AV : Type} {c : BlockM MachineData CV} {a 
 
 end
 
-end Ascent.Kraken
+end Distillery.Kraken

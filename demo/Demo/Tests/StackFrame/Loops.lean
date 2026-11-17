@@ -1,24 +1,24 @@
 import Demo.CfgRewrite
 import Kraken.X64.Parser
 import Kraken.X64.PrettyPrint
-import Ascent.Tactic.VCGen.Command
+import Distillery.Tactic.VCGen.Command
 
 /-!
 # Stack frames
 
-Regression tests for the instruction-layer synthesis (`ascend_def`) and the structuring (`sym_simp_def`) of leaf
+Regression tests for the instruction-layer synthesis (`distill_def`) and the structuring (`sym_simp_def`) of leaf
 functions that move `rsp` or access the stack. Every program text in this file is hand-written x64 in
 AT&T syntax, not compiler output. The `#print` of each structured definition records the current
 result.
 -/
 
-open Kraken.X64.Parser Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
-open Ascent.Concretization (ofStateRepr)
+open Kraken.X64.Parser Std.WP Lean.Order Distillery Distillery.Kraken Distillery.Kraken.AInstr
+open Distillery.Concretization (ofStateRepr)
 open scoped Program.WP
 
 set_option experimental.vcgen true
 
-namespace Ascent.Kraken.Tests.StackFrame
+namespace Distillery.Kraken.Tests.StackFrame
 
 /-! ## Word pushes and pops of callee-saved registers
 
@@ -38,10 +38,10 @@ def pushPop : Program := parse("
 
 attribute [local vcgen_simp] pushPop
 
-ascend_def pushPopInstr [Host] [FunDecls] [Embeds pushPop] (r₀ : BitVec 64) (ra : Int64) :
+distill_def pushPopInstr [Host] [FunDecls] [Embeds pushPop] (r₀ : BitVec 64) (ra : Int64) :
     BlockM MachineData Unit from
   ⦃fun s => s.regs.get64 .rsp = r₀ ∧ s.retAddr = some ra⦄ pushPop ⪯[ofStateRepr abs] pushPopInstr ⦃fun _ _ => ⊤; AddrRel r₀ ra⦄
-  ascend [refines_cfg (p := pushPop) (habs := abs_regs)] with finish
+  distill [refines_cfg (p := pushPop) (habs := abs_regs)] with finish
 
 sym_simp_def pushPopLoops [Host] [Embeds pushPop] (r₀ : BitVec 64) (ra : Int64) : BlockM MachineData Unit from pushPopInstr r₀ ra
   using pre [] post [pushPopInstr, pushPop, Program.loop, Program.entryNext, Program.firstLabel, Program.table,
@@ -51,7 +51,7 @@ sym_simp_def pushPopLoops [Host] [Embeds pushPop] (r₀ : BitVec 64) (ra : Int64
     eq_self_iff_true, implies_true, bind_assoc, AInstr.exitIf_bind, bind_pure_unit, pure_bind]
 
 /--
-info: def Ascent.Kraken.Tests.StackFrame.pushPopLoops : BitVec 64 → Int64 → BlockM MachineData Unit :=
+info: def Distillery.Kraken.Tests.StackFrame.pushPopLoops : BitVec 64 → Int64 → BlockM MachineData Unit :=
 fun r₀ ra => do
   modifyIf (storeOk 8 fun st => st.regs.rsp.toBitVec - 8#64)
       (storeWord 8 (fun st => st.regs.rsp.toBitVec - 8#64) fun st => st.regs.rbx.toBitVec)
@@ -90,10 +90,10 @@ def locals : Program := parse("
 
 attribute [local vcgen_simp] locals
 
-ascend_def localsInstr [Host] [FunDecls] [Embeds locals] (r₀ : BitVec 64) (ra : Int64) :
+distill_def localsInstr [Host] [FunDecls] [Embeds locals] (r₀ : BitVec 64) (ra : Int64) :
     BlockM MachineData Unit from
   ⦃fun s => s.regs.get64 .rsp = r₀ ∧ s.retAddr = some ra⦄ locals ⪯[ofStateRepr abs] localsInstr ⦃fun _ _ => ⊤; AddrRel r₀ ra⦄
-  ascend [refines_cfg (p := locals) (habs := abs_regs)] with finish
+  distill [refines_cfg (p := locals) (habs := abs_regs)] with finish
 
 sym_simp_def localsLoops [Host] [Embeds locals] (r₀ : BitVec 64) (ra : Int64) : BlockM MachineData Unit from localsInstr r₀ ra
   using pre [] post [localsInstr, locals, Program.loop, Program.entryNext, Program.firstLabel, Program.table,
@@ -103,7 +103,7 @@ sym_simp_def localsLoops [Host] [Embeds locals] (r₀ : BitVec 64) (ra : Int64) 
     eq_self_iff_true, implies_true, bind_assoc, AInstr.exitIf_bind, bind_pure_unit, pure_bind]
 
 /--
-info: def Ascent.Kraken.Tests.StackFrame.localsLoops : BitVec 64 → Int64 → BlockM MachineData Unit :=
+info: def Distillery.Kraken.Tests.StackFrame.localsLoops : BitVec 64 → Int64 → BlockM MachineData Unit :=
 fun r₀ ra => do
   modifyIf (fun x => True) (setReg64 Reg64.rsp fun st => st.regs.rsp.toBitVec - 16#64)
   modifyIf (storeOk 8 fun st => st.regs.rsp.toBitVec + BitVec.ofInt 64 (Int64.toInt 8))
@@ -135,10 +135,10 @@ def bytes : Program := parse("
 
 attribute [local vcgen_simp] bytes
 
-ascend_def bytesInstr [Host] [FunDecls] [Embeds bytes] (r₀ : BitVec 64) (ra : Int64) :
+distill_def bytesInstr [Host] [FunDecls] [Embeds bytes] (r₀ : BitVec 64) (ra : Int64) :
     BlockM MachineData Unit from
   ⦃fun s => s.regs.get64 .rsp = r₀ ∧ s.retAddr = some ra⦄ bytes ⪯[ofStateRepr abs] bytesInstr ⦃fun _ _ => ⊤; AddrRel r₀ ra⦄
-  ascend [refines_cfg (p := bytes) (habs := abs_regs)] with finish
+  distill [refines_cfg (p := bytes) (habs := abs_regs)] with finish
 
 sym_simp_def bytesLoops [Host] [Embeds bytes] (r₀ : BitVec 64) (ra : Int64) : BlockM MachineData Unit from bytesInstr r₀ ra
   using pre [] post [bytesInstr, bytes, Program.loop, Program.entryNext, Program.firstLabel, Program.table,
@@ -148,7 +148,7 @@ sym_simp_def bytesLoops [Host] [Embeds bytes] (r₀ : BitVec 64) (ra : Int64) : 
     eq_self_iff_true, implies_true, bind_assoc, AInstr.exitIf_bind, bind_pure_unit, pure_bind]
 
 /--
-info: def Ascent.Kraken.Tests.StackFrame.bytesLoops : BitVec 64 → Int64 → BlockM MachineData Unit :=
+info: def Distillery.Kraken.Tests.StackFrame.bytesLoops : BitVec 64 → Int64 → BlockM MachineData Unit :=
 fun r₀ ra => do
   modifyIf (fun x => True) (setReg64 Reg64.rsp fun st => st.regs.rsp.toBitVec - 16#64)
   modifyIf (storeOk 1 fun st => st.regs.rsp.toBitVec + BitVec.ofInt 64 (Int64.toInt 3))
@@ -181,10 +181,10 @@ def halves : Program := parse("
 
 attribute [local vcgen_simp] halves
 
-ascend_def halvesInstr [Host] [FunDecls] [Embeds halves] (r₀ : BitVec 64) (ra : Int64) :
+distill_def halvesInstr [Host] [FunDecls] [Embeds halves] (r₀ : BitVec 64) (ra : Int64) :
     BlockM MachineData Unit from
   ⦃fun s => s.regs.get64 .rsp = r₀ ∧ s.retAddr = some ra⦄ halves ⪯[ofStateRepr abs] halvesInstr ⦃fun _ _ => ⊤; AddrRel r₀ ra⦄
-  ascend [refines_cfg (p := halves) (habs := abs_regs)] with finish
+  distill [refines_cfg (p := halves) (habs := abs_regs)] with finish
 
 sym_simp_def halvesLoops [Host] [Embeds halves] (r₀ : BitVec 64) (ra : Int64) : BlockM MachineData Unit from halvesInstr r₀ ra
   using pre [] post [halvesInstr, halves, Program.loop, Program.entryNext, Program.firstLabel, Program.table,
@@ -194,7 +194,7 @@ sym_simp_def halvesLoops [Host] [Embeds halves] (r₀ : BitVec 64) (ra : Int64) 
     eq_self_iff_true, implies_true, bind_assoc, AInstr.exitIf_bind, bind_pure_unit, pure_bind]
 
 /--
-info: def Ascent.Kraken.Tests.StackFrame.halvesLoops : BitVec 64 → Int64 → BlockM MachineData Unit :=
+info: def Distillery.Kraken.Tests.StackFrame.halvesLoops : BitVec 64 → Int64 → BlockM MachineData Unit :=
 fun r₀ ra => do
   modifyIf (fun x => True) (setReg64 Reg64.rsp fun st => st.regs.rsp.toBitVec - 8#64)
   modifyIf (storeOk 2 fun st => st.regs.rsp.toBitVec - 2#64)
@@ -230,10 +230,10 @@ def redZone : Program := parse("
 
 attribute [local vcgen_simp] redZone
 
-ascend_def redZoneInstr [Host] [FunDecls] [Embeds redZone] (r₀ : BitVec 64) (ra : Int64) :
+distill_def redZoneInstr [Host] [FunDecls] [Embeds redZone] (r₀ : BitVec 64) (ra : Int64) :
     BlockM MachineData Unit from
   ⦃fun s => s.regs.get64 .rsp = r₀ ∧ s.retAddr = some ra⦄ redZone ⪯[ofStateRepr abs] redZoneInstr ⦃fun _ _ => ⊤; AddrRel r₀ ra⦄
-  ascend [refines_cfg (p := redZone) (habs := abs_regs)] with finish
+  distill [refines_cfg (p := redZone) (habs := abs_regs)] with finish
 
 sym_simp_def redZoneLoops [Host] [Embeds redZone] (r₀ : BitVec 64) (ra : Int64) : BlockM MachineData Unit from redZoneInstr r₀ ra
   using pre [] post [redZoneInstr, redZone, Program.loop, Program.entryNext, Program.firstLabel, Program.table,
@@ -243,7 +243,7 @@ sym_simp_def redZoneLoops [Host] [Embeds redZone] (r₀ : BitVec 64) (ra : Int64
     eq_self_iff_true, implies_true, bind_assoc, AInstr.exitIf_bind, bind_pure_unit, pure_bind]
 
 /--
-info: def Ascent.Kraken.Tests.StackFrame.redZoneLoops : BitVec 64 → Int64 → BlockM MachineData Unit :=
+info: def Distillery.Kraken.Tests.StackFrame.redZoneLoops : BitVec 64 → Int64 → BlockM MachineData Unit :=
 fun r₀ ra => do
   modifyIf (storeOk 8 fun st => st.regs.rsp.toBitVec + BitVec.ofInt 64 (-8).toInt)
       (storeWord 8 (fun st => st.regs.rsp.toBitVec + BitVec.ofInt 64 (-8).toInt) fun st => st.regs.rdi.toBitVec)
@@ -258,4 +258,4 @@ fun r₀ ra => do
 #guard_msgs in
 #print redZoneLoops
 
-end Ascent.Kraken.Tests.StackFrame
+end Distillery.Kraken.Tests.StackFrame

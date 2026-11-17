@@ -11,9 +11,9 @@ inputs, the output and the return slot is as it was. The lemmas on the branch co
 tests of the loop on a length below `2 ^ 61`.
 -/
 
-open Std.WP Lean.Order Ascent Ascent.Kraken
+open Std.WP Lean.Order Distillery Distillery.Kraken
 
-namespace Ascent.Kraken
+namespace Distillery.Kraken
 
 /-! ## Arrays of words -/
 
@@ -127,4 +127,4 @@ theorem words_stores_out (hn : n < 2 ^ 61) :
 
 end
 
-end Ascent.Kraken
+end Distillery.Kraken

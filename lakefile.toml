@@ -1,12 +1,12 @@
-name = "ascent"
-defaultTargets = ["Ascent"]
-testDriver = "AscentTests"
+name = "distillery"
+defaultTargets = ["Distillery"]
+testDriver = "DistilleryTests"
 
 [[lean_lib]]
-name = "Ascent"
+name = "Distillery"
 precompileModules = true
 
 [[lean_lib]]
-name = "AscentTests"
+name = "DistilleryTests"
 srcDir = "test"
 leanOptions = { sym.debug = true }

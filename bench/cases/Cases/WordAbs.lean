@@ -1,12 +1,12 @@
-import Ascent.Refinement
-import Ascent.UB
-import Ascent.Tactic.VCGen.Frontend
+import Distillery.Refinement
+import Distillery.Demonic
+import Distillery.Tactic.VCGen.Frontend
 
 /-!
 # Guarded word abstraction: the first synthesis family
 
-The scaling family for ascend: a chain of `n` dependent `UInt64` additions in `Id` is abstracted
-to a guarded `Int` chain in `UB`, related by `⌜wordVal · = ·⌝`. The synthesized program differs
+The scaling family for distill: a chain of `n` dependent `UInt64` additions in `Id` is abstracted
+to a guarded `Int` chain in `Demonic`, related by `⌜wordVal · = ·⌝`. The synthesized program differs
 structurally from the concrete one: each addition acquires a no-overflow guard that rides in the
 abstract program and is threaded by `wp`. This is AutoCorres' word-abstraction phase in
 miniature, built from `bind`/`pure`/leaf rules only.
@@ -16,9 +16,9 @@ engine introduces the related values as free variables, and the continuation hol
 is applied to the abstract one. `wrp_bind` is the bind rule.
 -/
 
-open Std.WP Lean.Order Ascent
+open Std.WP Lean.Order Distillery
 
-namespace AscendBench
+namespace DistillBench
 
 def wordVal : UInt64 → Int := fun w => (w.toNat : Int)
 
@@ -36,8 +36,8 @@ theorem addW_spec (av : Int) (cv y : UInt64) {Q : UInt64 → Int → Prop} {E : 
         (av + wordVal y < 2 ^ 64 → wordVal (cv + y) = av + wordVal y →
           Q (cv + y) (av + wordVal y)) : Prop)⦄
       (pure (cv + y) : Id UInt64)
-      ⪯[γw] ((do UB.assume (av + wordVal y < 2 ^ 64); pure (av + wordVal y))) ⦃Q; E⦄ := by
-  refine Refinement.assume_pure _ _ fun hovf hp => hp.2 hovf ?_
+      ⪯[γw] ((do Demonic.assert (av + wordVal y < 2 ^ 64); pure (av + wordVal y))) ⦃Q; E⦄ := by
+  refine Refinement.assert_pure _ _ fun hovf hp => hp.2 hovf ?_
   obtain ⟨hav, -⟩ := hp
   subst hav
   show wordVal (cv + y) = wordVal cv + wordVal y
@@ -47,10 +47,10 @@ theorem addW_spec (av : Int) (cv y : UInt64) {Q : UInt64 → Int → Prop} {E : 
 
 /-- The fixed-relation form of `addW_spec`, for the hand-written baseline chain: under the
 no-overflow guard, the sum stays related. -/
-@[ascend] theorem refines_addW (av : Int) (cv y : UInt64) {E : EStack⟨⟩} :
+@[distill] theorem refines_addW (av : Int) (cv y : UInt64) {E : EStack⟨⟩} :
     ⦃(⌜wordVal cv = av⌝ : Prop)⦄
       (pure (cv + y) : Id UInt64)
-      ⪯[γw] ((do UB.assume (av + wordVal y < 2 ^ 64); pure (av + wordVal y))) ⦃(⌜wordVal · = ·⌝); E⦄ := by
+      ⪯[γw] ((do Demonic.assert (av + wordVal y < 2 ^ 64); pure (av + wordVal y))) ⦃(⌜wordVal · = ·⌝); E⦄ := by
   refine (addW_spec av cv y).weaken ?_
   simp only [CompleteLattice.ofProp_prop_eq]
   intro hav
@@ -58,16 +58,16 @@ no-overflow guard, the sum stays related. -/
 
 /-- A pure word value is abstracted by its integer image. -/
 theorem pureW_spec (cv : UInt64) {Q : UInt64 → Int → Prop} {E : EStack⟨⟩} :
-    ⦃Q cv (wordVal cv)⦄ (pure cv : Id UInt64) ⪯[γw] (pure (wordVal cv) : UB Int) ⦃Q; E⦄ :=
+    ⦃Q cv (wordVal cv)⦄ (pure cv : Id UInt64) ⪯[γw] (pure (wordVal cv) : Demonic Int) ⦃Q; E⦄ :=
   Refinement.pure _ _
 
 /-- The fixed-relation form of `pureW_spec`: the seed of every chain. -/
-@[ascend] theorem refines_pureW (cv : UInt64) {E : EStack⟨⟩} :
-    ⦃(⊤ : Prop)⦄ (pure cv : Id UInt64) ⪯[γw] (pure (wordVal cv) : UB Int)
+@[distill] theorem refines_pureW (cv : UInt64) {E : EStack⟨⟩} :
+    ⦃(⊤ : Prop)⦄ (pure cv : Id UInt64) ⪯[γw] (pure (wordVal cv) : Demonic Int)
       ⦃(⌜wordVal · = ·⌝); E⦄ :=
   Refinement.pure_eq (f := wordVal) ⊤ cv rfl
 
-attribute [ascend] wrp_bind
+attribute [distill] wrp_bind
 
 /-- The intermediate-relation bind form for the baseline chain: the head establishes `R`, the
 continuations correspond under it. -/
@@ -93,8 +93,8 @@ def chainC (c : UInt64) : Nat → Id UInt64
   | n+1 => do let r ← chainC c n; pure (r + c)
 
 /-- The expected abstract image of `chainC`: the guarded integer chain, for the golden check. -/
-noncomputable def chainA (c : UInt64) : Nat → UB Int
+noncomputable def chainA (c : UInt64) : Nat → Demonic Int
   | 0 => pure (wordVal c)
-  | n+1 => do let r ← chainA c n; (do UB.assume (r + wordVal c < 2 ^ 64); pure (r + wordVal c))
+  | n+1 => do let r ← chainA c n; (do Demonic.assert (r + wordVal c < 2 ^ 64); pure (r + wordVal c))
 
-end AscendBench
+end DistillBench

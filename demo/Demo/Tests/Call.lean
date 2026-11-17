@@ -10,13 +10,13 @@ that hypothesis. Two calls in sequence are defined: a call pushes an unknown wor
 slot, so the slot stays mapped for the next call.
 -/
 
-open Kraken.X64.Parser Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
-open Ascent.Concretization (ofStateRepr ofStateRel)
+open Kraken.X64.Parser Std.WP Lean.Order Distillery Distillery.Kraken Distillery.Kraken.AInstr
+open Distillery.Concretization (ofStateRepr ofStateRel)
 open scoped Program.WP
 
 set_option experimental.vcgen true
 
-namespace Ascent.Kraken.Tests.Call
+namespace Distillery.Kraken.Tests.Call
 
 def caller : Program := parse("
 _caller:
@@ -26,7 +26,7 @@ _caller:
 
 attribute [local vcgen_simp] caller
 
-ascend_def callerA [Host] [FunDecls] [Embeds caller] (g : Fragment) (hg : FunDecls.at (label "_swap") = some g)
+distill_def callerA [Host] [FunDecls] [Embeds caller] (g : Fragment) (hg : FunDecls.at (label "_swap") = some g)
     (k : BitVec 64 → Int64 → BlockM MachineData Unit)
     (hk : ∀ (r : BitVec 64) (ra : Int64),
       ⦃fun s => s.regs.get64 .rsp = r ∧ s.retAddr = some ra⦄ g.prog ⪯[ofStateRepr abs] (k r ra)
@@ -34,10 +34,10 @@ ascend_def callerA [Host] [FunDecls] [Embeds caller] (g : Fragment) (hg : FunDec
     (r₀ : BitVec 64) (ra : Int64) : BlockM MachineData Unit from
   ⦃fun s => s.regs.get64 .rsp = r₀ ∧ s.retAddr = some ra⦄ caller ⪯[ofStateRepr abs] callerA
     ⦃fun _ _ => ⊤; AddrRel r₀ ra⦄
-  ascend [refines_cfg (p := caller) (habs := abs_regs), wrp_call hg _ _ hk] with finish
+  distill [refines_cfg (p := caller) (habs := abs_regs), wrp_call hg _ _ hk] with finish
 
 /--
-info: def Ascent.Kraken.Tests.Call.callerA : [Host] →
+info: def Distillery.Kraken.Tests.Call.callerA : [Host] →
   (BitVec 64 → Int64 → BlockM MachineData Unit) → BitVec 64 → Int64 → BlockM MachineData Unit :=
 fun [Host] k r₀ ra =>
   Program.loop caller r₀
@@ -78,4 +78,4 @@ example (s : MachineData) (h : (Mem.loadInt s.dmem (s.regs.get64 .rsp - 8#64) 8)
     wp_pushUnknown_fun, wp_throw_block]
   simpa [setReg64, MachineData.push64, BitVec.sub_add_cancel, Mem.loadInt_storeInt_64] using h
 
-end Ascent.Kraken.Tests.Call
+end Distillery.Kraken.Tests.Call

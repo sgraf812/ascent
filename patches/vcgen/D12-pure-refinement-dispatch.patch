@@ -1,6 +1,6 @@
-diff -ruN a/Ascent/Tactic/VCGen/RuleConstruction.lean b/Ascent/Tactic/VCGen/RuleConstruction.lean
---- a/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-11-10 01:45:18.398271073 +0000
-+++ b/Ascent/Tactic/VCGen/RuleConstruction.lean	2026-11-08 18:28:32.064610893 +0000
+diff -ruN a/Distillery/Tactic/VCGen/RuleConstruction.lean b/Distillery/Tactic/VCGen/RuleConstruction.lean
+--- a/Distillery/Tactic/VCGen/RuleConstruction.lean	2026-11-10 01:45:18.398271073 +0000
++++ b/Distillery/Tactic/VCGen/RuleConstruction.lean	2026-11-08 18:28:32.064610893 +0000
 @@ -395,41 +395,65 @@
  /-! ## Split rules -/
  
@@ -119,9 +119,9 @@ diff -ruN a/Ascent/Tactic/VCGen/RuleConstruction.lean b/Ascent/Tactic/VCGen/Rule
    let prf ← instantiateMVars prf
    let res ← abstractMVars prf
    mkBackwardRuleFromExpr res.expr res.paramNames.toList
-diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
---- a/Ascent/Tactic/VCGen/Solve.lean	2026-11-10 01:45:18.397275604 +0000
-+++ b/Ascent/Tactic/VCGen/Solve.lean	2026-11-10 01:45:18.320061995 +0000
+diff -ruN a/Distillery/Tactic/VCGen/Solve.lean b/Distillery/Tactic/VCGen/Solve.lean
+--- a/Distillery/Tactic/VCGen/Solve.lean	2026-11-10 01:45:18.397275604 +0000
++++ b/Distillery/Tactic/VCGen/Solve.lean	2026-11-10 01:45:18.320061995 +0000
 @@ -393,14 +393,210 @@
      | .noProgress => return none
    | _ => return none
@@ -220,7 +220,7 @@ diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
 +  let mut goal := goal
 +  let mut filled : Option (MetavarDecl × Array Expr × Expr) := none
 +  let abs ← instantiateMVarsIfMVarAppS info.abs
-+  if abs.isAppOfArity ``Ascent.Table.get 6 then
++  if abs.isAppOfArity ``Distillery.Table.get 6 then
 +    if let some (decl?, b) ← tableCell abs then
 +      if let some decl := decl? then filled := some (decl, #[], b)
 +      goal ← setAbs goal info b
@@ -238,7 +238,7 @@ diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
 +        let mut doms := #[]
 +        for _ in [0:xs.size] do
 +          let .forallE nm d body _ := ty
-+            | throwError "ascend: the hole {mkMVar hole} applied to {xs} has no function type"
++            | throwError "distill: the hole {mkMVar hole} applied to {xs} has no function type"
 +          doms := doms.push (nm, d)
 +          ty := body
 +        hole.assign <| doms.foldr (fun (nm, d) acc => .lam nm d acc .default) b
@@ -314,7 +314,7 @@ diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
 +  let px ← betaS p #[x]
 +  let target ← goal.getType
 +  let g ← mkFreshExprSyntheticOpaqueMVar (← mkAppNS target.getAppFn (target.getAppArgs.set! 3 px))
-+  goal.assign (mkApp5 (mkConst ``Ascent.le_exists_of_le [← Sym.getLevel β]) β pre p x g)
++  goal.assign (mkApp5 (mkConst ``Distillery.le_exists_of_le [← Sym.getLevel β]) β pre p x g)
 +  return some g.mvarId!
 +
  /-- Strategy 11b: split an `ite`/`dite`/`cond`/match program, or iota-reduce a matcher with a
@@ -327,7 +327,7 @@ diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
    let .goals goals ← rule.applyChecked goal m!"split rule for{indentExpr info.prog}"
      | throwError "Failed to apply split rule for {indentExpr info.prog}"
 +  unless ← filledInScope filled do
-+    throwError "ascend: the abstract split of{indentExpr info.prog}\nmentions a variable outside \
++    throwError "distill: the abstract split of{indentExpr info.prog}\nmentions a variable outside \
 +      the context of the abstract program"
 +  restoreHoleScope filled
    let mut simpGoals := #[]
@@ -347,7 +347,7 @@ diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
 -  let mut goal := goal
 -  let mut filled : Option (LocalContext × Array Expr × Expr) := none
 -  let abs ← instantiateMVarsIfMVarAppS info.abs
--  if abs.isAppOfArity ``Ascent.Table.get 6 then
+-  if abs.isAppOfArity ``Distillery.Table.get 6 then
 -    if let some (lctx?, b) ← tableCell abs then
 -      if let some lctx := lctx? then filled := some (lctx, #[], b)
 -      goal ← setAbs goal info b
@@ -365,7 +365,7 @@ diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
 -        let mut doms := #[]
 -        for _ in [0:xs.size] do
 -          let .forallE nm d body _ := ty
--            | throwError "ascend: the hole {mkMVar hole} applied to {xs} has no function type"
+-            | throwError "distill: the hole {mkMVar hole} applied to {xs} has no function type"
 -          doms := doms.push (nm, d)
 -          ty := body
 -        hole.assign <| doms.foldr (fun (nm, d) acc => .lam nm d acc .default) b
@@ -394,14 +394,14 @@ diff -ruN a/Ascent/Tactic/VCGen/Solve.lean b/Ascent/Tactic/VCGen/Solve.lean
    if let some gs ← liftedHyp? scope goal α pre rhs then return .goals scope gs
  
    -- Phase 4: wp decomposition. The program-shape steps below all consume one unit of fuel
-diff -ruN a/Ascent/Tactic/VCGen/Driver.lean b/Ascent/Tactic/VCGen/Driver.lean
---- a/Ascent/Tactic/VCGen/Driver.lean	2026-11-10 01:45:18.397781646 +0000
-+++ b/Ascent/Tactic/VCGen/Driver.lean	2026-11-09 14:36:34.738166648 +0000
+diff -ruN a/Distillery/Tactic/VCGen/Driver.lean b/Distillery/Tactic/VCGen/Driver.lean
+--- a/Distillery/Tactic/VCGen/Driver.lean	2026-11-10 01:45:18.397781646 +0000
++++ b/Distillery/Tactic/VCGen/Driver.lean	2026-11-09 14:36:34.738166648 +0000
 @@ -9,6 +9,7 @@
  import Lean.Elab.Tactic.VCGen.Context
  import Lean.Elab.Tactic.VCGen.Solve
- import Ascent.Tactic.VCGen.Solve
-+import Ascent.Tactic.VCGen.PureRefinement
+ import Distillery.Tactic.VCGen.Solve
++import Distillery.Tactic.VCGen.PureRefinement
  import Lean.Meta.Sym.Grind
  import Lean.Elab.Tactic.VCGen.Driver
  

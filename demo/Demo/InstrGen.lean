@@ -12,11 +12,11 @@ registers and the cleared flags of `abs s`, and a memory related to the memory o
 the same result. A rule of `Demo.Instr` whose abstract program is monotone holds for every `JRel M`.
 -/
 
-open Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
-open Ascent.Concretization (ofStateRepr ofStateRel ofStateRepr_pred ofStateRel_pred)
+open Std.WP Lean.Order Distillery Distillery.Kraken Distillery.Kraken.AInstr
+open Distillery.Concretization (ofStateRepr ofStateRel ofStateRepr_pred ofStateRel_pred)
 open scoped Program.WP
 
-namespace Ascent.Kraken
+namespace Distillery.Kraken
 
 /-! ## Monotone abstract programs -/
 
@@ -233,33 +233,33 @@ elab "derive_rel_rules " ids:ident+ : command => do
       let levels := info.levelParams.map Level.param
       let memTy ← mkArrow (mkConst ``DataMem) (← mkArrow (mkConst ``DataMem) (mkSort 0))
       withLocalDecl `M .implicit memTy fun M => do
-      withLocalDecl `inst .instImplicit (mkApp (mkConst ``Ascent.Kraken.MemRel) M) fun inst => do
+      withLocalDecl `inst .instImplicit (mkApp (mkConst ``Distillery.Kraken.MemRel) M) fun inst => do
       forallTelescope info.type fun xs body => do
-        let γ ← mkAppM ``Ascent.Concretization.ofStateRel #[mkApp (mkConst ``Ascent.Kraken.JRel) M]
+        let γ ← mkAppM ``Distillery.Concretization.ofStateRel #[mkApp (mkConst ``Distillery.Kraken.JRel) M]
         let body' := body.replace fun e =>
-          if e.isAppOfArity ``Ascent.Concretization.ofStateRepr 3 && e.appArg!.isConstOf ``Ascent.Kraken.abs
+          if e.isAppOfArity ``Distillery.Concretization.ofStateRepr 3 && e.appArg!.isConstOf ``Distillery.Kraken.abs
           then some γ else none
         let w := body.appArg!
         let x := w.getArg! (w.getAppNumArgs - 3)
-        let monoTy ← mkAppM ``Ascent.Kraken.MonoRun #[M, x]
+        let monoTy ← mkAppM ``Distillery.Kraken.MonoRun #[M, x]
         let mono ← Term.elabTermEnsuringType (← `(by mono_run)) monoTy
         Term.synthesizeSyntheticMVarsNoPostponing
         let orig := mkAppN (mkConst name levels) xs
-        let pf ← mkAppM ``Ascent.Kraken.wrp_rel_of_abs #[← instantiateMVars mono, orig]
+        let pf ← mkAppM ``Distillery.Kraken.wrp_rel_of_abs #[← instantiateMVars mono, orig]
         let pf ← instantiateMVars pf
         let ty ← mkForallFVars (#[M, inst] ++ xs) body'
         let val ← mkLambdaFVars (#[M, inst] ++ xs) pf
         unless ← isDefEq (← inferType val) ty do
           throwError "derive_rel_rules: the derived proof of {name} has the wrong type"
         addDecl <| .thmDecl { name := newName, levelParams := info.levelParams, type := ty, value := val }
-    elabCommand (← `(command| attribute [ascend] $(mkIdent newName)))
+    elabCommand (← `(command| attribute [distill] $(mkIdent newName)))
 
-end Ascent.Kraken
-
-
+end Distillery.Kraken
 
 
-namespace Ascent.Kraken.AInstr
+
+
+namespace Distillery.Kraken.AInstr
 
 derive_rel_rules wrp_movRegSib8 wrp_addRegSib8 wrp_movSib8Reg wrp_incReg wrp_xorReg32Reg32 wrp_ret
   wrp_movzxRegSib1 wrp_movSib1Reg8 wrp_movRegReg wrp_jmp wrp_jcc wrp_decReg wrp_movRegImm
@@ -267,15 +267,15 @@ derive_rel_rules wrp_movRegSib8 wrp_addRegSib8 wrp_movSib8Reg wrp_incReg wrp_xor
   wrp_subRegImm wrp_addRegImm wrp_movMemReg8 wrp_movMemReg16 wrp_movReg8Mem wrp_movReg16Mem
   wrp_movzxRegMem1 wrp_pushReg16 wrp_popReg16
 
-end Ascent.Kraken.AInstr
+end Distillery.Kraken.AInstr
 
-namespace Ascent.Kraken.AInstr
+namespace Distillery.Kraken.AInstr
 
 section
 variable [Host] [FunDecls] {M : DataMem → DataMem → Prop} [MemRel M]
   {Q : Unit → Unit → MachineData → Prop}
 
-@[ascend default + 1] theorem wrp_ret_cons_rel {r₀ : BitVec 64} {ra₀ : Int64} (asz osz : Width) (p : Program)
+@[distill default + 1] theorem wrp_ret_cons_rel {r₀ : BitVec 64} {ra₀ : Int64} (asz osz : Width) (p : Program)
     (hN : Program.labels (Directive.instr (.regular asz osz .ret) :: p) = []) :
     (fun _ => True)
       ⊑ wrp (ofStateRel (JRel M)) (Directive.instr (.regular asz osz .ret) :: p)
@@ -284,7 +284,7 @@ variable [Host] [FunDecls] {M : DataMem → DataMem → Prop} [MemRel M]
   rw [← exitIf_bind _ _ _ (fun _ => pure ())]
   exact PartialOrder.rel_trans (wrp_ret_rel asz osz) (wrp_cons _ p _ (fun _ => pure ()) hN)
 
-@[ascend default + 1] theorem wrp_jmp_cons_rel {r₀ : BitVec 64} {ra₀ : Int64} (asz osz : Width) (l : Label)
+@[distill default + 1] theorem wrp_jmp_cons_rel {r₀ : BitVec 64} {ra₀ : Int64} (asz osz : Width) (l : Label)
     (p : Program)
     (hN : Program.labels (Directive.instr (.regular asz osz
       (.jmp (.rel (.sub (.label l) .after_current_instruction)))) :: p) = []) :
@@ -297,7 +297,7 @@ variable [Host] [FunDecls] {M : DataMem → DataMem → Prop} [MemRel M]
 
 end
 
-end Ascent.Kraken.AInstr
+end Distillery.Kraken.AInstr
 
 /-! ## Address computations, 32-bit immediates, and comparisons that a later branch reads
 
@@ -306,7 +306,7 @@ a later `jcc` reads binds its two operands with `peek`; the branch reads the con
 flags as the comparison of the bound values (`abs_interp_ofSub`), so instructions that keep the
 flags may run between the two. -/
 
-namespace Ascent.Kraken.AInstr
+namespace Distillery.Kraken.AInstr
 
 section
 variable [Host] [FunDecls] {Q : Unit → MachineData → Prop} {E : Int64 → MachineData → Prop}
@@ -347,7 +347,7 @@ section
 variable [Host] [FunDecls] {Q : Unit → Unit → MachineData → Prop}
   {E : Int64 → Int64 → MachineData → Prop}
 
-@[ascend] theorem wrp_leaSib (rd b i : Reg64) (d : Int64) :
+@[distill] theorem wrp_leaSib (rd b i : Reg64) (d : Int64) :
     (fun s => True → Q () () { s with regs := s.regs.set64 rd (s.regs.get64 b + s.regs.get64 i * 8 + BitVec.ofInt 64 d.toInt) })
       ⊑ wrp (ofStateRepr abs)
           (Directive.instr (.regular .W64 .W64 (.lea (.low rd .W64) ⟨some (.reg b), some ⟨i, .W64⟩, .int64 d⟩)))
@@ -357,7 +357,7 @@ variable [Host] [FunDecls] {Q : Unit → Unit → MachineData → Prop}
   intro s _
   exact ⟨trivial, rfl⟩
 
-@[ascend] theorem wrp_leaBaseDisp (rd b : Reg64) (d : Int64) :
+@[distill] theorem wrp_leaBaseDisp (rd b : Reg64) (d : Int64) :
     (fun s => True → Q () () { s with regs := s.regs.set64 rd (s.regs.get64 b + BitVec.ofInt 64 d.toInt) })
       ⊑ wrp (ofStateRepr abs)
           (Directive.instr (.regular .W64 .W64 (.lea (.low rd .W64) ⟨some (.reg b), none, .int64 d⟩)))
@@ -367,7 +367,7 @@ variable [Host] [FunDecls] {Q : Unit → Unit → MachineData → Prop}
   intro s _
   exact ⟨trivial, rfl⟩
 
-@[ascend] theorem wrp_movReg32Imm (asz : Width) (r : Reg64) (i : Int64) :
+@[distill] theorem wrp_movReg32Imm (asz : Width) (r : Reg64) (i : Int64) :
     (fun s => True → Q () () { s with regs := s.regs.set64 r ((i.toBitVec.setWidth 32).zeroExtend 64) })
       ⊑ wrp (ofStateRepr abs)
           (Directive.instr (.regular asz .W32 (.mov (.reg (.low r .W32)) (.imm (.int64 i)))))
@@ -377,7 +377,7 @@ variable [Host] [FunDecls] {Q : Unit → Unit → MachineData → Prop}
   intro s _
   exact ⟨trivial, rfl⟩
 
-@[ascend] theorem wrp_cmpRegReg (asz : Width) (ra rb : Reg64)
+@[distill] theorem wrp_cmpRegReg (asz : Width) (ra rb : Reg64)
     {Qp : Unit → BitVec 64 × BitVec 64 → MachineData → Prop} :
     (fun s => ∀ p, PureRefinement (s.regs.get64 ra, s.regs.get64 rb) p True Eq →
       Qp () p { s with status := StatusFlags.ofSub (s.regs.get64 ra) (s.regs.get64 rb) })
@@ -393,7 +393,7 @@ variable [Host] [FunDecls] {Q : Unit → Unit → MachineData → Prop}
   rw [Concretization.post_pi]
   exact ⟨_, hk _ (PureRefinement.of_rel rfl), hw⟩
 
-@[ascend] theorem wrp_cmpRegImm (asz : Width) (r : Reg64) (i : Int64)
+@[distill] theorem wrp_cmpRegImm (asz : Width) (r : Reg64) (i : Int64)
     {Qp : Unit → BitVec 64 × BitVec 64 → MachineData → Prop} :
     (fun s => ∀ p, PureRefinement (s.regs.get64 r, BitVec.setWidth 64 i.toBitVec) p True Eq →
       Qp () p { s with status := StatusFlags.ofSub (s.regs.get64 r) (BitVec.setWidth 64 i.toBitVec) })
@@ -411,21 +411,21 @@ variable [Host] [FunDecls] {Q : Unit → Unit → MachineData → Prop}
 
 end
 
-@[ascend_pure] theorem abs_interp_ofSub {cc : CondCode} {a b : BitVec 64} {p : BitVec 64 × BitVec 64}
+@[distill_pure] theorem abs_interp_ofSub {cc : CondCode} {a b : BitVec 64} {p : BitVec 64 × BitVec 64}
     {P : Prop} (h : PureRefinement (a, b) p P Eq) :
     PureRefinement (cc.interp (StatusFlags.ofSub a b)) (cc.cmp p.1 p.2) P Eq :=
   fun hp => by rw [CondCode.interp_ofSub, ← h hp]
 
 derive_rel_rules wrp_leaSib wrp_leaBaseDisp wrp_movReg32Imm wrp_cmpRegReg wrp_cmpRegImm
 
-end Ascent.Kraken.AInstr
+end Distillery.Kraken.AInstr
 
 
 /-! ## Jumps under the block exit relation
 
 The jump rules for `BlockExit p r₀ E`: a jump that stays in the frame goes to a label of `p`. -/
 
-namespace Ascent.Kraken.AInstr
+namespace Distillery.Kraken.AInstr
 
 theorem stayIn_jrel {M : DataMem → DataMem → Prop} {r₀ : BitVec 64} {s a : MachineData} (h : JRel M s a) :
     stayIn r₀ a = stayIn r₀ s := by
@@ -439,7 +439,7 @@ theorem blockExit_jump [Host] {M : DataMem → DataMem → Prop} {p : Program} {
 section
 variable [Host] [FunDecls] {Q : Unit → Unit → MachineData → Prop}
 
-@[ascend] theorem wrp_jmp_blk {M : DataMem → DataMem → Prop} {p : Program} {r₀ : BitVec 64} {E : Int64 → Int64 → MachineData → Prop} (asz osz : Width) (l : Label) :
+@[distill] theorem wrp_jmp_blk {M : DataMem → DataMem → Prop} {p : Program} {r₀ : BitVec 64} {E : Int64 → Int64 → MachineData → Prop} (asz osz : Width) (l : Label) :
     (fun s => l ∈ Program.labels p)
       ⊑ wrp (ofStateRel (JRel M))
           (Directive.instr (.regular asz osz (.jmp (.rel (.sub (.label l) .after_current_instruction)))))
@@ -454,7 +454,7 @@ variable [Host] [FunDecls] {Q : Unit → Unit → MachineData → Prop}
     ofStateRel_pred]
   exact ⟨label l, blockExit_jump hJ hw.1 hmem, a, hJ, hw.2⟩
 
-@[ascend] theorem wrp_jcc_blk {M : DataMem → DataMem → Prop} {p : Program} {r₀ : BitVec 64} {E : Int64 → Int64 → MachineData → Prop} (asz osz : Width) (cc : CondCode) (l : Label) (b : Bool) :
+@[distill] theorem wrp_jcc_blk {M : DataMem → DataMem → Prop} {p : Program} {r₀ : BitVec 64} {E : Int64 → Int64 → MachineData → Prop} (asz osz : Width) (cc : CondCode) (l : Label) (b : Bool) :
     (fun s => PureRefinement (cc.interp s.status) b True Eq ∧
       (b = true → l ∈ Program.labels p) ∧ (b = false → Q () () s))
       ⊑ wrp (ofStateRel (JRel M)) (Directive.instr (.regular asz osz (.jcc cc l)))
@@ -478,7 +478,7 @@ variable [Host] [FunDecls] {Q : Unit → Unit → MachineData → Prop}
       ofStateRel_pred]
     exact ⟨(), hfall h, a, hJ, hw⟩
 
-@[ascend default + 1] theorem wrp_cmpJcc_blk {M : DataMem → DataMem → Prop} {p : Program} {r₀ : BitVec 64} {E : Int64 → Int64 → MachineData → Prop} (asz₁ asz₂ osz : Width) (ra rb : Reg64) (cc : CondCode)
+@[distill default + 1] theorem wrp_cmpJcc_blk {M : DataMem → DataMem → Prop} {p : Program} {r₀ : BitVec 64} {E : Int64 → Int64 → MachineData → Prop} (asz₁ asz₂ osz : Width) (ra rb : Reg64) (cc : CondCode)
     (l : Label) (p : Program) (k : Unit → BlockM MachineData Unit)
     (hN : Program.labels (Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p) = []) :
     (fun s =>
@@ -520,7 +520,7 @@ variable [Host] [FunDecls] {Q : Unit → Unit → MachineData → Prop}
     (Program.WP.Spec.cmp_reg_reg asz₁ ra rb).le_wp s (Program.wp_cons hN h₂)
   exact Program.wp_cons (by rw [Program.labels_cons_instr]; exact hN) h₁
 
-@[ascend default + 1] theorem wrp_testJcc_blk {M : DataMem → DataMem → Prop} {p : Program} {r₀ : BitVec 64} {E : Int64 → Int64 → MachineData → Prop} (asz₁ asz₂ osz : Width) (ra rb : Reg64) (cc : CondCode)
+@[distill default + 1] theorem wrp_testJcc_blk {M : DataMem → DataMem → Prop} {p : Program} {r₀ : BitVec 64} {E : Int64 → Int64 → MachineData → Prop} (asz₁ asz₂ osz : Width) (ra rb : Reg64) (cc : CondCode)
     (l : Label) (p : Program) (k : Unit → BlockM MachineData Unit)
     (hN : Program.labels (Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p) = []) :
     (fun s => ∀ af : Bool,
@@ -565,7 +565,7 @@ variable [Host] [FunDecls] {Q : Unit → Unit → MachineData → Prop}
     (Program.WP.Spec.test_reg_reg asz₁ ra rb).le_wp s fun af => Program.wp_cons hN (h₂ af)
   exact Program.wp_cons (by rw [Program.labels_cons_instr]; exact hN) h₁
 
-@[ascend default + 1] theorem wrp_subJcc_blk {M : DataMem → DataMem → Prop} {p : Program} {r₀ : BitVec 64} {E : Int64 → Int64 → MachineData → Prop} (asz₁ asz₂ osz : Width) (rd rs : Reg64) (cc : CondCode)
+@[distill default + 1] theorem wrp_subJcc_blk {M : DataMem → DataMem → Prop} {p : Program} {r₀ : BitVec 64} {E : Int64 → Int64 → MachineData → Prop} (asz₁ asz₂ osz : Width) (rd rs : Reg64) (cc : CondCode)
     (l : Label) (p : Program) (k : Unit → BlockM MachineData Unit)
     (hN : Program.labels (Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p) = []) :
     (fun s =>
@@ -612,7 +612,7 @@ variable [Host] [FunDecls] {Q : Unit → Unit → MachineData → Prop}
     (Spec.sub_reg_reg asz₁ rd rs).le_wp s (Program.wp_cons hN h₂)
   exact Program.wp_cons (by rw [Program.labels_cons_instr]; exact hN) h₁
 
-@[ascend default + 2] theorem wrp_cmpJccJcc_blk {M : DataMem → DataMem → Prop} {p : Program} {r₀ : BitVec 64} {E : Int64 → Int64 → MachineData → Prop} (asz₁ asz₂ asz₃ osz₂ osz₃ : Width) (ra rb : Reg64)
+@[distill default + 2] theorem wrp_cmpJccJcc_blk {M : DataMem → DataMem → Prop} {p : Program} {r₀ : BitVec 64} {E : Int64 → Int64 → MachineData → Prop} (asz₁ asz₂ asz₃ osz₂ osz₃ : Width) (ra rb : Reg64)
     (c₁ c₂ : CondCode) (l₁ l₂ : Label) (p : Program) (k : Unit → BlockM MachineData Unit)
     (hN₂ : Program.labels (Directive.instr (.regular asz₂ osz₂ (.jcc c₁ l₁))
       :: Directive.instr (.regular asz₃ osz₃ (.jcc c₂ l₂)) :: p) = [])
@@ -678,7 +678,7 @@ variable [Host] [FunDecls] {Q : Unit → Unit → MachineData → Prop}
     (Program.WP.Spec.cmp_reg_reg asz₁ ra rb).le_wp s (Program.wp_cons hN₂ h₂)
   exact Program.wp_cons (by rw [Program.labels_cons_instr]; exact hN₂) h₁
 
-@[ascend default + 1] theorem wrp_testJcc8_blk {M : DataMem → DataMem → Prop} {p : Program} {r₀ : BitVec 64} {E : Int64 → Int64 → MachineData → Prop} (asz₁ asz₂ osz : Width) (ra rb : Reg64) (cc : CondCode)
+@[distill default + 1] theorem wrp_testJcc8_blk {M : DataMem → DataMem → Prop} {p : Program} {r₀ : BitVec 64} {E : Int64 → Int64 → MachineData → Prop} (asz₁ asz₂ osz : Width) (ra rb : Reg64) (cc : CondCode)
     (l : Label) (p : Program) (k : Unit → BlockM MachineData Unit)
     (hN : Program.labels (Directive.instr (.regular asz₂ osz (.jcc cc l)) :: p) = []) :
     (fun s => ∀ af : Bool,
@@ -729,4 +729,4 @@ variable [Host] [FunDecls] {Q : Unit → Unit → MachineData → Prop}
 
 end
 
-end Ascent.Kraken.AInstr
+end Distillery.Kraken.AInstr

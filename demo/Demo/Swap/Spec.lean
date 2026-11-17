@@ -8,13 +8,13 @@ memory at the return is the memory with the word of `q` stored at `p`, then the 
 `q`.
 -/
 
-open Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
-open Ascent.Concretization (ofStateRepr)
+open Std.WP Lean.Order Distillery Distillery.Kraken Distillery.Kraken.AInstr
+open Distillery.Concretization (ofStateRepr)
 open scoped Program.WP
 
 set_option experimental.vcgen true
 
-namespace Ascent.Kraken
+namespace Distillery.Kraken
 
 theorem swapL_spec (p q : BitVec 64) (r₀ : BitVec 64) (ra : Int64) (m : DataMem)
     (hp : Mem.Mapped [(p, 8)] m) (hq : Mem.Mapped [(q, 8)] m)
@@ -123,4 +123,4 @@ theorem swap_call (hs : FunDecls.at (label "_swap") = some ⟨swap⟩) (asz osz 
 
 end
 
-end Ascent.Kraken
+end Distillery.Kraken

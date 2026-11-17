@@ -1,7 +1,7 @@
 /-!
 # MWE: `grind` closes a heap-congruence goal order-sensitively
 
-Extracted from the `corres_stepL2` loop-body VC in `test/AscentTests/ZipWithAdd.lean`. Proving the
+Extracted from the `corres_stepL2` loop-body VC in `test/DistilleryTests/ZipWithAdd.lean`. Proving the
 loop invariant on the post-state reduces to a heap equality
 `upd heap (n1 + a2) (heap (n1 + a1)) = upd h (out + i) (h (a + i))`, given `heap = h` and the read
 facts that pin `n1 = i`, `a1 = a`, `a2 = out` through constructor injectivity.

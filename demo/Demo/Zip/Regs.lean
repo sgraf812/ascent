@@ -3,7 +3,7 @@ import Demo.Regs
 /-!
 # `zipWithAdd` with its registers lifted
 
-`zipWithAddRegs₀` is `zipWithAddLoops` over the data memory alone, synthesized by `ascend`, and
+`zipWithAddRegs₀` is `zipWithAddLoops` over the data memory alone, synthesized by `distill`, and
 `zipWithAddRegs` is `zipWithAddRegs₀` with its branch conditions stated as comparisons of the values. The lifting
 relation `RegsRel` names the registers that become values: `rdi`, `rsi`, `rdx`, `rcx` and `rsp` are
 parameters, and `rax` is the value of the loop. `zipWithAddRegs` takes the stack pointer of the entry
@@ -12,17 +12,17 @@ values of `r8` as variables and keeps the guards of the instruction layer: a loa
 mapped cell, and the return needs the return address of `r₀ ra` in the return slot.
 -/
 
-open Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
-open Ascent.Concretization (ofStateRepr)
+open Std.WP Lean.Order Distillery Distillery.Kraken Distillery.Kraken.AInstr
+open Distillery.Concretization (ofStateRepr)
 
-namespace Ascent.Kraken
+namespace Distillery.Kraken
 
-ascend_def zipWithAddRegs₀ (rdi rsi rdx rcx rsp : BitVec 64) (r₀ : BitVec 64) (ra : Int64) :
+distill_def zipWithAddRegs₀ (rdi rsi rdx rcx rsp : BitVec 64) (r₀ : BitVec 64) (ra : Int64) :
     BlockM DataMem Unit from
   ⦃RegsRel [(.rdi, rdi), (.rsi, rsi), (.rdx, rdx), (.rcx, rcx), (.rsp, rsp)]⦄
   (zipWithAddLoops r₀ ra) ⪯[ofStateRepr MachineData.dmem] zipWithAddRegs₀
   ⦃fun _ _ _ => True; (fun l l' t => l = l' ∧ t.regs.get64 .rsp = r₀ + 8, estack⟨⟩)⦄
-  ascend [zipWithAddLoops, wrp_forIn_lockstep_unit (R := _)]
+  distill [zipWithAddLoops, wrp_forIn_lockstep_unit (R := _)]
   invariants
   · fun _ t rax => RegsRel [(.rdi, rdi), (.rsi, rsi), (.rdx, rdx), (.rcx, rcx), (.rsp, rsp),
       (.rax, rax)] t
@@ -43,7 +43,7 @@ theorem zipWithAddRegs.refines (rdi rsi rdx rcx : BitVec 64) (rsp : BitVec 64) (
   zipWithAddRegs.eq rdi rsi rdx rcx rsp ra ▸ zipWithAddRegs₀.refines rdi rsi rdx rcx rsp rsp ra
 
 /--
-info: def Ascent.Kraken.zipWithAddRegs : BitVec 64 →
+info: def Distillery.Kraken.zipWithAddRegs : BitVec 64 →
   BitVec 64 → BitVec 64 → BitVec 64 → BitVec 64 → Int64 → BlockM DataMem Unit :=
 fun rdi rsi rdx rcx rsp ra =>
   if rcx.toInt ≤ 0 then do
@@ -64,4 +64,4 @@ fun rdi rsi rdx rcx rsp ra =>
 #guard_msgs in
 #print zipWithAddRegs
 
-end Ascent.Kraken
+end Distillery.Kraken

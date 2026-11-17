@@ -6,7 +6,7 @@ import Demo.Zip.Loops
 A program over `MachineData` refines a program over the data memory alone, under
 `ofStateRepr MachineData.dmem`. A register read in the concrete program becomes a value of the
 abstract program: the hypothesis `PureRefinement (t.regs.get64 r) x True Eq` relates the register
-`r` of the state `t` to the abstract value `x`, and the `@[ascend_pure]` rules below abstract a
+`r` of the state `t` to the abstract value `x`, and the `@[distill_pure]` rules below abstract a
 value computed from registers to the same computation on the abstract values. A step that writes a
 register binds the abstract value of the written value to a variable of the abstract program.
 
@@ -17,10 +17,10 @@ exit `exitIf g f l` whose guard `g` reads a mapped word becomes `assert g'; thro
 `g'` restated over the data memory.
 -/
 
-open Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
-open Ascent.Concretization (ofStateRepr ofStateRepr_pred)
+open Std.WP Lean.Order Distillery Distillery.Kraken Distillery.Kraken.AInstr
+open Distillery.Concretization (ofStateRepr ofStateRepr_pred)
 
-namespace Ascent.Kraken
+namespace Distillery.Kraken
 
 /-! ## Memory steps -/
 
@@ -117,65 +117,65 @@ attribute [vcgen_simp] RegsRel
 section
 variable {w : Nat} {a b x y : BitVec w} {P₁ P₂ : Prop}
 
-@[ascend_pure] theorem abs_add (h₁ : PureRefinement a x P₁ Eq) (h₂ : PureRefinement b y P₂ Eq) :
+@[distill_pure] theorem abs_add (h₁ : PureRefinement a x P₁ Eq) (h₂ : PureRefinement b y P₂ Eq) :
     PureRefinement (a + b) (x + y) (P₁ ∧ P₂) Eq := fun ⟨hp₁, hp₂⟩ => by
   rw [h₁ hp₁, h₂ hp₂]
 
-@[ascend_pure] theorem abs_sub (h₁ : PureRefinement a x P₁ Eq) (h₂ : PureRefinement b y P₂ Eq) :
+@[distill_pure] theorem abs_sub (h₁ : PureRefinement a x P₁ Eq) (h₂ : PureRefinement b y P₂ Eq) :
     PureRefinement (a - b) (x - y) (P₁ ∧ P₂) Eq := fun ⟨hp₁, hp₂⟩ => by
   rw [h₁ hp₁, h₂ hp₂]
 
-@[ascend_pure] theorem abs_beq (h₁ : PureRefinement a x P₁ Eq) (h₂ : PureRefinement b y P₂ Eq) :
+@[distill_pure] theorem abs_beq (h₁ : PureRefinement a x P₁ Eq) (h₂ : PureRefinement b y P₂ Eq) :
     PureRefinement (a == b) (x == y) (P₁ ∧ P₂) Eq := fun ⟨hp₁, hp₂⟩ => by
   rw [h₁ hp₁, h₂ hp₂]
 
-@[ascend_pure] theorem abs_mul (h₁ : PureRefinement a x P₁ Eq) (h₂ : PureRefinement b y P₂ Eq) :
+@[distill_pure] theorem abs_mul (h₁ : PureRefinement a x P₁ Eq) (h₂ : PureRefinement b y P₂ Eq) :
     PureRefinement (a * b) (x * y) (P₁ ∧ P₂) Eq := fun ⟨hp₁, hp₂⟩ => by
   rw [h₁ hp₁, h₂ hp₂]
 
-@[ascend_pure] theorem abs_and (h₁ : PureRefinement a x P₁ Eq) (h₂ : PureRefinement b y P₂ Eq) :
+@[distill_pure] theorem abs_and (h₁ : PureRefinement a x P₁ Eq) (h₂ : PureRefinement b y P₂ Eq) :
     PureRefinement (a &&& b) (x &&& y) (P₁ ∧ P₂) Eq := fun ⟨hp₁, hp₂⟩ => by
   rw [h₁ hp₁, h₂ hp₂]
 
-@[ascend_pure] theorem abs_ushiftRight (k : Nat) (h₁ : PureRefinement a x P₁ Eq) :
+@[distill_pure] theorem abs_ushiftRight (k : Nat) (h₁ : PureRefinement a x P₁ Eq) :
     PureRefinement (a.ushiftRight k) (x.ushiftRight k) P₁ Eq := fun hp₁ => by
   rw [h₁ hp₁]
 
-@[ascend_pure] theorem abs_cmp {cc : CondCode} {a b x y : BitVec 64}
+@[distill_pure] theorem abs_cmp {cc : CondCode} {a b x y : BitVec 64}
     (h₁ : PureRefinement a x P₁ Eq) (h₂ : PureRefinement b y P₂ Eq) :
     PureRefinement (cc.cmp a b) (cc.cmp x y) (P₁ ∧ P₂) Eq := fun ⟨hp₁, hp₂⟩ => by
   rw [h₁ hp₁, h₂ hp₂]
 
-@[ascend_pure] theorem abs_sib {t : MachineData} {k : Nat} {b i : Reg64} {d : Int64} {x y : BitVec 64}
+@[distill_pure] theorem abs_sib {t : MachineData} {k : Nat} {b i : Reg64} {d : Int64} {x y : BitVec 64}
     (hb : PureRefinement (t.regs.get64 b) x P₁ Eq) (hi : PureRefinement (t.regs.get64 i) y P₂ Eq) :
     PureRefinement (sib k b i d t) (x + y * BitVec.ofNat 64 k + BitVec.ofInt 64 d.toInt) (P₁ ∧ P₂) Eq :=
   fun ⟨hp₁, hp₂⟩ => by rw [sib, hb hp₁, hi hp₂]
 
-@[ascend_pure] theorem abs_not {c d : Bool} (h : PureRefinement c d P₁ Eq) :
+@[distill_pure] theorem abs_not {c d : Bool} (h : PureRefinement c d P₁ Eq) :
     PureRefinement (!c) (!d) P₁ Eq := fun hp => by
   rw [h hp]
 
-@[ascend_pure] theorem abs_eqProp {α : Type} {a b x y : α}
+@[distill_pure] theorem abs_eqProp {α : Type} {a b x y : α}
     (h₁ : PureRefinement a x P₁ Eq) (h₂ : PureRefinement b y P₂ Eq) :
     PureRefinement (a = b) (x = y) (P₁ ∧ P₂) Eq := fun ⟨hp₁, hp₂⟩ => by
   rw [h₁ hp₁, h₂ hp₂]
 
-@[ascend_pure] theorem abs_notProp {p q : Prop} (h : PureRefinement p q P₁ Eq) :
+@[distill_pure] theorem abs_notProp {p q : Prop} (h : PureRefinement p q P₁ Eq) :
     PureRefinement (¬p) (¬q) P₁ Eq := fun hp => by
   rw [h hp]
 
-@[ascend_pure] theorem abs_pair {α β : Type} {a x : α} {b y : β}
+@[distill_pure] theorem abs_pair {α β : Type} {a x : α} {b y : β}
     (h₁ : PureRefinement a x P₁ Eq) (h₂ : PureRefinement b y P₂ Eq) :
     PureRefinement (a, b) (x, y) (P₁ ∧ P₂) Eq := fun ⟨hp₁, hp₂⟩ => by
   rw [h₁ hp₁, h₂ hp₂]
 
-@[ascend_pure] theorem abs_fst {α β : Type} {p q : α × β} (h : PureRefinement p q P₁ Eq) :
+@[distill_pure] theorem abs_fst {α β : Type} {p q : α × β} (h : PureRefinement p q P₁ Eq) :
     PureRefinement p.1 q.1 P₁ Eq := fun hp => by rw [h hp]
 
-@[ascend_pure] theorem abs_snd {α β : Type} {p q : α × β} (h : PureRefinement p q P₁ Eq) :
+@[distill_pure] theorem abs_snd {α β : Type} {p q : α × β} (h : PureRefinement p q P₁ Eq) :
     PureRefinement p.2 q.2 P₁ Eq := fun hp => by rw [h hp]
 
-@[ascend_pure low] theorem abs_refl {α : Type} {c : α} : PureRefinement c c True Eq :=
+@[distill_pure low] theorem abs_refl {α : Type} {c : α} : PureRefinement c c True Eq :=
   PureRefinement.of_rel rfl
 
 end
@@ -199,14 +199,14 @@ theorem bne_eq_true_eq {α : Type} [BEq α] [LawfulBEq α] (a b : α) : ((a != b
 section
 variable {w : Nat} {x y : BitVec w} {i j : Nat} {P₁ P₂ : Prop}
 
-@[ascend_pure] theorem absN_ofNat {n : Nat} : PureRefinement (BitVec.ofNat w n) n True WordNat :=
+@[distill_pure] theorem absN_ofNat {n : Nat} : PureRefinement (BitVec.ofNat w n) n True WordNat :=
   PureRefinement.of_rel rfl
 
 theorem WordNat.ofNat {n : Nat} : WordNat (BitVec.ofNat w n) n := rfl
 
 grind_pattern WordNat.ofNat => WordNat (BitVec.ofNat w n) n
 
-@[ascend_pure] theorem absN_add (h₁ : PureRefinement x i P₁ WordNat) (h₂ : PureRefinement y j P₂ WordNat) :
+@[distill_pure] theorem absN_add (h₁ : PureRefinement x i P₁ WordNat) (h₂ : PureRefinement y j P₂ WordNat) :
     PureRefinement (x + y) (i + j) (P₁ ∧ P₂) WordNat := fun ⟨hp₁, hp₂⟩ => by
   rw [WordNat, h₁ hp₁, h₂ hp₂, BitVec.ofNat_add]
 
@@ -215,7 +215,7 @@ theorem ofNat_eq_ofNat_iff {n m : Nat} (hn : n < 2 ^ w) (hm : m < 2 ^ w) :
   rw [BitVec.toNat_eq, BitVec.toNat_ofNat, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hn,
     Nat.mod_eq_of_lt hm]
 
-@[ascend_pure] theorem absN_sub (h₁ : PureRefinement x i P₁ WordNat) (h₂ : PureRefinement y j P₂ WordNat) :
+@[distill_pure] theorem absN_sub (h₁ : PureRefinement x i P₁ WordNat) (h₂ : PureRefinement y j P₂ WordNat) :
     PureRefinement (x - y) (i - j) (P₁ ∧ P₂ ∧ j ≤ i ∧ i < 2 ^ w) WordNat :=
   fun ⟨hp₁, hp₂, hji, hi⟩ => by
     rw [WordNat, h₁ hp₁, h₂ hp₂]
@@ -224,7 +224,7 @@ theorem ofNat_eq_ofNat_iff {n m : Nat} (hn : n < 2 ^ w) (hm : m < 2 ^ w) :
       Nat.mod_eq_of_lt hi, Nat.mod_eq_of_lt (by omega : j < 2 ^ w), Nat.mod_eq_of_lt (by omega : i - j < 2 ^ w),
       show 2 ^ w - j + i = (i - j) + 2 ^ w by omega, Nat.add_mod_right, Nat.mod_eq_of_lt (by omega)]
 
-@[ascend_pure high] theorem absN_beq (h₁ : PureRefinement x i P₁ WordNat)
+@[distill_pure high] theorem absN_beq (h₁ : PureRefinement x i P₁ WordNat)
     (h₂ : PureRefinement y j P₂ WordNat) :
     PureRefinement (x == y) (i == j) (P₁ ∧ P₂ ∧ i < 2 ^ w ∧ j < 2 ^ w) Eq :=
   fun ⟨hp₁, hp₂, hi, hj⟩ => by
@@ -235,14 +235,14 @@ end
 section
 variable {a b : BitVec 64} {n m : Nat} {P₁ P₂ : Prop}
 
-@[ascend_pure high] theorem absN_cmp_nz (h₁ : PureRefinement a n P₁ WordNat)
+@[distill_pure high] theorem absN_cmp_nz (h₁ : PureRefinement a n P₁ WordNat)
     (h₂ : PureRefinement b m P₂ WordNat) :
     PureRefinement (CondCode.nz.cmp a b) (n != m) (P₁ ∧ P₂ ∧ n < 2 ^ 64 ∧ m < 2 ^ 64) Eq :=
   fun ⟨hp₁, hp₂, hn, hm⟩ => by
     rw [Bool.eq_iff_iff, CondCode.cmp_nz_eq_true, h₁ hp₁, h₂ hp₂, bne_iff_ne, ne_eq, ne_eq,
       ofNat_eq_ofNat_iff hn hm]
 
-@[ascend_pure high] theorem absN_cmp_z_self_zero (h : PureRefinement a n P₁ WordNat) :
+@[distill_pure high] theorem absN_cmp_z_self_zero (h : PureRefinement a n P₁ WordNat) :
     PureRefinement (CondCode.z.cmp (a &&& a) 0#64) (n == 0) (P₁ ∧ n < 2 ^ 64) Eq :=
   fun ⟨hp, hn⟩ => by
     rw [Bool.eq_iff_iff, CondCode.cmp_z_eq_true, BitVec.and_self, h hp, beq_iff_eq]
@@ -264,7 +264,7 @@ theorem WordNat.sub_one_beq_zero {x : BitVec 64} {i : Nat} (h : WordNat x i) (hi
 
 grind_pattern WordNat.sub_one_beq_zero => WordNat x i, x - 1#64 == 0#64
 
-@[ascend_pure high] theorem absN_cmp_be (h₁ : PureRefinement a n P₁ WordNat)
+@[distill_pure high] theorem absN_cmp_be (h₁ : PureRefinement a n P₁ WordNat)
     (h₂ : PureRefinement b m P₂ WordNat) :
     PureRefinement (CondCode.be.cmp a b) (Nat.ble n m) (P₁ ∧ P₂ ∧ n < 2 ^ 64 ∧ m < 2 ^ 64) Eq :=
   fun ⟨hp₁, hp₂, hn, hm⟩ => by
@@ -278,7 +278,7 @@ theorem WordNat.cmp_be_eq {x y : BitVec 64} {i j : Nat} (hx : WordNat x i) (hy :
 
 grind_pattern WordNat.cmp_be_eq => WordNat x i, WordNat y j, CondCode.be.cmp x y
 
-@[ascend_pure high] theorem absEq_ofWordNat {x : BitVec 64} {n : Nat} (h : PureRefinement x n P₁ WordNat) :
+@[distill_pure high] theorem absEq_ofWordNat {x : BitVec 64} {n : Nat} (h : PureRefinement x n P₁ WordNat) :
     PureRefinement x (BitVec.ofNat 64 n) P₁ Eq := h
 
 def encodeIdx : Option Nat → BitVec 64
@@ -292,16 +292,16 @@ def IdxWord (v : BitVec 64) (o : Option Nat) : Prop := v = encodeIdx o
 
 def Unrelated (_ : α) (_ : β) : Prop := True
 
-@[ascend_pure low] theorem abs_unrelated (c : α) (a : β) : PureRefinement c a True Unrelated :=
+@[distill_pure low] theorem abs_unrelated (c : α) (a : β) : PureRefinement c a True Unrelated :=
   fun _ => trivial
 
-@[ascend_pure high] theorem absIdx_none : PureRefinement (18446744073709551615#64) none True IdxWord :=
+@[distill_pure high] theorem absIdx_none : PureRefinement (18446744073709551615#64) none True IdxWord :=
   fun _ => rfl
 
-@[ascend_pure] theorem absIdx_some (h : PureRefinement x j P₁ WordNat) :
+@[distill_pure] theorem absIdx_some (h : PureRefinement x j P₁ WordNat) :
     PureRefinement x (some j) P₁ IdxWord := h
 
-@[ascend_pure] theorem absN_ushiftRight (k : Nat) (h : PureRefinement a n P₁ WordNat) :
+@[distill_pure] theorem absN_ushiftRight (k : Nat) (h : PureRefinement a n P₁ WordNat) :
     PureRefinement (a.ushiftRight k) (n / 2 ^ k) (P₁ ∧ n < 2 ^ 64) WordNat :=
   fun ⟨hp, hn⟩ => by
     rw [WordNat, h hp]
@@ -310,7 +310,7 @@ def Unrelated (_ : α) (_ : β) : Prop := True
     rw [BitVec.toNat_ushiftRight, BitVec.toNat_ofNat, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hn,
       Nat.shiftRight_eq_div_pow, Nat.mod_eq_of_lt (Nat.lt_of_le_of_lt (Nat.div_le_self _ _) hn)]
 
-@[ascend_pure high] theorem absN_cmp_le_self_zero (h : PureRefinement a n P₁ WordNat) :
+@[distill_pure high] theorem absN_cmp_le_self_zero (h : PureRefinement a n P₁ WordNat) :
     PureRefinement (CondCode.le.cmp (a &&& a) 0#64) (n == 0) (P₁ ∧ n < 2 ^ 63) Eq :=
   fun ⟨hp, hn⟩ => by
     rw [Bool.eq_iff_iff, CondCode.cmp_le_eq_true, BitVec.and_self, h hp, beq_iff_eq,
@@ -321,18 +321,18 @@ end
 
 /-! ## Steps -/
 
-attribute [ascend] wrp_bind
+attribute [distill] wrp_bind
 
 section
 variable {Q : Unit → BitVec 64 → MachineData → Prop} {Qu : Unit → Unit → MachineData → Prop}
   {E : (Int64 → Int64 → MachineData → Prop) × EStack⟨⟩}
 
-@[ascend] theorem wrp_pure_unit :
+@[distill] theorem wrp_pure_unit :
     Qu () () ⊑ wrp (ofStateRepr MachineData.dmem) (pure () : BlockM MachineData Unit)
       (pure () : BlockM DataMem Unit) Qu E :=
   wrp_pure () ()
 
-@[ascend] theorem wrp_loadReg_load (n : Nat) (r : Reg64) (a : MachineData → BitVec 64)
+@[distill] theorem wrp_loadReg_load (n : Nat) (r : Reg64) (a : MachineData → BitVec 64)
     (e : BitVec 64 → MachineData → BitVec 64) (pa : BitVec 64) :
     (fun t => a t ≐ pa ∧
       (loadOk n a t → ∀ w, word n (a t) t ≐ w → Q () w (loadReg n r a e t)))
@@ -348,7 +348,7 @@ variable {Q : Unit → BitVec 64 → MachineData → Prop} {Qu : Unit → Unit �
   refine ⟨hg, _, hk hg _ (PureRefinement.of_rel ?_), hq⟩
   rw [word, ha]
 
-@[ascend] theorem wrp_storeWord_store (n : Nat) (a v : MachineData → BitVec 64) (pa pv : BitVec 64) :
+@[distill] theorem wrp_storeWord_store (n : Nat) (a v : MachineData → BitVec 64) (pa pv : BitVec 64) :
     (fun t => a t ≐ pa ∧ v t ≐ pv ∧ (storeOk n a t → Qu () () (storeWord n a v t)))
       ⊑ wrp (ofStateRepr MachineData.dmem) (modifyIf (storeOk n a) (storeWord n a v))
           (store n pa pv) Qu E := by
@@ -364,7 +364,7 @@ variable {Q : Unit → BitVec 64 → MachineData → Prop} {Qu : Unit → Unit �
   simp only [ofStateRepr_pred, storeWord, ha, hv]
   exact hq
 
-@[ascend] theorem wrp_peek_pure {γ : Type} {Qγ : γ → γ → MachineData → Prop} (c : MachineData → γ) (b : γ) :
+@[distill] theorem wrp_peek_pure {γ : Type} {Qγ : γ → γ → MachineData → Prop} (c : MachineData → γ) (b : γ) :
     (fun t => c t ≐ b ∧ ∀ z, c t ≐ z → Qγ (c t) z t)
       ⊑ wrp (ofStateRepr MachineData.dmem) (peek c) (pure b : BlockM DataMem γ) Qγ E := by
   refine wrp_intro fun Qa Ea => ?_
@@ -381,7 +381,7 @@ end
 section
 variable {σa : Type} {view : DataMem → σa} {E : (Int64 → Int64 → DataMem → Prop) × EStack⟨⟩}
 
-@[ascend default + 1] theorem wrp_assert_throw {CV AV : Type} {Q : CV → AV → DataMem → Prop}
+@[distill default + 1] theorem wrp_assert_throw {CV AV : Type} {Q : CV → AV → DataMem → Prop}
     (g : DataMem → Prop) (l : Int64) :
     (fun m => g m ∧ E.1 l l m)
       ⊑ wrp (ofStateRepr view) (do StateT.assert g; throw l : BlockM DataMem CV)
@@ -437,7 +437,7 @@ theorem wrp_forIn_lockstep_bind_unit {βc βa : Type} (R : LockstepInvariant βc
   rw [Concretization.post_pi]
   exact ⟨(), hq, hqa⟩
 
-@[ascend] theorem wrp_assert_skip {Q : PUnit → PUnit → σc → Prop} (g : σc → Prop) :
+@[distill] theorem wrp_assert_skip {Q : PUnit → PUnit → σc → Prop} (g : σc → Prop) :
     (fun m => g m ∧ Q () () m)
       ⊑ wrp (ofStateRepr view) (do StateT.assert g : BlockM σc PUnit)
           (pure () : BlockM σa PUnit) Q E := by
@@ -450,7 +450,7 @@ theorem wrp_forIn_lockstep_bind_unit {βc βa : Type} (R : LockstepInvariant βc
   rw [Concretization.post_pi]
   exact ⟨(), hq, hw⟩
 
-@[ascend] theorem wrp_throw_throw {CV AV : Type} {Q : CV → AV → σc → Prop} (l : Int64) :
+@[distill] theorem wrp_throw_throw {CV AV : Type} {Q : CV → AV → σc → Prop} (l : Int64) :
     (fun t => E.1 l l t)
       ⊑ wrp (ofStateRepr view) (throw l : BlockM σc CV) (throw l : BlockM σa AV) Q E := by
   refine wrp_intro fun Qa Ea => ?_
@@ -461,15 +461,15 @@ theorem wrp_forIn_lockstep_bind_unit {βc βa : Type} (R : LockstepInvariant βc
   rw [Concretization.post_pi]
   exact ⟨l, he, hw⟩
 
-@[ascend] theorem wrp_pure_unit_post {γ : Type} {Q : PUnit → γ → σc → Prop} (c : PUnit) (b : γ) :
+@[distill] theorem wrp_pure_unit_post {γ : Type} {Q : PUnit → γ → σc → Prop} (c : PUnit) (b : γ) :
     (fun t => Q c b t) ⊑ wrp (ofStateRepr view) (pure c : BlockM σc PUnit) (pure b : BlockM σa γ) Q E :=
   wrp_pure (Q := Q) c b
 
-@[ascend 50] theorem wrp_pure_post {γ δ : Type} {Q : γ → δ → σc → Prop} (c : γ) (b : δ) :
+@[distill 50] theorem wrp_pure_post {γ δ : Type} {Q : γ → δ → σc → Prop} (c : γ) (b : δ) :
     (fun t => Q c b t) ⊑ wrp (ofStateRepr view) (pure c : BlockM σc γ) (pure b : BlockM σa δ) Q E :=
   wrp_pure (Q := Q) c b
 
-@[ascend low] theorem wrp_pure_val {γ : Type} {Q : γ → γ → σc → Prop} (c b : γ) (P : Prop) :
+@[distill low] theorem wrp_pure_val {γ : Type} {Q : γ → γ → σc → Prop} (c b : γ) (P : Prop) :
     (fun t => PureRefinement c b P Eq ∧ P ∧ ∀ z, c ≐ z → Q c z t)
       ⊑ wrp (ofStateRepr view) (pure c : BlockM σc γ) (pure b : BlockM σa γ) Q E := by
   refine wrp_intro fun Qa Ea => ?_
@@ -511,7 +511,7 @@ theorem wrp_forIn_lockstep_unit {βa : Type} (R : LockstepInvariant PUnit Machin
   obtain ⟨_, hq, hqa⟩ := h'
   exact ⟨(), hq, hqa⟩
 
-@[ascend] theorem wrp_condState {σc σa CV AV : Type} {view : σc → σa}
+@[distill] theorem wrp_condState {σc σa CV AV : Type} {view : σc → σa}
     {E : (Int64 → Int64 → σc → Prop) × EStack⟨⟩} {Q : CV → AV → σc → Prop} {c : σc → Bool}
     {x y : BlockM σc CV} {ax ay : BlockM σa AV} (b : Bool) (P : Prop) :
     (fun t => PureRefinement (c t) b P Eq ∧ P ∧
@@ -534,7 +534,7 @@ theorem wrp_forIn_lockstep_unit {βa : Type} (R : LockstepInvariant PUnit Machin
     exact wrp_transport (P := wrp (ofStateRepr view) y ay Q E) PartialOrder.rel_refl Qa Ea t
       (by simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred]; exact ⟨hy rfl, hw⟩)
 
-@[ascend high] theorem wrp_stutter_bind {CV : Type} {Q : CV → AV → MachineData → Prop}
+@[distill high] theorem wrp_stutter_bind {CV : Type} {Q : CV → AV → MachineData → Prop}
     (f : MachineData → MachineData)
     {k : Unit → BlockM MachineData CV} {a : BlockM DataMem AV} (hf : ∀ t, (f t).dmem = t.dmem) :
     (fun t => wrp (ofStateRepr MachineData.dmem) (k ()) a Q E (f t))
@@ -549,7 +549,7 @@ theorem wrp_forIn_lockstep_unit {βa : Type} (R : LockstepInvariant PUnit Machin
   simp only [meet_apply, meet_prop_eq_and, ofStateRepr_pred, hf]
   exact ⟨hk, hw⟩
 
-@[ascend] theorem wrp_exitIf_assert {CV AV : Type} {Q : CV → AV → MachineData → Prop}
+@[distill] theorem wrp_exitIf_assert {CV AV : Type} {Q : CV → AV → MachineData → Prop}
     (a : MachineData → BitVec 64) (f : MachineData → MachineData) (l : Int64) (pa : BitVec 64)
     (hf : ∀ t, (f t).dmem = t.dmem) :
     (fun t => a t ≐ pa ∧ (loadOk 8 a t → E.1 l l (f t)))
@@ -570,7 +570,7 @@ theorem wrp_forIn_lockstep_unit {βa : Type} (R : LockstepInvariant PUnit Machin
   simp only [ofStateRepr_pred, hf]
   exact he
 
-@[ascend] theorem wrp_exitIf_rsp {CV AV : Type} {Q : CV → AV → MachineData → Prop}
+@[distill] theorem wrp_exitIf_rsp {CV AV : Type} {Q : CV → AV → MachineData → Prop}
     (r₀ : BitVec 64) (f : MachineData → MachineData) (l : Int64) (pa : BitVec 64)
     (hf : ∀ t, (f t).dmem = t.dmem) :
     (fun t => t.regs.get64 .rsp ≐ pa ∧ (t.regs.rsp.toBitVec = r₀ → E.1 l l (f t)))
@@ -597,7 +597,7 @@ def retAddrAt (m : DataMem) (p : BitVec 64) : Option Int64 :=
 @[grind =] theorem retAddrAt_eq (m : DataMem) (p : BitVec 64) :
     retAddrAt m p = (Mem.loadInt m p 8).map fun i => Int64.ofBitVec (BitVec.ofInt 64 i) := rfl
 
-@[ascend] theorem wrp_exitIf_retOk {CV AV : Type} {Q : CV → AV → MachineData → Prop}
+@[distill] theorem wrp_exitIf_retOk {CV AV : Type} {Q : CV → AV → MachineData → Prop}
     (r₀ : BitVec 64) (ra : Int64) (f : MachineData → MachineData) (l : Int64) (pa : BitVec 64)
     (hf : ∀ t, (f t).dmem = t.dmem) :
     (fun t => t.regs.get64 .rsp ≐ pa ∧ (retOk r₀ ra t → E.1 l l (f t)))
@@ -631,7 +631,7 @@ theorem assert_true {σ : Type} :
     simp only [WPMonadExact.wp_pure_eq, ExceptT.wp_monadLift_StateT_Demonic, StateT.wp_assert_eq, true_and] <;>
     exact id
 
-@[ascend] theorem wrp_modifyIf_retOk {Q : Unit → PUnit → MachineData → Prop}
+@[distill] theorem wrp_modifyIf_retOk {Q : Unit → PUnit → MachineData → Prop}
     (r₀ : BitVec 64) (ra : Int64) (f : MachineData → MachineData) (pa : BitVec 64)
     (hf : ∀ t, (f t).dmem = t.dmem) :
     (fun t => t.regs.get64 .rsp ≐ pa ∧ (retOk r₀ ra t → Q () () (f t)))
@@ -653,7 +653,7 @@ theorem assert_true {σ : Type} :
   simp only [ofStateRepr_pred, hf]
   exact hq
 
-@[ascend] theorem wrp_modifyIf_stay {Q : Unit → PUnit → MachineData → Prop} (r₀ pa : BitVec 64) :
+@[distill] theorem wrp_modifyIf_stay {Q : Unit → PUnit → MachineData → Prop} (r₀ pa : BitVec 64) :
     (fun t => t.regs.get64 .rsp ≐ pa ∧ (stayIn r₀ t = true → Q () () t))
       ⊑ wrp (ofStateRepr MachineData.dmem)
           (modifyIf (fun s => stayIn r₀ s = true) id : BlockM MachineData Unit)
@@ -671,7 +671,7 @@ theorem assert_true {σ : Type} :
   rw [Concretization.post_pi]
   exact ⟨(), hk hg, hq⟩
 
-@[ascend] theorem wrp_modifyIf_assert {Q : Unit → PUnit → MachineData → Prop}
+@[distill] theorem wrp_modifyIf_assert {Q : Unit → PUnit → MachineData → Prop}
     (a : MachineData → BitVec 64) (f : MachineData → MachineData) (pa : BitVec 64)
     (hf : ∀ t, (f t).dmem = t.dmem) :
     (fun t => a t ≐ pa ∧ (loadOk 8 a t → Q () () (f t)))
@@ -695,4 +695,4 @@ theorem assert_true {σ : Type} :
 end
 
 
-end Ascent.Kraken
+end Distillery.Kraken

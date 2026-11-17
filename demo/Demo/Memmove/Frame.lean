@@ -4,21 +4,21 @@ import Demo.Frame
 /-!
 # `memmove` with its frame split off
 
-`memmoveFrame₀` is `memmoveRegs₀` over the split state `FState`, synthesized by `ascend`, for the
+`memmoveFrame₀` is `memmoveRegs₀` over the split state `FState`, synthesized by `distill`, for the
 frame `Fr rsp 0 0` of the return slot alone. Every access goes to `dmem` and assumes that it misses
 the frame. `memmoveFrame` takes `rsp` for `sp`.
 -/
 
-open Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
-open Ascent.Concretization (ofStateRepr)
+open Std.WP Lean.Order Distillery Distillery.Kraken Distillery.Kraken.AInstr
+open Distillery.Concretization (ofStateRepr)
 
-namespace Ascent.Kraken
+namespace Distillery.Kraken
 
-ascend_def memmoveFrame₀ (rdi rsi rdx rsp sp : BitVec 64) (ra : Int64) : BlockM FState Unit from
+distill_def memmoveFrame₀ (rdi rsi rdx rsp sp : BitVec 64) (ra : Int64) : BlockM FState Unit from
   ⦃fun m => rsp ≐ₛ sp ∧ retAddrAt m rsp = some ra⦄
   (memmoveRegs₀ rdi rsi rdx rsp rsp ra) ⪯[ofStateRepr (FState.split (Fr rsp 0 0))] memmoveFrame₀
   ⦃fun _ _ _ => True; (fun l l' _ => l = l', estack⟨⟩)⦄
-  ascend [memmoveRegs₀, wrp_forIn_lockstep_bind_unit _ _ (_, _)]
+  distill [memmoveRegs₀, wrp_forIn_lockstep_bind_unit _ _ (_, _)]
   invariants
   · fun (v : BitVec 64 × BitVec 64) m (v' : BitVec 64 × BitVec 64) => match v, v' with
     | (c, d), (c', d') => c ≐ c' ∧ d ≐ d' ∧ retAddrAt m rsp = some ra
@@ -39,4 +39,4 @@ theorem memmoveFrame.refines (rdi rsi rdx rsp sp : BitVec 64) (ra : Int64) :
 
 #print memmoveFrame
 
-end Ascent.Kraken
+end Distillery.Kraken

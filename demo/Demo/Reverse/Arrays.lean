@@ -4,7 +4,7 @@ import Demo.ArraysFrame
 /-!
 # `reverse_` over an array
 
-`reverseArrays₀` is `reverseFrame` over the array of `n` words at `rdi`, synthesized by `ascend`, and
+`reverseArrays₀` is `reverseFrame` over the array of `n` words at `rdi`, synthesized by `distill`, and
 `reverseArrays` is `reverseArrays₀` with the array reads in place. The array is read and written in
 place: a load reads the abstract state, and the pointers of the loop become indices into it
 (`Index`). The accesses to the frame leave the array unchanged and vanish. The precondition states
@@ -12,19 +12,19 @@ the layout `ArrayLayout 8 64 [] rdi n` of `dmem`, that the array is apart from t
 that the frame is mapped.
 -/
 
-open Std.WP Lean.Order Ascent Ascent.Kraken Ascent.Kraken.AInstr
-open Ascent.Concretization (ofStateRepr)
+open Std.WP Lean.Order Distillery Distillery.Kraken Distillery.Kraken.AInstr
+open Distillery.Concretization (ofStateRepr)
 
-namespace Ascent.Kraken
+namespace Distillery.Kraken
 
-ascend_def reverseArrays₀ [Host] [Embeds swap] (rdi rsi rax rbx r12 r14 r15 rsp : BitVec 64) (ra : Int64)
+distill_def reverseArrays₀ [Host] [Embeds swap] (rdi rsi rax rbx r12 r14 r15 rsp : BitVec 64) (ra : Int64)
     (n : Nat) : BlockM (Array (BitVec 64)) Unit from
   ⦃fun s => rsi ≐ₙ n ∧ ArrayLayout 8 64 [] rdi n s.dmem ∧
     Mem.Blocks.Disjoint [(rdi, 8 * n)] (Fr rsp 6 0) ∧ Mem.Mapped (Fr rsp 6 0) s.frame⦄
   (reverseFrame rdi rsi rax rbx r12 r14 r15 rsp ra) ⪯[ofStateRepr fun s : FState => outView 8 64 rdi n s.dmem]
     reverseArrays₀
   ⦃fun _ _ _ => True; (fun l l' _ => l = l', estack⟨⟩)⦄
-  ascend [reverseFrame, wrp_forIn_lockstep_bind_unit _ _ (_, _)]
+  distill [reverseFrame, wrp_forIn_lockstep_bind_unit _ _ (_, _)]
   invariants
   · fun (v : BitVec 64 × BitVec 64 × BitVec 64 × BitVec 64) (s : FState) (x : Nat × Nat) =>
       match v, x with
@@ -39,7 +39,7 @@ sym_simp_def reverseArrays (ra : Int64) (n : Nat) : BlockM (Array (BitVec 64)) U
   using pre [] post [reverseArrays₀, BitVec.setWidth_eq, pure_bind, bind_pure_unit, bind_assoc, Nat.zero_add, condState_const]
 
 /--
-info: def Ascent.Kraken.reverseArrays : Int64 → Nat → BlockM (Array (BitVec 64)) Unit :=
+info: def Distillery.Kraken.reverseArrays : Int64 → Nat → BlockM (Array (BitVec 64)) Unit :=
 fun ra n =>
   if n.blt 2 = true then throw ra
   else do
@@ -64,4 +64,4 @@ theorem reverseArrays.refines [Host] [Embeds swap] (rdi rsi rax rbx r12 r14 r15 
       (reverseArrays ra n) ⦃fun _ _ _ => True; (fun l l' _ => l = l', estack⟨⟩)⦄ :=
   reverseArrays.eq ra n ▸ reverseArrays₀.refines rdi rsi rax rbx r12 r14 r15 rsp ra n
 
-end Ascent.Kraken
+end Distillery.Kraken
