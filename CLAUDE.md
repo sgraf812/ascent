@@ -19,8 +19,10 @@ systemd-run --user --scope -p MemorySwapMax=0 -p CPUWeight=50 --quiet timeout <s
 | bench | `lake build` in `bench/` |
 | demo | `lake build` in `demo/` |
 
-`lean-toolchain` pins the toolchain. Do not change it without an explicit request. The demo
-depends on kraken through the path in `demo/lakefile.toml`.
+`lean-toolchain` pins the toolchain. Do not change it without an explicit request. The demo builds
+on `demo/Demo/Kraken/`, a stub of kraken's API: opaque operations, and axioms that state kraken's
+theorems. A new use of kraken's API adds a declaration there, preferably an axiom with kraken's
+statement.
 
 ## Tests
 

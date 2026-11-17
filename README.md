@@ -105,8 +105,9 @@ translation and each patch, with a test for each.
   theorems registered with `@[distill]`, keyed by the concrete program.
 * `test/`: worked refinements, the `zip_with_add` case study, and negative tests.
 * `bench/`: the synthesis benchmark harness.
-* `demo/`: pipelines from x64 text to pure functions for `zipWithAdd`, `memmove`, a binary search
-  and an in-place reverse with a call, over the x64 model of kraken.
+* `demo/`: pipelines from x64 programs to pure functions for `zipWithAdd`, `memmove`, a binary
+  search and an in-place reverse with a call, over a stub of kraken's x64 API in
+  `demo/Demo/Kraken/`.
 
 ## Build
 
