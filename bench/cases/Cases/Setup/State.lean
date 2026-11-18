@@ -104,6 +104,12 @@ theorem wrp_throw_EM {α : Type} (e : String) {Q : α → α → σ → Prop} {E
   rw [Concretization.post_pi]
   exact ⟨e, h.1, h.2⟩
 
+theorem wrp_throw_bind_EM {α β : Type} (e : String) (k : α → EM σ β) {Q : β → β → σ → Prop}
+    {E : ER σ} :
+    (fun s => E.1 e e s) ⊑ wrp (γ σ) (throw e >>= k : EM σ β) (throw e : EM σ β) Q E :=
+  PartialOrder.rel_trans (wrp_throw_EM e) (wrp_le_wrp_of_eq (γ := γ σ) (a := (throw e : EM σ β))
+    (rfl : (throw e >>= k : EM σ β) = throw e) Q E)
+
 theorem wrp_throwIf_EM (c b : Bool) (e : String) {Q : Unit → Unit → σ → Prop} {E : ER σ} :
     (fun s => PureRefinement c b True Eq ∧ (b = true → E.1 e e s) ∧ (b = false → Q () () s))
       ⊑ wrp (γ σ) (throwIf c e : EM σ Unit) (throwIf b e : EM σ Unit) Q E := by
@@ -138,6 +144,10 @@ theorem abs_add {a b x y : Nat} {P₁ P₂ : Prop}
 theorem abs_sub {a b x y : Nat} {P₁ P₂ : Prop}
     (h₁ : PureRefinement a x P₁ Eq) (h₂ : PureRefinement b y P₂ Eq) :
     PureRefinement (a - b) (x - y) (P₁ ∧ P₂) Eq := fun ⟨p₁, p₂⟩ => by rw [h₁ p₁, h₂ p₂]
+
+theorem abs_gt {a b x y : Nat} {P₁ P₂ : Prop}
+    (h₁ : PureRefinement a x P₁ Eq) (h₂ : PureRefinement b y P₂ Eq) :
+    PureRefinement (a > b) (x > y) (P₁ ∧ P₂) Eq := fun ⟨p₁, p₂⟩ => by rw [h₁ p₁, h₂ p₂]
 
 theorem abs_blt {a b x y : Nat} {P₁ P₂ : Prop}
     (h₁ : PureRefinement a x P₁ Eq) (h₂ : PureRefinement b y P₂ Eq) :

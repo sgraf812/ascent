@@ -46,7 +46,9 @@ of `total` over the three sizes.
 
 Each family runs the program of a case of core's bench `tests/bench/vcgen` over a monad on
 `Distillery.Demonic`, under `Concretization.id`. The abstract program is the concrete program,
-which the golden check confirms.
+which the golden check confirms. In `DiteSplit` and `MatchSplit` the abstract program splits on the
+abstract read value, and the abstract `if` decides its condition by `Classical.propDecidable`, so
+these two families have no golden check.
 
 | Family | File | Monad | Sizes | Time | `vcgen` sizes |
 |---|---|---|---|---|---|
@@ -59,14 +61,14 @@ which the golden check confirms.
 | `ReaderState` | `distill_reader_state.lean` | `ReaderT Nat (StateT Nat Demonic)` | 20, 40, 60 | 1.22 s | 600, 1600, 2600 |
 | `RegFile` | `distill_reg_file.lean` | `StateT Regs Demonic` | 30, 60, 90 | 1.32 s | 128, 256, 384 |
 | `AdcChain` | `distill_adc_chain.lean` | `StateT S Demonic` | 150, 300, 450 | 1.25 s | 250, 500, 750 |
+| `DiteSplit` | `distill_dite_split.lean` | `ExceptT String (StateT Nat Demonic)` | 20, 40, 60 | 1.01 s | 500, 1000, 1500 |
+| `MatchSplit` | `distill_match_split.lean` | `ExceptT String (StateT Nat Demonic)` | 60, 120, 180 | 0.94 s | 500, 1000, 1500 |
 
-The bench has no mirror of the `vcgen` cases `DiteSplit`, `IfsJP`, `MatchesJP`, `WideJP`,
-`MatchSplit` and `LetBinding`. On these programs `distill` stops with an error:
+The bench has no mirror of the `vcgen` cases `IfsJP`, `MatchesJP`, `WideJP` and `LetBinding`:
 
-* `DiteSplit`, `IfsJP`, `WideJP`: the condition of an `if` reads a value of the state, and the
-  synthesized program then mentions a variable that the run introduced.
-* `MatchesJP`, `MatchSplit`: a `match` on a value of the state splits the concrete program only,
-  and the rule for the `set` in an alternative finds no abstract value.
+* `IfsJP`, `MatchesJP`, `WideJP`: the do-elaborator gives each `if` or `match` a join point
+  `__do_jp` for its continuation. The run introduces the arguments of a join point, such as the
+  updated mutable variable, as local definitions, and the synthesized program then mentions them.
 * `LetBinding`: no `@[distill_pure]` rule abstracts the local definition of a pure `let`.
 
 `GetThrowSet` throws by `throwIf`, whose rule abstracts the condition. `AddSubCancelDeep` puts

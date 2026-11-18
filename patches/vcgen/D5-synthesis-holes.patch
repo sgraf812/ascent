@@ -1,6 +1,6 @@
 --- a/Distillery/Tactic/VCGen/Solve.lean
 +++ b/Distillery/Tactic/VCGen/Solve.lean
-@@ -393,12 +393,204 @@
+@@ -393,12 +393,304 @@
      | .noProgress => return none
    | _ => return none
  
@@ -195,6 +195,106 @@
 +  goal.assign (mkApp5 (mkConst ``Distillery.le_exists_of_le [← Sym.getLevel β]) β pre p x g)
 +  return some g.mvarId!
 +
++/-- Strategy 11a: abstract the condition of an `ite`, `dite` or `cond`, or a discriminant of a
++matcher, that mentions a variable outside the context of the abstract hole, such as a value that the
++run read from the concrete state. The value solver gives the abstract value `ad` with `d = ad` under
++the relation `Eq`, and the concrete program is rewritten to split on `ad`, so the split of
++`wpMatch?` gives the abstract program a condition in the hole's context. The guards of the
++solution are verification conditions. A matcher whose motive depends on its discriminants, or
++that names an equation of a discriminant, stays as it is. -/
++def wpAbstractCond? (goal : MVarId) (info : WRPApp) : VCGenM (Option (List MVarId)) :=
++    goal.withContext do
++  let prog := info.prog
++  let isIte := prog.isAppOfArity ``ite 5
++  let isDite := prog.isAppOfArity ``dite 5
++  let isCond := prog.isAppOfArity ``cond 4
++  let abs ← instantiateMVarsIfMVarAppS info.abs
++  let .mvar hole := abs.getAppFn | return none
++  let decl ← hole.getDecl
++  let xs := abs.getAppArgs
++  let outside (e : Expr) := e.hasAnyFVar fun fv => !decl.lctx.contains fv && !xs.contains (.fvar fv)
++  -- The position of the abstracted argument: the condition, or the first discriminant of a matcher
++  -- whose motive does not depend on the discriminants.
++  let mut idx? : Option Nat := none
++  if isIte || isDite || isCond then
++    idx? := some 1
++  else if let some m ← liftMetaM <| Meta.matchMatcherApp? prog then
++    let independent ← liftMetaM <| Meta.lambdaTelescope m.motive fun ys body =>
++      pure (ys.size == m.discrs.size && !body.hasAnyFVar (ys.map (·.fvarId!)).contains)
++    if independent && m.discrInfos.all (·.hName?.isNone) then
++      if let some i := m.discrs.findIdx? outside then
++        idx? := some (m.params.size + 1 + i)
++  let some idx := idx? | return none
++  let d := prog.getArg! idx
++  unless outside d do return none
++  let T ← Sym.inferType d
++  let l ← Sym.getLevel T
++  let v := l.dec.getD levelZero
++  let ad ← shareCommon (← mkFreshExprMVar T)
++  let eqT ← mkAppNS (← mkConstS ``Eq [l]) #[T]
++  let gTy ← mkAppNS (← mkConstS ``Distillery.PureRefinement [v, v])
++    #[T, T, d, ad, ← mkConstS ``True, eqT]
++  let g ← mkFreshExprSyntheticOpaqueMVar (← shareCommon gTy)
++  let mut vcs := #[]
++  for vc in ← solvePureRefinement g.mvarId! do
++    let ty ← instantiateMVarsS (← vc.getType)
++    if let some (_, lhs, rhs) := ty.eq? then
++      if (← instantiateMVarsS rhs).isMVar then
++        if ← isDefEqS rhs lhs then
++          vc.assign (mkApp2 (mkConst ``Eq.refl [l]) T lhs)
++          continue
++    vcs := vcs.push vc
++  let ad ← instantiateMVarsS ad
++  if outside ad || ad.hasExprMVar then return none
++  -- `hc : d = ad`
++  let hc := mkApp g (mkConst ``True.intro)
++  let fn := prog.getAppFn
++  let w ← Sym.getLevel (← Sym.inferType prog)
++  let args := prog.getAppArgs
++  let (prog', hprog) ← if !(isIte || isDite) then do
++      -- `cond` and matchers: replace the argument by `congrArg`.
++      let prog' ← mkAppNS fn (args.set! idx ad)
++      let progTy ← Sym.inferType prog
++      let motive := mkLambda `z .default T (mkAppN fn (args.set! idx (mkBVar 0)))
++      pure (prog', mkApp6 (mkConst ``congrArg [l, ← Sym.getLevel progTy]) T progTy d ad motive hc)
++    else do
++      let α := args[0]!
++      let inst ← mkAppNS (← mkConstS ``Classical.propDecidable) #[ad]
++      if isIte then
++        let prog' ← mkAppNS fn #[α, ad, inst, args[3]!, args[4]!]
++        let rflT := mkLambda `h .default ad (mkApp2 (mkConst ``Eq.refl [w]) α args[3]!)
++        let rflE := mkLambda `h .default (mkNot ad) (mkApp2 (mkConst ``Eq.refl [w]) α args[4]!)
++        pure (prog', mkAppN (mkConst ``ite_congr [w])
++          #[α, d, ad, args[3]!, args[4]!, args[3]!, args[4]!, args[2]!, inst, hc, rflT, rflE])
++      else do
++        -- `dite d t e` becomes `dite ad (fun h => t (hc ▸ h)) (fun h => e (hc ▸ h))`.
++        let notD ← mkAppNS (← mkConstS ``Not) #[d]
++        let notAd ← mkAppNS (← mkConstS ``Not) #[ad]
++        let hNot := mkApp6 (mkConst ``congrArg [1, 1]) (mkSort 0) (mkSort 0) d ad (mkConst ``Not) hc
++        let castT ← shareCommon (mkApp4 (mkConst ``Eq.mpr [0]) d ad hc (mkBVar 0))
++        let castE ← shareCommon (mkApp4 (mkConst ``Eq.mpr [0]) notD notAd hNot (mkBVar 0))
++        let t' ← mkLambdaS `h .default ad (← mkAppS args[3]! castT)
++        let e' ← mkLambdaS `h .default notAd (← mkAppS args[4]! castE)
++        let prog' ← mkAppNS fn #[α, ad, inst, t', e']
++        let rflT := mkLambda `h .default ad (mkApp2 (mkConst ``Eq.refl [w]) α (mkApp t' (mkBVar 0)))
++        let rflE := mkLambda `h .default notAd (mkApp2 (mkConst ``Eq.refl [w]) α (mkApp e' (mkBVar 0)))
++        pure (prog', mkAppN (mkConst ``dite_congr [w])
++          #[d, ad, α, args[2]!, inst, args[3]!, t', args[4]!, e', hc, rflT, rflE])
++  -- Rewrite the goal by `hprog : prog = prog'`.
++  let target ← goal.getType
++  let relArgs := target.getAppArgs
++  let wp ← mkAppNS info.head <| info.args.set! WRPApp.progIdx prog'
++  let target' ← mkAppNS target.getAppFn (relArgs.set! (relArgs.size - 1) (← mkAppNS wp info.excessArgs))
++  let g' ← mkFreshExprSyntheticOpaqueMVar (← shareCommon target') (← goal.getTag)
++  let progTy ← Sym.inferType prog
++  let motive := mkLambda `p .default progTy <|
++    mkAppN target.getAppFn (relArgs.set! (relArgs.size - 1)
++      (mkAppN (mkAppN info.head (info.args.set! WRPApp.progIdx (mkBVar 0))) info.excessArgs))
++  let hTarget := mkApp6 (mkConst ``congrArg [w, 1]) progTy (mkSort 0) prog prog' motive hprog
++  goal.assign (mkApp4 (mkConst ``Eq.mpr [0]) target target' hTarget g')
++  trace[Elab.Tactic.Do.vcgen] "abstract condition: {d} ↦ {ad}"
++  return some (g'.mvarId! :: vcs.toList)
++
  /-- Strategy 11b: split an `ite`/`dite`/`cond`/match program, or iota-reduce a matcher with a
  concrete discriminant. -/
  def wpMatch? (goal : MVarId) (info : WRPApp) :
@@ -205,7 +305,7 @@
    let .goals goals ← rule.applyChecked goal m!"split rule for{indentExpr info.prog}"
      | throwError "Failed to apply split rule for {indentExpr info.prog}"
    let mut simpGoals := #[]
-@@ -451,8 +643,8 @@
+@@ -451,8 +743,8 @@
  continuation; see `FrameProc.lean`. When the spec does not apply to the footprint, the copy is
  dropped and the candidate falls through.
  -/
@@ -216,7 +316,7 @@
    let some specRule ←
      try
        mkBackwardRuleFromSpecCached thm info |>.run
-@@ -464,8 +656,14 @@
+@@ -464,8 +756,14 @@
          excessArgs: {info.excessArgs}"
      | return none
    trace[Elab.Tactic.Do.vcgen] "Applying spec {thm.proof} for {info.prog}. Excess args: {info.excessArgs}"

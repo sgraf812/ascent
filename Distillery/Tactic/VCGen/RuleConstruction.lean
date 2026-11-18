@@ -438,9 +438,10 @@ def tryMkBackwardRuleFromSpec (specThm : SpecTheorem) (info : WRPApp)
 
 open Lean.Elab.Tactic.Do in
 /-- The abstract program of a two-sided split: the split of the concrete program `abstractInfo`
-over fresh abstract branches of type `aTy`, which `k` receives as free variables. A matcher keeps
-the abstract program `a`. -/
-def withAbstractBranches {α : Type} (abstractInfo : SplitInfo) (aTy a : Expr)
+over fresh abstract branches of type `aTy`, which `k` receives as free variables. A matcher splits
+on its discriminants into fresh abstract alternatives. A matcher that eliminates only into `Prop`
+keeps the abstract program `a`. -/
+def withAbstractBranches {α : Type} [Inhabited α] (abstractInfo : SplitInfo) (aTy a : Expr)
     (k : Expr → Array Expr → MetaM α) : MetaM α := do
   let u ← getLevel aTy
   match abstractInfo with
@@ -456,16 +457,24 @@ def withAbstractBranches {α : Type} (abstractInfo : SplitInfo) (aTy a : Expr)
   | .cond e =>
     withLocalDeclD `at aTy fun bt => withLocalDeclD `ae aTy fun ae =>
       k (mkApp4 (mkConst ``cond [u]) aTy (e.getArg! 1) bt ae) #[bt, ae]
-  | .matcher _ => k a #[]
+  | .matcher m =>
+    -- The same matcher over the same discriminants, into the abstract program type, with one fresh
+    -- abstract alternative over the pattern variables of each concrete alternative.
+    let some uPos := m.uElimPos? | k a #[]
+    let motive ← lambdaTelescope m.motive fun ys _ => mkLambdaFVars ys aTy
+    let altTypes ← (m.alts.zip m.altNumParams).mapM fun (alt, n) => do
+      forallBoundedTelescope (← inferType alt) (some n) fun zs _ => mkForallFVars zs aTy
+    withLocalDeclsDND (altTypes.mapIdx fun i t => ((`alt).appendIndexAfter (i + 1), t)) fun alts =>
+      k { m with matcherLevels := m.matcherLevels.set! uPos u, motive, alts }.toExpr alts
 
 open Lean.Elab.Tactic.Do in
 /-- Creates a reusable backward rule for splitting `ite`, `dite`, `cond`, or matchers.
 
 Uses `SplitInfo.withAbstract` to introduce abstract fvars for the split components,
 then `SplitInfo.splitWith` to build the splitting proof. Hypothesis types are
-discovered via `rwIfOrMatcher` inside the splitter telescope. An `ite`, `dite` or `cond` splits
-both programs on the same condition: the abstract program of the conclusion is the same split over
-fresh abstract branches, one for each alternative. -/
+discovered via `rwIfOrMatcher` inside the splitter telescope. An `ite`, `dite`, `cond` or matcher
+splits both programs on the same condition or discriminants: the abstract program of the conclusion
+is the same split over fresh abstract branches, one for each alternative. -/
 def mkBackwardRuleForSplit
     (splitInfo : SplitInfo) (info : WRPApp) : MetaM BackwardRule := do
   -- The split value type is the goal's, so reuse the goal's program type and `WP` instance directly.

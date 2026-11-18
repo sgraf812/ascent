@@ -186,13 +186,21 @@ by that entry.
 
 ### D7. Two-sided split
 
-**Intent.** A concrete `if` splits both programs on the same condition.
+**Intent.** A concrete `if` or `match` splits both programs on the same condition or
+discriminants.
 
-**Change.** `mkBackwardRuleForSplit` splits an `ite`, `dite` or `cond` on both sides with one fresh
-abstract branch per alternative, after `fillAbstractHole` fills the abstract hole. A matcher
-splits on the concrete side only.
+**Change.** `mkBackwardRuleForSplit` splits an `ite`, `dite`, `cond` or matcher on both sides, after
+`fillAbstractHole` fills the abstract hole. The abstract program is the same split over one fresh
+abstract branch per alternative: for a matcher, the same matcher into the abstract program type,
+over the pattern variables of each concrete alternative. A matcher that eliminates only into `Prop`
+splits the concrete side only. Before the split, `wpAbstractCond?` abstracts a condition or a
+discriminant that mentions a variable outside the context of the abstract hole, such as a value that
+the run read from the concrete state: the value solver gives its abstract value `ad` with `d = ad`
+under `Eq`, and the concrete program is rewritten to split on `ad` (`ite_congr`, `dite_congr`, or
+`congrArg` for a matcher whose motive does not depend on its discriminants). The rewritten `ite`
+and `dite` decide `ad` by `Classical.propDecidable`.
 
-**Acceptance.** Test: `Regress/IteSplit`.
+**Acceptance.** Tests: `Regress/IteSplit`, `Regress/StateSplit`.
 
 ### D8. Existential witness
 
