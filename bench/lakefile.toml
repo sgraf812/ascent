@@ -1,10 +1,14 @@
 name = "distillery-bench"
-defaultTargets = ["Bench"]
+defaultTargets = ["Bench", "BenchX64"]
 precompileModules = true
 
 [[require]]
 name = "distillery"
 path = ".."
+
+[[require]]
+name = "distillery-demo"
+path = "../demo"
 
 [[lean_lib]]
 name = "Driver"
@@ -16,5 +20,33 @@ srcDir = "cases"
 globs = ["Cases.*"]
 
 [[lean_lib]]
+name = "CasesX64"
+srcDir = "casesx64"
+globs = ["CasesX64.*"]
+
+[[lean_lib]]
 name = "Bench"
-roots = ["distill_word_abs", "distill_word_abs_val"]
+roots = ["distill_adc_chain",
+  "distill_add_sub_cancel",
+  "distill_add_sub_cancel_deep",
+  "distill_add_sub_cancel_simp",
+  "distill_backtrack",
+  "distill_catch",
+  "distill_entries",
+  "distill_get_throw_set",
+  "distill_holes",
+  "distill_loop",
+  "distill_match_iota",
+  "distill_pure_precond",
+  "distill_reader_state",
+  "distill_reg_file",
+  "distill_table",
+  "distill_word_abs",
+  "distill_word_abs_val"]
+
+[[lean_lib]]
+name = "BenchX64"
+roots = ["x64_array",
+  "x64_calls",
+  "x64_frame",
+  "x64_straight"]

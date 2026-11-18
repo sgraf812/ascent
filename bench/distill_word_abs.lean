@@ -18,11 +18,9 @@ partial def chainProofStx : Nat → MetaM Term
   | 0 => `(Refinement.pure_eq (f := wordVal) ⊤ _ rfl)
   | n+1 => do `(bindChain $(← chainProofStx n) fun cv av => refines_addW av cv _)
 
-def mkStmt (n : Nat) : MetaM Term :=
-  `(⦃(⊤ : Prop)⦄ (chainC 7 $(quote n)) ⪯[γw] (?_ : Demonic Int) ⦃(⌜wordVal · = ·⌝)⦄)
-
-def mkExpected (n : Nat) : MetaM Term :=
-  `(chainA 7 $(quote n))
+def mk (n : Nat) : MetaM DistillBench.Problem := return {
+  stmt := ← `(⦃(⊤ : Prop)⦄ (chainC 7 $(quote n)) ⪯[γw] (?_ : Demonic Int) ⦃(⌜wordVal · = ·⌝)⦄)
+  expected? := some (← `(chainA 7 $(quote n))) }
 
 def solveBaseline (n : Nat) (goal : MVarId) : MetaM (List MVarId) := do
   let stx ← chainProofStx n
@@ -30,13 +28,12 @@ def solveBaseline (n : Nat) (goal : MVarId) : MetaM (List MVarId) := do
 
 def runBaseline (sizes : List Nat) (showSynth := false) : MetaM Unit := do
   IO.println "=== WordAbs baseline (generated rule-chain term) ==="
-  runBench "WordAbs" mkStmt [``chainC] mkExpected solveBaseline (`(tactic| grind)) sizes
-    (showSynth := showSynth)
+  runFamily "WordAbs" mk [``chainC] solveBaseline (`(tactic| grind)) sizes (showSynth := showSynth)
 
 set_option maxRecDepth 100000
 set_option maxHeartbeats 10000000
 
 #eval runBaseline [2] (showSynth := true)
 
-#eval runBaseline [10, 20, 50, 100, 200, 500, 1000, 2000, 5000]
+#eval runBaseline [120, 240, 360]
 
