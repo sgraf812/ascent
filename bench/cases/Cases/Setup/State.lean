@@ -149,6 +149,10 @@ theorem abs_gt {a b x y : Nat} {P₁ P₂ : Prop}
     (h₁ : PureRefinement a x P₁ Eq) (h₂ : PureRefinement b y P₂ Eq) :
     PureRefinement (a > b) (x > y) (P₁ ∧ P₂) Eq := fun ⟨p₁, p₂⟩ => by rw [h₁ p₁, h₂ p₂]
 
+theorem abs_eq {α : Type} {a b x y : α} {P₁ P₂ : Prop} (h₁ : PureRefinement a x P₁ Eq)
+    (h₂ : PureRefinement b y P₂ Eq) : PureRefinement (a = b) (x = y) (P₁ ∧ P₂) Eq :=
+  fun ⟨p₁, p₂⟩ => by rw [h₁ p₁, h₂ p₂]
+
 theorem abs_blt {a b x y : Nat} {P₁ P₂ : Prop}
     (h₁ : PureRefinement a x P₁ Eq) (h₂ : PureRefinement b y P₂ Eq) :
     PureRefinement (Nat.blt a b) (Nat.blt x y) (P₁ ∧ P₂) Eq := fun ⟨p₁, p₂⟩ => by rw [h₁ p₁, h₂ p₂]

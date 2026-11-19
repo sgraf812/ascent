@@ -182,7 +182,16 @@ the abstract value and the precondition, and solves a `Refinement` subgoal with 
 invocation. A verification condition that an entry of the solver's environment states is closed
 by that entry.
 
-**Acceptance.** `D9` uses the solver. Test: `Regress/GuardConsequence`.
+A `let` or `have` of a pure value distills into a `let` or `have` of the abstract value
+(`wpHaveAbs?`). For `have x := e; b` and an abstract hole, the hole becomes
+`have x' := ?e'; ?k x'`. The value solver closes `PureRefinement x ?e' True ?R` for the local
+definition `x := e`, and the run continues on `b` and `?k x'` with the entry
+`PureRefinement x x' True R`. The abstract type of `x'` and the relation `R` come from the rule that
+abstracts `e`. For `let offset := v + 1; set (s + offset)`, the abstract program is
+`have offset' := v + 1; set (x + offset')`. If no rule abstracts `e`, `wpLet?` introduces `x` alone,
+and the solver abstracts each use of `x` through its value.
+
+**Acceptance.** `D9` uses the solver. Tests: `Regress/GuardConsequence`, `Regress/Have`.
 
 ### D7. Two-sided split
 

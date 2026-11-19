@@ -19,6 +19,7 @@ import DistilleryTests.Setup.Blocks
 import DistilleryTests.Regress.HoleScope
 import DistilleryTests.Regress.BinderHole
 import DistilleryTests.Regress.Split
+import DistilleryTests.Regress.Have
 import DistilleryTests.Regress.Lockstep
 import DistilleryTests.Regress.Commands
 import DistilleryTests.Regress.TopLevelRule

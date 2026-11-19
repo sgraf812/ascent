@@ -256,7 +256,7 @@
    mkBackwardRuleFromExpr res.expr res.paramNames.toList
 --- a/Distillery/Tactic/VCGen/Solve.lean
 +++ b/Distillery/Tactic/VCGen/Solve.lean
-@@ -754,6 +754,7 @@
+@@ -841,6 +841,7 @@
    let (goal, filled) ← fillAbstractHole goal info
    let .goals goals ← rule.applyChecked goal m!"split rule for{indentExpr info.prog}"
      | throwError "Failed to apply split rule for {indentExpr info.prog}"
@@ -264,7 +264,15 @@
    let mut simpGoals := #[]
    for g in goals do
      match ← simpGoalTelescope g with
-@@ -924,6 +925,10 @@
+@@ -1006,11 +1007,18 @@
+     if let some g ← wpReduceHead? goal info then
+       burnOne
+       return .goals scope [g]
++    if let some gs ← wpHaveAbs? goal info then
++      burnOne
++      return .goals scope gs
+     if let some (scope, gs) ← wpLet? scope goal info then
+       burnOne
        return .goals scope gs
      if let some gs ← wpSimpStateArgs? goal info then
        return .goals scope gs

@@ -603,6 +603,77 @@ def outsideHole? (info : WRPApp) : VCGenM (Option (Expr → Bool)) := do
   let xs := abs.getAppArgs
   return some fun e => e.hasAnyFVar fun fv => !decl.lctx.contains fv && !xs.contains (.fvar fv)
 
+/-- Distill a `let` or `have` of a pure value into a `let` or `have` of the abstract
+value. For `have x := e; b` and an abstract hole, the hole becomes `have x' := ?e'; ?k x'`, the value
+solver closes `PureRefinement x ?e' True ?R` for the local definition `x := e`, and the run
+continues on `b` and `?k x'` with the entry `PureRefinement x x' True R`. An abstract program
+`have x' := e'; k'` that another branch synthesized gives the goal `PureRefinement x e' True ?R`
+and the continuation `k'`. The guards of the solution are verification conditions. A value that no rule abstracts falls through to `wpLet?`. -/
+def wpHaveAbs? (goal : MVarId) (info : WRPApp) : VCGenM (Option (List MVarId)) := do
+  let .letE name type val body nondep := info.prog | return none
+  if isDuplicable (← reduceHead val) || Lean.Elab.Tactic.Do.isJP name then return none
+  let abs ← instantiateMVarsS info.abs
+  let isHole := abs.getAppFn.isMVar
+  unless isHole || abs.isLet do return none
+  let saved ← (saveState : MetaM Meta.SavedState)
+  let some gs ← goal.withContext do
+    let .sort (.succ u) ← instantiateMVarsS (← Sym.inferType type) | return none
+    -- The abstract binding: a fresh `have x' := ?e'; ?k x'` in the hole, or the binding of an
+    -- abstract program that another branch synthesized.
+    let (goal, b, α', e', k) ← if isHole then do
+        let (goal, filled) ← fillAbstractHole goal info
+        let some (_, _, b) := filled | return none
+        let v ← mkFreshLevelMVar
+        let α' ← shareCommon (← mkFreshExprMVar (← mkSortS (.succ v)))
+        let e' ← shareCommon (← mkFreshExprMVar α')
+        let k ← shareCommon (← mkFreshExprMVar (← mkForallS name .default α' (← Sym.inferType b)))
+        b.mvarId!.assign (← mkLetS name α' e' (← mkAppS k (← mkBVarS 0)) nondep)
+        restoreHoleScope filled
+        pure (goal, b, α', e', k)
+      else do
+        let .letE name' α' e' body' _ := abs | return none
+        pure (goal, abs, α', e', ← mkLambdaS name' .default α' body')
+    let .sort (.succ v) ← instantiateMVarsS (← Sym.inferType α') | return none
+    let R ← shareCommon (← mkFreshExprMVar
+      (← mkForallS `c .default type (← mkForallS `a .default α' (← mkSortS .zero))))
+    let wp ← mkAppNS info.head ((info.args.set! WRPApp.progIdx body).set! (WRPApp.progIdx + 1) b)
+    let (x, goal) ← introLet goal name type val (← mkAppNS wp info.excessArgs) nondep
+    goal.withContext do
+    let xE ← mkFVarS x
+    let PR ← mkConstS ``Distillery.PureRefinement [u, v]
+    let tru ← mkConstS ``True
+    let hpr ← mkFreshExprSyntheticOpaqueMVar
+      (← shareCommon (← mkAppNS PR #[type, α', xE, e', tru, R]))
+    let target ← goal.getType
+    let relArgs := target.getAppArgs
+    let rhs := relArgs.back!
+    let contTy ← withLocalDeclD name α' fun x' => do
+      let x' ← mkFVarS x'.fvarId!
+      withLocalDeclD `hx (← mkAppNS PR #[type, α', xE, x', tru, R]) fun hx => do
+        let hx ← mkFVarS hx.fvarId!
+        let rhs' ← mkAppNS rhs.getAppFn (rhs.getAppArgs.set! (WRPApp.progIdx + 1) (← betaS k #[x']))
+        let rel ← mkAppNS target.getAppFn (relArgs.set! (relArgs.size - 1) rhs')
+        mkForallFVarsS #[x', hx] rel
+    let cont ← mkFreshExprSyntheticOpaqueMVar (← shareCommon contTy) (← goal.getTag)
+    goal.assign (mkApp2 cont e' hpr)
+    let some solved ← (try some <$> solvePureRefinement hpr.mvarId! catch _ => pure none)
+      | return none
+    let mut vcs := #[]
+    for vc in solved do
+      let ty ← instantiateMVarsS (← vc.getType)
+      if let some (T, lhs, rhs) := ty.eq? then
+        if (← instantiateMVarsS rhs).isMVar then
+          if ← isDefEqS rhs lhs then
+            vc.assign (mkApp2 (mkConst ``Eq.refl [← Sym.getLevel T]) T lhs)
+            continue
+      vcs := vcs.push vc
+    let .goal _ g ← Sym.introN cont.mvarId! 2
+      | throwError "distill: failed to introduce the abstract value of the `have` {name}"
+    trace[Elab.Tactic.Do.vcgen] "have-abstract: {name} ↦ {← instantiateMVarsS e'}"
+    return some (g :: vcs.toList)
+    | (saved.restore : MetaM Unit); return none
+  return some gs
+
 /-- Rewrite the concrete program of `goal` by `hprog : info.prog = prog'`. -/
 def rewriteProg (goal : MVarId) (info : WRPApp) (prog' hprog : Expr) : VCGenM MVarId := do
   let prog := info.prog
@@ -646,9 +717,11 @@ def wpMatchChain? (goal : MVarId) (info : WRPApp) : VCGenM (Option MVarId) := go
   let prog := info.prog
   let some m ← liftMetaM <| Meta.matchMatcherApp? prog | return none
   unless m.discrs.size == 1 && m.remaining.isEmpty do return none
-  let some outside ← outsideHole? info | return none
   let d := m.discrs[0]!
-  unless outside d do return none
+  -- A chain that another branch synthesized makes the abstract program a `dite`.
+  match ← outsideHole? info with
+  | some outside => unless outside d do return none
+  | none => unless (← instantiateMVarsS info.abs).isAppOfArity ``dite 5 do return none
   let .lam _ _ T _ := m.motive | return none
   if T.hasLooseBVars then return none
   let some chain ← mkMatchChainCached m.matcherName | return none
@@ -673,7 +746,16 @@ def wpAbstractCond? (goal : MVarId) (info : WRPApp) : VCGenM (Option (List MVarI
   let isIte := prog.isAppOfArity ``ite 5
   let isDite := prog.isAppOfArity ``dite 5
   let isCond := prog.isAppOfArity ``cond 4
-  let some outside ← outsideHole? info | return none
+  -- A split that another branch synthesized fixes the abstract condition or discriminant: the
+  -- argument at a position where the two programs differ.
+  let abs ← instantiateMVarsS info.abs
+  let hole? ← outsideHole? info
+  let given := hole?.isNone
+  if given && !(abs.getAppFn == prog.getAppFn && abs.getAppNumArgs == prog.getAppNumArgs) then
+    return none
+  let outside : Nat → Expr → Bool := fun i d => match hole? with
+    | some f => f d
+    | none => d != abs.getArg! i
   -- The position of the abstracted argument: the condition, or the first discriminant of a matcher
   -- whose motive does not depend on the discriminants.
   let mut idx? : Option Nat := none
@@ -683,30 +765,35 @@ def wpAbstractCond? (goal : MVarId) (info : WRPApp) : VCGenM (Option (List MVarI
     let independent ← liftMetaM <| Meta.lambdaTelescope m.motive fun ys body =>
       pure (ys.size == m.discrs.size && !body.hasAnyFVar (ys.map (·.fvarId!)).contains)
     if independent && m.discrInfos.all (·.hName?.isNone) then
-      if let some i := m.discrs.findIdx? outside then
-        idx? := some (m.params.size + 1 + i)
+      let off := m.params.size + 1
+      if let some i := (List.range m.discrs.size).find? fun i => outside (off + i) m.discrs[i]! then
+        idx? := some (off + i)
   let some idx := idx? | return none
   let d := prog.getArg! idx
-  unless outside d do return none
+  unless outside idx d do return none
   let T ← Sym.inferType d
   let l ← Sym.getLevel T
   let v := l.dec.getD levelZero
-  let ad ← shareCommon (← mkFreshExprMVar T)
+  let ad ← if given then pure (abs.getArg! idx) else shareCommon (← mkFreshExprMVar T)
   let eqT ← mkAppNS (← mkConstS ``Eq [l]) #[T]
   let gTy ← mkAppNS (← mkConstS ``Distillery.PureRefinement [v, v])
     #[T, T, d, ad, ← mkConstS ``True, eqT]
   let g ← mkFreshExprSyntheticOpaqueMVar (← shareCommon gTy)
+  let saved ← (saveState : MetaM Meta.SavedState)
   let mut vcs := #[]
   for vc in ← solvePureRefinement g.mvarId! do
     let ty ← instantiateMVarsS (← vc.getType)
     if let some (_, lhs, rhs) := ty.eq? then
-      if (← instantiateMVarsS rhs).isMVar then
+      if given || (← instantiateMVarsS rhs).isMVar then
         if ← isDefEqS rhs lhs then
           vc.assign (mkApp2 (mkConst ``Eq.refl [l]) T lhs)
           continue
+        if given then
+          (saved.restore : MetaM Unit)
+          return none
     vcs := vcs.push vc
   let ad ← instantiateMVarsS ad
-  if outside ad || ad.hasExprMVar then return none
+  if !given && (outside idx ad || ad.hasExprMVar) then return none
   -- `hc : d = ad`
   let hc := mkApp g (mkConst ``True.intro)
   let fn := prog.getAppFn
@@ -929,6 +1016,9 @@ def solve (scope : Scope) (goal : MVarId) : VCGenM SolveResult := goal.withConte
     if let some g ← wpReduceHead? goal info then
       burnOne
       return .goals scope [g]
+    if let some gs ← wpHaveAbs? goal info then
+      burnOne
+      return .goals scope gs
     if let some (scope, gs) ← wpLet? scope goal info then
       burnOne
       return .goals scope gs

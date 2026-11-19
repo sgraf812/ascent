@@ -63,13 +63,17 @@ these two families have no golden check.
 | `AdcChain` | `distill_adc_chain.lean` | `StateT S Demonic` | 150, 300, 450 | 1.25 s | 250, 500, 750 |
 | `DiteSplit` | `distill_dite_split.lean` | `ExceptT String (StateT Nat Demonic)` | 20, 40, 60 | 1.01 s | 500, 1000, 1500 |
 | `MatchSplit` | `distill_match_split.lean` | `ExceptT String (StateT Nat Demonic)` | 60, 120, 180 | 0.94 s | 500, 1000, 1500 |
+| `LetBinding` | `distill_let_binding.lean` | `StateT Nat Demonic` | 20, 40, 60 | 0.96 s | 10 |
 
-The bench has no mirror of the `vcgen` cases `IfsJP`, `MatchesJP`, `WideJP` and `LetBinding`:
+The bench has no mirror of the `vcgen` cases `IfsJP`, `MatchesJP` and `WideJP`:
 
-* `IfsJP`, `MatchesJP`, `WideJP`: the do-elaborator gives each `if` or `match` a join point
-  `__do_jp` for its continuation. The run introduces the arguments of a join point, such as the
-  updated mutable variable, as local definitions, and the synthesized program then mentions them.
-* `LetBinding`: no `@[distill_pure]` rule abstracts the local definition of a pure `let`.
+* `IfsJP`, `MatchesJP`: the do-elaborator gives each `if` or `match` a join point `__do_jp` for its
+  continuation. The run unfolds the join point at each jump, so each branch processes the
+  continuation again, and `n` steps of three splits cost `8ⁿ` (`IfsJP` at 1, 2, 3 steps: 75 ms,
+  166 ms, 1421 ms). In `MatchesJP`, the second branch meets the abstract `dite` that the first
+  branch synthesized, whose branch holes have delayed assignments that no instantiation resolves
+  while the holes stay unapplied, and the split fails.
+* `WideJP`: the recursive `chain` has no spec.
 
 `GetThrowSet` throws by `throwIf`, whose rule abstracts the condition. `AddSubCancelDeep` puts
 every `ExceptT` above the `ReaderT` and the two `StateT`, the order for which `EPostsConcretization`
