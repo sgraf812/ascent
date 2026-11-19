@@ -69,9 +69,10 @@ these two families have no golden check.
 | `WideJP` | `distill_wide_jp.lean` | `StateT Nat Demonic` | 30, 60, 90 | 1.22 s | 4 (`+jp`) |
 
 `IfsJP`, `MatchesJP` and `WideJP` give the abstract program one join point for each concrete join
-point, so the run distills the code after each split once. `WideJP` weakens the postcondition of the split
-of `chain n x`, so that the `n + 1` results share one abstract continuation. In `WideJP`, `share` grows faster than quadratically: 22, 86 and 355 ms. In `DiteSplit`,
-`instantiate` grows quadratically: 15, 121 and 590 ms.
+point, so the run distills the code after each split once. `WideJP` weakens the postcondition of
+the split of `chain n x`, so that the `n + 1` results share one abstract continuation. In `WideJP`,
+`share` grows faster than quadratically: 22, 86 and 355 ms. In `DiteSplit`, `instantiate` grows
+quadratically: 15, 121 and 590 ms.
 
 `GetThrowSet` throws by `throwIf`, whose rule abstracts the condition. `AddSubCancelDeep` puts
 every `ExceptT` above the `ReaderT` and the two `StateT`, the order for which `EPostsConcretization`
