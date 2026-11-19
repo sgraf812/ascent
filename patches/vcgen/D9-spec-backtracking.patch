@@ -1,6 +1,6 @@
 --- a/Distillery/Tactic/VCGen/Solve.lean
 +++ b/Distillery/Tactic/VCGen/Solve.lean
-@@ -769,23 +769,31 @@
+@@ -830,23 +830,31 @@
  
  /--
  Handle a spec-ready program `info.prog`: apply the highest-priority `@[spec]` theorem whose backward

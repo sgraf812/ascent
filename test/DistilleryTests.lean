@@ -37,6 +37,8 @@ import DistilleryTests.Regress.WeakenPreValEq
 import DistilleryTests.Regress.SpecBacktrack
 import DistilleryTests.Regress.BareExceptionRelation
 import DistilleryTests.Regress.StateSplit
+import DistilleryTests.Regress.MatchChain
+import DistilleryTests.Regress.WordMatch
 import DistilleryTests.Regress.RefinementPremise
 import DistilleryTests.Regress.RefinementPremiseForall
 import DistilleryTests.Demonic

@@ -532,13 +532,22 @@ def filledInScope (filled : Option (MetavarDecl × Array Expr × Expr)) : VCGenM
 context. A rule creates its holes in the goal's context, which also holds the variables that the run
 introduced, such as the concrete state. The abstract program uses none of them (`filledInScope`),
 and a table shares the program with the goals of the other cells. A hole of a delayed assignment
-`?h xs := ?b` keeps its context, since `?b` occurs only behind `?h`. The maximal free variable of a
-term with a hole depends on the hole's context, so the cache of `Sym.getMaxFVar?` starts afresh
-after a change. -/
-def restoreHoleScope (filled : Option (MetavarDecl × Array Expr × Expr)) : VCGenM Unit := do
+`?h xs := ?b` keeps its context, since `?b` occurs only behind `?h`. With `withArgs`, the holes of a
+delayed assignment `?h xs := ?b` take the context of `?h` extended by `xs`, so that a later split in
+a branch recognizes the concrete state as outside of the branch's hole (`outsideHole?`). The maximal
+free variable of a term with a hole depends on the hole's context, so the cache of
+`Sym.getMaxFVar?` starts afresh after a change. -/
+def restoreHoleScope (filled : Option (MetavarDecl × Array Expr × Expr)) (withArgs := false) :
+    VCGenM Unit := do
   let some (decl, xs, b) := filled | return
-  unless xs.isEmpty do return
-  let outOfScope (e : Expr) := e.hasAnyFVar fun fv => !decl.lctx.contains fv
+  unless xs.isEmpty || withArgs do return
+  let mut lctx := decl.lctx
+  for x in xs do
+    let xd ← x.fvarId!.getDecl
+    let out (e : Expr) := e.hasAnyFVar (!lctx.contains ·)
+    if out (← instantiateMVars xd.type) || xd.value?.any out then return
+    lctx := lctx.addDecl xd
+  let outOfScope (e : Expr) := e.hasAnyFVar fun fv => !lctx.contains fv
   let mut changed := false
   for mv in ← getMVars (← instantiateMVarsS b) do
     let d ← mv.getDecl
@@ -546,7 +555,7 @@ def restoreHoleScope (filled : Option (MetavarDecl × Array Expr × Expr)) : VCG
     unless d.lctx.numIndices > decl.lctx.numIndices do continue
     if outOfScope (← instantiateMVars d.type) then continue
     modifyMCtx (·.modifyExprMVarDecl mv fun d =>
-      { d with lctx := decl.lctx, localInstances := decl.localInstances })
+      { d with lctx, localInstances := decl.localInstances })
     changed := true
   if changed then
     (modify fun s => { s with maxFVar := {} } : Sym.SymM Unit)
@@ -585,6 +594,72 @@ def rhsExistsIntro? (goal : MVarId) (α pre rhs : Expr) : VCGenM (Option MVarId)
   goal.assign (mkApp5 (mkConst ``Distillery.le_exists_of_le [← Sym.getLevel β]) β pre p x g)
   return some g.mvarId!
 
+/-- The test whether a term mentions a free variable outside the context of the abstract hole of
+`info`, or `none` if the abstract program is not a hole. -/
+def outsideHole? (info : WRPApp) : VCGenM (Option (Expr → Bool)) := do
+  let abs ← instantiateMVarsIfMVarAppS info.abs
+  let .mvar hole := abs.getAppFn | return none
+  let decl ← hole.getDecl
+  let xs := abs.getAppArgs
+  return some fun e => e.hasAnyFVar fun fv => !decl.lctx.contains fv && !xs.contains (.fvar fv)
+
+/-- Rewrite the concrete program of `goal` by `hprog : info.prog = prog'`. -/
+def rewriteProg (goal : MVarId) (info : WRPApp) (prog' hprog : Expr) : VCGenM MVarId := do
+  let prog := info.prog
+  let target ← goal.getType
+  let relArgs := target.getAppArgs
+  let wp ← mkAppNS info.head <| info.args.set! WRPApp.progIdx prog'
+  let target' ← mkAppNS target.getAppFn (relArgs.set! (relArgs.size - 1) (← mkAppNS wp info.excessArgs))
+  let g' ← mkFreshExprSyntheticOpaqueMVar (← shareCommon target') (← goal.getTag)
+  let progTy ← Sym.inferType prog
+  let w ← Sym.getLevel progTy
+  let motive := mkLambda `p .default progTy <|
+    mkAppN target.getAppFn (relArgs.set! (relArgs.size - 1)
+      (mkAppN (mkAppN info.head (info.args.set! WRPApp.progIdx (mkBVar 0))) info.excessArgs))
+  let hTarget := mkApp6 (mkConst ``congrArg [w, 1]) progTy (mkSort 0) prog prog' motive hprog
+  goal.assign (mkApp4 (mkConst ``Eq.mpr [0]) target target' hTarget g')
+  return g'.mvarId!
+
+/-- The `MatchChain`s of the matchers that the run has seen. -/
+initialize matchChainExt : SymExtension (Std.HashMap Name (Option MatchChain)) ←
+  registerSymExtension (pure {})
+
+/-- Cached version of `mkMatchChain`. Cache key: the matcher name. -/
+def mkMatchChainCached (matcherName : Name) : VCGenM (Option MatchChain) := do
+  if let some chain := (← matchChainExt.getState)[matcherName]? then return chain
+  let chain ← liftMetaM <| withNewMCtxDepth <| mkMatchChain matcherName
+  let chain ← chain.mapM fun c => return { c with
+    rhs := ← shareCommon c.rhs, proof := ← shareCommon c.proof }
+  matchChainExt.modifyState (·.insert matcherName chain)
+  return chain
+
+/-- Strategy 11a: rewrite a matcher whose discriminant `d` mentions a variable outside the context of
+the abstract hole, such as a value that the run read from the concrete state, into a chain of
+`dite`s (`mkMatchChain`). The matcher has one discriminant, a motive that does not depend on it, no
+equation name of it, closed patterns `pᵢ`, and at most a final variable pattern:
+`match d with | 0 => A | 1 => B | x => C x` becomes
+`if h : d = 0 then A else if h : d = 1 then B else C d`. The equations of the matcher prove the
+rewrite. Then `wpAbstractCond?` abstracts each condition `d = pᵢ` under the relations of the value
+solver, such as `w = 0#8` to `n = 0` for a word `w` with the number `n`. A matcher outside this
+class stays as it is. -/
+def wpMatchChain? (goal : MVarId) (info : WRPApp) : VCGenM (Option MVarId) := goal.withContext do
+  let prog := info.prog
+  let some m ← liftMetaM <| Meta.matchMatcherApp? prog | return none
+  unless m.discrs.size == 1 && m.remaining.isEmpty do return none
+  let some outside ← outsideHole? info | return none
+  let d := m.discrs[0]!
+  unless outside d do return none
+  let .lam _ _ T _ := m.motive | return none
+  if T.hasLooseBVars then return none
+  let some chain ← mkMatchChainCached m.matcherName | return none
+  let us := m.matcherLevels.toList
+  let args := m.params ++ #[← shareCommon T, d] ++ m.alts
+  let rhs ← shareCommon (chain.rhs.instantiateLevelParams chain.levelParams us)
+  let prog' ← instantiateRevBetaS (args.foldl (fun e _ => e.bindingBody!) rhs) args
+  let hprog := mkAppN (chain.proof.instantiateLevelParams chain.levelParams us) args
+  trace[Elab.Tactic.Do.vcgen] "match chain: {prog'}"
+  return some (← rewriteProg goal info prog' hprog)
+
 /-- Strategy 11a: abstract the condition of an `ite`, `dite` or `cond`, or a discriminant of a
 matcher, that mentions a variable outside the context of the abstract hole, such as a value that the
 run read from the concrete state. The value solver gives the abstract value `ad` with `d = ad` under
@@ -598,11 +673,7 @@ def wpAbstractCond? (goal : MVarId) (info : WRPApp) : VCGenM (Option (List MVarI
   let isIte := prog.isAppOfArity ``ite 5
   let isDite := prog.isAppOfArity ``dite 5
   let isCond := prog.isAppOfArity ``cond 4
-  let abs ← instantiateMVarsIfMVarAppS info.abs
-  let .mvar hole := abs.getAppFn | return none
-  let decl ← hole.getDecl
-  let xs := abs.getAppArgs
-  let outside (e : Expr) := e.hasAnyFVar fun fv => !decl.lctx.contains fv && !xs.contains (.fvar fv)
+  let some outside ← outsideHole? info | return none
   -- The position of the abstracted argument: the condition, or the first discriminant of a matcher
   -- whose motive does not depend on the discriminants.
   let mut idx? : Option Nat := none
@@ -670,20 +741,9 @@ def wpAbstractCond? (goal : MVarId) (info : WRPApp) : VCGenM (Option (List MVarI
         let rflE := mkLambda `h .default notAd (mkApp2 (mkConst ``Eq.refl [w]) α (mkApp e' (mkBVar 0)))
         pure (prog', mkAppN (mkConst ``dite_congr [w])
           #[d, ad, α, args[2]!, inst, args[3]!, t', args[4]!, e', hc, rflT, rflE])
-  -- Rewrite the goal by `hprog : prog = prog'`.
-  let target ← goal.getType
-  let relArgs := target.getAppArgs
-  let wp ← mkAppNS info.head <| info.args.set! WRPApp.progIdx prog'
-  let target' ← mkAppNS target.getAppFn (relArgs.set! (relArgs.size - 1) (← mkAppNS wp info.excessArgs))
-  let g' ← mkFreshExprSyntheticOpaqueMVar (← shareCommon target') (← goal.getTag)
-  let progTy ← Sym.inferType prog
-  let motive := mkLambda `p .default progTy <|
-    mkAppN target.getAppFn (relArgs.set! (relArgs.size - 1)
-      (mkAppN (mkAppN info.head (info.args.set! WRPApp.progIdx (mkBVar 0))) info.excessArgs))
-  let hTarget := mkApp6 (mkConst ``congrArg [w, 1]) progTy (mkSort 0) prog prog' motive hprog
-  goal.assign (mkApp4 (mkConst ``Eq.mpr [0]) target target' hTarget g')
+  let g' ← rewriteProg goal info prog' hprog
   trace[Elab.Tactic.Do.vcgen] "abstract condition: {d} ↦ {ad}"
-  return some (g'.mvarId! :: vcs.toList)
+  return some (g' :: vcs.toList)
 
 /-- Strategy 11b: split an `ite`/`dite`/`cond`/match program, or iota-reduce a matcher with a
 concrete discriminant. -/
@@ -694,6 +754,7 @@ def wpMatch? (goal : MVarId) (info : WRPApp) :
   let (goal, filled) ← fillAbstractHole goal info
   let .goals goals ← rule.applyChecked goal m!"split rule for{indentExpr info.prog}"
     | throwError "Failed to apply split rule for {indentExpr info.prog}"
+  restoreHoleScope filled (withArgs := true)
   let mut simpGoals := #[]
   for g in goals do
     match ← simpGoalTelescope g with
@@ -873,6 +934,8 @@ def solve (scope : Scope) (goal : MVarId) : VCGenM SolveResult := goal.withConte
       return .goals scope gs
     if let some gs ← wpSimpStateArgs? goal info then
       return .goals scope gs
+    if let some g ← wpMatchChain? goal info then
+      return .goals scope [g]
     if let some gs ← wpAbstractCond? goal info then
       return .goals scope gs
     if let some gs ← wpMatch? goal info then

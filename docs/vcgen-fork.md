@@ -200,7 +200,21 @@ under `Eq`, and the concrete program is rewritten to split on `ad` (`ite_congr`,
 `congrArg` for a matcher whose motive does not depend on its discriminants). The rewritten `ite`
 and `dite` decide `ad` by `Classical.propDecidable`.
 
-**Acceptance.** Tests: `Regress/IteSplit`, `Regress/StateSplit`.
+Before that, `wpMatchChain?` rewrites a matcher whose discriminant `d` mentions such a variable into
+a chain of `dite`s, if the matcher has one discriminant, a motive that does not depend on it, no
+equation name of it, closed patterns, and at most a final variable pattern. For a word `w`,
+`match w with | 0 => A | 1 => B | x => C x` becomes
+`if h : w = 0#8 then A else if h : w = 1#8 then B else C w`. Without a variable pattern, the last
+alternative is the last `else`. `mkMatchChain` builds the chain and the proof of the rewrite once for
+each matcher, from the equations of the matcher, over the parameters, the motive's type, the
+discriminant and the alternatives. `wpAbstractCond?` then abstracts each condition `d = pᵢ` under
+the relation of the value solver: for `w` with the number `n` under `WordNat`, `w = 0#8` becomes
+`n = 0`, and the abstract program is the chain `if h : n = 0 then … else if h : n = 1 then … else …`.
+After the split of a hole `?h xs`, the holes of the branches take the context of `?h` extended by
+`xs`, so that the split of a later `dite` of the chain recognizes `w` as outside of the hole.
+
+**Acceptance.** Tests: `Regress/IteSplit`, `Regress/StateSplit`, `Regress/MatchChain`,
+`Regress/WordMatch`.
 
 ### D8. Existential witness
 

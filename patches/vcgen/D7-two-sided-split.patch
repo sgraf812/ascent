@@ -1,6 +1,6 @@
 --- a/Distillery/Tactic/VCGen/RuleConstruction.lean
 +++ b/Distillery/Tactic/VCGen/RuleConstruction.lean
-@@ -437,11 +437,44 @@
+@@ -437,11 +437,176 @@
  /-! ## Split rules -/
  
  open Lean.Elab.Tactic.Do in
@@ -34,6 +34,138 @@
 +    withLocalDeclsDND (altTypes.mapIdx fun i t => ((`alt).appendIndexAfter (i + 1), t)) fun alts =>
 +      k { m with matcherLevels := m.matcherLevels.set! uPos u, motive, alts }.toExpr alts
 +
++/-- The `dite` chain of a matcher `m` on one discriminant whose alternatives have closed patterns
++`p₁, …, pₙ`, and at most a final alternative whose pattern is a variable. For
++`match d with | 0 => A | 1 => B | x => C x`, with the alternatives `alts = #[a₁, a₂, a₃]`, `rhs` is
++`fun ps T d alts => if h : d = 0 then a₁ () else if h : d = 1 then a₂ () else a₃ d`, and `proof`
++proves `m ps (fun _ => T) d alts = rhs ps T d alts`. The parameters of `m` are `ps`, and its constant
++motive returns `T`. Without a final variable pattern, the last alternative is the last `else`. The
++`dite`s decide by `Classical.propDecidable`. Both terms abstract the level parameters
++`levelParams` of `m`. -/
++structure MatchChain where
++  levelParams : List Name
++  rhs : Expr
++  proof : Expr
++  deriving Inhabited
++
++/-- The equation `eqn` of a matcher at the universe levels `us`, the parameters `ps`, the motive
++`motive` and the alternatives `alts`: the pattern of its alternative and the proof of the equation.
++The pattern variable of the alternative, if any, becomes `z?`. The hypotheses `hyps` prove the
++overlap hypotheses of the equation. -/
++def matchEqnInstance (eqn : Name) (us : List Level) (ps : Array Expr) (motive : Expr)
++    (alts : Array Expr) (z? : Option Expr) (hyps : Array Expr) : MetaM (Option (Expr × Expr)) := do
++  let eqnC := mkConst eqn us
++  let (mvs, _, ty) ← forallMetaTelescope (← inferType eqnC)
++  let some (_, lhs, _) := ty.eq? | return none
++  let args := lhs.getAppArgs
++  unless args.size == ps.size + 2 + alts.size do return none
++  for (a, b) in args.zip (ps ++ #[motive]) ++ (args.extract (ps.size + 2)).zip alts do
++    unless ← isDefEq a b do return none
++  let pat := args[ps.size + 1]!
++  if let some z := z? then
++    unless pat.isMVar && (← isDefEq pat z) do return none
++  for mv in mvs do
++    let mv := mv.mvarId!
++    if ← mv.isAssigned then continue
++    let mvTy ← mv.getType
++    let some h ← hyps.findM? fun h => do isDefEq (← inferType h) mvTy | return none
++    mv.assign h
++  let pat ← instantiateMVars pat
++  let prf ← instantiateMVars (mkAppN eqnC mvs)
++  if pat.hasExprMVar || prf.hasExprMVar then return none
++  return some (pat, prf)
++
++/-- The `MatchChain` of the matcher `matcherName`, if it has one discriminant without an equation
++name, closed patterns, and at most a final variable pattern. The equation of a closed pattern `pᵢ`
++proves the branch `h : d = pᵢ`. The equation of the variable pattern proves the last branch, with
++the negated conditions of the earlier branches as its overlap hypotheses. Without a variable
++pattern, the matcher eliminates `d` into `Prop` for the last branch: the alternative of `pⱼ` with
++`j < n` contradicts the negated condition `¬ pⱼ = pⱼ`, and the alternative of `pₙ` is its equation. -/
++def mkMatchChain (matcherName : Name) : MetaM (Option MatchChain) := do
++  let some info ← getMatcherInfo? matcherName | return none
++  let some uPos := info.uElimPos? | return none
++  let n := info.altInfos.size
++  unless info.numDiscrs == 1 && info.discrInfos.all (·.hName?.isNone) && n > 0 do return none
++  let catchAll := info.altInfos[n - 1]!.numFields == 1
++  for i in [:n] do
++    let a := info.altInfos[i]!
++    unless (a.numFields == 0 && a.hasUnitThunk) || (i + 1 == n && catchAll) do return none
++  let cinfo ← getConstInfo matcherName
++  let lps := cinfo.levelParams
++  let us := lps.map mkLevelParam
++  let us0 := us.set uPos Level.zero
++  let eqns := (← Match.getEquationsFor matcherName).eqnNames
++  unless eqns.size == n do return none
++  forallBoundedTelescope cinfo.type info.numParams fun ps mty => do
++  let .forallE _ (.forallE _ D _ _) _ _ := mty | return none
++  withLocalDeclD `T (mkSort us[uPos]!) fun T => do
++  withLocalDeclD `d D fun d => do
++  let unit := mkConst ``Unit.unit
++  let altTys ← info.altInfos.mapM fun a =>
++    if a.numFields == 0 then mkArrow (mkConst ``Unit) T else mkArrow D T
++  withLocalDeclsDND (altTys.mapIdx fun i t => ((`alt).appendIndexAfter (i + 1), t)) fun alts => do
++  let motive := mkLambda `x .default D T
++  let lhsOf (z : Expr) := mkAppN (mkConst matcherName us) (ps ++ #[motive, z] ++ alts)
++  -- The closed patterns, with their equations.
++  let mut pats := #[]
++  let mut eqPrfs := #[]
++  for i in [:if catchAll then n - 1 else n] do
++    let some (p, prf) ← matchEqnInstance eqns[i]! us ps motive alts none #[] | return none
++    pats := pats.push p
++    eqPrfs := eqPrfs.push prf
++  let rhsN := if catchAll then mkApp alts[n - 1]! d else mkApp alts[n - 1]! unit
++  -- The proof of `lhsOf d = rhsN` under the negated conditions `hnegs` of the earlier branches.
++  let lastProof (hnegs : Array Expr) : MetaM (Option Expr) := do
++    if catchAll then
++      return (← matchEqnInstance eqns[n - 1]! us ps motive alts (some d) hnegs).map (·.2)
++    -- Without a variable pattern, eliminate `d` by the matcher into `Prop`, with the motive
++    -- `fun z => ¬ z = p₁ → … → lhsOf z = rhsN`.
++    let negTys (z : Expr) : MetaM (Array Expr) :=
++      (pats.extract 0 (n - 1)).mapM fun p => return mkNot (← mkEq z p)
++    let motiveP ← withLocalDeclD `z D fun z => do
++      withLocalDeclsDND ((← negTys z).map (`h, ·)) fun hs => do
++      mkLambdaFVars #[z] (← mkForallFVars hs (← mkEq (lhsOf z) rhsN))
++    let mut altsP := #[]
++    for j in [:n] do
++      let pj := pats[j]!
++      let some alt ← withLocalDeclD `u (mkConst ``Unit) fun u => do
++          withLocalDeclsDND ((← negTys pj).map (`h, ·)) fun hs => do
++          let goalTy ← mkEq (lhsOf pj) rhsN
++          let body? ← if j + 1 == n then
++              pure <| (← matchEqnInstance eqns[j]! us ps motive alts none hs).map (·.2)
++            else
++              pure <| some (← mkFalseElim goalTy (mkApp hs[j]! (← mkEqRefl pj)))
++          body?.mapM (mkLambdaFVars (#[u] ++ hs))
++        | return none
++      altsP := altsP.push alt
++    return some <| mkAppN (mkConst matcherName us0) (ps ++ #[motiveP, d] ++ altsP ++ hnegs)
++  -- The chain from the last alternative back to the first, under the negated conditions `hnegs`.
++  let conds ← (pats.extract 0 (n - 1)).mapM (mkEq d)
++  withLocalDeclsDND (conds.map (`h, mkNot ·)) fun hnegs => do
++  let some prfN ← lastProof hnegs | return none
++  let mut rhs := rhsN
++  let mut prf := prfN
++  for i' in [:n - 1] do
++    let i := n - 2 - i'
++    let c := conds[i]!
++    let rhsT := mkApp alts[i]! unit
++    let inst := mkApp (mkConst ``Classical.propDecidable) c
++    let tFn ← withLocalDeclD `h c fun h => mkLambdaFVars #[h] rhsT
++    let e ← mkLambdaFVars #[hnegs[i]!] rhs
++    let hdE ← mkAppOptM ``dite_eq_right #[c, inst, hnegs[i]!, T, tFn, e]
++    let neg ← mkLambdaFVars #[hnegs[i]!] (← mkEqTrans prf (← mkEqSymm hdE))
++    rhs ← mkAppOptM ``dite #[T, c, inst, tFn, e]
++    let pos ← withLocalDeclD `h c fun h => do
++      let ctx ← withLocalDeclD `z D fun z => do mkLambdaFVars #[z] (← mkEq (lhsOf z) rhsT)
++      let hT ← mkEqMPR (← mkCongrArg ctx h) eqPrfs[i]!
++      let hdT ← mkAppOptM ``dite_eq_left #[c, inst, h, T, tFn, e]
++      mkLambdaFVars #[h] (← mkEqTrans hT (← mkEqSymm hdT))
++    prf := mkApp4 (mkConst ``Classical.byCases) c (← mkEq (lhsOf d) rhs) pos neg
++  check prf
++  unless ← isDefEq (← inferType prf) (← mkEq (lhsOf d) rhs) do return none
++  let xs := ps ++ #[T, d] ++ alts
++  return some { levelParams := lps, rhs := ← mkLambdaFVars xs rhs, proof := ← mkLambdaFVars xs prf }
++
 +open Lean.Elab.Tactic.Do in
  /-- Creates a reusable backward rule for splitting `ite`, `dite`, `cond`, or matchers.
  
@@ -46,7 +178,7 @@
  def mkBackwardRuleForSplit
      (splitInfo : SplitInfo) (info : WRPApp) : MetaM BackwardRule := do
    -- The split value type is the goal's, so reuse the goal's program type and `WP` instance directly.
-@@ -452,24 +485,25 @@
+@@ -452,24 +617,25 @@
      -- Eta-reduce matcher alts for the backward rule pattern to avoid expensive
      -- higher-order unification. The alts are eta-expanded by `withAbstract` so that
      -- `splitWith`/`matcherApp.transform` can `instantiateLambda` them directly.
@@ -79,7 +211,7 @@
      -- Use synthetic opaque mvars so that `rwIfOrMatcher`'s `assumption` cannot
      -- accidentally assign our subgoal metavariables.
      let subgoals ← splitInfo.altInfos.mapM fun _ =>
-@@ -479,25 +513,34 @@
+@@ -479,25 +645,34 @@
      let prf ←
        abstractInfo.splitWith
          (useSplitter := true)
@@ -124,10 +256,20 @@
    mkBackwardRuleFromExpr res.expr res.paramNames.toList
 --- a/Distillery/Tactic/VCGen/Solve.lean
 +++ b/Distillery/Tactic/VCGen/Solve.lean
-@@ -864,6 +864,8 @@
+@@ -754,6 +754,7 @@
+   let (goal, filled) ← fillAbstractHole goal info
+   let .goals goals ← rule.applyChecked goal m!"split rule for{indentExpr info.prog}"
+     | throwError "Failed to apply split rule for {indentExpr info.prog}"
++  restoreHoleScope filled (withArgs := true)
+   let mut simpGoals := #[]
+   for g in goals do
+     match ← simpGoalTelescope g with
+@@ -924,6 +925,10 @@
        return .goals scope gs
      if let some gs ← wpSimpStateArgs? goal info then
        return .goals scope gs
++    if let some g ← wpMatchChain? goal info then
++      return .goals scope [g]
 +    if let some gs ← wpAbstractCond? goal info then
 +      return .goals scope gs
      if let some gs ← wpMatch? goal info then
