@@ -1,6 +1,6 @@
 --- a/Distillery/Tactic/VCGen/Solve.lean
 +++ b/Distillery/Tactic/VCGen/Solve.lean
-@@ -393,12 +393,711 @@
+@@ -393,12 +393,723 @@
      | .noProgress => return none
    | _ => return none
  
@@ -216,34 +216,24 @@
 +/-- Distill a `let` or `have` of a pure value into a `let` or `have` of the abstract
 +value. For `have x := e; b` and an abstract hole, the hole becomes `have x' := ?e'; ?k x'`, the value
 +solver closes `PureRefinement x ?e' True ?R` for the local definition `x := e`, and the run
-+continues on `b` and `?k x'` with the entry `PureRefinement x x' True R`. An abstract program
-+`have x' := e'; k'` that another branch synthesized gives the goal `PureRefinement x e' True ?R`
-+and the continuation `k'`. The guards of the solution are verification conditions. A value that no rule abstracts falls through to `wpLet?`. -/
++continues on `b` and `?k x'` with the entry `PureRefinement x x' True R`. The guards of the solution
++are verification conditions. A value that no rule abstracts falls through to `wpLet?`. -/
 +def wpHaveAbs? (goal : MVarId) (info : WRPApp) : VCGenM (Option (List MVarId)) := do
 +  let .letE name type val body nondep := info.prog | return none
 +  if isDuplicable (← reduceHead val) || Lean.Elab.Tactic.Do.isJP name then return none
-+  let abs ← instantiateMVarsS info.abs
-+  let isHole := abs.getAppFn.isMVar
-+  unless isHole || abs.isLet do return none
++  let abs ← instantiateMVarsIfMVarAppS info.abs
++  unless abs.getAppFn.isMVar do return none
 +  let saved ← (saveState : MetaM Meta.SavedState)
 +  let some gs ← goal.withContext do
 +    let .sort (.succ u) ← instantiateMVarsS (← Sym.inferType type) | return none
-+    -- The abstract binding: a fresh `have x' := ?e'; ?k x'` in the hole, or the binding of an
-+    -- abstract program that another branch synthesized.
-+    let (goal, b, α', e', k) ← if isHole then do
-+        let (goal, filled) ← fillAbstractHole goal info
-+        let some (_, _, b) := filled | return none
-+        let v ← mkFreshLevelMVar
-+        let α' ← shareCommon (← mkFreshExprMVar (← mkSortS (.succ v)))
-+        let e' ← shareCommon (← mkFreshExprMVar α')
-+        let k ← shareCommon (← mkFreshExprMVar (← mkForallS name .default α' (← Sym.inferType b)))
-+        b.mvarId!.assign (← mkLetS name α' e' (← mkAppS k (← mkBVarS 0)) nondep)
-+        restoreHoleScope filled (withArgs := true)
-+        pure (goal, b, α', e', k)
-+      else do
-+        let .letE name' α' e' body' _ := abs | return none
-+        pure (goal, abs, α', e', ← mkLambdaS name' .default α' body')
-+    let .sort (.succ v) ← instantiateMVarsS (← Sym.inferType α') | return none
++    let (goal, filled) ← fillAbstractHole goal info
++    let some (_, _, b) := filled | return none
++    let v ← mkFreshLevelMVar
++    let α' ← shareCommon (← mkFreshExprMVar (← mkSortS (.succ v)))
++    let e' ← shareCommon (← mkFreshExprMVar α')
++    let k ← shareCommon (← mkFreshExprMVar (← mkForallS name .default α' (← Sym.inferType b)))
++    b.mvarId!.assign (← mkLetS name α' e' (← mkAppS k (← mkBVarS 0)) nondep)
++    restoreHoleScope filled (withArgs := true)
 +    let R ← shareCommon (← mkFreshExprMVar
 +      (← mkForallS `c .default type (← mkForallS `a .default α' (← mkSortS .zero))))
 +    let wp ← mkAppNS info.head ((info.args.set! WRPApp.progIdx body).set! (WRPApp.progIdx + 1) b)
@@ -284,68 +274,6 @@
 +    | (saved.restore : MetaM Unit); return none
 +  return some gs
 +
-+/-- The instantiation of `e` in which each metavariable with a delayed assignment `?m xs := ?b`,
-+applied or not, becomes `fun xs => b` for the instantiation `b` of `?b`, beta-reduced at its
-+arguments. `none` if `e` contains a metavariable without an assignment. -/
-+partial def resolveDelayed (e : Expr) : VCGenM (Option Expr) := do
-+  let e ← instantiateMVarsS e
-+  unless e.hasExprMVar do return some e
-+  match e with
-+  | .app .. | .mvar _ =>
-+    let f := e.getAppFn
-+    let some args := (← e.getAppArgs.mapM resolveDelayed).mapM id | return none
-+    if let .mvar m := f then
-+      let some da ← getDelayedMVarAssignment? m | return none
-+      let some v ← resolveDelayed (mkMVar da.mvarIdPending) | return none
-+      let decl ← da.mvarIdPending.getDecl
-+      let lam ← withLCtx decl.lctx decl.localInstances do
-+        mkLambdaFVarsS (← da.fvars.mapM fun x => mkFVarS x.fvarId!) v
-+      return some (← betaS lam args)
-+    let some f ← resolveDelayed f | return none
-+    return some (← mkAppNS f args)
-+  | .lam n t b bi =>
-+    let some t ← resolveDelayed t | return none
-+    let some b ← resolveDelayed b | return none
-+    return some (← mkLambdaS n bi t b)
-+  | .forallE n t b bi =>
-+    let some t ← resolveDelayed t | return none
-+    let some b ← resolveDelayed b | return none
-+    return some (← mkForallS n bi t b)
-+  | .letE n t v b nondep =>
-+    let some t ← resolveDelayed t | return none
-+    let some v ← resolveDelayed v | return none
-+    let some b ← resolveDelayed b | return none
-+    return some (← mkLetS n t v b nondep)
-+  | .mdata d b =>
-+    let some b ← resolveDelayed b | return none
-+    return some (← mkMDataS d b)
-+  | .proj S i b =>
-+    let some b ← resolveDelayed b | return none
-+    return some (← mkProjS S i b)
-+  | _ => return some e
-+
-+/-- Resolve the abstract program `?h xs` of `goal` whose delayed assignment `?h xs := ?b` another
-+branch completed (`resolveDelayed`). A `dite` passes its branches as functions, so the branch holes of
-+a synthesized `dite` stay unapplied, and `instantiateMVars` leaves `?h xs` as it is. -/
-+def wpResolveAbs? (goal : MVarId) (info : WRPApp) : VCGenM (Option MVarId) := goal.withContext do
-+  let abs ← instantiateMVarsS info.abs
-+  let .mvar h := abs.getAppFn | return none
-+  unless (← getDelayedMVarAssignment? h).isSome do return none
-+  let some abs' ← resolveDelayed abs | return none
-+  if abs'.getAppFn.isMVar then return none
-+  trace[Elab.Tactic.Do.vcgen] "resolve the abstract program: {abs'}"
-+  return some (← setAbs goal info abs')
-+
-+/-- Substitute the `have` of an abstract program that another branch synthesized, when the concrete
-+program has no `have` at this point: the concrete `have` of a duplicable value, such as
-+`have y := 1`, is substituted (`wpLet?`), and the abstract `have y' := x'` of a shared
-+continuation stays. -/
-+def wpAbsZeta? (goal : MVarId) (info : WRPApp) : VCGenM (Option MVarId) := goal.withContext do
-+  if info.prog.isLet then return none
-+  let abs ← instantiateMVarsS info.abs
-+  let .letE _ _ v b _ := abs | return none
-+  return some (← setAbs goal info (← instantiateRevBetaS b #[v]))
-+
 +/-- An abstract join point: the join point `jp` of the concrete program, the abstract join point
 +`jp'`, and for each join parameter the abstract type and the relation of its entry, or `none` for a
 +`PUnit` parameter, which `jp'` takes as it is. -/
@@ -366,20 +294,133 @@
 +  mkAppNS (← mkConstS ``Distillery.PureRefinement [u, v]) #[T, τ, c, c', ← mkConstS ``True, R]
 +
 +/-- Close the equations `av = ?av'` among the verification conditions `vcs` of the value solver by
-+`rfl`, and return the others. With `isGiven`, the abstract value `av'` is given, every equation
-+`av = av'` closes by `isDefEqS`, and the result is `none` if one does not. -/
-+def closeValEqs (vcs : List MVarId) (isGiven := false) : VCGenM (Option (List MVarId)) := do
++`rfl`, and return the others. -/
++def closeValEqs (vcs : List MVarId) : VCGenM (List MVarId) := do
 +  let mut rest := #[]
 +  for vc in vcs do
 +    let ty ← instantiateMVarsS (← vc.getType)
 +    if let some (T, lhs, rhs) := ty.eq? then
-+      if isGiven || (← instantiateMVarsS rhs).isMVar then
++      if (← instantiateMVarsS rhs).isMVar then
 +        if ← isDefEqS rhs lhs then
 +          vc.assign (mkApp2 (mkConst ``Eq.refl [← Sym.getLevel T]) T lhs)
 +          continue
-+        if isGiven then return none
 +    rest := rest.push vc
-+  return some rest.toList
++  return rest.toList
++
++/-- The rule of consequence for the postcondition: `pre ⊑ wrp γ x a post' E ss` from
++`post ⊑ post'` and `pre ⊑ wrp γ x a post E ss`, over the program `x`, the abstract program `a`, the
++states `ss`, both postconditions, the exception postcondition and the precondition. -/
++def mkBackwardRuleForConsequence (info : WRPApp) : MetaM BackwardRule := do
++  let postTy ← mkArrow info.Value (← mkArrow info.AValue info.Pred)
++  let prf ← withLocalDeclD `x info.Prog fun x => withLocalDeclD `a info.args[1]! fun a => do
++    let ssTys ← info.excessArgs.mapM fun s => return (`s, ← Meta.inferType s)
++    withLocalDeclsDND ssTys fun ss => do
++    withLocalDeclD `post postTy fun post => withLocalDeclD `post' postTy fun post' => do
++    withLocalDeclD `E info.EPosts fun eposts => do
++    let wrpOf (q : Expr) :=
++      mkAppN info.head ((((info.args.set! WRPApp.progIdx x).set! (WRPApp.progIdx + 1) a).set! 20 q).set! 21 eposts)
++    let W := wrpOf post
++    let B ← Meta.inferType (mkAppN (wrpOf post') ss)
++    withLocalDeclD `pre B fun pre => do
++    withLocalDeclD `h (← mkAppM ``PartialOrder.rel #[post, post']) fun h => do
++    withLocalDeclD `h' (← mkAppM ``PartialOrder.rel #[pre, mkAppN W ss]) fun h' => do
++    let refl ← mkAppOptM ``PartialOrder.rel_refl #[none, none, some W]
++    let M ← mkAppM ``Distillery.wrp_mono_post_le #[x, post, post', eposts, h, refl]
++    let prf ← mkAppM ``PartialOrder.rel_trans #[h', mkAppN M ss]
++    mkLambdaFVars (#[x, a] ++ ss ++ #[post, post', eposts, pre, h, h']) prf
++  let res ← abstractMVars (← instantiateMVars prf)
++  mkBackwardRuleFromExpr res.expr res.paramNames.toList
++
++/-- The postconditions that `wpWeakenPost?` weakened: the hypothesis `?H` of each, with its join
++point. -/
++initialize postJoinPointsExt : SymExtension (Std.HashMap MVarId JoinPoint) ←
++  registerSymExtension (pure {})
++
++/-- Weaken the postcondition `Q` of a split that `Q` would copy into each branch. `Q` contains a
++`wrp`, such as the continuation `fun cv av => wrp γ (k cv) (?a₂ av) Q' E` of a bind whose first
++action splits. The rule of consequence gives the split the postcondition
++`fun cv av ss => PureRefinement cv av True ?R ∧ ?H cv av ss` and the goal
++`(fun cv av ss => PureRefinement cv av True ?R ∧ ?H cv av ss) ⊑ Q`. Each leaf of the split that
++reaches `?H` is a jump (`wpPostJump?`), and `finalizeJoinPoint` assigns `?H` as for `vcgen +jp`,
++before the run reaches the goal for `Q`. So the run proves `Q` once, at variables `cv` and `av`. A
++split that jumps to an abstract join point keeps `Q`. -/
++def wpWeakenPost? (goal : MVarId) (info : WRPApp) : VCGenM (Option (List MVarId)) :=
++    goal.withContext do
++  let some _ ← liftMetaM <| Lean.Elab.Tactic.Do.getSplitInfo? info.prog | return none
++  let Q ← instantiateMVarsS info.args[20]!
++  unless (Q.find? (·.isConstOf ``Distillery.wrp)).isSome do return none
++  -- A jump to a join point shares the continuation already, and the spec of the join point states
++  -- the postcondition `Q`.
++  let jps ← absJoinPointsExt.getState
++  if info.prog.hasAnyFVar jps.contains then return none
++  let some last := (← getLCtx).lastDecl | return none
++  let n := info.excessArgs.size
++  let isPropBase ← forallBoundedTelescope info.Pred n fun _ B => return B.isProp
++  unless isPropBase do return none
++  let cacheKey := (``Distillery.wrp_mono_post_le, ExprPtr.mk info.instWP, n)
++  let rule ← match (← get).splitBackwardRuleCache[cacheKey]? with
++    | some rule => pure rule
++    | none =>
++      let rule ← (← withNewMCtxDepth <| liftMetaM <| mkBackwardRuleForConsequence info).shareCommon
++      modify fun st => { st with splitBackwardRuleCache := st.splitBackwardRuleCache.insert cacheKey rule }
++      pure rule
++  let saved ← (saveState : MetaM Meta.SavedState)
++  let .goals gs ← rule.apply goal | return none
++  -- The goal of the split and the goal `post ⊑ Q`, whose `post` is the weakened postcondition.
++  let mut split? := none
++  let mut cons? := none
++  for g in gs do
++    let ty ← instantiateMVarsS (← g.getType)
++    if let some (_, _, lhs, _) := ty.app4? ``PartialOrder.rel then
++      match lhs with
++      | .mvar m => if ← m.isAssigned then split? := some g else cons? := some (g, m)
++      | _ => split? := some g
++  let (some split, some (cons, post)) := (split?, cons?)
++    | (saved.restore : MetaM Unit); return none
++  let lctx ← getLCtx
++  let localInsts ← getLocalInstances
++  let V := info.Value
++  let AV := info.AValue
++  let R ← shareCommon (← mkFreshExprMVar
++    (← mkForallS `c .default V (← mkForallS `a .default AV (← mkSortS .zero))))
++  let (hyp, postVal) ← withLocalDeclD `cv V fun cv => withLocalDeclD `av AV fun av => do
++    let cv ← mkFVarS cv.fvarId!
++    let av ← mkFVarS av.fvarId!
++    forallBoundedTelescope info.Pred n fun ss _ => do
++    let ss ← ss.mapM (mkFVarS ·.fvarId!)
++    let hyp ← shareCommon (← mkFreshExprMVarAt lctx localInsts
++      (← Lean.Meta.withLocalDeclD `cv V fun cv' => Lean.Meta.withLocalDeclD `av AV fun av' => do
++        forallBoundedTelescope info.Pred n fun ss' _ => do
++        let xs ← (#[cv', av'] ++ ss').mapM (mkFVarS ·.fvarId!)
++        mkForallFVarsS xs (← mkSortS .zero)) .syntheticOpaque)
++    let entry ← mkEntryType V AV cv av R
++    let body ← mkAppNS (← mkConstS ``And) #[entry, ← mkAppNS hyp (#[cv, av] ++ ss)]
++    return (hyp, ← mkLambdaFVarsS (#[cv, av] ++ ss) body)
++  post.assign postVal
++  let jp : JoinPoint :=
++    { spec := ← mkFVarS last.fvarId, top := ← mkConstS ``True, hyp := hyp.mvarId!,
++      rhsGoal := cons, numStates := n }
++  modify fun s => { s with pendingJoinPoints := s.pendingJoinPoints.insert cons (jp, #[]) }
++  postJoinPointsExt.modifyState (·.insert hyp.mvarId! jp)
++  trace[Elab.Tactic.Do.vcgen] "weaken the postcondition of {info.prog}"
++  return some [split, cons]
++
++/-- Close a goal `pre ⊑ ?H cv av ss` of a leaf that reaches the weakened postcondition `?H` of
++`wpWeakenPost?` by the proof `?pf : ?H cv av ss`, which `finalizeJoinPoint` assigns, and record the
++leaf as a jump. -/
++def wpPostJump? (goal : MVarId) (rhs : Expr) : VCGenM (Option (List MVarId)) := do
++  let rhs ← instantiateMVarsS rhs
++  let .mvar h := rhs.getAppFn | return none
++  let some jp := (← postJoinPointsExt.getState)[h]? | return none
++  let_expr PartialOrder.rel _ _ pre _ := (← goal.getType) | return none
++  let args := rhs.getAppArgs
++  let pf ← shareCommon (← mkFreshExprSyntheticOpaqueMVar rhs)
++  goal.assign (mkApp3 (mkConst ``Distillery.le_of_holds) pre rhs pf)
++  modify fun s => { s with
++    pendingJoinPoints := s.pendingJoinPoints.modify jp.rhsGoal fun (jp, jumps) =>
++      (jp, jumps.push { proof := pf.mvarId!, args }) }
++  trace[Elab.Tactic.Do.vcgen] "postcondition jump: {rhs}"
++  return some []
 +
 +/-- Distill the join point `have jp := fun xs => k xs; body` of the do-elaborator into an abstract
 +join point. The abstract hole becomes `have jp' := ?k'; ?B jp'`. The goal for `body` receives `jp'`
@@ -508,31 +549,25 @@
 +  unless args.size == ajp.params.size do return none
 +  let saved ← (saveState : MetaM Meta.SavedState)
 +  let some r ← goal.withContext do
-+    -- The abstract jump: a hole, or the jump `jp' vs'` that another branch synthesized.
-+    let abs ← instantiateMVarsS info.abs
-+    let given := abs.getAppFn == ajp.abs
-+    if given && abs.getAppNumArgs != args.size then return none
-+    let (goal, filled) ← if given then pure (goal, none) else fillAbstractHole goal info
-+    let some b := if given then some abs else filled.map (·.2.2) | return none
++    let (goal, filled) ← fillAbstractHole goal info
++    let some (_, _, b) := filled | return none
 +    let mut absArgs := #[]
 +    let mut bs := #[]
 +    let mut vcs := #[]
-+    for a in args, p in ajp.params, i in [0:args.size] do
++    for a in args, p in ajp.params do
 +      let some (τ, R) := p | absArgs := absArgs.push a; continue
-+      let a' ← if given then pure (abs.getArg! i) else shareCommon (← mkFreshExprMVar τ)
++      let a' ← shareCommon (← mkFreshExprMVar τ)
 +      let T ← Sym.inferType a
 +      let h ← mkFreshExprSyntheticOpaqueMVar (← shareCommon (← mkEntryType T τ a a' R))
 +      let some solved ← (try some <$> solvePureRefinement h.mvarId! catch _ => pure none)
 +        | return none
-+      let some rest ← closeValEqs solved given | return none
-+      vcs := vcs ++ rest
++      vcs := vcs ++ (← closeValEqs solved)
 +      let a' ← instantiateMVarsS a'
 +      absArgs := absArgs.push a'
 +      bs := bs.push a' |>.push h
-+    unless given do
-+      b.mvarId!.assign (← mkAppNS ajp.abs absArgs)
-+      unless ← filledInScope filled do return none
-+      restoreHoleScope filled
++    b.mvarId!.assign (← mkAppNS ajp.abs absArgs)
++    unless ← filledInScope filled do return none
++    restoreHoleScope filled
 +    let pf ← shareCommon (← mkFreshExprSyntheticOpaqueMVar
 +      (← mkAppNS (← mkMVarS jp.hyp) (args ++ info.excessArgs)))
 +    goal.assign (mkAppN jp.spec (args ++ info.excessArgs ++ bs |>.push pf))
@@ -587,11 +622,9 @@
 +  let prog := info.prog
 +  let some m ← liftMetaM <| Meta.matchMatcherApp? prog | return none
 +  unless m.discrs.size == 1 && m.remaining.isEmpty do return none
++  let some outside ← outsideHole? info | return none
 +  let d := m.discrs[0]!
-+  -- A chain that another branch synthesized makes the abstract program a `dite`.
-+  match ← outsideHole? info with
-+  | some outside => unless outside d do return none
-+  | none => unless (← instantiateMVarsS info.abs).isAppOfArity ``dite 5 do return none
++  unless outside d do return none
 +  let .lam _ _ T _ := m.motive | return none
 +  if T.hasLooseBVars then return none
 +  let some chain ← mkMatchChainCached m.matcherName | return none
@@ -616,16 +649,7 @@
 +  let isIte := prog.isAppOfArity ``ite 5
 +  let isDite := prog.isAppOfArity ``dite 5
 +  let isCond := prog.isAppOfArity ``cond 4
-+  -- A split that another branch synthesized fixes the abstract condition or discriminant: the
-+  -- argument at a position where the two programs differ.
-+  let abs ← instantiateMVarsS info.abs
-+  let hole? ← outsideHole? info
-+  let given := hole?.isNone
-+  if given && !(abs.getAppFn == prog.getAppFn && abs.getAppNumArgs == prog.getAppNumArgs) then
-+    return none
-+  let outside : Nat → Expr → Bool := fun i d => match hole? with
-+    | some f => f d
-+    | none => d != abs.getArg! i
++  let some outside ← outsideHole? info | return none
 +  -- The position of the abstracted argument: the condition, or the first discriminant of a matcher
 +  -- whose motive does not depend on the discriminants.
 +  let mut idx? : Option Nat := none
@@ -636,34 +660,22 @@
 +      pure (ys.size == m.discrs.size && !body.hasAnyFVar (ys.map (·.fvarId!)).contains)
 +    if independent && m.discrInfos.all (·.hName?.isNone) then
 +      let off := m.params.size + 1
-+      if let some i := (List.range m.discrs.size).find? fun i => outside (off + i) m.discrs[i]! then
++      if let some i := m.discrs.findIdx? outside then
 +        idx? := some (off + i)
 +  let some idx := idx? | return none
 +  let d := prog.getArg! idx
-+  unless outside idx d do return none
++  unless outside d do return none
 +  let T ← Sym.inferType d
 +  let l ← Sym.getLevel T
 +  let v := l.dec.getD levelZero
-+  let ad ← if given then pure (abs.getArg! idx) else shareCommon (← mkFreshExprMVar T)
++  let ad ← shareCommon (← mkFreshExprMVar T)
 +  let eqT ← mkAppNS (← mkConstS ``Eq [l]) #[T]
 +  let gTy ← mkAppNS (← mkConstS ``Distillery.PureRefinement [v, v])
 +    #[T, T, d, ad, ← mkConstS ``True, eqT]
 +  let g ← mkFreshExprSyntheticOpaqueMVar (← shareCommon gTy)
-+  let saved ← (saveState : MetaM Meta.SavedState)
-+  let mut vcs := #[]
-+  for vc in ← solvePureRefinement g.mvarId! do
-+    let ty ← instantiateMVarsS (← vc.getType)
-+    if let some (_, lhs, rhs) := ty.eq? then
-+      if given || (← instantiateMVarsS rhs).isMVar then
-+        if ← isDefEqS rhs lhs then
-+          vc.assign (mkApp2 (mkConst ``Eq.refl [l]) T lhs)
-+          continue
-+        if given then
-+          (saved.restore : MetaM Unit)
-+          return none
-+    vcs := vcs.push vc
++  let vcs ← closeValEqs (← solvePureRefinement g.mvarId!)
 +  let ad ← instantiateMVarsS ad
-+  if !given && (outside idx ad || ad.hasExprMVar) then return none
++  if outside ad || ad.hasExprMVar then return none
 +  -- `hc : d = ad`
 +  let hc := mkApp g (mkConst ``True.intro)
 +  let fn := prog.getAppFn
@@ -700,7 +712,7 @@
 +          #[d, ad, α, args[2]!, inst, args[3]!, t', args[4]!, e', hc, rflT, rflE])
 +  let g' ← rewriteProg goal info prog' hprog
 +  trace[Elab.Tactic.Do.vcgen] "abstract condition: {d} ↦ {ad}"
-+  return some (g' :: vcs.toList)
++  return some (g' :: vcs)
 +
  /-- Strategy 11b: split an `ite`/`dite`/`cond`/match program, or iota-reduce a matcher with a
  concrete discriminant. -/
@@ -712,7 +724,7 @@
    let .goals goals ← rule.applyChecked goal m!"split rule for{indentExpr info.prog}"
      | throwError "Failed to apply split rule for {indentExpr info.prog}"
    let mut simpGoals := #[]
-@@ -451,8 +1150,8 @@
+@@ -451,8 +1162,8 @@
  continuation; see `FrameProc.lean`. When the spec does not apply to the footprint, the copy is
  dropped and the candidate falls through.
  -/
@@ -723,7 +735,7 @@
    let some specRule ←
      try
        mkBackwardRuleFromSpecCached thm info |>.run
-@@ -464,8 +1163,14 @@
+@@ -464,8 +1175,14 @@
          excessArgs: {info.excessArgs}"
      | return none
    trace[Elab.Tactic.Do.vcgen] "Applying spec {thm.proof} for {info.prog}. Excess args: {info.excessArgs}"

@@ -256,7 +256,7 @@
    mkBackwardRuleFromExpr res.expr res.paramNames.toList
 --- a/Distillery/Tactic/VCGen/Solve.lean
 +++ b/Distillery/Tactic/VCGen/Solve.lean
-@@ -1101,6 +1101,7 @@
+@@ -1113,6 +1113,7 @@
    let (goal, filled) ← fillAbstractHole goal info
    let .goals goals ← rule.applyChecked goal m!"split rule for{indentExpr info.prog}"
      | throwError "Failed to apply split rule for {indentExpr info.prog}"
@@ -264,14 +264,18 @@
    let mut simpGoals := #[]
    for g in goals do
      match ← simpGoalTelescope g with
-@@ -1266,14 +1267,31 @@
+@@ -1262,6 +1263,7 @@
+   -- Phase 3: shape the `rhs` (decompose a lattice connective or a forall, then discharge a
+   -- residual entailment against the lifted hypothesis).
+   if let some g ← rhsLet? goal rhs then return .goals scope [g]
++  if let some gs ← wpPostJump? goal rhs then return .goals scope gs
+   if let some gs ← splitLatticeOp? goal rhs then return .goals scope gs
+   if let some gs ← splitForallLe? goal rhs then return .goals scope gs
+   if let some gs ← liftedHyp? scope goal α pre rhs then return .goals scope gs
+@@ -1278,14 +1280,29 @@
      if let some g ← wpReduceHead? goal info then
        burnOne
        return .goals scope [g]
-+    if let some g ← wpResolveAbs? goal info then
-+      return .goals scope [g]
-+    if let some g ← wpAbsZeta? goal info then
-+      return .goals scope [g]
 +    if let some (scope, gs) ← wpJoinPoint? scope goal info then
 +      burnOne
 +      return .goals scope gs
@@ -286,6 +290,8 @@
 +    if let some g ← wpMatchChain? goal info then
 +      return .goals scope [g]
 +    if let some gs ← wpAbstractCond? goal info then
++      return .goals scope gs
++    if let some gs ← wpWeakenPost? goal info then
 +      return .goals scope gs
      if let some gs ← wpMatch? goal info then
        burnOne

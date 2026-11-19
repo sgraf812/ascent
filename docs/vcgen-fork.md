@@ -188,20 +188,21 @@ join RHS is the same entailment for `k xs` and `?k' xs'`. At a jump `jp vs` (`wp
 solver abstracts each argument `vᵢ` to `vᵢ'`, the abstract program becomes `jp' vs'`, and the spec
 closes the goal. `finalizeJoinPoint` assigns `?H` as for `vcgen +jp`, before the run reaches the
 join RHS. So the run distills the join RHS once: for three consecutive `if`s that update a mutable
-variable, the abstract program has three join points, six jumps and one `set`. A jump in a
-continuation that several branches reach meets the abstract jump `jp' vs'` that the first branch
-synthesized, and `wpAbsJump?` closes it at the given `vs'` if the value solver gives each `vᵢ'`. The holes `?B`,
+variable, the abstract program has three join points, six jumps and one `set`. The holes `?B`,
 `?k` and `?k'` take the context of the filled hole extended by its arguments, so that a later split
 recognizes the concrete state as outside of the hole.
 
-A continuation that several branches reach, such as the code after a split without a join point,
-meets in each later branch the abstract program that the first branch synthesized, as a hole
-`?h xs` with a delayed assignment. A `dite` passes its branches as functions, so the branch holes of
-a synthesized `dite` stay unapplied, and `instantiateMVars` leaves `?h xs` as it is.
-`wpResolveAbs?` replaces `?h xs` by its resolution `resolveDelayed`, in which each metavariable with
-a delayed assignment `?m ys := ?b` becomes `fun ys => b`, if no metavariable of the resolution is
-open. Where such a branch substitutes a concrete `have` of a duplicable value, `wpAbsZeta?`
-substitutes the abstract `have` of the synthesized program.
+A split copies its postcondition `Q` into each branch. For `(if c then pure 1 else pure 2) >>= k`,
+the postcondition `fun cv av => wrp γ (k cv) (?a₂ av) Q' E` of the `if` contains the continuation,
+and each branch would prove `k` again, at its own value. If `Q` contains a `wrp`, `wpWeakenPost?`
+applies the rule of consequence before the split. The split gets the postcondition
+`fun cv av ss => PureRefinement cv av True ?R ∧ ?H cv av ss`, with the goal
+`(fun cv av ss => PureRefinement cv av True ?R ∧ ?H cv av ss) ⊑ Q`. Each leaf that reaches `?H`
+is a jump (`wpPostJump?`), and `finalizeJoinPoint` assigns `?H` as for a join point. So the run
+proves `Q` once, at variables `cv` and `av`, with the entry `PureRefinement cv av True R`. The rule
+of consequence is cached for each `WP` instance and number of states, and the split rule stays the
+same. A split that jumps to an abstract join point keeps `Q`, since the spec of the join point
+states `Q`.
 
 **Acceptance.** `D8` calls `rhsExistsIntro?`. Tests: `Regress/HoleScope`, `Regress/Have`,
 `Regress/JoinPoint`, `Regress/Split`.

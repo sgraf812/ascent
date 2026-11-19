@@ -261,12 +261,11 @@ do
 /-!
 ## A `dite` in a continuation that two branches reach
 
-The program `progTwo` runs `progD` twice, and both branches of the first `dite` reach the second
-`progD`. The first branch synthesizes the abstract `dite` of the second `progD`. A `dite` passes its
-branches as functions, so the abstract `dite` reaches the second branch as a hole whose delayed
-assignment holds unapplied branch holes. The run resolves that hole to the synthesized `dite`. The
-second branch also leaves out the entries of the first branch, such as the entry of the state
-`s - 1` that the first branch writes.
+The program `progDTwo` runs `progD` twice, and both branches of the first `dite` reach the second
+`progD`. The run weakens the postcondition of the first `dite`, which contains the second `progD`,
+to a hypothesis that each branch establishes, and proves the second `progD` once, in a state that
+is a variable. The second branch also leaves out the entries of the first branch, such as the entry
+of the state `s - 1` that the first branch writes.
 -/
 
 def progD : SM Nat Unit := do

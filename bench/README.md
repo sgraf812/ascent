@@ -61,17 +61,17 @@ these two families have no golden check.
 | `ReaderState` | `distill_reader_state.lean` | `ReaderT Nat (StateT Nat Demonic)` | 20, 40, 60 | 1.22 s | 600, 1600, 2600 |
 | `RegFile` | `distill_reg_file.lean` | `StateT Regs Demonic` | 30, 60, 90 | 1.32 s | 128, 256, 384 |
 | `AdcChain` | `distill_adc_chain.lean` | `StateT S Demonic` | 150, 300, 450 | 1.25 s | 250, 500, 750 |
-| `DiteSplit` | `distill_dite_split.lean` | `ExceptT String (StateT Nat Demonic)` | 20, 40, 60 | 1.01 s | 500, 1000, 1500 |
+| `DiteSplit` | `distill_dite_split.lean` | `ExceptT String (StateT Nat Demonic)` | 20, 40, 60 | 1.88 s | 500, 1000, 1500 |
 | `MatchSplit` | `distill_match_split.lean` | `ExceptT String (StateT Nat Demonic)` | 60, 120, 180 | 0.94 s | 500, 1000, 1500 |
 | `LetBinding` | `distill_let_binding.lean` | `StateT Nat Demonic` | 20, 40, 60 | 0.96 s | 10 |
 | `IfsJP` | `distill_ifs_jp.lean` | `StateT Nat Demonic` | 5, 10, 15 | 1.08 s | 3 (`+jp`) |
 | `MatchesJP` | `distill_matches_jp.lean` | `StateT Nat Demonic` | 4, 8, 12 | 1.39 s | 3 (`+jp`) |
-| `WideJP` | `distill_wide_jp.lean` | `StateT Nat Demonic` | 30, 60, 90 | 1.26 s | 4 (`+jp`) |
+| `WideJP` | `distill_wide_jp.lean` | `StateT Nat Demonic` | 30, 60, 90 | 1.22 s | 4 (`+jp`) |
 
 `IfsJP`, `MatchesJP` and `WideJP` give the abstract program one join point for each concrete join
-point, so the run distills the code after each split once. `WideJP` gives the result of `chain n x`
-a variable by the rule `wrp_pure_var_SM`, so that the `n + 1` results share one abstract
-continuation. In `WideJP`, `share` grows faster than quadratically: 22, 86 and 355 ms.
+point, so the run distills the code after each split once. `WideJP` weakens the postcondition of the split
+of `chain n x`, so that the `n + 1` results share one abstract continuation. In `WideJP`, `share` grows faster than quadratically: 22, 86 and 355 ms. In `DiteSplit`,
+`instantiate` grows quadratically: 15, 121 and 590 ms.
 
 `GetThrowSet` throws by `throwIf`, whose rule abstracts the condition. `AddSubCancelDeep` puts
 every `ExceptT` above the `ReaderT` and the two `StateT`, the order for which `EPostsConcretization`
@@ -118,4 +118,4 @@ machine is shared, so the calibration measures under load:
 4. If the minimum is above 2 s, decrease the sizes and keep the ratio 1:2:3.
 
 The times in the tables above are from 2026-11-18, at a load average of 12 to 16 on 96 cores. The
-times of `LetBinding`, `IfsJP`, `MatchesJP` and `WideJP` are from 2026-11-19, at a load average of 35 to 150.
+times of `LetBinding`, `IfsJP`, `MatchesJP`, `WideJP` and `DiteSplit` are from 2026-11-19, at a load average of 35 to 150.

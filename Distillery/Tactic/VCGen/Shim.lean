@@ -65,6 +65,9 @@ theorem le_exists_of_le {α : Sort u} {pre : Prop} {p : α → Prop} (x : α) (h
     pre ⊑ Exists p :=
   fun hp => ⟨x, h hp⟩
 
+theorem le_of_holds {pre q : Prop} (h : q) : pre ⊑ q :=
+  fun _ => h
+
 end Distillery
 
 namespace Lean.Elab.Tactic.VCGen.Distill

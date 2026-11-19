@@ -1,7 +1,7 @@
 --- a/Distillery/Tactic/VCGen/Solve.lean
 +++ b/Distillery/Tactic/VCGen/Solve.lean
-@@ -1253,6 +1253,7 @@
-   if let some g ← rhsLet? goal rhs then return .goals scope [g]
+@@ -1266,6 +1266,7 @@
+   if let some gs ← wpPostJump? goal rhs then return .goals scope gs
    if let some gs ← splitLatticeOp? goal rhs then return .goals scope gs
    if let some gs ← splitForallLe? goal rhs then return .goals scope gs
 +  if let some g ← rhsExistsIntro? goal α pre rhs then return .goals scope [g]

@@ -9,10 +9,8 @@ and each use of `offset` becomes `offset'`. The program `progMut` updates a muta
 branches of an `if`, and the do-elaborator turns each update into a `have`: each branch of the
 abstract program has its own `have`, and both branches jump to the abstract join point. The program
 `progTwo` runs `progIf` twice, and `progIf` has no join point: both branches of the first `if`
-reach the second `progIf`, and the second branch meets the abstract `if` that the first branch
-synthesized, so the run abstracts the concrete condition to the given abstract one. In the first
-branch, the state that the second `get` reads is the local `y` of a `have`, and the entry of the
-second `get` takes precedence over the entry of the `have`. The test pins the deviation "pure refinements" of
+reach the second `progIf`, and the run proves the second `progIf` once, under the weakened
+postcondition of the first `if`. The test pins the deviation "synthesis holes" of
 `docs/vcgen-fork.md`.
 -/
 
