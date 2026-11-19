@@ -213,8 +213,7 @@ the relation of the value solver: for `w` with the number `n` under `WordNat`, `
 After the split of a hole `?h xs`, the holes of the branches take the context of `?h` extended by
 `xs`, so that the split of a later `dite` of the chain recognizes `w` as outside of the hole.
 
-**Acceptance.** Tests: `Regress/IteSplit`, `Regress/StateSplit`, `Regress/MatchChain`,
-`Regress/WordMatch`.
+**Acceptance.** Test: `Regress/Split`.
 
 ### D8. Existential witness
 

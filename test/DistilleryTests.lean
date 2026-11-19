@@ -18,7 +18,7 @@ import DistilleryTests.FixLoopDelab
 import DistilleryTests.Setup.Blocks
 import DistilleryTests.Regress.HoleScope
 import DistilleryTests.Regress.BinderHole
-import DistilleryTests.Regress.IteSplit
+import DistilleryTests.Regress.Split
 import DistilleryTests.Regress.Lockstep
 import DistilleryTests.Regress.Commands
 import DistilleryTests.Regress.TopLevelRule
@@ -36,9 +36,6 @@ import DistilleryTests.Regress.RuleBacktrack
 import DistilleryTests.Regress.WeakenPreValEq
 import DistilleryTests.Regress.SpecBacktrack
 import DistilleryTests.Regress.BareExceptionRelation
-import DistilleryTests.Regress.StateSplit
-import DistilleryTests.Regress.MatchChain
-import DistilleryTests.Regress.WordMatch
 import DistilleryTests.Regress.RefinementPremise
 import DistilleryTests.Regress.RefinementPremiseForall
 import DistilleryTests.Demonic
