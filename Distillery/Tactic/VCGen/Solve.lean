@@ -674,6 +674,58 @@ def wpHaveAbs? (goal : MVarId) (info : WRPApp) : VCGenM (Option (List MVarId)) :
     | (saved.restore : MetaM Unit); return none
   return some gs
 
+/-- The instantiation of `e` in which each metavariable with a delayed assignment `?m xs := ?b`,
+applied or not, becomes `fun xs => b` for the instantiation `b` of `?b`, beta-reduced at its
+arguments. `none` if `e` contains a metavariable without an assignment. -/
+partial def resolveDelayed (e : Expr) : VCGenM (Option Expr) := do
+  let e ← instantiateMVarsS e
+  unless e.hasExprMVar do return some e
+  match e with
+  | .app .. | .mvar _ =>
+    let f := e.getAppFn
+    let some args := (← e.getAppArgs.mapM resolveDelayed).mapM id | return none
+    if let .mvar m := f then
+      let some da ← getDelayedMVarAssignment? m | return none
+      let some v ← resolveDelayed (mkMVar da.mvarIdPending) | return none
+      let decl ← da.mvarIdPending.getDecl
+      let lam ← withLCtx decl.lctx decl.localInstances do
+        mkLambdaFVarsS (← da.fvars.mapM fun x => mkFVarS x.fvarId!) v
+      return some (← betaS lam args)
+    let some f ← resolveDelayed f | return none
+    return some (← mkAppNS f args)
+  | .lam n t b bi =>
+    let some t ← resolveDelayed t | return none
+    let some b ← resolveDelayed b | return none
+    return some (← mkLambdaS n bi t b)
+  | .forallE n t b bi =>
+    let some t ← resolveDelayed t | return none
+    let some b ← resolveDelayed b | return none
+    return some (← mkForallS n bi t b)
+  | .letE n t v b nondep =>
+    let some t ← resolveDelayed t | return none
+    let some v ← resolveDelayed v | return none
+    let some b ← resolveDelayed b | return none
+    return some (← mkLetS n t v b nondep)
+  | .mdata d b =>
+    let some b ← resolveDelayed b | return none
+    return some (← mkMDataS d b)
+  | .proj S i b =>
+    let some b ← resolveDelayed b | return none
+    return some (← mkProjS S i b)
+  | _ => return some e
+
+/-- Resolve the abstract program `?h xs` of `goal` whose delayed assignment `?h xs := ?b` another
+branch completed (`resolveDelayed`). A `dite` passes its branches as functions, so the branch holes of
+a synthesized `dite` stay unapplied, and `instantiateMVars` leaves `?h xs` as it is. -/
+def wpResolveAbs? (goal : MVarId) (info : WRPApp) : VCGenM (Option MVarId) := goal.withContext do
+  let abs ← instantiateMVarsS info.abs
+  let .mvar h := abs.getAppFn | return none
+  unless (← getDelayedMVarAssignment? h).isSome do return none
+  let some abs' ← resolveDelayed abs | return none
+  if abs'.getAppFn.isMVar then return none
+  trace[Elab.Tactic.Do.vcgen] "resolve the abstract program: {abs'}"
+  return some (← setAbs goal info abs')
+
 /-- An abstract join point: the join point `jp` of the concrete program, the abstract join point
 `jp'`, and for each join parameter the abstract type and the relation of its entry, or `none` for a
 `PUnit` parameter, which `jp'` takes as it is. -/
@@ -833,7 +885,7 @@ def wpAbsJump? (goal : MVarId) (info : WRPApp) : VCGenM (Option (List MVarId)) :
   let args := info.prog.getAppArgs
   unless args.size == ajp.params.size do return none
   let saved ← (saveState : MetaM Meta.SavedState)
-  let some r ← do
+  let some r ← goal.withContext do
     let (goal, filled) ← fillAbstractHole goal info
     let some (_, _, b) := filled | return none
     let mut absArgs := #[]
@@ -1205,6 +1257,8 @@ def solve (scope : Scope) (goal : MVarId) : VCGenM SolveResult := goal.withConte
       return .goals scope [g]
     if let some g ← wpReduceHead? goal info then
       burnOne
+      return .goals scope [g]
+    if let some g ← wpResolveAbs? goal info then
       return .goals scope [g]
     if let some (scope, gs) ← wpJoinPoint? scope goal info then
       burnOne

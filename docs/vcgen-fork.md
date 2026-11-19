@@ -192,8 +192,16 @@ variable, the abstract program has three join points, six jumps and one `set`. T
 `?k` and `?k'` take the context of the filled hole extended by its arguments, so that a later split
 recognizes the concrete state as outside of the hole.
 
+A continuation that several branches reach, such as the code after a split without a join point,
+meets in each later branch the abstract program that the first branch synthesized, as a hole
+`?h xs` with a delayed assignment. A `dite` passes its branches as functions, so the branch holes of
+a synthesized `dite` stay unapplied, and `instantiateMVars` leaves `?h xs` as it is.
+`wpResolveAbs?` replaces `?h xs` by its resolution `resolveDelayed`, in which each metavariable with
+a delayed assignment `?m ys := ?b` becomes `fun ys => b`, if no metavariable of the resolution is
+open.
+
 **Acceptance.** `D8` calls `rhsExistsIntro?`. Tests: `Regress/HoleScope`, `Regress/Have`,
-`Regress/JoinPoint`.
+`Regress/JoinPoint`, `Regress/Split`.
 
 ### D6. Pure refinements
 

@@ -258,4 +258,37 @@ do
 #guard_msgs in
 #print progWordA
 
+/-!
+## A `dite` in a continuation that two branches reach
+
+The program `progTwo` runs `progD` twice, and both branches of the first `dite` reach the second
+`progD`. The first branch synthesizes the abstract `dite` of the second `progD`. A `dite` passes its
+branches as functions, so the abstract `dite` reaches the second branch as a hole whose delayed
+assignment holds unapplied branch holes. The run resolves that hole to the synthesized `dite`. The
+second branch also leaves out the entries of the first branch, such as the entry of the state
+`s - 1` that the first branch writes.
+-/
+
+def progD : SM Nat Unit := do
+  let s ← get
+  if _ : 1 < s then set (s - 1) else set s
+
+def progDTwo : SM Nat Unit := do progD; progD
+
+distill_def progDTwoA : SM Nat Unit from
+  ⦃fun _ => True⦄ progDTwo ⪯[γ Nat] progDTwoA ⦃fun _ _ _ => True⦄
+  distill [progDTwo, progD]
+
+/--
+info: def SplitTest.progDTwoA : SM Nat Unit :=
+do
+  do
+    let x ← get
+    if h : 1 < x then set (x - 1) else set x
+  let x ← get
+  if h : 1 < x then set (x - 1) else set x
+-/
+#guard_msgs in
+#print progDTwoA
+
 end SplitTest

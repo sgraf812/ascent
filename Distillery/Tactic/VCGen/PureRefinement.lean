@@ -13,7 +13,8 @@ itself, keyed on `c`, and `PureRefinement.rel hx : Q c x`, keyed on its type. Th
 hypotheses of the local context in the `simp` normal form of the run, and the conjuncts of such
 hypotheses. `Refinement.pure_rel` introduces an entry at each bind, with a variable `c`. An entry
 with a compound `c`, such as the register read `t.regs.get64 .rsi` of a state `t`, abstracts that
-term. Of several entries for one term, the solver tries the most recent one first.
+term. Of several entries for one term, the solver tries the most recent one first, and an entry
+applies only in a context that contains its hypothesis.
 
 The solver closes a goal `PureRefinement cv ?av ?P Q` by recursion over `cv`, at the `simp`
 normal form of each `cv`, and also under a `⊤ ⊑` precondition. It applies the
@@ -42,6 +43,8 @@ structure PureRule where
   priority : Nat := 0
   /-- The index of the local declaration of an environment entry. -/
   index : Nat := 0
+  /-- The local declaration of an environment entry. -/
+  fvarId? : Option FVarId := none
 
 instance : Inhabited PureRule where
   default := { key := default, rule := { expr := default, pattern := default, resultPos := [] } }
@@ -149,7 +152,8 @@ def updatePureEnv : VCGenM PureEnv := do
       let hx ← mkAppNS (← mkConstS ``id [0]) #[type, h]
       let (key, _) ← Sym.mkPatternFromExprWithKey hx [] selectCV
       let entry : PureRule :=
-        { key, rule := ← (← mkBackwardRuleFromExpr hx).shareCommon, index := decl.index }
+        { key, rule := ← (← mkBackwardRuleFromExpr hx).shareCommon, index := decl.index,
+          fvarId? := decl.fvarId }
       let args := type.getAppArgs
       let rel ← mkAppNS (← mkConstS ``Distillery.PureRefinement.rel type.getAppFn.constLevels!)
         #[args[0]!, args[1]!, args[2]!, args[3]!, args[5]!, hx]
@@ -159,7 +163,8 @@ def updatePureEnv : VCGenM PureEnv := do
           (collectFVars {} c).fvarIds.foldl (fun ks x => if env.outer.contains x then ks else ks.insert x)
             env.keys
         entries := Sym.insertPattern env.entries entry.key entry
-        rels := Sym.insertPattern env.rels relRule.pattern { key := relRule.pattern, rule := relRule } }
+        rels := Sym.insertPattern env.rels relRule.pattern
+          { key := relRule.pattern, rule := relRule, fvarId? := decl.fvarId } }
   pureEnvExt.modifyState fun _ => env
   return env
 
@@ -180,8 +185,12 @@ partial def solveCore (rules : DiscrTree PureRule) (env : PureEnv) (goal : MVarI
       goal.assign (← mkAppNS ofCvEq #[args[0]!, args[1]!, cv₀, args[3]!, args[4]!, args[5]!, cv, g, e])
       pure (g.mvarId!, type')
   let mctx ← getMCtx
-  -- The most recent entry of a concrete term comes first: a later read of the state rebinds it.
-  let entries := (Sym.getMatch mctx env.entries cv).qsort (·.index > ·.index)
+  -- The environment keeps the entries of the contexts that the run left, such as the other branch
+  -- of a split, so only the entries of the current context apply. The most recent entry of a
+  -- concrete term comes first: a later read of the state rebinds it.
+  let lctx ← getLCtx
+  let entries := (Sym.getMatch mctx env.entries cv).filter (·.fvarId?.all lctx.contains)
+    |>.qsort (·.index > ·.index)
   if entries.isEmpty then
     if let some val ← cv.fvarId?.bindM (·.getValue?) then
       let val ← shareCommon val
@@ -300,6 +309,7 @@ def closeByEntry (goal : MVarId) : VCGenM Bool := goal.withContext do
   let env ← updatePureEnv
   let type ← instantiateMVarsS (← goal.getType)
   for r in Sym.getMatch (← getMCtx) env.rels type do
+    unless r.fvarId?.all (← getLCtx).contains do continue
     if (← r.rule.apply goal) matches .goals [] then return true
   return false
 

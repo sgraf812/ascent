@@ -1,6 +1,6 @@
 --- a/Distillery/Tactic/VCGen/Solve.lean
 +++ b/Distillery/Tactic/VCGen/Solve.lean
-@@ -1183,6 +1183,7 @@
+@@ -1235,6 +1235,7 @@
    if let some g ← rhsLet? goal rhs then return .goals scope [g]
    if let some gs ← splitLatticeOp? goal rhs then return .goals scope gs
    if let some gs ← splitForallLe? goal rhs then return .goals scope gs
