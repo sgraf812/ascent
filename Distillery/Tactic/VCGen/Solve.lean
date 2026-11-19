@@ -726,6 +726,16 @@ def wpResolveAbs? (goal : MVarId) (info : WRPApp) : VCGenM (Option MVarId) := go
   trace[Elab.Tactic.Do.vcgen] "resolve the abstract program: {abs'}"
   return some (← setAbs goal info abs')
 
+/-- Substitute the `have` of an abstract program that another branch synthesized, when the concrete
+program has no `have` at this point: the concrete `have` of a duplicable value, such as
+`have y := 1`, is substituted (`wpLet?`), and the abstract `have y' := x'` of a shared
+continuation stays. -/
+def wpAbsZeta? (goal : MVarId) (info : WRPApp) : VCGenM (Option MVarId) := goal.withContext do
+  if info.prog.isLet then return none
+  let abs ← instantiateMVarsS info.abs
+  let .letE _ _ v b _ := abs | return none
+  return some (← setAbs goal info (← instantiateRevBetaS b #[v]))
+
 /-- An abstract join point: the join point `jp` of the concrete program, the abstract join point
 `jp'`, and for each join parameter the abstract type and the relation of its entry, or `none` for a
 `PUnit` parameter, which `jp'` takes as it is. -/
@@ -746,18 +756,20 @@ def mkEntryType (T τ c c' R : Expr) : VCGenM Expr := do
   mkAppNS (← mkConstS ``Distillery.PureRefinement [u, v]) #[T, τ, c, c', ← mkConstS ``True, R]
 
 /-- Close the equations `av = ?av'` among the verification conditions `vcs` of the value solver by
-`rfl`, and return the others. -/
-def closeValEqs (vcs : List MVarId) : VCGenM (List MVarId) := do
+`rfl`, and return the others. With `isGiven`, the abstract value `av'` is given, every equation
+`av = av'` closes by `isDefEqS`, and the result is `none` if one does not. -/
+def closeValEqs (vcs : List MVarId) (isGiven := false) : VCGenM (Option (List MVarId)) := do
   let mut rest := #[]
   for vc in vcs do
     let ty ← instantiateMVarsS (← vc.getType)
     if let some (T, lhs, rhs) := ty.eq? then
-      if (← instantiateMVarsS rhs).isMVar then
+      if isGiven || (← instantiateMVarsS rhs).isMVar then
         if ← isDefEqS rhs lhs then
           vc.assign (mkApp2 (mkConst ``Eq.refl [← Sym.getLevel T]) T lhs)
           continue
+        if isGiven then return none
     rest := rest.push vc
-  return rest.toList
+  return some rest.toList
 
 /-- Distill the join point `have jp := fun xs => k xs; body` of the do-elaborator into an abstract
 join point. The abstract hole becomes `have jp' := ?k'; ?B jp'`. The goal for `body` receives `jp'`
@@ -886,25 +898,31 @@ def wpAbsJump? (goal : MVarId) (info : WRPApp) : VCGenM (Option (List MVarId)) :
   unless args.size == ajp.params.size do return none
   let saved ← (saveState : MetaM Meta.SavedState)
   let some r ← goal.withContext do
-    let (goal, filled) ← fillAbstractHole goal info
-    let some (_, _, b) := filled | return none
+    -- The abstract jump: a hole, or the jump `jp' vs'` that another branch synthesized.
+    let abs ← instantiateMVarsS info.abs
+    let given := abs.getAppFn == ajp.abs
+    if given && abs.getAppNumArgs != args.size then return none
+    let (goal, filled) ← if given then pure (goal, none) else fillAbstractHole goal info
+    let some b := if given then some abs else filled.map (·.2.2) | return none
     let mut absArgs := #[]
     let mut bs := #[]
     let mut vcs := #[]
-    for a in args, p in ajp.params do
+    for a in args, p in ajp.params, i in [0:args.size] do
       let some (τ, R) := p | absArgs := absArgs.push a; continue
-      let a' ← shareCommon (← mkFreshExprMVar τ)
+      let a' ← if given then pure (abs.getArg! i) else shareCommon (← mkFreshExprMVar τ)
       let T ← Sym.inferType a
       let h ← mkFreshExprSyntheticOpaqueMVar (← shareCommon (← mkEntryType T τ a a' R))
       let some solved ← (try some <$> solvePureRefinement h.mvarId! catch _ => pure none)
         | return none
-      vcs := vcs ++ (← closeValEqs solved)
+      let some rest ← closeValEqs solved given | return none
+      vcs := vcs ++ rest
       let a' ← instantiateMVarsS a'
       absArgs := absArgs.push a'
       bs := bs.push a' |>.push h
-    b.mvarId!.assign (← mkAppNS ajp.abs absArgs)
-    unless ← filledInScope filled do return none
-    restoreHoleScope filled
+    unless given do
+      b.mvarId!.assign (← mkAppNS ajp.abs absArgs)
+      unless ← filledInScope filled do return none
+      restoreHoleScope filled
     let pf ← shareCommon (← mkFreshExprSyntheticOpaqueMVar
       (← mkAppNS (← mkMVarS jp.hyp) (args ++ info.excessArgs)))
     goal.assign (mkAppN jp.spec (args ++ info.excessArgs ++ bs |>.push pf))
@@ -1259,6 +1277,8 @@ def solve (scope : Scope) (goal : MVarId) : VCGenM SolveResult := goal.withConte
       burnOne
       return .goals scope [g]
     if let some g ← wpResolveAbs? goal info then
+      return .goals scope [g]
+    if let some g ← wpAbsZeta? goal info then
       return .goals scope [g]
     if let some (scope, gs) ← wpJoinPoint? scope goal info then
       burnOne

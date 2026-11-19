@@ -75,6 +75,11 @@ theorem wrp_pure_SM {α : Type} (c a : α) {Q : α → α → σ → Prop} {E : 
       ⊑ wrp (γ σ) (pure c : SM σ α) (pure a : SM σ α) Q E :=
   fun s h => wrp_pure (Q := Q) (E := E) c a s h.2
 
+theorem wrp_pure_var_SM {α : Type} (c a : α) {Q : α → α → σ → Prop} {E : EStack⟨⟩} :
+    (fun s => PureRefinement c a True Eq ∧ ∀ a', PureRefinement c a' True Eq → Q c a' s)
+      ⊑ wrp (γ σ) (pure c : SM σ α) (pure a : SM σ α) Q E :=
+  fun s h => wrp_pure (Q := Q) (E := E) c a s (h.2 a h.1)
+
 theorem wrp_get_EM {Q : σ → σ → σ → Prop} {E : ER σ} :
     (fun s => ∀ x, PureRefinement s x True Eq → Q s x s)
       ⊑ wrp (γ σ) (get : EM σ σ) (get : EM σ σ) Q E := by
@@ -148,6 +153,10 @@ theorem abs_sub {a b x y : Nat} {P₁ P₂ : Prop}
 theorem abs_gt {a b x y : Nat} {P₁ P₂ : Prop}
     (h₁ : PureRefinement a x P₁ Eq) (h₂ : PureRefinement b y P₂ Eq) :
     PureRefinement (a > b) (x > y) (P₁ ∧ P₂) Eq := fun ⟨p₁, p₂⟩ => by rw [h₁ p₁, h₂ p₂]
+
+theorem abs_lt {a b x y : Nat} {P₁ P₂ : Prop} (h₁ : PureRefinement a x P₁ Eq)
+    (h₂ : PureRefinement b y P₂ Eq) : PureRefinement (a < b) (x < y) (P₁ ∧ P₂) Eq :=
+  fun ⟨p₁, p₂⟩ => by rw [h₁ p₁, h₂ p₂]
 
 theorem abs_eq {α : Type} {a b x y : α} {P₁ P₂ : Prop} (h₁ : PureRefinement a x P₁ Eq)
     (h₂ : PureRefinement b y P₂ Eq) : PureRefinement (a = b) (x = y) (P₁ ∧ P₂) Eq :=

@@ -188,7 +188,9 @@ join RHS is the same entailment for `k xs` and `?k' xs'`. At a jump `jp vs` (`wp
 solver abstracts each argument `vᵢ` to `vᵢ'`, the abstract program becomes `jp' vs'`, and the spec
 closes the goal. `finalizeJoinPoint` assigns `?H` as for `vcgen +jp`, before the run reaches the
 join RHS. So the run distills the join RHS once: for three consecutive `if`s that update a mutable
-variable, the abstract program has three join points, six jumps and one `set`. The holes `?B`,
+variable, the abstract program has three join points, six jumps and one `set`. A jump in a
+continuation that several branches reach meets the abstract jump `jp' vs'` that the first branch
+synthesized, and `wpAbsJump?` closes it at the given `vs'` if the value solver gives each `vᵢ'`. The holes `?B`,
 `?k` and `?k'` take the context of the filled hole extended by its arguments, so that a later split
 recognizes the concrete state as outside of the hole.
 
@@ -198,7 +200,8 @@ meets in each later branch the abstract program that the first branch synthesize
 a synthesized `dite` stay unapplied, and `instantiateMVars` leaves `?h xs` as it is.
 `wpResolveAbs?` replaces `?h xs` by its resolution `resolveDelayed`, in which each metavariable with
 a delayed assignment `?m ys := ?b` becomes `fun ys => b`, if no metavariable of the resolution is
-open.
+open. Where such a branch substitutes a concrete `have` of a duplicable value, `wpAbsZeta?`
+substitutes the abstract `have` of the synthesized program.
 
 **Acceptance.** `D8` calls `rhsExistsIntro?`. Tests: `Regress/HoleScope`, `Regress/Have`,
 `Regress/JoinPoint`, `Regress/Split`.
