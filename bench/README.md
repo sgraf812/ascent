@@ -64,16 +64,13 @@ these two families have no golden check.
 | `DiteSplit` | `distill_dite_split.lean` | `ExceptT String (StateT Nat Demonic)` | 20, 40, 60 | 1.01 s | 500, 1000, 1500 |
 | `MatchSplit` | `distill_match_split.lean` | `ExceptT String (StateT Nat Demonic)` | 60, 120, 180 | 0.94 s | 500, 1000, 1500 |
 | `LetBinding` | `distill_let_binding.lean` | `StateT Nat Demonic` | 20, 40, 60 | 0.96 s | 10 |
+| `IfsJP` | `distill_ifs_jp.lean` | `StateT Nat Demonic` | 5, 10, 15 | 1.08 s | 3 (`+jp`) |
+| `MatchesJP` | `distill_matches_jp.lean` | `StateT Nat Demonic` | 4, 8, 12 | 1.39 s | 3 (`+jp`) |
 
-The bench has no mirror of the `vcgen` cases `IfsJP`, `MatchesJP` and `WideJP`:
+The bench has no mirror of the `vcgen` case `WideJP`: the recursive `chain` has no spec.
 
-* `IfsJP`, `MatchesJP`: the do-elaborator gives each `if` or `match` a join point `__do_jp` for its
-  continuation. The run unfolds the join point at each jump, so each branch processes the
-  continuation again, and `n` steps of three splits cost `8ⁿ` (`IfsJP` at 1, 2, 3 steps: 75 ms,
-  166 ms, 1421 ms). In `MatchesJP`, the second branch meets the abstract `dite` that the first
-  branch synthesized, whose branch holes have delayed assignments that no instantiation resolves
-  while the holes stay unapplied, and the split fails.
-* `WideJP`: the recursive `chain` has no spec.
+`IfsJP` and `MatchesJP` give the abstract program one join point for each concrete join point, so
+the run distills the code after each split once.
 
 `GetThrowSet` throws by `throwIf`, whose rule abstracts the condition. `AddSubCancelDeep` puts
 every `ExceptT` above the `ReaderT` and the two `StateT`, the order for which `EPostsConcretization`
@@ -119,4 +116,5 @@ machine is shared, so the calibration measures under load:
 3. Take the minimum of the three sums.
 4. If the minimum is above 2 s, decrease the sizes and keep the ratio 1:2:3.
 
-The times in the tables above are from 2026-11-18, at a load average of 12 to 16 on 96 cores.
+The times in the tables above are from 2026-11-18, at a load average of 12 to 16 on 96 cores. The
+times of `LetBinding`, `IfsJP` and `MatchesJP` are from 2026-11-19, at a load average of 35 to 150.

@@ -1,6 +1,6 @@
 --- a/Distillery/Tactic/VCGen/Solve.lean
 +++ b/Distillery/Tactic/VCGen/Solve.lean
-@@ -393,12 +393,451 @@
+@@ -393,12 +393,641 @@
      | .noProgress => return none
    | _ => return none
  
@@ -238,7 +238,7 @@
 +        let e' ← shareCommon (← mkFreshExprMVar α')
 +        let k ← shareCommon (← mkFreshExprMVar (← mkForallS name .default α' (← Sym.inferType b)))
 +        b.mvarId!.assign (← mkLetS name α' e' (← mkAppS k (← mkBVarS 0)) nondep)
-+        restoreHoleScope filled
++        restoreHoleScope filled (withArgs := true)
 +        pure (goal, b, α', e', k)
 +      else do
 +        let .letE name' α' e' body' _ := abs | return none
@@ -283,6 +283,196 @@
 +    return some (g :: vcs.toList)
 +    | (saved.restore : MetaM Unit); return none
 +  return some gs
++
++/-- An abstract join point: the join point `jp` of the concrete program, the abstract join point
++`jp'`, and for each join parameter the abstract type and the relation of its entry, or `none` for a
++`PUnit` parameter, which `jp'` takes as it is. -/
++structure AbsJoinPoint where
++  jp : JoinPoint
++  abs : Expr
++  params : Array (Option (Expr × Expr))
++  deriving Inhabited
++
++/-- The abstract join points of the run, keyed by the variable of the concrete join point. -/
++initialize absJoinPointsExt : SymExtension (Std.HashMap FVarId AbsJoinPoint) ←
++  registerSymExtension (pure {})
++
++/-- The `PureRefinement` goal `PureRefinement c c' True R` at the universes of `T` and `τ`. -/
++def mkEntryType (T τ c c' R : Expr) : VCGenM Expr := do
++  let u := (← Sym.getLevel T).dec.getD .zero
++  let v := (← Sym.getLevel τ).dec.getD .zero
++  mkAppNS (← mkConstS ``Distillery.PureRefinement [u, v]) #[T, τ, c, c', ← mkConstS ``True, R]
++
++/-- Close the equations `av = ?av'` among the verification conditions `vcs` of the value solver by
++`rfl`, and return the others. -/
++def closeValEqs (vcs : List MVarId) : VCGenM (List MVarId) := do
++  let mut rest := #[]
++  for vc in vcs do
++    let ty ← instantiateMVarsS (← vc.getType)
++    if let some (T, lhs, rhs) := ty.eq? then
++      if (← instantiateMVarsS rhs).isMVar then
++        if ← isDefEqS rhs lhs then
++          vc.assign (mkApp2 (mkConst ``Eq.refl [← Sym.getLevel T]) T lhs)
++          continue
++    rest := rest.push vc
++  return rest.toList
++
++/-- Distill the join point `have jp := fun xs => k xs; body` of the do-elaborator into an abstract
++join point. The abstract hole becomes `have jp' := ?k'; ?B jp'`. The goal for `body` receives `jp'`
++and the spec `∀ xs ss x₁' h₁ … xₙ' hₙ, ?H xs ss → ⊤ ⊑ wrp γ (jp xs) (jp' xs') Q E ss`, where
++`hᵢ : PureRefinement xᵢ xᵢ' True Rᵢ` is the entry of the join parameter `xᵢ`. The goal for the join
++RHS is `∀ xs ss x₁' h₁ … xₙ' hₙ, ?H xs ss → ⊤ ⊑ wrp γ (k xs) (?k' xs') Q E ss`. `wpAbsJump?` closes each jump with
++the spec, and `finalizeJoinPoint` assigns `?H` before the run reaches the join RHS, as in
++`vcgen +jp`. The join RHS is distilled once, into `?k'`. -/
++def wpJoinPoint? (scope : Scope) (goal : MVarId) (info : WRPApp) :
++    VCGenM (Option (Scope × List MVarId)) := do
++  let .letE name type val body nondep := info.prog | return none
++  unless Lean.Elab.Tactic.Do.isJP name && val.isLambda do return none
++  let abs ← instantiateMVarsIfMVarAppS info.abs
++  unless abs.getAppFn.isMVar do return none
++  let saved ← (saveState : MetaM Meta.SavedState)
++  let some r ← goal.withContext do
++    let numParams ← Lean.Elab.Tactic.Do.getNumJoinParams type info.Prog
++    -- The join parameters, with a fresh abstract type and relation for each one but a `PUnit`.
++    let some paramTys ← forallBoundedTelescope type numParams fun xs _ => do
++        let tys ← xs.mapM fun x => do instantiateMVars (← Sym.inferType x)
++        if tys.any (·.hasAnyFVar (xs.map (·.fvarId!)).contains) then return none
++        return some (← tys.mapM (shareCommon ·))
++      | return none
++    let params ← paramTys.mapM fun T => do
++      if T.isAppOf ``PUnit then return none
++      let v ← mkFreshLevelMVar
++      let τ ← shareCommon (← mkFreshExprMVar (← mkSortS (.succ v)))
++      let R ← shareCommon (← mkFreshExprMVar
++        (← mkForallS `c .default T (← mkForallS `a .default τ (← mkSortS .zero))))
++      return some (τ, R)
++    let (goal, filled) ← fillAbstractHole goal info
++    let some (_, _, b) := filled | return none
++    let AProg ← Sym.inferType b
++    let absTys := (paramTys.zip params).map fun (T, p) => p.map (·.1) |>.getD T
++    let jpTy' ← absTys.foldrM (fun τ acc => mkForallS `x .default τ acc) AProg
++    let k ← shareCommon (← mkFreshExprMVar jpTy')
++    let B ← shareCommon (← mkFreshExprMVar (← mkForallS name .default jpTy' AProg))
++    b.mvarId!.assign (← mkLetS name jpTy' k (← mkAppS B (← mkBVarS 0)) nondep)
++    restoreHoleScope filled (withArgs := true)
++    let wp ← mkAppNS info.head ((info.args.set! WRPApp.progIdx body).set! (WRPApp.progIdx + 1) b)
++    let (jp, goal) ← introLet goal name type val (← mkAppNS wp info.excessArgs) nondep
++    goal.withContext do
++    let goalTy ← goal.getType
++    let_expr PartialOrder.rel α inst _ rhs := goalTy | return none
++    let jpFVar ← mkFVarS jp
++    let instCL ← match_expr info.instAL with
++      | Std.WP.Assertion.mk _ instCL => pure instCL
++      | _ =>
++        let lvls := (← Sym.inferType info.instAL).getAppFn.constLevels!
++        mkAppNS (← mkConstS ``Std.WP.Assertion.toCompleteLattice lvls) #[info.Pred, info.instAL]
++    let lctx ← getLCtx
++    let localInsts ← getLocalInstances
++    -- `⊤`, the hypothesis `?H`, and the entailments over the join parameters `xs`, the states `ss`
++    -- and the binders `x₁' h₁ … xₙ' hₙ` of the abstract parameters with a relation.
++    let some (hyp, top) ← forallBoundedTelescope type numParams fun xs _ => do
++        forallBoundedTelescope info.Pred info.excessArgs.size fun ss B' => do
++      let xs ← xs.mapM (mkFVarS ·.fvarId!)
++      let ss ← ss.mapM (mkFVarS ·.fvarId!)
++      let some instB ← baseInstance? instCL ss | return none
++      let some u := (← Sym.getLevel B').dec | return none
++      let top ← mkAppNS (← mkConstS ``Lean.Order.top [u]) #[← shareCommon B', instB]
++      if top.hasAnyFVar (ss.map (·.fvarId!)).contains then return none
++      let hyp ← shareCommon (← mkFreshExprMVarAt lctx localInsts
++        (← mkForallFVarsS (xs ++ ss) (← mkSortS .zero)) .syntheticOpaque)
++      return some (hyp, top)
++      | return none
++    let entails (progOf : Array Expr → VCGenM Expr) (absOf : Array Expr → VCGenM Expr) :
++        VCGenM Expr :=
++      forallBoundedTelescope type numParams fun xs _ => do
++      forallBoundedTelescope info.Pred info.excessArgs.size fun ss _ => do
++      let xs ← xs.mapM (mkFVarS ·.fvarId!)
++      let ss ← ss.mapM (mkFVarS ·.fvarId!)
++      let rec tele (i : Nat) (xs' bs : Array Expr) : VCGenM Expr := do
++        if h : i < xs.size then
++          match params[i]! with
++          | none => tele (i + 1) (xs'.push xs[i]) bs
++          | some (τ, R) =>
++            withLocalDeclD `x τ fun x' => do
++            let x' ← mkFVarS x'.fvarId!
++            withLocalDeclD `h (← mkEntryType paramTys[i]! τ xs[i] x' R) fun hx => do
++            tele (i + 1) (xs'.push x') (bs.push x' |>.push (← mkFVarS hx.fvarId!))
++        else
++          let wp ← mkAppNS (← mkAppNS info.head
++            ((info.args.set! WRPApp.progIdx (← progOf xs)).set! (WRPApp.progIdx + 1) (← absOf xs'))) ss
++          let rel ← mkAppNS (← mkConstS ``PartialOrder.rel goalTy.getAppFn.constLevels!)
++            #[α, inst, top, wp]
++          mkForallFVarsS (xs ++ ss ++ bs) (← mkForallS `h .default (← mkAppNS hyp (xs ++ ss)) rel)
++      tele 0 #[] #[]
++    let rhsTy ← entails (betaS val ·) (mkAppNS k ·)
++    let mkSpecTy (J : Expr) : VCGenM Expr := entails (mkAppNS jpFVar ·) (mkAppNS J ·)
++    let rhsGoal ← mkFreshExprSyntheticOpaqueMVar (← shareCommon rhsTy) (← goal.getTag)
++    let bodyTy ← withLocalDeclD name jpTy' fun J => do
++      let J ← mkFVarS J.fvarId!
++      let specTy ← mkSpecTy J
++      withLocalDeclD `__do_jp_spec specTy fun S => do
++        let S ← mkFVarS S.fvarId!
++        let rhs' ← mkAppNS rhs.getAppFn (rhs.getAppArgs.set! (WRPApp.progIdx + 1) (← mkAppS B J))
++        let rel ← mkAppNS goalTy.getAppFn (goalTy.getAppArgs.set! 3 rhs')
++        mkForallFVarsS #[J, S] rel
++    let bodyGoal ← mkFreshExprSyntheticOpaqueMVar (← shareCommon bodyTy) (← goal.getTag)
++    goal.assign (mkApp2 bodyGoal k rhsGoal)
++    let .goal decls g ← Sym.introN bodyGoal.mvarId! 2
++      | throwError "distill: failed to introduce the abstract join point {name}"
++    let joinPoint : JoinPoint :=
++      { spec := ← mkFVarS decls[1]!, top, hyp := hyp.mvarId!, rhsGoal := rhsGoal.mvarId!,
++        numStates := info.excessArgs.size }
++    modify fun s => { s with
++      pendingJoinPoints := s.pendingJoinPoints.insert joinPoint.rhsGoal (joinPoint, #[]) }
++    absJoinPointsExt.modifyState (·.insert jp { jp := joinPoint, abs := ← mkFVarS decls[0]!, params })
++    trace[Elab.Tactic.Do.vcgen] "abstract join point: {name}"
++    return some (scope, [g, rhsGoal.mvarId!])
++    | (saved.restore : MetaM Unit); return none
++  return some r
++
++/-- Close the goal `⊤ ⊑ wrp γ (jp vs) A Q E ss` of a jump to an abstract join point with the spec
++`spec vs ss v₁' h₁ … vₙ' hₙ ?pf`. The value solver abstracts each argument `vᵢ` to `vᵢ'`, and the abstract
++program `A` becomes `jp' vs'`. `finalizeJoinPoint` assigns `?pf : ?H vs ss`. -/
++def wpAbsJump? (goal : MVarId) (info : WRPApp) : VCGenM (Option (List MVarId)) := do
++  let some fv := info.prog.getAppFn.fvarId? | return none
++  let some ajp := (← absJoinPointsExt.getState)[fv]? | return none
++  let jp := ajp.jp
++  goal.withContext do
++  let_expr PartialOrder.rel _ _ pre _ := (← goal.getType) | return none
++  unless pre == jp.top && info.excessArgs.size == jp.numStates do return none
++  let args := info.prog.getAppArgs
++  unless args.size == ajp.params.size do return none
++  let saved ← (saveState : MetaM Meta.SavedState)
++  let some r ← do
++    let (goal, filled) ← fillAbstractHole goal info
++    let some (_, _, b) := filled | return none
++    let mut absArgs := #[]
++    let mut bs := #[]
++    let mut vcs := #[]
++    for a in args, p in ajp.params do
++      let some (τ, R) := p | absArgs := absArgs.push a; continue
++      let a' ← shareCommon (← mkFreshExprMVar τ)
++      let T ← Sym.inferType a
++      let h ← mkFreshExprSyntheticOpaqueMVar (← shareCommon (← mkEntryType T τ a a' R))
++      let some solved ← (try some <$> solvePureRefinement h.mvarId! catch _ => pure none)
++        | return none
++      vcs := vcs ++ (← closeValEqs solved)
++      let a' ← instantiateMVarsS a'
++      absArgs := absArgs.push a'
++      bs := bs.push a' |>.push h
++    b.mvarId!.assign (← mkAppNS ajp.abs absArgs)
++    unless ← filledInScope filled do return none
++    restoreHoleScope filled
++    let pf ← shareCommon (← mkFreshExprSyntheticOpaqueMVar
++      (← mkAppNS (← mkMVarS jp.hyp) (args ++ info.excessArgs)))
++    goal.assign (mkAppN jp.spec (args ++ info.excessArgs ++ bs |>.push pf))
++    modify fun s => { s with
++      pendingJoinPoints := s.pendingJoinPoints.modify jp.rhsGoal fun (jp, jumps) =>
++        (jp, jumps.push { proof := pf.mvarId!, args := args ++ info.excessArgs }) }
++    trace[Elab.Tactic.Do.vcgen] "abstract jump: {info.prog} ↦ {← instantiateMVarsS b}"
++    return some vcs.toList
++    | (saved.restore : MetaM Unit); return none
++  return some r
 +
 +/-- Rewrite the concrete program of `goal` by `hprog : info.prog = prog'`. -/
 +def rewriteProg (goal : MVarId) (info : WRPApp) (prog' hprog : Expr) : VCGenM MVarId := do
@@ -452,7 +642,7 @@
    let .goals goals ← rule.applyChecked goal m!"split rule for{indentExpr info.prog}"
      | throwError "Failed to apply split rule for {indentExpr info.prog}"
    let mut simpGoals := #[]
-@@ -451,8 +890,8 @@
+@@ -451,8 +1080,8 @@
  continuation; see `FrameProc.lean`. When the spec does not apply to the footprint, the copy is
  dropped and the candidate falls through.
  -/
@@ -463,7 +653,7 @@
    let some specRule ←
      try
        mkBackwardRuleFromSpecCached thm info |>.run
-@@ -464,8 +903,14 @@
+@@ -464,8 +1093,14 @@
          excessArgs: {info.excessArgs}"
      | return none
    trace[Elab.Tactic.Do.vcgen] "Applying spec {thm.proof} for {info.prog}. Excess args: {info.excessArgs}"

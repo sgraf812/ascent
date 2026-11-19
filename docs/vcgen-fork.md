@@ -170,7 +170,30 @@ that the rule leaves in the filled program take the context of the filled hole, 
 `Sym.getMaxFVar?` starts afresh (`restoreHoleScope`). `applySpec` restores the state when the rule
 fills a hole outside its scope. The hunk also defines `rhsExistsIntro?` and `mkWitnessHole`.
 
-**Acceptance.** `D8` calls `rhsExistsIntro?`. Test: `Regress/HoleScope`.
+A `let` or `have` of a pure value distills into a `let` or `have` of the abstract value
+(`wpHaveAbs?`). For `have x := e; b` and an abstract hole, the hole becomes
+`have x' := ?e'; ?k x'`. The value solver closes `PureRefinement x ?e' True ?R` for the local
+definition `x := e`, and the run continues on `b` and `?k x'` with the entry
+`PureRefinement x x' True R`. The abstract type of `x'` and the relation `R` come from the rule that
+abstracts `e`. For `let offset := v + 1; set (s + offset)`, the abstract program is
+`have offset' := v + 1; set (x + offset')`. If no rule abstracts `e`, `wpLet?` introduces `x` alone,
+and the solver abstracts each use of `x` through its value.
+
+A join point `have jp := fun xs => k xs; body` of the do-elaborator distills into an abstract join
+point (`wpJoinPoint?`). The abstract hole becomes `have jp' := ?k'; ?B jp'`. Each join parameter
+`xᵢ` gets an abstract parameter `xᵢ'` with the entry `PureRefinement xᵢ xᵢ' True Rᵢ`, and a `PUnit`
+parameter stays as it is. The goal for `body` receives `jp'` and the spec
+`∀ xs ss x₁' h₁ … xₙ' hₙ, ?H xs ss → ⊤ ⊑ wrp γ (jp xs) (jp' xs') Q E ss`, and the goal for the
+join RHS is the same entailment for `k xs` and `?k' xs'`. At a jump `jp vs` (`wpAbsJump?`), the value
+solver abstracts each argument `vᵢ` to `vᵢ'`, the abstract program becomes `jp' vs'`, and the spec
+closes the goal. `finalizeJoinPoint` assigns `?H` as for `vcgen +jp`, before the run reaches the
+join RHS. So the run distills the join RHS once: for three consecutive `if`s that update a mutable
+variable, the abstract program has three join points, six jumps and one `set`. The holes `?B`,
+`?k` and `?k'` take the context of the filled hole extended by its arguments, so that a later split
+recognizes the concrete state as outside of the hole.
+
+**Acceptance.** `D8` calls `rhsExistsIntro?`. Tests: `Regress/HoleScope`, `Regress/Have`,
+`Regress/JoinPoint`.
 
 ### D6. Pure refinements
 
@@ -182,16 +205,8 @@ the abstract value and the precondition, and solves a `Refinement` subgoal with 
 invocation. A verification condition that an entry of the solver's environment states is closed
 by that entry.
 
-A `let` or `have` of a pure value distills into a `let` or `have` of the abstract value
-(`wpHaveAbs?`). For `have x := e; b` and an abstract hole, the hole becomes
-`have x' := ?e'; ?k x'`. The value solver closes `PureRefinement x ?e' True ?R` for the local
-definition `x := e`, and the run continues on `b` and `?k x'` with the entry
-`PureRefinement x x' True R`. The abstract type of `x'` and the relation `R` come from the rule that
-abstracts `e`. For `let offset := v + 1; set (s + offset)`, the abstract program is
-`have offset' := v + 1; set (x + offset')`. If no rule abstracts `e`, `wpLet?` introduces `x` alone,
-and the solver abstracts each use of `x` through its value.
 
-**Acceptance.** `D9` uses the solver. Tests: `Regress/GuardConsequence`, `Regress/Have`.
+**Acceptance.** `D9` uses the solver. Test: `Regress/GuardConsequence`.
 
 ### D7. Two-sided split
 
