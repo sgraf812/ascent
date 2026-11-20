@@ -129,7 +129,19 @@ python3 scripts/bench-record.py --compare                # the last two recorded
 python3 scripts/bench-record.py --compare 44fde20 b1872fd
 ```
 
-`--compare` prints the change of the total instructions per family and size.
+`--compare` applies the significance checks of radar to the instructions of each family, size and
+phase:
+
+* The noise `q` of a metric is the 0.9-quantile of the absolute differences between consecutive
+  recorded commits, over the last 50 commits up to the first commit of the comparison.
+* A change `d` is small, medium or large if `|d| / q` reaches 3, 6 or 9.
+* A metric with fewer than 5 differences in its history has no quantile. Its change is small,
+  medium or large if `|d|` reaches 1, 3 or 10 % of the first value.
+* The comparison is significant with at least 1 large change, 5 changes that are at least medium,
+  or 20 changes.
+
+The script prints the verdict, the number of changes of each class, and each change, with fewer
+instructions as better.
 
 ## Calibration
 
