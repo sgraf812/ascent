@@ -7,7 +7,7 @@
 
 Each row is `date,commit,family,size,phase,instructions,ms`. The driver writes the rows, and the
 instruction counts come from the hardware counter of bench/ffi/instructions.c. The commit of a run on
-a dirty tree carries the suffix `+dirty`."""
+a tree with changes other than bench/results.csv carries the suffix `+dirty`."""
 import csv, datetime, os, pathlib, re, subprocess, sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -27,8 +27,8 @@ def families():
 def commit():
     sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT, check=True,
                          capture_output=True, text=True).stdout.strip()
-    dirty = subprocess.run(["git", "status", "--porcelain"], cwd=ROOT, check=True,
-                           capture_output=True, text=True).stdout.strip()
+    dirty = subprocess.run(["git", "status", "--porcelain", "--", ".", ":!bench/results.csv"],
+                           cwd=ROOT, check=True, capture_output=True, text=True).stdout.strip()
     return sha + ("+dirty" if dirty else "")
 
 
