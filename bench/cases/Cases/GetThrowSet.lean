@@ -4,23 +4,26 @@ import Cases.Setup.State
 # `GetThrowSet`: a conditional throw on the state
 
 The mirror of the `vcgen` case `GetThrowSet`, in `EM Nat := ExceptT String (StateT Nat Demonic)`.
-Each step reads the state `s`, throws by `throwIf (Nat.blt lim s) …` when `s` exceeds the limit
-`lim`, and else increments the state. The rule `wrp_throwIf_EM` asks the value solver for the
-abstract condition, so the abstract program branches on an abstract value. The family stresses the
-exception relation of `ExceptT` and a branch of each step on an abstracted condition.
+Each step reads the state `s`, throws when `s` exceeds the limit `lim`, and else increments the
+state. The do-elaborator gives the code after the `if` a join point. The run abstracts the
+condition `s > lim` to the abstract read value, and the rule `wrp_throw_bind_EM` drops the
+continuation of the `throw`. The family stresses the exception relation of `ExceptT` and a split of
+each step on an abstracted condition.
 -/
 
 open Std.WP Lean.Order Distillery DistillBench.State
 
 namespace DistillBench.GetThrowSet
 
-attribute [distill] wrp_bind wrp_get_EM wrp_set_EM wrp_throwIf_EM wrp_pure_unit_EM
+attribute [distill] wrp_bind wrp_get_EM wrp_set_EM wrp_throw_EM wrp_pure_unit_EM
+attribute [distill high] wrp_throw_bind_EM
 attribute [distill_pure low] abs_refl
-attribute [distill_pure] abs_add abs_blt
+attribute [distill_pure] abs_add abs_gt
 
 def step (lim : Nat) : EM Nat Unit := do
   let s ← get
-  throwIf (Nat.blt lim s) "s is too large"
+  if s > lim then
+    throw "s is too large"
   set (s + 1)
 
 def loop (n : Nat) : EM Nat Unit := do

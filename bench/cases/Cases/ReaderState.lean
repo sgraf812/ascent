@@ -5,9 +5,8 @@ import Cases.Setup.State
 
 The mirror of the `vcgen` case `ReaderState`, in `RM := ReaderT Nat (StateT Nat Demonic)`. Each
 step reads the reader value `r`, adds it to the state and subtracts it again. The rules bind the
-reader value and each read state to variables of the abstract program. The rule `wrp_bind_assoc`
-reassociates the chain of binds to the right, so the variable of the first `read` is in scope of
-every later step. The family stresses goals with two state arguments and the value solver with two
+reader value and each read state to variables of the abstract program, and `wrp_bind` decomposes
+the binds of `step; loop n` nested to the left. The family stresses goals with two state arguments and the value solver with two
 kinds of entries.
 -/
 
@@ -72,8 +71,7 @@ theorem wp_set_RM (v : Nat) (Q : PUnit → Nat → Nat → Prop) (r s : Nat) :
 
 end
 
-attribute [distill] wrp_bind wrp_kleisli
-attribute [distill default + 1] wrp_bind_assoc
+attribute [distill] wrp_bind
 attribute [distill_pure low] DistillBench.State.abs_refl
 attribute [distill_pure] DistillBench.State.abs_add DistillBench.State.abs_sub
 

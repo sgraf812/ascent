@@ -54,19 +54,19 @@ of `total` over the three sizes.
 
 Each family runs the program of a case of core's bench `tests/bench/vcgen` over a monad on
 `Distillery.Demonic`, under `Concretization.id`. The abstract program is the concrete program,
-which the golden check confirms. In `DiteSplit` and `MatchSplit` the abstract program splits on the
-abstract read value, and the abstract `if` decides its condition by `Classical.propDecidable`, so
-these two families have no golden check.
+which the golden check confirms. In `DiteSplit`, `MatchSplit` and `GetThrowSet` the abstract program
+splits on the abstract read value, and the abstract `if` decides its condition by
+`Classical.propDecidable`, so these three families have no golden check.
 
 | Family | File | Monad | Sizes | Time | `vcgen` sizes |
 |---|---|---|---|---|---|
 | `AddSubCancel` | `distill_add_sub_cancel.lean` | `StateT Nat Demonic` | 30, 60, 90 | 1.31 s | 200, 1200, 2200 |
 | `AddSubCancelSimp` | `distill_add_sub_cancel_simp.lean` | `StateT Nat Demonic` | 30, 60, 90 | 1.24 s | 100, 400, 700 |
 | `AddSubCancelDeep` | `distill_add_sub_cancel_deep.lean` | three `ExceptT`, `ReaderT`, two `StateT` | 30, 60, 90 | 1.48 s | 100, 500, 900 |
-| `GetThrowSet` | `distill_get_throw_set.lean` | `ExceptT String (StateT Nat Demonic)` | 30, 60, 90 | 1.13 s | 200, 500, 800 |
+| `GetThrowSet` | `distill_get_throw_set.lean` | `ExceptT String (StateT Nat Demonic)` | 20, 40, 60 | 1.01 s | 200, 500, 800 |
 | `MatchIota` | `distill_match_iota.lean` | `ExceptT String (StateT Nat Demonic)` | 20, 40, 60 | 1.12 s | 500, 1000, 1500 |
 | `PurePrecond` | `distill_pure_precond.lean` | `StateT Bool Demonic` | 150, 300, 450 | 1.33 s | 400, 2400, 4400 |
-| `ReaderState` | `distill_reader_state.lean` | `ReaderT Nat (StateT Nat Demonic)` | 20, 40, 60 | 1.22 s | 600, 1600, 2600 |
+| `ReaderState` | `distill_reader_state.lean` | `ReaderT Nat (StateT Nat Demonic)` | 20, 40, 60 | 0.70 s | 600, 1600, 2600 |
 | `RegFile` | `distill_reg_file.lean` | `StateT Regs Demonic` | 30, 60, 90 | 1.32 s | 128, 256, 384 |
 | `AdcChain` | `distill_adc_chain.lean` | `StateT S Demonic` | 150, 300, 450 | 1.25 s | 250, 500, 750 |
 | `DiteSplit` | `distill_dite_split.lean` | `ExceptT String (StateT Nat Demonic)` | 20, 40, 60 | 1.88 s | 500, 1000, 1500 |
@@ -80,9 +80,10 @@ these two families have no golden check.
 point, so the run distills the code after each split once. `WideJP` weakens the postcondition of
 the split of `chain n x`, so that the `n + 1` results share one abstract continuation. In `WideJP`,
 `share` grows faster than quadratically: 22, 86 and 355 ms. In `DiteSplit`, `instantiate` grows
-quadratically: 15, 121 and 590 ms.
+quadratically: 15, 121 and 590 ms, and in `GetThrowSet` as well: 18, 153 and 805 ms at the sizes
+30, 60 and 90.
 
-`GetThrowSet` throws by `throwIf`, whose rule abstracts the condition. `AddSubCancelDeep` puts
+`AddSubCancelDeep` puts
 every `ExceptT` above the `ReaderT` and the two `StateT`, the order for which `EPostsConcretization`
 has an instance.
 
@@ -158,4 +159,6 @@ machine is shared, so the calibration measures under load:
 4. If the minimum is above 2 s, decrease the sizes and keep the ratio 1:2:3.
 
 The times in the tables above are from 2026-11-18, at a load average of 12 to 16 on 96 cores. The
-times of `LetBinding`, `IfsJP`, `MatchesJP`, `WideJP` and `DiteSplit` are from 2026-11-19, at a load average of 35 to 150.
+times of `LetBinding`, `IfsJP`, `MatchesJP`, `WideJP` and `DiteSplit` are from 2026-11-19, at a load
+average of 35 to 150. The times of `GetThrowSet` and `ReaderState` are from 2026-11-20, on an idle
+machine.
