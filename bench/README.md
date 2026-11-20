@@ -64,7 +64,7 @@ golden check either.
 |---|---|---|---|---|---|
 | `AddSubCancel` | `distill_add_sub_cancel.lean` | `StateT Nat Demonic` | 30, 60, 90 | 1.31 s | 200, 1200, 2200 |
 | `AddSubCancelSimp` | `distill_add_sub_cancel_simp.lean` | `StateT Nat Demonic` | 30, 60, 90 | 1.24 s | 100, 400, 700 |
-| `AddSubCancelDeep` | `distill_add_sub_cancel_deep.lean` | three `ExceptT`, `ReaderT`, two `StateT` | 30, 60, 90 | 1.48 s | 100, 500, 900 |
+| `AddSubCancelDeep` | `distill_add_sub_cancel_deep.lean` | `ExceptT`, `ReaderT`, `ExceptT`, `StateT`, `ExceptT`, `StateT` | 30, 60, 90 | 1.48 s | 100, 500, 900 |
 | `GetThrowSet` | `distill_get_throw_set.lean` | `ExceptT String (StateT Nat Demonic)` | 20, 40, 60 | 1.01 s | 200, 500, 800 |
 | `MatchIota` | `distill_match_iota.lean` | `ExceptT String (StateT Nat Demonic)` | 20, 40, 60 | 1.27 s | 500, 1000, 1500 |
 | `PurePrecond` | `distill_pure_precond.lean` | `StateT Bool Demonic` | 150, 300, 450 | 1.33 s | 400, 2400, 4400 |
@@ -85,9 +85,8 @@ the split of `chain n x`, so that the `n + 1` results share one abstract continu
 quadratically: 15, 121 and 590 ms, and in `GetThrowSet` as well: 18, 153 and 805 ms at the sizes
 30, 60 and 90.
 
-`AddSubCancelDeep` puts
-every `ExceptT` above the `ReaderT` and the two `StateT`, the order for which `EPostsConcretization`
-has an instance.
+`AddSubCancelDeep` has the stack of the `vcgen` case, with an `ExceptT` below the `ReaderT` and one
+below the outer `StateT`.
 
 ### Families of `distill`
 

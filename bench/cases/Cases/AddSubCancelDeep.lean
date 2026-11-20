@@ -4,10 +4,12 @@ import Cases.Setup.State
 # `AddSubCancelDeep`: a deep transformer stack
 
 The mirror of the `vcgen` case `AddSubCancelDeep`: the loop of `AddSubCancel` in a stack of three
-`ExceptT` transformers, a `ReaderT` and two `StateT` over `Demonic`. The stack `DM` puts the three
-`ExceptT` above the `ReaderT` and the two `StateT`, the order for which `EPostsConcretization` has
-an instance. The rules for `getThe Nat` and `set` reach through all transformers in one step. The
-family stresses goals with three state arguments and an exception relation with three components.
+`ExceptT` transformers, a `ReaderT` and two `StateT` over `Demonic`, in the order of the `vcgen`
+case. The inner `ExceptT Nat` and `ExceptT Unit` have the predicates of their depth, so the
+exception relation has the components `String → String → DPred`, `Nat → Nat → Nat → Unit → Prop`
+and `Unit → Unit → Unit → Prop`. The rules for `getThe Nat` and `set` reach through all
+transformers in one step. The family stresses goals with three state arguments and an exception
+relation with three components at three depths.
 -/
 
 open Std.WP Lean.Order Distillery DistillBench.State
@@ -27,16 +29,17 @@ instance {ρ : Type u} {m : Type u → Type v} {Pred : Type w} {EPosts : Type w'
 -- The exception relations of `DM` have an `Assertion` instance of more than 128 nodes.
 set_option synthInstance.maxSize 1024
 
-abbrev DM := ExceptT String <| ExceptT Nat <| ExceptT Unit <| ReaderT String <| StateT Nat <|
+abbrev DM := ExceptT String <| ReaderT String <| ExceptT Nat <| StateT Nat <| ExceptT Unit <|
   StateT Unit Demonic
 
 abbrev DPred := String → Nat → Unit → Prop
 
 abbrev γd : Concretization DPred DPred := Concretization.id DPred
 
-abbrev DER := (String → String → DPred) × (Nat → Nat → DPred) × (Unit → Unit → DPred) × EStack⟨⟩
+abbrev DER := (String → String → DPred) × (Nat → Nat → Nat → Unit → Prop) ×
+  (Unit → Unit → Unit → Prop) × EStack⟨⟩
 
-abbrev DEPosts := (String → DPred) × (Nat → DPred) × (Unit → DPred) × EStack⟨⟩
+abbrev DEPosts := (String → DPred) × (Nat → Nat → Unit → Prop) × (Unit → Unit → Prop) × EStack⟨⟩
 
 section
 variable {E : DER}

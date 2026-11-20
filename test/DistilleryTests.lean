@@ -22,6 +22,7 @@ import DistilleryTests.Regress.Split
 import DistilleryTests.Regress.Have
 import DistilleryTests.Regress.JoinPoint
 import DistilleryTests.Regress.DeadCode
+import DistilleryTests.Regress.InnerException
 import DistilleryTests.Regress.Lockstep
 import DistilleryTests.Regress.Commands
 import DistilleryTests.Regress.TopLevelRule
