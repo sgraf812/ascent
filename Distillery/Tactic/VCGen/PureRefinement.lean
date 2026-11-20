@@ -13,7 +13,7 @@ itself, keyed on `c`, and `PureRefinement.rel hx : Q c x`, keyed on its type. Th
 hypotheses of the local context in the `simp` normal form of the run, and the conjuncts of such
 hypotheses. `Refinement.pure_rel` introduces an entry at each bind, with a variable `c`. An entry
 with a compound `c`, such as the register read `t.regs.get64 .rsi` of a state `t`, abstracts that
-term. Of several entries for one term, the solver tries the most recent one first. Each local context
+term. A hypothesis whose `c` is closed gives no entry. Of several entries for one term, the solver tries the most recent one first. Each local context
 has its own environment, so a branch sees only the entries of that branch.
 
 The solver closes a goal `PureRefinement cv ?av ?P Q` by recursion over `cv`, at the `simp`
@@ -161,6 +161,9 @@ def updatePureEnv : VCGenM PureEnv := do
       | none => pure h
     for (type, h) in ← pureEntries type' h do
       let c := type.getArg! 2
+      -- The rules abstract a closed term, such as a state that a precondition fixes to a literal,
+      -- and the variable of its entry can be out of the scope of a later hole.
+      unless c.hasFVar do continue
       -- The pattern builders infer the type of `hx`, and the declared type can mention assigned
       -- metavariables, so `hx` is stated at its instantiated type.
       let hx ← mkAppNS (← mkConstS ``id [0]) #[type, h]

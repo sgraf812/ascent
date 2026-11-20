@@ -264,7 +264,45 @@
    let mut simpGoals := #[]
    for g in goals do
      match ← simpGoalTelescope g with
-@@ -1262,6 +1263,7 @@
+@@ -1131,6 +1132,37 @@
+   let prog ← shareCommonInc (val.betaRev info.prog.getAppRevArgs)
+   return some (← replaceProgDefEq goal info prog)
+ 
++/-- A goal for dead code: its proof is discarded, and it serves the synthesis of its open holes. -/
++structure DeadCandidate where
++  goal : MVarId
++  holes : Array MVarId
++
++/-- The dead-code goals of the run. The driver runs a candidate after the worklist is empty, if one
++of its holes is still open: another branch can reach the hole first. -/
++initialize deadCandidatesExt : SymExtension (Array DeadCandidate) ← registerSymExtension (pure {})
++
++/-- The open natural metavariables of `e`, the holes of an abstract program among them. -/
++def openHoles (e : Expr) : VCGenM (Array MVarId) := do
++  (← getMVars (← instantiateMVarsS e)).filterM fun m => do
++    return (← m.getKind) matches .natural && !(← m.isAssigned)
++
++/-- Record the dead-code goal `∀ cv av ss, Q cv av ss` for the postcondition `Q` of `info`, if a
++rule dropped `Q` with the open holes `holes`: the rule for a `throw` proves the goal without its
++postcondition, and the continuation in `Q` is dead code. Only a base lattice `Prop` has the
++goal. -/
++def recordDeadPost (info : WRPApp) (holes : Array MVarId) : VCGenM Unit := do
++  let n := info.excessArgs.size
++  let some ty ← withLocalDeclD `cv info.Value fun cv => withLocalDeclD `av info.AValue fun av => do
++      forallBoundedTelescope info.Pred n fun ss B => do
++        unless B.isProp do return none
++        let xs ← (#[cv, av] ++ ss).mapM (mkFVarS ·.fvarId!)
++        let body ← betaS (← instantiateMVarsS info.args[20]!) xs
++        return some (← mkForallFVarsS xs body)
++    | return
++  let g ← mkFreshExprSyntheticOpaqueMVar (← shareCommon ty) `dead
++  deadCandidatesExt.modifyState (·.push { goal := g.mvarId!, holes })
++  trace[Elab.Tactic.Do.vcgen] "dead postcondition of {info.prog}"
++
+ /-- Stop or raise on a program with no applicable spec. With `errorOnMissingSpec` (default), raise a
+ hard error naming the program and the candidate specs; otherwise stop and emit the goal as a VC. -/
+ def stopOrErrorOnMissingSpec (prog monad : Expr) (thms : Array SpecTheorem) :
+@@ -1268,6 +1300,7 @@
    -- Phase 3: shape the `rhs` (decompose a lattice connective or a forall, then discharge a
    -- residual entailment against the lifted hypothesis).
    if let some g ← rhsLet? goal rhs then return .goals scope [g]
@@ -272,7 +310,7 @@
    if let some gs ← splitLatticeOp? goal rhs then return .goals scope gs
    if let some gs ← splitForallLe? goal rhs then return .goals scope gs
    if let some gs ← liftedHyp? scope goal α pre rhs then return .goals scope gs
-@@ -1278,14 +1280,29 @@
+@@ -1284,14 +1317,29 @@
      if let some g ← wpReduceHead? goal info then
        burnOne
        return .goals scope [g]

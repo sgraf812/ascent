@@ -115,7 +115,16 @@ and `@[spec]` database.
 **Change.** `work` sends a goal `pre ⊑ wp …` to `vcgen`'s `solve` with the core scope, which every
 work item carries next to the `distill` scope. `run` takes both scopes.
 
-**Acceptance.** The frontend passes both scopes to `run`. Test: `ForkTracer`.
+The worklist also distills dead code. In `(do let _ ← get; throw "e") >>= fun _ => pure 2`, the rule
+for `throw` proves its goal without the postcondition, so no rule assigns the hole of the abstract
+continuation of `pure 2`. `applySpec` records a candidate, the goal `∀ cv av ss, Q cv av ss` of the
+dropped postcondition `Q` (`recordDeadPost`), and `work` records an inconsistent goal with an open
+hole as a candidate too. After the worklist is empty, `work` runs each candidate with a hole that is
+still open, since another branch can reach the hole first, and repeats. A candidate is a dead work
+item: its proof is discarded, it skips the inconsistency check, and `emitVC` cleans up its
+verification conditions, which assigns the holes of their equations, without recording them.
+
+**Acceptance.** The frontend passes both scopes to `run`. Tests: `ForkTracer`, `Regress/DeadCode`.
 
 ### D2. No frame rules
 
@@ -215,10 +224,12 @@ states `Q`.
 **Change.** The worklist solves a `PureRefinement` subgoal at once, so that the continuation sees
 the abstract value and the precondition, and solves a `Refinement` subgoal with the specs of the
 invocation. A verification condition that an entry of the solver's environment states is closed
-by that entry.
+by that entry. A hypothesis about a closed term, such as the state that a precondition fixes to a
+literal, gives no entry: the rules abstract the term, and the variable of the entry can be out of
+the scope of a later hole.
 
 
-**Acceptance.** `D9` uses the solver. Test: `Regress/GuardConsequence`.
+**Acceptance.** `D9` uses the solver. Tests: `Regress/GuardConsequence`, `Regress/DeadCode`.
 
 ### D7. Two-sided split
 

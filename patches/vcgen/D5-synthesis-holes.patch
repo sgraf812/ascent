@@ -735,10 +735,11 @@
    let some specRule ←
      try
        mkBackwardRuleFromSpecCached thm info |>.run
-@@ -464,8 +1175,14 @@
+@@ -464,8 +1175,20 @@
          excessArgs: {info.excessArgs}"
      | return none
    trace[Elab.Tactic.Do.vcgen] "Applying spec {thm.proof} for {info.prog}. Excess args: {info.excessArgs}"
++  let postHoles ← openHoles info.args[20]!
 +  let saved ← (saveState : MetaM Meta.SavedState)
 +  let (goal, filled) ← fillAbstractHole goal info
    let .goals goals ← specRule.applyChecked goal m!"spec rule for{indentExpr info.prog}"
@@ -748,6 +749,11 @@
 +  unless ← filledInScope filled do
 +    (saved.restore : MetaM Unit); return none
 +  restoreHoleScope filled
++  -- A hole of the postcondition that no new goal mentions belongs to dead code.
++  let dropped ← postHoles.filterM fun h => do
++    if ← h.isAssigned then return false
++    goals.allM fun g => do return !(← instantiateMVarsS (← g.getType)).hasAnyMVar (· == h)
++  unless dropped.isEmpty do recordDeadPost info dropped
    return some (.goals scope goals)
  
  /--

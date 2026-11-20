@@ -5,8 +5,9 @@ import Cases.Setup.State
 
 The mirror of the `vcgen` case `MatchIota`, in `EM Nat`. Each step matches on its literal argument
 `v`: the case `0` throws, and the case `n + 1` adds and subtracts. The `match` reduces on the literal,
-so the run splits nothing. The family stresses the reduction of a matcher on the concrete side and
-the exception relation at the final `throw`.
+so the run splits nothing. The precondition `s = 0` of the `vcgen` case makes the state a literal.
+The last step throws, so the run distills the rest of the loop as dead code. The family stresses the
+reduction of a matcher on the concrete side and the exception relation at the final `throw`.
 -/
 
 open Std.WP Lean.Order Distillery DistillBench.State

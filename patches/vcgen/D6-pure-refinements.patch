@@ -1,16 +1,16 @@
 --- a/Distillery/Tactic/VCGen/Driver.lean
 +++ b/Distillery/Tactic/VCGen/Driver.lean
-@@ -92,6 +92,7 @@
+@@ -94,6 +94,7 @@
  -/
- def emitVC (goal : Grind.Goal) (reason : SolveResult.StopReason) : VCGenM Unit := do
+ def emitVC (goal : Grind.Goal) (reason : SolveResult.StopReason) (record := true) : VCGenM Unit := do
    let mut goal := { goal with mvarId := ← elimTopPre goal.mvarId }
 +  if ← closeByEntry goal.mvarId then return
    if reason matches .noEntailment .. | .noProgress .. then
      -- An invariant from an `invariants` alternative is assigned while the target is built, as in
      -- `?inv pref suff (a, b)`. Instantiating it lets `simp` reduce the body of the invariant.
-@@ -144,6 +145,12 @@
+@@ -157,6 +158,12 @@
      | .stop reason =>
-       emitVC goal reason
+       emitVC goal reason (record := !s.dead)
      | .goals scope subgoals =>
 +      -- A `PureRefinement` subgoal is solved at once, so that the continuation sees the abstract
 +      -- value and the precondition.

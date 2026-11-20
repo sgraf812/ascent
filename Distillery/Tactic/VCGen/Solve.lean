@@ -1132,6 +1132,37 @@ def wpFVarZeta? (goal : MVarId) (info : WRPApp) :
   let prog ← shareCommonInc (val.betaRev info.prog.getAppRevArgs)
   return some (← replaceProgDefEq goal info prog)
 
+/-- A goal for dead code: its proof is discarded, and it serves the synthesis of its open holes. -/
+structure DeadCandidate where
+  goal : MVarId
+  holes : Array MVarId
+
+/-- The dead-code goals of the run. The driver runs a candidate after the worklist is empty, if one
+of its holes is still open: another branch can reach the hole first. -/
+initialize deadCandidatesExt : SymExtension (Array DeadCandidate) ← registerSymExtension (pure {})
+
+/-- The open natural metavariables of `e`, the holes of an abstract program among them. -/
+def openHoles (e : Expr) : VCGenM (Array MVarId) := do
+  (← getMVars (← instantiateMVarsS e)).filterM fun m => do
+    return (← m.getKind) matches .natural && !(← m.isAssigned)
+
+/-- Record the dead-code goal `∀ cv av ss, Q cv av ss` for the postcondition `Q` of `info`, if a
+rule dropped `Q` with the open holes `holes`: the rule for a `throw` proves the goal without its
+postcondition, and the continuation in `Q` is dead code. Only a base lattice `Prop` has the
+goal. -/
+def recordDeadPost (info : WRPApp) (holes : Array MVarId) : VCGenM Unit := do
+  let n := info.excessArgs.size
+  let some ty ← withLocalDeclD `cv info.Value fun cv => withLocalDeclD `av info.AValue fun av => do
+      forallBoundedTelescope info.Pred n fun ss B => do
+        unless B.isProp do return none
+        let xs ← (#[cv, av] ++ ss).mapM (mkFVarS ·.fvarId!)
+        let body ← betaS (← instantiateMVarsS info.args[20]!) xs
+        return some (← mkForallFVarsS xs body)
+    | return
+  let g ← mkFreshExprSyntheticOpaqueMVar (← shareCommon ty) `dead
+  deadCandidatesExt.modifyState (·.push { goal := g.mvarId!, holes })
+  trace[Elab.Tactic.Do.vcgen] "dead postcondition of {info.prog}"
+
 /-- Stop or raise on a program with no applicable spec. With `errorOnMissingSpec` (default), raise a
 hard error naming the program and the candidate specs; otherwise stop and emit the goal as a VC. -/
 def stopOrErrorOnMissingSpec (prog monad : Expr) (thms : Array SpecTheorem) :
@@ -1177,6 +1208,7 @@ def applySpec (scope : Scope) (goal : MVarId) (info : WRPApp) (thm : SpecTheorem
         excessArgs: {info.excessArgs}"
     | return none
   trace[Elab.Tactic.Do.vcgen] "Applying spec {thm.proof} for {info.prog}. Excess args: {info.excessArgs}"
+  let postHoles ← openHoles info.args[20]!
   let saved ← (saveState : MetaM Meta.SavedState)
   let (goal, filled) ← fillAbstractHole goal info
   let .goals goals ← specRule.applyChecked goal m!"spec rule for{indentExpr info.prog}"
@@ -1185,6 +1217,11 @@ def applySpec (scope : Scope) (goal : MVarId) (info : WRPApp) (thm : SpecTheorem
   unless ← filledInScope filled do
     (saved.restore : MetaM Unit); return none
   restoreHoleScope filled
+  -- A hole of the postcondition that no new goal mentions belongs to dead code.
+  let dropped ← postHoles.filterM fun h => do
+    if ← h.isAssigned then return false
+    goals.allM fun g => do return !(← instantiateMVarsS (← g.getType)).hasAnyMVar (· == h)
+  unless dropped.isEmpty do recordDeadPost info dropped
   return some (.goals scope goals)
 
 /--

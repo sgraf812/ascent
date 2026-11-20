@@ -56,7 +56,9 @@ Each family runs the program of a case of core's bench `tests/bench/vcgen` over 
 `Distillery.Demonic`, under `Concretization.id`. The abstract program is the concrete program,
 which the golden check confirms. In `DiteSplit`, `MatchSplit` and `GetThrowSet` the abstract program
 splits on the abstract read value, and the abstract `if` decides its condition by
-`Classical.propDecidable`, so these three families have no golden check.
+`Classical.propDecidable`, so these three families have no golden check. `MatchIota` has the
+precondition `s = 0` of the `vcgen` case, so its abstract program writes literals, and it has no
+golden check either.
 
 | Family | File | Monad | Sizes | Time | `vcgen` sizes |
 |---|---|---|---|---|---|
@@ -64,7 +66,7 @@ splits on the abstract read value, and the abstract `if` decides its condition b
 | `AddSubCancelSimp` | `distill_add_sub_cancel_simp.lean` | `StateT Nat Demonic` | 30, 60, 90 | 1.24 s | 100, 400, 700 |
 | `AddSubCancelDeep` | `distill_add_sub_cancel_deep.lean` | three `ExceptT`, `ReaderT`, two `StateT` | 30, 60, 90 | 1.48 s | 100, 500, 900 |
 | `GetThrowSet` | `distill_get_throw_set.lean` | `ExceptT String (StateT Nat Demonic)` | 20, 40, 60 | 1.01 s | 200, 500, 800 |
-| `MatchIota` | `distill_match_iota.lean` | `ExceptT String (StateT Nat Demonic)` | 20, 40, 60 | 1.12 s | 500, 1000, 1500 |
+| `MatchIota` | `distill_match_iota.lean` | `ExceptT String (StateT Nat Demonic)` | 20, 40, 60 | 1.27 s | 500, 1000, 1500 |
 | `PurePrecond` | `distill_pure_precond.lean` | `StateT Bool Demonic` | 150, 300, 450 | 1.33 s | 400, 2400, 4400 |
 | `ReaderState` | `distill_reader_state.lean` | `ReaderT Nat (StateT Nat Demonic)` | 20, 40, 60 | 0.70 s | 600, 1600, 2600 |
 | `RegFile` | `distill_reg_file.lean` | `StateT Regs Demonic` | 30, 60, 90 | 1.32 s | 128, 256, 384 |
@@ -160,5 +162,5 @@ machine is shared, so the calibration measures under load:
 
 The times in the tables above are from 2026-11-18, at a load average of 12 to 16 on 96 cores. The
 times of `LetBinding`, `IfsJP`, `MatchesJP`, `WideJP` and `DiteSplit` are from 2026-11-19, at a load
-average of 35 to 150. The times of `GetThrowSet` and `ReaderState` are from 2026-11-20, on an idle
+average of 35 to 150. The times of `GetThrowSet`, `ReaderState` and `MatchIota` are from 2026-11-20, on an idle
 machine.

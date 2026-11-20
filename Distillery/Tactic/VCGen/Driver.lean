@@ -87,10 +87,12 @@ def simpVC (goal : MVarId) : VCGenM Sym.SimpGoalResult := goal.withContext do
 Called when decomposing the goal further did not succeed; in this case we emit a VC for the goal.
 `simp` rewrites the VC only when `reason` says that nothing is left to decompose, so a VC that
 `until`, a missing spec or the step limit leaves behind keeps its program as written.
+With `record := false`, as for a goal of dead code, the condition is simplified and cleaned up, which
+assigns the holes of its equations, and then dropped.
 Invariant subgoals are handled separately by `handleInvariantSubgoals` directly inside `work`,
 so they never reach this path.
 -/
-def emitVC (goal : Grind.Goal) (reason : SolveResult.StopReason) : VCGenM Unit := do
+def emitVC (goal : Grind.Goal) (reason : SolveResult.StopReason) (record := true) : VCGenM Unit := do
   let mut goal := { goal with mvarId := ← elimTopPre goal.mvarId }
   if ← closeByEntry goal.mvarId then return
   if reason matches .noEntailment .. | .noProgress .. then
@@ -107,12 +109,16 @@ def emitVC (goal : Grind.Goal) (reason : SolveResult.StopReason) : VCGenM Unit :
   goal ← processHypotheses goal
   if goal.inconsistent then return
   let some mvarId ← cleanupVC goal.mvarId | return
+  unless record do return
   mvarId.setKind .syntheticOpaque
   modify fun s => { s with vcs := s.vcs.push { goal with mvarId } }
 
 structure WorkItem where
   goal : Grind.Goal
   scope : Scope
+  /-- A goal for dead code (`DeadCandidate`): it skips the inconsistency check, and it emits no
+  verification conditions. -/
+  dead : Bool := false
   /-- The `@[spec]` scope for the `wp` goals of the worklist. -/
   coreScope : Scope
 
@@ -125,6 +131,7 @@ def work (scope coreScope : Scope) (goal : Grind.Goal) : VCGenM Unit := do
   let mvarId ← preprocessMVar goal.mvarId
   let mut worklist : Array WorkItem := #[{ goal := { goal with mvarId }, scope, coreScope }]
   let mut holes : Array Grind.Goal := #[]
+  repeat
   while let some s := worklist.back? do
     worklist := worklist.pop
     if ← s.goal.mvarId.isAssigned then continue
@@ -132,18 +139,24 @@ def work (scope coreScope : Scope) (goal : Grind.Goal) : VCGenM Unit := do
       modify fun st => { st with pendingJoinPoints := st.pendingJoinPoints.erase s.goal.mvarId }
       finalizeJoinPoint jp jumps
     let goal ← processHypotheses s.goal
-    if goal.inconsistent then continue
+    if goal.inconsistent && !s.dead then
+      -- A dead branch with an open hole, such as the goal of a postcondition that no jump
+      -- reaches, still synthesizes its hole.
+      let open_ ← openHoles (← goal.mvarId.getType)
+      unless open_.isEmpty do
+        deadCandidatesExt.modifyState (·.push { goal := goal.mvarId, holes := open_ })
+      continue
     if ← isWPGoal goal.mvarId then
       match ← Lean.Elab.Tactic.VCGen.solve s.coreScope goal.mvarId with
-      | .stop reason => Lean.Elab.Tactic.VCGen.emitVC goal reason
+      | .stop reason => unless s.dead do Lean.Elab.Tactic.VCGen.emitVC goal reason
       | .goals coreScope subgoals =>
         let subgoals ← handleInvariantSubgoals subgoals
         worklist := worklist ++ subgoals.reverse.map (fun mv =>
-          { goal := { goal with mvarId := mv }, scope := s.scope, coreScope })
+          { goal := { goal with mvarId := mv }, scope := s.scope, coreScope, dead := s.dead })
       continue
     match ← solve s.scope goal.mvarId with
     | .stop reason =>
-      emitVC goal reason
+      emitVC goal reason (record := !s.dead)
     | .goals scope subgoals =>
       -- A `PureRefinement` subgoal is solved at once, so that the continuation sees the abstract
       -- value and the precondition.
@@ -156,7 +169,16 @@ def work (scope coreScope : Scope) (goal : Grind.Goal) : VCGenM Unit := do
       -- Non-invariant subgoals go to the worklist as usual and will eventually go through `emitVC`.
       let subgoals ← handleInvariantSubgoals subgoals
       worklist := worklist ++ subgoals.reverse.map (fun mv =>
-        { goal := { goal with mvarId := mv }, scope, coreScope := s.coreScope })
+        { goal := { goal with mvarId := mv }, scope, coreScope := s.coreScope, dead := s.dead })
+  -- The dead-code goals whose holes no live goal assigned.
+  let cands ← deadCandidatesExt.getState
+  deadCandidatesExt.modifyState fun _ => #[]
+  let mut found := false
+  for c in cands do
+    if ← c.holes.anyM fun h => return !(← h.isAssigned) then
+      worklist := worklist.push { goal := { goal with mvarId := c.goal }, scope, coreScope, dead := true }
+      found := true
+  unless found do break
   -- A hole is data, not a proposition, so `emitVC` does not simplify it.
   for hole in holes do
     unless ← hole.mvarId.isAssigned do
