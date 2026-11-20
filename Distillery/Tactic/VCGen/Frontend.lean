@@ -220,8 +220,8 @@ def elabDistill : Tactic := fun stx => withMainContext do
     let g ← Lean.Elab.Tactic.Grind.getMainGoal
     let result ← Lean.Elab.Tactic.Grind.liftGrindM do
       if let some decl := holeDecl? then
-        pureEnvExt.modifyState fun env =>
-          { env with outer := decl.lctx.foldl (fun xs d => xs.insert d.fvarId) {} }
+        pureEnvExt.modifyState fun envs =>
+          { envs with base.outer := decl.lctx.foldl (fun xs d => xs.insert d.fvarId) {} }
       refinementSpecsExt.modifyState fun _ => refinementRules
       let result ← run g ctx scope coreScope
       if let some alts := invariantAlts? then
