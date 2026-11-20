@@ -12,17 +12,52 @@ solver, and measures each phase separately: the solve time, the number of verifi
 and the time of the tactic that closes them, the golden `isDefEq` check of the synthesized program
 against its expected image, the `sym_simp_def` simplification of the synthesized program, and the
 kernel check of the final proof after `shareCommon`. The last field is the wall time of all phases.
+Each phase reports its wall time and the user-space instructions that the thread of the driver
+retired, from the hardware counter of `ffi/instructions.c`. If the environment variable `BENCH_CSV`
+names a file, the driver appends one row per size and phase to it, with the date and the commit that
+`BENCH_DATE` and `BENCH_COMMIT` name.
 -/
 
 open Lean Meta Elab Sym
 
 namespace DistillBench
 
-def timeItMs {α : Type} (k : MetaM α) : MetaM (α × Nat) := do
-  let t0 ← IO.monoNanosNow
+/-- The user-space instructions that the calling thread retired, or 0 without a hardware counter. -/
+@[extern "distill_bench_instructions"] opaque instructionsNow : IO UInt64
+
+/-- The cost of a phase: wall time in milliseconds and retired instructions. -/
+structure Sample where
+  ms : Nat := 0
+  instr : Nat := 0
+
+instance : Add Sample := ⟨fun a b => ⟨a.ms + b.ms, a.instr + b.instr⟩⟩
+
+/-- The cost between two readings `(nanoseconds, instructions)`. -/
+def Sample.between (t0 t1 : Nat × UInt64) : Sample :=
+  ⟨(t1.1 - t0.1) / 1000000, (t1.2 - t0.2).toNat⟩
+
+def now : IO (Nat × UInt64) := return (← IO.monoNanosNow, ← instructionsNow)
+
+def measure {α : Type} (k : MetaM α) : MetaM (α × Sample) := do
+  let t0 ← now
   let a ← k
-  let t1 ← IO.monoNanosNow
-  return (a, (t1 - t0) / 1000000)
+  let t1 ← now
+  return (a, .between t0 t1)
+
+/-- `ms (instructions in G)`, the printed form of a sample. -/
+def Sample.show (s : Sample) : String :=
+  let g := s.instr / 10000000
+  s!"{s.ms} ms ({g / 100}.{if g % 100 < 10 then "0" else ""}{g % 100} G)"
+
+/-- Append the rows `date,commit,family,size,phase,instructions,ms` of `phases` to the file that
+`BENCH_CSV` names. -/
+def appendCsv (family : String) (size : Nat) (phases : List (String × Sample)) : IO Unit := do
+  let some path ← IO.getEnv "BENCH_CSV" | return
+  let date := (← IO.getEnv "BENCH_DATE").getD ""
+  let commit := (← IO.getEnv "BENCH_COMMIT").getD ""
+  let h ← IO.FS.Handle.mk path .append
+  for (phase, s) in phases do
+    h.putStrLn s!"{date},{commit},{family},{size},{phase},{s.instr},{s.ms}"
 
 /-- Elaborate a synthesis statement: a `Refinement` proposition with a single `?a` hole for the
 abstract program. Returns the goal type and the hole, unsealed to a natural metavariable so that
@@ -88,18 +123,19 @@ Run one synthesis benchmark and print a measurement line.
 * `discharge`: the tactic for the verification conditions, run only when there are any.
 * `symSimp?`: the rules `(pre, post)` of a `sym_simp_def` step on the synthesized program.
 -/
-def driver (label : String) (prob : Problem) (unfold : List Name)
+def driver (family : String) (size : Nat) (prob : Problem) (unfold : List Name)
     (solve : MVarId → MetaM (List MVarId)) (discharge : MetaM (TSyntax `tactic))
     (symSimp? : Option (List Name × List Name) := none) (showSynth : Bool := false) :
     TermElabM Unit := do
-  let t0 ← IO.monoNanosNow
+  let label := s!"{family}({size})"
+  let t0 ← now
   Term.elabBinders prob.binders fun xs => do
   let (ty, aMVar) ← elabSynthGoal prob.stmt
   let aTy ← inferType (mkMVar aMVar)
   let expectedE? ← prob.expected?.mapM fun e => Term.elabTermEnsuringType e aTy
   Term.synthesizeSyntheticMVarsNoPostponing
   let proof ← mkFreshExprSyntheticOpaqueMVar ty
-  let (goal, unfoldMs) ← timeItMs <| SymM.run do
+  let (goal, unfoldS) ← measure <| SymM.run do
     let goal ← preprocessMVar proof.mvarId!
     if unfold.isEmpty then return goal
     let eqnss ← unfold.toArray.mapM fun n => getEqnsFor? n
@@ -108,42 +144,46 @@ def driver (label : String) (prob : Problem) (unfold : List Name)
     | .goal goal => return goal
     | .noProgress => throwError "no progress unfolding {unfold} in {goal}"
     | .closed => throwError "unfolding closed the goal"
-  let (vcs, solveMs) ← timeItMs (solve goal)
-  let dischargeMs ← if vcs.isEmpty then pure 0 else do
+  let (vcs, solveS) ← measure (solve goal)
+  let dischargeS ← if vcs.isEmpty then pure {} else do
     let tac ← discharge
-    Prod.snd <$> timeItMs do
+    Prod.snd <$> measure do
       for vc in vcs do
         let [] ← solveUsingTactic vc tac
           | throwError "discharge failed on {vc}"
-  let (a, instAMs) ← timeItMs (instantiateMVars (mkMVar aMVar))
+  let (a, instAS) ← measure (instantiateMVars (mkMVar aMVar))
   if showSynth then
     logInfo m!"{label} synthesized:{indentExpr a}"
-  let golden? ← expectedE?.mapM fun expectedE => timeItMs (isDefEq a expectedE)
-  let simpMs? ← symSimp?.mapM fun (pre, post) => do
-    let (b, simpMs) ← timeItMs (symSimpDef a pre post)
+  let golden? ← expectedE?.mapM fun expectedE => measure (isDefEq a expectedE)
+  let simp? ← symSimp?.mapM fun (pre, post) => do
+    let (b, simpS) ← measure (symSimpDef a pre post)
     if showSynth then
       logInfo m!"{label} simplified:{indentExpr b}"
-    return simpMs
-  let (prf, instPMs) ← timeItMs do instantiateMVars (← mkLambdaFVars xs proof)
-  let instMs := instAMs + instPMs
+    return simpS
+  let (prf, instPS) ← measure do instantiateMVars (← mkLambdaFVars xs proof)
+  let instS := instAS + instPS
   -- `shareCommon` is pure: its argument `s0` and the test on its result keep it between the two
-  -- clock reads.
-  let s0 ← IO.monoNanosNow
-  let prf := shareCommonAt prf s0
-  let s1 ← if prf.approxDepth == 0 then pure s0 else IO.monoNanosNow
-  let shareMs := (s1 - s0) / 1000000
-  let (_, kernelMs) ← timeItMs (checkWithKernel prf)
-  let t1 ← IO.monoNanosNow
+  -- counter reads.
+  let s0 ← now
+  let prf := shareCommonAt prf s0.1
+  let s1 ← if prf.approxDepth == 0 then pure s0 else now
+  let shareS := Sample.between s0 s1
+  let (_, kernelS) ← measure (checkWithKernel prf)
+  let totalS := Sample.between t0 (← now)
   let pad := "".pushn ' ' (22 - min label.length 22)
-  let mut msg := s!"{label}:{pad}unfold {unfoldMs} ms, solve {solveMs} ms, {vcs.length} VCs, \
-    finish {dischargeMs} ms"
-  if let some (ok, goldenMs) := golden? then
-    msg := msg ++ s!", golden{if ok then "" else " FAILED"} {goldenMs} ms"
-  if let some simpMs := simpMs? then
-    msg := msg ++ s!", sym_simp_def {simpMs} ms"
-  msg := msg ++ s!", instantiate {instMs} ms, share {shareMs} ms, kernel {kernelMs} ms, \
-    total {(t1 - t0) / 1000000} ms"
+  let mut msg := s!"{label}:{pad}unfold {unfoldS.show}, solve {solveS.show}, {vcs.length} VCs, \
+    finish {dischargeS.show}"
+  if let some (ok, goldenS) := golden? then
+    msg := msg ++ s!", golden{if ok then "" else " FAILED"} {goldenS.show}"
+  if let some simpS := simp? then
+    msg := msg ++ s!", sym_simp_def {simpS.show}"
+  msg := msg ++ s!", instantiate {instS.show}, share {shareS.show}, kernel {kernelS.show}, \
+    total {totalS.show}"
   IO.println msg
+  appendCsv family size <| [("unfold", unfoldS), ("solve", solveS), ("finish", dischargeS)] ++
+    (golden?.map fun (_, s) => [("golden", s)]).getD [] ++
+    (simp?.map fun s => [("sym_simp_def", s)]).getD [] ++
+    [("instantiate", instS), ("share", shareS), ("kernel", kernelS), ("total", totalS)]
 
 /-- Run a benchmark family over `sizes`. `mk` builds the problem of each size, and `solve` gets the
 size for solvers that generate size-dependent proofs. -/
@@ -155,7 +195,7 @@ def runFamily (label : String) (mk : Nat → MetaM Problem) (unfold : List Name)
     -- A fresh `Meta` state per size: sharing the metavariable context and caches across
     -- sizes lets earlier runs pollute later measurements.
     (Term.TermElabM.run' do
-      driver s!"{label}({n})" (← mk n) unfold (solve n) discharge (symSimp? := symSimp?)
+      driver label n (← mk n) unfold (solve n) discharge (symSimp? := symSimp?)
         (showSynth := showSynth) : MetaM Unit).run' {} {}
 
 /-- `runFamily` for a solver that runs the tactic `tac`. -/

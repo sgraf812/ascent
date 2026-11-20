@@ -87,8 +87,9 @@ Run the reversions in parallel worktrees, each with its own `.lake`.
 ## Bench
 
 Run each bench case under a short timeout. A case that takes more than 10 s at `n = 2000` is a
-failure, not a measurement. The bench numbers vary by a factor of 2 between runs under load, so
-compare medians of several sequential runs.
+failure, not a measurement. The wall times vary by a factor of 2 between runs under load, and the
+instruction counts by less than 1 %, so compare instructions. `scripts/bench-record.py` records
+them in `bench/results.csv` and compares two commits (`bench/README.md`, section "Recording").
 
 ## Conventions
 

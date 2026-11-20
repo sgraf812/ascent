@@ -5,12 +5,16 @@ and proves the triple. The driver `lib/Driver.lean` measures each phase of the r
 
 ## Running
 
-`lake build` runs every family. To run one family, use `lake env lean <file>`, for example
-`lake env lean distill_add_sub_cancel.lean`. Run each command in the capped scope of `CLAUDE.md`:
+`lake build` runs every family. To run one family, use `lake lean <file>`, for example
+`lake lean distill_add_sub_cancel.lean`. Run each command in the capped scope of `CLAUDE.md`:
 
 ```
-systemd-run --user --scope -p MemorySwapMax=0 -p CPUWeight=50 --quiet timeout 120 lake env lean distill_add_sub_cancel.lean
+systemd-run --user --scope -p MemorySwapMax=0 -p CPUWeight=50 --quiet timeout 120 lake lean distill_add_sub_cancel.lean
 ```
+
+The driver runs compiled, since it reads a hardware counter through the C function of
+`ffi/instructions.c`. `lake lean` and `lake build` load the compiled driver. `lake env lean` does
+not, and it stops with `Could not find native implementation of external declaration`.
 
 The package has two run libraries. `Bench` holds the files `distill_*.lean`, whose cases are in
 `cases/Cases/`. `BenchX64` holds the files `x64_*.lean`, whose cases are in `casesx64/CasesX64/`.
@@ -18,11 +22,15 @@ The x64 cases import the demo, so the package requires the demo package `../demo
 
 ## Output
 
-The driver prints one line for each size:
+The driver prints one line for each size, with the wall time and the user-space instructions of
+each phase:
 
 ```
-AddSubCancel(30):      unfold 3 ms, solve 150 ms, 0 VCs, finish 0 ms, golden 3 ms, instantiate 2 ms, share 9 ms, kernel 9 ms, total 197 ms
+AddSubCancel(30):      unfold 13 ms (0.06 G), solve 114 ms (0.77 G), 0 VCs, finish 0 ms (0.00 G), golden 4 ms (0.04 G), instantiate 2 ms (0.01 G), share 10 ms (0.15 G), kernel 10 ms (0.11 G), total 162 ms (1.18 G)
 ```
+
+The instruction count of a phase varies by less than 1 % between runs, the wall time by a factor of
+2 under load. The counter counts the thread of the driver only.
 
 | Field | Meaning |
 |---|---|
@@ -107,6 +115,21 @@ the straight-line stack frame tests of the demo.
 | `X64Calls` | `x64_calls.lean` | `n` calls to `_swap` | 150, 300, 450 | 1.65 s |
 | `X64Frame` | `x64_frame.lean` | `n` pushes, then `n` pops | 15, 30, 45 | 0.99 s |
 | `X64Array` | `x64_array.lean` | `n` loads and `n` stores at distinct indices | 15, 30, 45 | 0.93 s |
+
+## Recording
+
+`scripts/bench-record.py` runs the families and appends their rows to `results.csv`, one row per
+size and phase: `date,commit,family,size,phase,instructions,ms`. A run on a dirty tree records the
+commit with the suffix `+dirty`.
+
+```
+python3 scripts/bench-record.py                          # every family
+python3 scripts/bench-record.py distill_ifs_jp.lean      # one family
+python3 scripts/bench-record.py --compare                # the last two recorded commits
+python3 scripts/bench-record.py --compare 44fde20 b1872fd
+```
+
+`--compare` prints the change of the total instructions per family and size.
 
 ## Calibration
 
