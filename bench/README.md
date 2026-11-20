@@ -119,11 +119,13 @@ the straight-line stack frame tests of the demo.
 ## Recording
 
 `scripts/bench-record.py` runs the families and appends their rows to `results.csv`, one row per
-size and phase: `date,commit,family,size,phase,instructions,ms`. A run on a dirty tree records the
-commit with the suffix `+dirty`.
+size and phase: `date,commit,family,size,phase,instructions,ms`. A run on a tree with changes other
+than `results.csv` records the commit with the suffix `+dirty`. With `--repeat N`, the script runs
+each family `N` times, and the rows of the runs follow each other in the file.
 
 ```
-python3 scripts/bench-record.py                          # every family
+python3 scripts/bench-record.py                          # every family, once
+python3 scripts/bench-record.py --repeat 5               # every family, five times
 python3 scripts/bench-record.py distill_ifs_jp.lean      # one family
 python3 scripts/bench-record.py --compare                # the last two recorded commits
 python3 scripts/bench-record.py --compare 44fde20 b1872fd
@@ -132,11 +134,13 @@ python3 scripts/bench-record.py --compare 44fde20 b1872fd
 `--compare` applies the significance checks of radar to the instructions of each family, size and
 phase:
 
-* The noise `q` of a metric is the 0.9-quantile of the absolute differences between consecutive
-  recorded commits, over the last 50 commits up to the first commit of the comparison.
-* A change `d` is small, medium or large if `|d| / q` reaches 3, 6 or 9.
-* A metric with fewer than 5 differences in its history has no quantile. Its change is small,
-  medium or large if `|d|` reaches 1, 3 or 10 % of the first value.
+* The value of a metric at a commit is the median of its runs.
+* The noise `q` of a metric is the 0.9-quantile of the absolute differences between consecutive runs
+  of the same commit, over the last 50 commits up to the first commit of the comparison. Without 5
+  such differences, `q` comes from the differences between consecutive commits, as in radar.
+* A change `d` is small, medium or large if `|d| / q` reaches 3, 6 or 9. A metric without a
+  quantile counts by `|d|` against 1, 3 and 10 % of the first value. A change below 0.5 % does not
+  count.
 * The comparison is significant with at least 1 large change, 5 changes that are at least medium,
   or 20 changes.
 

@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Record the bench in bench/results.csv, or compare two recorded commits.
 
-  scripts/bench-record.py [FILE...]        run the families of FILE... (default: all), append rows
+  scripts/bench-record.py [--repeat N] [FILE...]
+                                           run the families of FILE... (default: all) N times
+                                           (default: 1), append rows
   scripts/bench-record.py --compare [A [B]] compare the instructions of commit B against commit A
                                            (default: the last two recorded commits), with the
                                            significance checks of radar
@@ -33,31 +35,35 @@ def commit():
     return sha + ("+dirty" if dirty else "")
 
 
-def record(files):
+def record(files, repeat):
     if not CSV.exists():
         CSV.write_text(",".join(HEADER) + "\n")
     env = dict(os.environ, BENCH_CSV=str(CSV), BENCH_COMMIT=commit(),
                BENCH_DATE=datetime.date.today().isoformat())
     failed = []
     for f in files:
-        print(f"== {f}", flush=True)
-        r = subprocess.run(SCOPE + ["lake", "lean", f], cwd=BENCH, env=env)
-        if r.returncode != 0:
-            failed.append(f)
+        for i in range(repeat):
+            print(f"== {f} ({i + 1}/{repeat})", flush=True)
+            r = subprocess.run(SCOPE + ["lake", "lean", f], cwd=BENCH, env=env)
+            if r.returncode != 0:
+                failed.append(f)
     if failed:
         sys.exit(f"failed: {' '.join(failed)}")
 
 
-# The significance checks of radar (github.com/leanprover/radar, `MetricComparer`): the noise of a
-# metric is the 0.9-quantile `q` of the absolute differences between consecutive recorded commits,
-# over the last `QUANTILE_COMMITS` commits up to the first commit of the comparison. A change `d` is small, medium or large if `|d| / q`
-# reaches 3, 6 or 9. A metric with fewer than `MIN_DELTAS` differences has no quantile, and its
-# change counts by `|d| / v` with the thresholds 1, 3 and 10 %. A comparison is significant with at
-# least 1 large change, 5 changes that are at least medium, or 20 changes. Fewer instructions are
-# better.
+# The significance checks of radar (github.com/leanprover/radar, `MetricComparer`), with the noise
+# of repeated runs. The value of a metric at a commit is the median of its runs. The noise `q` of a
+# metric is the 0.9-quantile of the absolute differences between consecutive runs of the same
+# commit, over the last `QUANTILE_COMMITS` commits up to the first commit of the comparison. Without
+# `MIN_DELTAS` such differences, `q` is the 0.9-quantile of the differences between the values of
+# consecutive commits, as in radar. A change `d` is small, medium or large if `|d| / q` reaches 3, 6
+# or 9. A metric without a quantile counts by `|d| / v` with the thresholds 1, 3 and 10 %. A change
+# below `MIN_PERCENT` % does not count. A comparison is significant with at least 1 large change, 5
+# changes that are at least medium, or 20 changes. Fewer instructions are better.
 QUANTILE = 0.9
 QUANTILE_COMMITS = 50
 MIN_DELTAS = 5
+MIN_PERCENT = 0.5
 QUANTILE_FACTORS = (3, 6, 9)
 DELTA_PERCENTS = (1, 3, 10)
 SIGNIFICANT_COUNTS = (20, 5, 1)
@@ -72,6 +78,12 @@ def abs_quantile(xs, q):
         return asc[-1]
     w = pos - i
     return asc[i] * (1 - w) + asc[i + 1] * w
+
+
+def median(xs):
+    asc = sorted(xs)
+    n = len(asc)
+    return asc[n // 2] if n % 2 else (asc[n // 2 - 1] + asc[n // 2]) / 2
 
 
 def level(x, thresholds):
@@ -89,28 +101,32 @@ def compare(a, b):
     for c in (a, b):
         if c not in commits:
             sys.exit(f"commit {c} is not recorded")
-    # The value of each metric `(family, size, phase)` at each commit; the last run of a commit counts.
-    values = {}
+    # The runs of each metric `(family, size, phase)` at each commit, in the order of the file.
+    runs = {}
     for r in rows:
-        values.setdefault((r["family"], int(r["size"]), r["phase"]), {})[r["commit"]] = int(r["instructions"])
+        key = (r["family"], int(r["size"]), r["phase"])
+        runs.setdefault(key, {}).setdefault(r["commit"], []).append(int(r["instructions"]))
     # The noise is estimated before the change: on the history up to commit `a`.
     history = commits[: commits.index(a) + 1][-QUANTILE_COMMITS:]
     changes = []
-    for metric, byCommit in values.items():
+    for metric, byCommit in runs.items():
         if a not in byCommit or b not in byCommit:
             continue
-        x, y = byCommit[a], byCommit[b]
-        if x == y:
+        x, y = median(byCommit[a]), median(byCommit[b])
+        if x == 0 or 100 * abs(y - x) / x < MIN_PERCENT:
             continue
-        series = [byCommit[c] for c in history if c in byCommit]
-        deltas = [v - u for u, v in zip(series, series[1:])]
-        if len(deltas) >= MIN_DELTAS and abs_quantile(deltas, QUANTILE) > 0:
-            q = abs_quantile(deltas, QUANTILE)
-            lvl, why = level(abs(y - x) / q, QUANTILE_FACTORS), f"{abs(y - x) / q:.1f} q"
-        elif x != 0:
-            lvl, why = level(100 * abs(y - x) / x, DELTA_PERCENTS), "no quantile"
+        repeats = [v - u for c in history for u, v in zip(byCommit.get(c, []), byCommit.get(c, [])[1:])]
+        series = [median(byCommit[c]) for c in history if c in byCommit]
+        steps = [v - u for u, v in zip(series, series[1:])]
+        q = None
+        for deltas, source in ((repeats, "runs"), (steps, "commits")):
+            if len(deltas) >= MIN_DELTAS and abs_quantile(deltas, QUANTILE) > 0:
+                q = abs_quantile(deltas, QUANTILE)
+                break
+        if q is not None:
+            lvl, why = level(abs(y - x) / q, QUANTILE_FACTORS), f"{abs(y - x) / q:.1f} q of {source}"
         else:
-            continue
+            lvl, why = level(100 * abs(y - x) / x, DELTA_PERCENTS), "no quantile"
         if lvl >= 0:
             changes.append((lvl, metric, x, y, why))
     counts = [sum(1 for c in changes if c[0] >= i) for i in range(3)]
@@ -119,7 +135,7 @@ def compare(a, b):
           f"{counts[2]} large, {counts[1] - counts[2]} medium, {counts[0] - counts[1]} small changes")
     for lvl in (2, 1, 0):
         for _, (family, size, phase), x, y, why in sorted(
-                (c for c in changes if c[0] == lvl), key=lambda c: -abs(c[3] - c[2]) / max(c[2], 1)):
+                (c for c in changes if c[0] == lvl), key=lambda c: -abs(c[3] - c[2]) / c[2]):
             verdict = "better" if y < x else "worse"
             print(f"  {CLASSES[lvl]:6} {family}({size}) {phase}: {x / 1e9:.3f} G -> {y / 1e9:.3f} G  "
                   f"{100 * (y - x) / x:+.1f} %  {verdict}  ({why})")
@@ -132,10 +148,15 @@ def main():
         if len(rest) > 2:
             sys.exit(__doc__)
         compare(rest[0] if len(rest) == 2 else None, rest[-1] if rest else None)
-    elif any(a.startswith("-") for a in args):
+        return
+    repeat = 1
+    if args[:1] == ["--repeat"]:
+        if len(args) < 2 or not args[1].isdigit() or int(args[1]) < 1:
+            sys.exit(__doc__)
+        repeat, args = int(args[1]), args[2:]
+    if any(a.startswith("-") for a in args):
         sys.exit(__doc__)
-    else:
-        record(args or families())
+    record(args or families(), repeat)
 
 
 main()
