@@ -162,5 +162,5 @@ machine is shared, so the calibration measures under load:
 
 The times in the tables above are from 2026-11-18, at a load average of 12 to 16 on 96 cores. The
 times of `LetBinding`, `IfsJP`, `MatchesJP`, `WideJP` and `DiteSplit` are from 2026-11-19, at a load
-average of 35 to 150. The times of `GetThrowSet`, `ReaderState` and `MatchIota` are from 2026-11-20, on an idle
-machine.
+average of 35 to 150. The times of `GetThrowSet` and `ReaderState` are from 2026-11-20, on an idle
+machine, and the time of `MatchIota` is from 2026-11-20, under load.
